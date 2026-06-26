@@ -1,8 +1,8 @@
 import type { getSidebarDataForUser } from '@/lib/hero-admin'
 
-export type MobileSidebarItem = NonNullable<Awaited<ReturnType<typeof getSidebarDataForUser>>>[
-  'navMain'
-][number]
+export type MobileSidebarItem = NonNullable<
+  Awaited<ReturnType<typeof getSidebarDataForUser>>
+>['navMain'][number]
 
 export type MobileAllowedLink = {
   href: string
@@ -28,11 +28,19 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/approval', mobile: '/mobile/approval' },
   { desktop: '/dashboard/curhat', mobile: '/mobile/curhat' },
   { desktop: '/dashboard/hr-counseling', mobile: '/mobile/hr-counseling' },
+  { desktop: '/dashboard/safety/data', mobile: '/mobile/hse/safety-data' },
+  { desktop: '/dashboard/safety/inspections', mobile: '/mobile/hse/inspections' },
+  { desktop: '/dashboard/safety', mobile: '/mobile/hse/safety-data' },
   { desktop: '/dashboard/hse/checklist-generator', mobile: '/mobile/hse/checklist' },
+  { desktop: '/dashboard/hse/incident-report', mobile: '/mobile/hse/incident-report' },
+  { desktop: '/dashboard/hse/hiradc', mobile: '/mobile/hse/hiradc' },
+  { desktop: '/dashboard/hse/inventaris', mobile: '/mobile/hse/inventaris' },
   { desktop: '/dashboard/hse/jsa', mobile: '/mobile/hse/jsa' },
   { desktop: '/dashboard/hse/izin-kerja-ptw', mobile: '/mobile/hse/ptw' },
+  { desktop: '/dashboard/hse/sia-sio-tools-certification', mobile: '/mobile/hse/sia-sio-tools' },
   { desktop: '/dashboard/hse/tire-inspection', mobile: '/mobile/hse/tire-inspection' },
   { desktop: '/dashboard/hse', mobile: '/mobile/hse' },
+  { desktop: '/dashboard/safety-induction', mobile: '/mobile/hse/induction' },
   { desktop: '/dashboard/gamification', mobile: '/mobile/gamification' },
   { desktop: '/dashboard/leaderboard', mobile: '/mobile/gamification' },
   { desktop: '/dashboard/wellness', mobile: '/mobile/wellness' },
@@ -60,6 +68,11 @@ const fallbackMobileSegments = new Set([
   'gamification',
   'hr-counseling',
   'hse',
+  'hiradc',
+  'incident-report',
+  'induction',
+  'inspections',
+  'inventaris',
   'lms',
   'notifications',
   'overtime',
@@ -71,8 +84,12 @@ const fallbackMobileSegments = new Set([
   'leader-performance',
   'permission',
   'checklist',
+  'corrective-action',
   'jsa',
+  'observasi-emergency',
   'ptw',
+  'safety-data',
+  'sia-sio-tools',
   'tire-inspection',
 ])
 
@@ -82,7 +99,7 @@ export function getMobileUrlForDesktopUrl(desktopUrl: string): string | null {
 
   const cleanUrl = desktopUrl.split('?')[0]
   const matchedRoute = desktopToMobileRoutes.find(
-    (route) => cleanUrl === route.desktop || cleanUrl.startsWith(`${route.desktop}/`),
+    (route) => cleanUrl === route.desktop || cleanUrl.startsWith(`${route.desktop}/`)
   )
   if (matchedRoute) return matchedRoute.mobile
 

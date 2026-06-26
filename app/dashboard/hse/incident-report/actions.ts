@@ -4,14 +4,50 @@ import { eq, desc, and, or, ilike } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { hseIncidentRecords } from '@/db/schema/hero'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
+import {
+  getCurrentEmployeeAccessContext,
+  getCurrentMenuPermission,
+  hasGlobalDataAccess,
+} from '@/lib/hero-access'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 
 async function requireIncidentPermission(action: 'view' | 'edit' | 'delete') {
-  const permission = await getCurrentMenuPermission('hse_incident_report')
-  const allowed = action === 'view' ? permission.canView : action === 'delete' ? permission.canDelete : permission.canEdit
+  const [permission, context] = await Promise.all([
+    getCurrentMenuPermission('hse_incident_report'),
+    getCurrentEmployeeAccessContext(),
+  ])
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'delete'
+        ? permission.canDelete
+        : permission.canEdit
   if (!allowed) throw new Error('Role Anda tidak punya akses Incident Report.')
-  return permission
+  return {
+    permission,
+    context,
+    hasGlobalScope: hasGlobalDataAccess(permission),
+  }
+}
+
+type IncidentAccess = Awaited<ReturnType<typeof requireIncidentPermission>>
+
+function getScopedIncidentEmployeeId(access: IncidentAccess) {
+  const employeeId = access.context?.employeeId ?? null
+  if (!access.hasGlobalScope && !employeeId) {
+    throw new Error('Role Anda hanya bisa mengakses incident report sendiri.')
+  }
+  return employeeId
+}
+
+function assertIncidentRecordScope(
+  access: IncidentAccess,
+  record: { picEmployeeId: number | null } | undefined
+) {
+  if (!record) throw new Error('Incident report tidak ditemukan.')
+  if (!access.hasGlobalScope && record.picEmployeeId !== access.context?.employeeId) {
+    throw new Error('Role Anda hanya bisa mengakses incident report sendiri.')
+  }
 }
 
 export async function getIncidentRecords(params?: {
@@ -21,8 +57,11 @@ export async function getIncidentRecords(params?: {
   status?: string
 }) {
   try {
-    await requireIncidentPermission('view')
+    const access = await requireIncidentPermission('view')
     const conditions = []
+    if (!access.hasGlobalScope) {
+      conditions.push(eq(hseIncidentRecords.picEmployeeId, access.context?.employeeId ?? -1))
+    }
 
     if (params?.search) {
       conditions.push(
@@ -73,7 +112,10 @@ export async function createIncidentRecord(payload: {
   documentationUrl: string
 }) {
   try {
-    await requireIncidentPermission('edit')
+    const access = await requireIncidentPermission('edit')
+    const scopedPicEmployeeId = access.hasGlobalScope
+      ? payload.picEmployeeId || null
+      : getScopedIncidentEmployeeId(access)
     const [inserted] = await db
       .insert(hseIncidentRecords)
       .values({
@@ -84,7 +126,7 @@ export async function createIncidentRecord(payload: {
         siteId: payload.siteId || null,
         investigationStatus: payload.investigationStatus,
         incidentDate: payload.incidentDate,
-        picEmployeeId: payload.picEmployeeId || null,
+        picEmployeeId: scopedPicEmployeeId,
         picName: payload.picName,
         rootCauseAnalysis: payload.rootCauseAnalysis,
         immediateCorrectiveAction: payload.immediateCorrectiveAction,
@@ -146,16 +188,24 @@ export async function updateIncidentRecord(
   }>
 ) {
   try {
-    await requireIncidentPermission('edit')
+    const access = await requireIncidentPermission('edit')
     const [previous] = await db
       .select()
       .from(hseIncidentRecords)
       .where(eq(hseIncidentRecords.id, id))
       .limit(1)
+    assertIncidentRecordScope(access, previous)
+
+    const scopedPayload = access.hasGlobalScope
+      ? payload
+      : {
+          ...payload,
+          picEmployeeId: getScopedIncidentEmployeeId(access),
+        }
     const [updated] = await db
       .update(hseIncidentRecords)
       .set({
-        ...payload,
+        ...scopedPayload,
         updatedAt: new Date(),
       })
       .where(eq(hseIncidentRecords.id, id))
@@ -206,7 +256,13 @@ export async function updateIncidentRecord(
 
 export async function deleteIncidentRecord(id: number) {
   try {
-    await requireIncidentPermission('delete')
+    const access = await requireIncidentPermission('delete')
+    const [record] = await db
+      .select({ picEmployeeId: hseIncidentRecords.picEmployeeId })
+      .from(hseIncidentRecords)
+      .where(eq(hseIncidentRecords.id, id))
+      .limit(1)
+    assertIncidentRecordScope(access, record)
     await db.delete(hseIncidentRecords).where(eq(hseIncidentRecords.id, id))
     revalidatePath('/dashboard/hse/incident-report')
     revalidatePath('/mobile/hse/observasi-emergency')

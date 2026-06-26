@@ -189,7 +189,11 @@ import {
   syncActivityWorkflowArtifacts,
 } from '@/lib/approval-blueprint'
 import { appendApprovalNoteEntry } from '@/lib/approval-notes'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
+import {
+  getCurrentEmployeeAccessContext,
+  getCurrentMenuPermission,
+  hasGlobalDataAccess,
+} from '@/lib/hero-access'
 
 async function requireSchedulingTimesheetAccess(permission: 'edit' | 'finalize' = 'edit') {
   const access = await getCurrentMenuPermission('scheduling_timesheet')
@@ -1627,7 +1631,14 @@ const manageSecurityUserSchema = z.object({
 })
 
 const manageSecurityRoleSchema = z.object({
-  intent: z.enum(['create-role', 'duplicate-role', 'delete-role', 'save-menu-permissions', 'assign-user-role', 'remove-user-role']),
+  intent: z.enum([
+    'create-role',
+    'duplicate-role',
+    'delete-role',
+    'save-menu-permissions',
+    'assign-user-role',
+    'remove-user-role',
+  ]),
   roleId: optionalFormString,
   roleName: optionalFormString,
   description: optionalFormString,
@@ -1873,7 +1884,7 @@ async function closeLegacyApprovalInboxItems(
   approvalIds: number[],
   status: 'approved' | 'rejected' | 'needs_correction' | 'skipped' | 'cancelled',
   now: Date,
-  executionLog: string,
+  executionLog: string
 ) {
   if (approvalIds.length === 0) {
     return
@@ -1956,8 +1967,7 @@ async function updateLegacyEntityForSubmissionDecision(params: {
               : 'pending',
         approvedBy: params.decision === 'approved' ? params.actorName : '',
         approvedAt: params.decision === 'approved' ? params.now : null,
-        rejectionReason:
-          params.decision === 'approved' ? '' : params.note,
+        rejectionReason: params.decision === 'approved' ? '' : params.note,
         updatedAt: params.now,
       })
       .where(eq(hcLeaveRequests.id, legacyRecordId))
@@ -2015,7 +2025,7 @@ async function applyLegacySubmissionDecision(params: {
       (step) =>
         step.stepOrder === params.approval.level &&
         (params.approval.approvalStepId == null ||
-          step.approvalMatrixStepId === params.approval.approvalStepId),
+          step.approvalMatrixStepId === params.approval.approvalStepId)
     ) ?? -1
   const currentStep =
     approvalRoute != null && currentStepIndex >= 0
@@ -2057,7 +2067,7 @@ async function applyLegacySubmissionDecision(params: {
       [params.approval.approvalId],
       params.decision,
       now,
-      trimmedNote || defaultDecisionMessage,
+      trimmedNote || defaultDecisionMessage
     )
 
     await tx.insert(stepDecisionHistories).values({
@@ -2080,8 +2090,8 @@ async function applyLegacySubmissionDecision(params: {
                 and(
                   eq(approvals.submissionId, params.approval.submissionId),
                   eq(approvals.level, params.approval.level),
-                  eq(approvals.status, 'pending'),
-                ),
+                  eq(approvals.status, 'pending')
+                )
               )
           : []
       const siblingIds = siblingRows.map((row) => row.id)
@@ -2100,12 +2110,11 @@ async function applyLegacySubmissionDecision(params: {
           siblingIds,
           'skipped',
           now,
-          'Closed because another reviewer already decided this step.',
+          'Closed because another reviewer already decided this step.'
         )
       }
 
-      const nextStatus =
-        params.decision === 'rejected' ? 'rejected' : 'needs_revision'
+      const nextStatus = params.decision === 'rejected' ? 'rejected' : 'needs_revision'
 
       await tx
         .update(formSubmissions)
@@ -2153,8 +2162,8 @@ async function applyLegacySubmissionDecision(params: {
         .where(
           and(
             eq(approvals.submissionId, params.approval.submissionId),
-            eq(approvals.level, params.approval.level),
-          ),
+            eq(approvals.level, params.approval.level)
+          )
         )
 
       if (sameLevelApprovals.some((row) => row.status === 'pending')) {
@@ -2181,8 +2190,8 @@ async function applyLegacySubmissionDecision(params: {
           and(
             eq(approvals.submissionId, params.approval.submissionId),
             eq(approvals.level, params.approval.level),
-            eq(approvals.status, 'pending'),
-          ),
+            eq(approvals.status, 'pending')
+          )
         )
 
       const siblingIds = siblingRows.map((row) => row.id)
@@ -2200,7 +2209,7 @@ async function applyLegacySubmissionDecision(params: {
           siblingIds,
           'skipped',
           now,
-          'Step parallel-any diselesaikan oleh approver lain pada level yang sama.',
+          'Step parallel-any diselesaikan oleh approver lain pada level yang sama.'
         )
       }
     }
@@ -2257,11 +2266,7 @@ async function applyLegacySubmissionDecision(params: {
     })
   })
 
-  if (
-    params.decision === 'approved' &&
-    nextStepGroup.length > 0 &&
-    approvalRoute != null
-  ) {
+  if (params.decision === 'approved' && nextStepGroup.length > 0 && approvalRoute != null) {
     await createNextLegacyApprovalStep({
       submissionId: params.approval.submissionId,
       route: approvalRoute,
@@ -2499,9 +2504,7 @@ async function applyApprovalDecision(params: {
           status: approvals.status,
         })
         .from(approvals)
-        .where(
-          and(eq(approvals.activityId, activityId), eq(approvals.level, approval.level))
-        )
+        .where(and(eq(approvals.activityId, activityId), eq(approvals.level, approval.level)))
 
       if (sameLevelApprovals.some((row) => row.status === 'pending')) {
         await tx
@@ -2649,9 +2652,7 @@ async function applyApprovalDecision(params: {
       const [existingAwardEvent] = await tx
         .select({ id: pointEvents.id })
         .from(pointEvents)
-        .where(
-          and(eq(pointEvents.sourceType, 'activity'), eq(pointEvents.sourceId, activityId))
-        )
+        .where(and(eq(pointEvents.sourceType, 'activity'), eq(pointEvents.sourceId, activityId)))
         .limit(1)
 
       if (!existingAwardEvent) {
@@ -2873,7 +2874,11 @@ async function resolveHrEmployeeGovernanceIds(params: {
   const [departments, sections, positions, orgNodes, statuses] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
     db
-      .select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId })
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+      })
       .from(masterSections),
     db.select({ id: hrPositions.id, name: hrPositions.rankName }).from(hrPositions),
     db
@@ -3002,10 +3007,7 @@ async function upsertCredentialAccount({
       .where(
         and(
           eq(account.providerId, 'credential'),
-          or(
-            eq(account.userId, authUserId),
-            eq(account.accountId, accountId)
-          )
+          or(eq(account.userId, authUserId), eq(account.accountId, accountId))
         )
       )
       .limit(1)
@@ -3853,9 +3855,7 @@ export async function importSecurityUsersAction(
       return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [[defaultSite]] = await Promise.all([
-      db.select().from(sites).limit(1),
-    ])
+    const [[defaultSite]] = await Promise.all([db.select().from(sites).limit(1)])
 
     if (!defaultSite) {
       return { status: 'error', message: 'Site default belum tersedia untuk import user.' }
@@ -3914,7 +3914,12 @@ export async function importSecurityUsersAction(
       const maritalStatus = getMappedValue(record, headers, mapping, 'maritalStatus')
       const pointOfHire = getMappedValue(record, headers, mapping, 'pointOfHire')
       const joinDate = getMappedValue(record, headers, mapping, 'joinDate')
-      const contractDurationStart = getMappedValue(record, headers, mapping, 'contractDurationStart')
+      const contractDurationStart = getMappedValue(
+        record,
+        headers,
+        mapping,
+        'contractDurationStart'
+      )
       const contractDurationEnd = getMappedValue(record, headers, mapping, 'contractDurationEnd')
       const permanentDate = getMappedValue(record, headers, mapping, 'permanentDate')
       const birthDate = getMappedValue(record, headers, mapping, 'birthDate')
@@ -4025,9 +4030,26 @@ const importUpdateUsersSchema = z.object({
 })
 
 const IMPORT_UPDATE_HEADERS = [
-  'Name', 'SN', 'Department', 'Section', 'Job Title', 'Level Staff', 'Peran',
-  'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status',
-  'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun',
+  'Name',
+  'SN',
+  'Department',
+  'Section',
+  'Job Title',
+  'Level Staff',
+  'Peran',
+  'Lokasi Site',
+  'Tipe Status',
+  'Gender',
+  'Agama',
+  'Pendidikan',
+  'Marital Status',
+  'POH',
+  'Join Date',
+  'Contract Start',
+  'Contract End',
+  'Permanent Date',
+  'Tgl Lahir',
+  'Status Akun',
 ] as const
 
 function normalizeImportDate(value: string): string | null {
@@ -4173,8 +4195,7 @@ export async function importUpdateUsersAction(
       const getValue = (idx: number | undefined): string =>
         idx !== undefined ? (recordValues[idx] ?? '').trim() : ''
 
-      const getDate = (idx: number | undefined): string | null =>
-        normalizeImportDate(getValue(idx))
+      const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
 
       const employeeUpdate: Record<string, unknown> = {}
 
@@ -4384,25 +4405,24 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Initial password minimum 8 characters.' }
       }
 
-      const [
-        [currentDefaultSite],
-        [selectedSite],
-        [existingEmployee],
-        [existingAuthUser],
-        [role],
-      ] = await Promise.all([
-        db.select().from(sites).limit(1),
-        payload.siteId
-          ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
-          : Promise.resolve([]),
-        db
-          .select({ id: employees.id })
-          .from(employees)
-          .where(or(eq(employees.email, email), eq(employees.employeeSn, employeeSn)))
-          .limit(1),
-        db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
-        db.select().from(securityRoles).where(eq(securityRoles.name, payload.accessRole)).limit(1),
-      ])
+      const [[currentDefaultSite], [selectedSite], [existingEmployee], [existingAuthUser], [role]] =
+        await Promise.all([
+          db.select().from(sites).limit(1),
+          payload.siteId
+            ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+            : Promise.resolve([]),
+          db
+            .select({ id: employees.id })
+            .from(employees)
+            .where(or(eq(employees.email, email), eq(employees.employeeSn, employeeSn)))
+            .limit(1),
+          db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
+          db
+            .select()
+            .from(securityRoles)
+            .where(eq(securityRoles.name, payload.accessRole))
+            .limit(1),
+        ])
 
       if (existingEmployee || existingAuthUser) {
         return { status: 'error', message: 'Email or SN is already used by another user.' }
@@ -4445,35 +4465,38 @@ export async function manageSecurityUserAction(
 
       await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
 
-      const [createdEmployee] = await db.insert(employees).values({
-        authUserId,
-        employeeSn,
-        name: fullName,
-        email,
-        siteId: defaultSite.id,
-        joinDate: parseJoinDateFromYear(payload.joinYear),
-        joinYear: parseJoinYear(payload.joinYear ?? ''),
-        birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-        birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
-        domicile: payload.domicile?.trim() || 'Belum diisi',
-        departmentId: hrGovernanceIds.departmentId,
-        sectionId: hrGovernanceIds.sectionId,
-        positionId: hrGovernanceIds.positionId,
-        orgNodeId: hrGovernanceIds.orgNodeId,
-        section,
-        department,
-        role: jobTitle,
-        jobTitle,
-        workLocation: defaultSite.name,
-        phoneNumber: payload.phoneNumber?.trim() || '',
-        employmentStatus: normalizedStatus.status,
-        employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-        accessRole: role.name,
-        levelName: 'Rookie',
-        totalPoints: 0,
-        fitStatus: 'fit',
-        isActive: normalizedStatus.isActive,
-      }).returning({ id: employees.id })
+      const [createdEmployee] = await db
+        .insert(employees)
+        .values({
+          authUserId,
+          employeeSn,
+          name: fullName,
+          email,
+          siteId: defaultSite.id,
+          joinDate: parseJoinDateFromYear(payload.joinYear),
+          joinYear: parseJoinYear(payload.joinYear ?? ''),
+          birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
+          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+          domicile: payload.domicile?.trim() || 'Belum diisi',
+          departmentId: hrGovernanceIds.departmentId,
+          sectionId: hrGovernanceIds.sectionId,
+          positionId: hrGovernanceIds.positionId,
+          orgNodeId: hrGovernanceIds.orgNodeId,
+          section,
+          department,
+          role: jobTitle,
+          jobTitle,
+          workLocation: defaultSite.name,
+          phoneNumber: payload.phoneNumber?.trim() || '',
+          employmentStatus: normalizedStatus.status,
+          employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
+          accessRole: role.name,
+          levelName: 'Rookie',
+          totalPoints: 0,
+          fitStatus: 'fit',
+          isActive: normalizedStatus.isActive,
+        })
+        .returning({ id: employees.id })
 
       const createdLegacyEmployeeId = createdEmployee?.id ?? null
 
@@ -4599,8 +4622,11 @@ export async function manageSecurityUserAction(
           name: payload.fullName || employee.name,
           employeeSn: payload.employeeSn || employee.employeeSn,
           joinDate: joinDate || parseJoinDateFromYear(payload.joinYear),
-          joinYear: joinDate ? new Date(joinDate).getFullYear() : parseJoinYear(payload.joinYear ?? ''),
-          birthDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
+          joinYear: joinDate
+            ? new Date(joinDate).getFullYear()
+            : parseJoinYear(payload.joinYear ?? ''),
+          birthDate:
+            birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
           birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
           domicile: payload.domicile || 'Belum diisi',
           directManagerId,
@@ -4734,10 +4760,7 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Selected role is invalid.' }
       }
 
-      await db
-        .update(employees)
-        .set({ accessRole: role.name })
-        .where(eq(employees.id, employee.id))
+      await db.update(employees).set({ accessRole: role.name }).where(eq(employees.id, employee.id))
 
       // Kill session so user must re-login with new role
       if (employee.authUserId) {
@@ -5099,10 +5122,7 @@ export async function manageSecurityRoleAction(
       }
 
       const oldRole = employee.accessRole
-      await db
-        .update(employees)
-        .set({ accessRole: role.name })
-        .where(eq(employees.id, employeeId))
+      await db.update(employees).set({ accessRole: role.name }).where(eq(employees.id, employeeId))
 
       if (employee.authUserId) {
         await db.delete(session).where(eq(session.userId, employee.authUserId))
@@ -5291,19 +5311,84 @@ async function notifyEmployeeForPointUpdate(input: {
   })
 }
 
+async function requireHseDashboardPermission(action: 'view' | 'edit' | 'delete') {
+  const [permission, context] = await Promise.all([
+    getCurrentMenuPermission('hse'),
+    getCurrentEmployeeAccessContext(),
+  ])
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'delete'
+        ? permission.canDelete
+        : permission.canEdit
+  if (!allowed) throw new Error('Role Anda tidak punya akses HSE.')
+
+  return {
+    permission,
+    context,
+    hasGlobalScope: hasGlobalDataAccess(permission),
+  }
+}
+
+type HseDashboardAccess = Awaited<ReturnType<typeof requireHseDashboardPermission>>
+
+function getScopedHseEmployeeId(access: HseDashboardAccess) {
+  const employeeId = access.context?.employeeId ?? null
+  if (!access.hasGlobalScope && !employeeId) {
+    throw new Error('Role Anda hanya bisa mengakses data HSE sendiri.')
+  }
+  return employeeId
+}
+
+async function assertHseObservationScope(id: number, access: HseDashboardAccess) {
+  const [record] = await db
+    .select({ employeeId: hseObservations.employeeId })
+    .from(hseObservations)
+    .where(eq(hseObservations.id, id))
+    .limit(1)
+
+  if (!record) throw new Error('Observasi HSE tidak ditemukan.')
+  if (!access.hasGlobalScope && record.employeeId !== access.context?.employeeId) {
+    throw new Error('Role Anda hanya bisa mengakses observasi HSE sendiri.')
+  }
+}
+
+async function assertHseIncidentScope(id: number, access: HseDashboardAccess) {
+  const [record] = await db
+    .select({ employeeId: hseIncidents.employeeId })
+    .from(hseIncidents)
+    .where(eq(hseIncidents.id, id))
+    .limit(1)
+
+  if (!record) throw new Error('Incident HSE tidak ditemukan.')
+  if (!access.hasGlobalScope && record.employeeId !== access.context?.employeeId) {
+    throw new Error('Role Anda hanya bisa mengakses incident HSE sendiri.')
+  }
+}
+
 export async function manageHseObservationAction(formData: FormData): Promise<AdminMutationState> {
   try {
     const payload = manageHseObservationSchema.parse(Object.fromEntries(formData))
     await ensureHeroSeedData()
+    const access = await requireHseDashboardPermission(
+      payload.intent === 'delete' ? 'delete' : 'edit'
+    )
 
     if (payload.intent === 'create') {
-      if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
+      const scopedEmployeeId = access.hasGlobalScope
+        ? (payload.employeeId ?? null)
+        : getScopedHseEmployeeId(access)
+      const scopedSiteId = access.hasGlobalScope
+        ? payload.siteId
+        : (access.context?.siteId ?? payload.siteId)
+      if (!scopedSiteId || !payload.title || !payload.location || !payload.notes) {
         return { status: 'error', message: 'Site, judul, lokasi, dan catatan wajib diisi.' }
       }
 
       await db.insert(hseObservations).values({
-        siteId: payload.siteId,
-        employeeId: payload.employeeId ?? null,
+        siteId: scopedSiteId,
+        employeeId: scopedEmployeeId,
         category: payload.category,
         title: payload.title,
         location: payload.location,
@@ -5343,7 +5428,7 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
       })
 
       await notifyEmployeesForHseAlert({
-        siteId: payload.siteId,
+        siteId: scopedSiteId,
         title: `HSE alert: ${payload.title}`,
         body: `${payload.severity} di ${payload.location}. ${payload.notes.slice(0, 96)}`,
         eventType: 'hse_observation_created',
@@ -5356,6 +5441,7 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
     const id = getRequiredId(payload.id, 'Observasi HSE')
 
     if (payload.intent === 'update-status') {
+      await assertHseObservationScope(id, access)
       await db
         .update(hseObservations)
         .set({ status: payload.status })
@@ -5410,15 +5496,22 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
     }
 
     if (payload.intent === 'update') {
-      if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
+      await assertHseObservationScope(id, access)
+      const scopedEmployeeId = access.hasGlobalScope
+        ? (payload.employeeId ?? null)
+        : getScopedHseEmployeeId(access)
+      const scopedSiteId = access.hasGlobalScope
+        ? payload.siteId
+        : (access.context?.siteId ?? payload.siteId)
+      if (!scopedSiteId || !payload.title || !payload.location || !payload.notes) {
         return { status: 'error', message: 'Site, judul, lokasi, dan catatan wajib diisi.' }
       }
 
       await db
         .update(hseObservations)
         .set({
-          siteId: payload.siteId,
-          employeeId: payload.employeeId ?? null,
+          siteId: scopedSiteId,
+          employeeId: scopedEmployeeId,
           category: payload.category,
           title: payload.title,
           location: payload.location,
@@ -5433,6 +5526,7 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
       return { status: 'success', message: 'Detail observasi HSE diperbarui.' }
     }
 
+    await assertHseObservationScope(id, access)
     await db.delete(hseObservations).where(eq(hseObservations.id, id))
     revalidateOperationalPages('/dashboard/hse')
     return { status: 'success', message: 'Observasi HSE dihapus.' }
@@ -5448,14 +5542,22 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
   try {
     const payload = manageHseIncidentSchema.parse(Object.fromEntries(formData))
     await ensureHeroSeedData()
+    const access = await requireHseDashboardPermission(
+      payload.intent === 'delete' ? 'delete' : 'edit'
+    )
 
     if (payload.intent === 'create') {
-      if (!payload.siteId || !payload.title || !payload.impact) {
+      const scopedEmployeeId = getScopedHseEmployeeId(access)
+      const scopedSiteId = access.hasGlobalScope
+        ? payload.siteId
+        : (access.context?.siteId ?? payload.siteId)
+      if (!scopedSiteId || !payload.title || !payload.impact) {
         return { status: 'error', message: 'Site, judul, dan impact wajib diisi.' }
       }
 
       await db.insert(hseIncidents).values({
-        siteId: payload.siteId,
+        siteId: scopedSiteId,
+        employeeId: scopedEmployeeId,
         type: payload.type,
         title: payload.title,
         unitNumber: payload.unitNumber,
@@ -5494,7 +5596,7 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
       })
 
       await notifyEmployeesForHseAlert({
-        siteId: payload.siteId,
+        siteId: scopedSiteId,
         title: `Incident HSE: ${payload.title}`,
         body: `${payload.type} Â· ${payload.impact.slice(0, 96)}`,
         eventType: 'hse_incident_created',
@@ -5507,6 +5609,7 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
     const id = getRequiredId(payload.id, 'Incident HSE')
 
     if (payload.intent === 'update-status') {
+      await assertHseIncidentScope(id, access)
       await db.update(hseIncidents).set({ status: payload.status }).where(eq(hseIncidents.id, id))
 
       const [currentIncident] = await db
@@ -5558,14 +5661,18 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
     }
 
     if (payload.intent === 'update') {
-      if (!payload.siteId || !payload.title || !payload.impact) {
+      await assertHseIncidentScope(id, access)
+      const scopedSiteId = access.hasGlobalScope
+        ? payload.siteId
+        : (access.context?.siteId ?? payload.siteId)
+      if (!scopedSiteId || !payload.title || !payload.impact) {
         return { status: 'error', message: 'Site, judul, dan impact wajib diisi.' }
       }
 
       await db
         .update(hseIncidents)
         .set({
-          siteId: payload.siteId,
+          siteId: scopedSiteId,
           type: payload.type,
           title: payload.title,
           unitNumber: payload.unitNumber,
@@ -5579,6 +5686,7 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
       return { status: 'success', message: 'Detail incident HSE diperbarui.' }
     }
 
+    await assertHseIncidentScope(id, access)
     await db.delete(hseIncidents).where(eq(hseIncidents.id, id))
     revalidateOperationalPages('/dashboard/hse')
     return { status: 'success', message: 'Incident HSE dihapus.' }
@@ -5657,14 +5765,24 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
 }
 
 function normalizeTrainingRecordKey(value: string) {
-  let s = value.trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ")
-  const words = s.split(" ")
+  let s = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+  const words = s.split(' ')
   if (words.length > 0) {
     const first = words[0]
-    if (first === "m" || first === "muhammad" || first === "mohammad" || first === "muhamad" || first === "mochamad") {
-      words[0] = "m"
+    if (
+      first === 'm' ||
+      first === 'muhammad' ||
+      first === 'mohammad' ||
+      first === 'muhamad' ||
+      first === 'mochamad'
+    ) {
+      words[0] = 'm'
     }
-    s = words.join(" ")
+    s = words.join(' ')
   }
   return s
 }
@@ -5748,9 +5866,9 @@ export async function importTrainingRecordsAction(
         .map((employee) => [normalizeTrainingRecordKey(employee.email), employee])
     )
     const fuse = new Fuse(
-      employeeRows.map(emp => ({
+      employeeRows.map((emp) => ({
         ...emp,
-        normalizedName: normalizeTrainingRecordKey(emp.name)
+        normalizedName: normalizeTrainingRecordKey(emp.name),
       })),
       {
         keys: ['normalizedName'],
@@ -5814,9 +5932,7 @@ export async function importTrainingRecordsAction(
       let employee =
         (employeeSn ? employeeBySn.get(normalizeTrainingRecordKey(employeeSn)) : undefined) ??
         (email ? employeeByEmail.get(normalizeTrainingRecordKey(email)) : undefined) ??
-        (employeeCandidatesFromName.length === 1
-          ? employeeCandidatesFromName[0]
-          : undefined)
+        (employeeCandidatesFromName.length === 1 ? employeeCandidatesFromName[0] : undefined)
 
       if (!employee && employeeName) {
         const results = fuse.search(normalizeTrainingRecordKey(employeeName))
@@ -5829,8 +5945,6 @@ export async function importTrainingRecordsAction(
         skippedCount += 1
         continue
       }
-
-
 
       const compositeKey = `${employee.id}:${normalizeTrainingRecordKey(trainingName)}:${completedYear}`
       const existing = existingByCompositeKey.get(compositeKey)
@@ -6136,7 +6250,11 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
     const id = getRequiredId(payload.id, 'Daily report')
 
     if (payload.intent === 'update-status') {
-      const [existingReport] = await db.select().from(dailyReports).where(eq(dailyReports.id, id)).limit(1)
+      const [existingReport] = await db
+        .select()
+        .from(dailyReports)
+        .where(eq(dailyReports.id, id))
+        .limit(1)
       if (!existingReport) {
         return { status: 'error', message: 'Daily report tidak ditemukan.' }
       }
@@ -6217,7 +6335,10 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
 
     const role = await getCurrentEmployeeAccessRole()
     if (!role || (role !== 'Super Admin' && role !== 'HC Manager')) {
-      return { status: 'error', message: 'Akses ditolak. Hanya Super Admin dan HC Manager yang dapat mengelola point.' }
+      return {
+        status: 'error',
+        message: 'Akses ditolak. Hanya Super Admin dan HC Manager yang dapat mengelola point.',
+      }
     }
 
     if (payload.intent === 'create') {
@@ -6343,7 +6464,10 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
       })
 
       revalidateOperationalPages('/dashboard/leaderboard')
-      return { status: 'success', message: 'Point event dibatalkan dan poin karyawan dikembalikan.' }
+      return {
+        status: 'success',
+        message: 'Point event dibatalkan dan poin karyawan dikembalikan.',
+      }
     }
 
     await db.transaction(async (tx) => {
@@ -7158,7 +7282,10 @@ export async function manageSioCertAction(
         notes: (raw.notes as string) || null,
         lastSyncFrom: 'manual',
       }
-      const [cert] = await db.insert(sioCertifications).values(insertData).returning({ id: sioCertifications.id })
+      const [cert] = await db
+        .insert(sioCertifications)
+        .values(insertData)
+        .returning({ id: sioCertifications.id })
 
       const awardPoints = raw.awardPoints === 'true'
       if (awardPoints) {
@@ -7172,18 +7299,29 @@ export async function manageSioCertAction(
           label: `Sertifikasi ${certName} — ${certType}`,
           points: pts,
         })
-        await db.update(employees).set({ totalPoints: sql`${employees.totalPoints} + ${pts}` }).where(eq(employees.id, employeeId))
+        await db
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} + ${pts}` })
+          .where(eq(employees.id, employeeId))
       }
 
       revalidateSioPaths()
-      return { status: 'success', message: 'Sertifikasi berhasil ditambahkan.' + (awardPoints ? ' Poin produktivitas diberikan.' : '') }
+      return {
+        status: 'success',
+        message:
+          'Sertifikasi berhasil ditambahkan.' +
+          (awardPoints ? ' Poin produktivitas diberikan.' : ''),
+      }
     }
 
     const id = Number(raw.id)
     if (!id) return { status: 'error', message: 'ID tidak valid.' }
 
     if (intent === 'update-status') {
-      await db.update(sioCertifications).set({ status: raw.status as string }).where(eq(sioCertifications.id, id))
+      await db
+        .update(sioCertifications)
+        .set({ status: raw.status as string })
+        .where(eq(sioCertifications.id, id))
       revalidateSioPaths()
       return { status: 'success', message: 'Status diperbarui.' }
     }
@@ -7223,12 +7361,27 @@ export async function manageSioCertAction(
 
     return { status: 'error', message: 'Intent tidak dikenal.' }
   } catch (error) {
-    return { status: 'error', message: error instanceof Error ? error.message : 'Gagal memproses sertifikasi.' }
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses sertifikasi.',
+    }
   }
 }
 
-const INITIAL_SIO_IMPORT_STATE = { status: 'idle' as const, message: '', importedCount: 0, updatedCount: 0, skippedCount: 0 }
-type SioImportState = { status: string; message: string; importedCount: number; updatedCount: number; skippedCount: number }
+const INITIAL_SIO_IMPORT_STATE = {
+  status: 'idle' as const,
+  message: '',
+  importedCount: 0,
+  updatedCount: 0,
+  skippedCount: 0,
+}
+type SioImportState = {
+  status: string
+  message: string
+  importedCount: number
+  updatedCount: number
+  skippedCount: number
+}
 
 export async function importSioCertAction(
   _previousState: SioImportState,
@@ -7237,33 +7390,54 @@ export async function importSioCertAction(
   try {
     await ensureHeroSeedData()
     const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
-    if (!rawCsv) return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Data CSV kosong.' }
+    if (!rawCsv)
+      return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Data CSV kosong.' }
 
     const { records } = parseSioCsv(rawCsv)
-    if (records.length === 0) return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Tidak ada record.' }
+    if (records.length === 0)
+      return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Tidak ada record.' }
 
     const employeeRows = await db
-      .select({ id: employees.id, name: employees.name, email: employees.email, employeeSn: employees.employeeSn })
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+      })
       .from(employees)
       .where(eq(employees.isActive, true))
 
     const existingRows = await db
-      .select({ id: sioCertifications.id, employeeId: sioCertifications.employeeId, certType: sioCertifications.certType, certName: sioCertifications.certName })
+      .select({
+        id: sioCertifications.id,
+        employeeId: sioCertifications.employeeId,
+        certType: sioCertifications.certType,
+        certName: sioCertifications.certName,
+      })
       .from(sioCertifications)
 
     const fuse = new Fuse(
       employeeRows.map((e) => ({ ...e, normalizedName: normalizeSioName(e.name) })),
       { keys: ['normalizedName'], threshold: 0.35, includeScore: true }
     )
-    const employeeBySn = new Map(employeeRows.filter((e) => e.employeeSn).map((e) => [normalizeSioName(e.employeeSn), e]))
-    const employeeByEmail = new Map(employeeRows.filter((e) => e.email).map((e) => [normalizeSioName(e.email), e]))
+    const employeeBySn = new Map(
+      employeeRows.filter((e) => e.employeeSn).map((e) => [normalizeSioName(e.employeeSn), e])
+    )
+    const employeeByEmail = new Map(
+      employeeRows.filter((e) => e.email).map((e) => [normalizeSioName(e.email), e])
+    )
     const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>((m, e) => {
       const k = normalizeSioName(e.name)
       ;(m.get(k) ?? m.set(k, []).get(k)!).push(e)
       return m
     }, new Map())
 
-    const existingByKey = new Map(existingRows.map((r) => [`${r.employeeId}:${normalizeSioName(r.certType)}:${normalizeSioName(r.certName)}`, r]))
+    const existingByKey = new Map(
+      existingRows.map((r) => [
+        `${r.employeeId}:${normalizeSioName(r.certType)}:${normalizeSioName(r.certName)}`,
+        r,
+      ])
+    )
 
     let importedCount = 0
     let updatedCount = 0
@@ -7275,7 +7449,10 @@ export async function importSioCertAction(
       const email = row.email ? normalizeSioName(row.email) : ''
       const certType = (row.certType || 'SIO').toUpperCase()
       const certName = (row.certName || '').trim()
-      if (!certName) { skippedCount++; continue }
+      if (!certName) {
+        skippedCount++
+        continue
+      }
 
       let employee = employeeBySn.get(sn) ?? employeeByEmail.get(email) ?? undefined
       if (!employee && name) {
@@ -7286,7 +7463,10 @@ export async function importSioCertAction(
           if (results.length > 0 && (results[0].score ?? 1) <= 0.35) employee = results[0].item
         }
       }
-      if (!employee) { skippedCount++; continue }
+      if (!employee) {
+        skippedCount++
+        continue
+      }
 
       const certDate = row.certDate || null
       const expiryDate = row.expiryDate || null
@@ -7296,25 +7476,62 @@ export async function importSioCertAction(
       const existing = existingByKey.get(key)
 
       if (existing) {
-        await db.update(sioCertifications).set({ certNumber: row.certNumber || null, certDate, expiryDate, status, issuingBody: row.issuingBody || null, lastSyncFrom: 'excel' }).where(eq(sioCertifications.id, existing.id))
+        await db
+          .update(sioCertifications)
+          .set({
+            certNumber: row.certNumber || null,
+            certDate,
+            expiryDate,
+            status,
+            issuingBody: row.issuingBody || null,
+            lastSyncFrom: 'excel',
+          })
+          .where(eq(sioCertifications.id, existing.id))
         updatedCount++
       } else {
-        await db.insert(sioCertifications).values({ employeeId: employee.id, certType, certNumber: row.certNumber || null, certName, issuingBody: row.issuingBody || null, certDate, expiryDate, status, lastSyncFrom: 'excel' })
+        await db
+          .insert(sioCertifications)
+          .values({
+            employeeId: employee.id,
+            certType,
+            certNumber: row.certNumber || null,
+            certName,
+            issuingBody: row.issuingBody || null,
+            certDate,
+            expiryDate,
+            status,
+            lastSyncFrom: 'excel',
+          })
         importedCount++
       }
     }
 
     revalidateSioPaths()
-    return { status: 'success', message: `Import selesai. ${importedCount} baru, ${updatedCount} update, ${skippedCount} skip.`, importedCount, updatedCount, skippedCount }
+    return {
+      status: 'success',
+      message: `Import selesai. ${importedCount} baru, ${updatedCount} update, ${skippedCount} skip.`,
+      importedCount,
+      updatedCount,
+      skippedCount,
+    }
   } catch (error) {
-    return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: error instanceof Error ? error.message : 'Gagal import.' }
+    return {
+      ...INITIAL_SIO_IMPORT_STATE,
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal import.',
+    }
   }
 }
 
 function normalizeSioName(value: string): string {
-  let s = value.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ')
+  let s = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
   const words = s.split(' ')
-  if (words.length > 0 && ['m', 'muhammad', 'mohammad', 'muhamad', 'mochamad'].includes(words[0])) words[0] = 'm'
+  if (words.length > 0 && ['m', 'muhammad', 'mohammad', 'muhamad', 'mochamad'].includes(words[0]))
+    words[0] = 'm'
   return words.join(' ')
 }
 
@@ -7325,7 +7542,10 @@ function revalidateSioPaths() {
 }
 
 function parseSioCsv(rawCsv: string) {
-  const lines = rawCsv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const lines = rawCsv
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
   if (lines.length < 2) return { records: [] as any[] }
 
   const h = lines[0].split(',').map((c) => c.trim().toLowerCase())

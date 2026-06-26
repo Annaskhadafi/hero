@@ -64,6 +64,11 @@ import {
 } from '@/db/schema/timesheet'
 import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
 import {
+  getCurrentEmployeeAccessContext,
+  getCurrentMenuPermission,
+  hasGlobalDataAccess,
+} from '@/lib/hero-access'
+import {
   ensureMasterCategoryTables,
   getActiveMasterCategoryOptionMap,
 } from '@/lib/master-categories'
@@ -364,6 +369,11 @@ const GOVERNANCE_ROLE_SEEDS = [
   {
     name: 'HC Manager',
     description: 'Kontrol user, training, wellness, dan payroll support.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'HSE',
+    description: 'Akses penuh untuk modul HSE, safety tools, dan MCU Wellness.',
     scope: 'all_sites',
   },
 ]
@@ -1343,8 +1353,18 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   return firstResourceIndex === index && firstUrlIndex === index
 }).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
 
-const DEPRECATED_MENU_RESOURCES = ['slow_moving', 'hc_surat_keterangan', 'hc_technical_engineer', 'hc_certificate']
-const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving', '/dashboard/hc/surat-keterangan', '/dashboard/hc/technical-engineer', '/dashboard/hc/certificate']
+const DEPRECATED_MENU_RESOURCES = [
+  'slow_moving',
+  'hc_surat_keterangan',
+  'hc_technical_engineer',
+  'hc_certificate',
+]
+const DEPRECATED_MENU_URLS = [
+  '/dashboard/slow-moving',
+  '/dashboard/hc/surat-keterangan',
+  '/dashboard/hc/technical-engineer',
+  '/dashboard/hc/certificate',
+]
 
 const PORTAL_CHITRA_APP_SEEDS = [
   {
@@ -1773,8 +1793,7 @@ Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
     recipientScope: 'employee',
     ccEmail: '',
     subject: 'Undangan akun HERO untuk {{userName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1791,8 +1810,7 @@ Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{userName}},
+    textContent: `Halo {{userName}},
 
 Akun HERO Anda telah berhasil dibuat. Silakan selesaikan proses aktivasi melalui tautan di bawah ini.
 
@@ -1814,8 +1832,7 @@ Tim Human Capital`,
     recipientScope: 'candidate',
     ccEmail: '',
     subject: 'Link onboarding HERO untuk {{candidateName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1832,8 +1849,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Selamat! Data Anda telah terdaftar di sistem HERO. Silakan lengkapi proses onboarding melalui tautan berikut:
 
@@ -1853,8 +1869,7 @@ Tim Human Capital`,
     recipientScope: 'hc',
     ccEmail: '',
     subject: 'Pengajuan cuti {{leaveTypeName}} dari {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1871,8 +1886,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Seorang karyawan telah mengirimkan pengajuan cuti baru.
+    textContent: `Seorang karyawan telah mengirimkan pengajuan cuti baru.
 
 Detail Pengajuan Cuti:
 Nama Karyawan: {{employeeName}}
@@ -1895,8 +1909,7 @@ Silakan login ke dashboard untuk memproses pengajuan ini.`,
     recipientScope: 'employee',
     ccEmail: '',
     subject: 'Pengajuan cuti Anda {{decisionLabel}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1913,8 +1926,7 @@ Silakan login ke dashboard untuk memproses pengajuan ini.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{employeeName}},
+    textContent: `Halo {{employeeName}},
 
 Pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}.
 
@@ -1936,8 +1948,7 @@ Tim Human Capital`,
     recipientScope: 'employee',
     ccEmail: '',
     subject: 'Pengajuan {{permissionType}} Anda {{decisionLabel}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1954,8 +1965,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{employeeName}},
+    textContent: `Halo {{employeeName}},
 
 Pengajuan {{permissionType}} Anda telah {{decisionLabel}}.
 
@@ -1976,8 +1986,7 @@ Tim Human Capital`,
     recipientScope: 'employee',
     ccEmail: '',
     subject: '{{splNumber}} siap dikerjakan',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -1994,8 +2003,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{employeeName}},
+    textContent: `Halo {{employeeName}},
 
 Anda mendapatkan penugasan lembur (overtime) sebagai berikut.
 
@@ -2017,8 +2025,7 @@ Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
     recipientScope: 'approver',
     ccEmail: '',
     subject: 'Daily Activity menunggu approval',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2035,8 +2042,7 @@ Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.
+    textContent: `Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.
 
 Detail Aktivitas:
 Karyawan: {{employeeName}}
@@ -2055,8 +2061,7 @@ Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.`,
     recipientScope: 'employee,hc',
     ccEmail: '',
     subject: '{{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2073,8 +2078,7 @@ Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{employeeName}},
+    textContent: `Halo {{employeeName}},
 
 {{intro}}
 
@@ -2094,8 +2098,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: 'Lamaran diterima untuk {{jobTitle}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2112,8 +2115,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Terima kasih atas ketertarikan Anda untuk bergabung dengan PT Chitra Paratama. Lamaran Anda untuk posisi {{jobTitle}} telah kami terima dengan baik.
 
@@ -2136,8 +2138,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: '[HERO] Undangan Interview - {{jobTitle}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2154,8 +2155,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Berdasarkan hasil seleksi berkas, Anda memenuhi kualifikasi untuk mengikuti tahap interview.
 
@@ -2182,8 +2182,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: '[HERO] Undangan Tes Online - {{jobTitle}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2200,8 +2199,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Anda diundang untuk mengikuti tes online sebagai bagian dari proses seleksi untuk posisi {{jobTitle}}.
 
@@ -2227,8 +2225,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: 'Link onboarding HERO',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2245,8 +2242,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Data onboarding Anda telah siap. Silakan lengkapi data diri melalui tautan berikut:
 
@@ -2266,8 +2262,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: '[HERO] Surat Penawaran Kerja - {{jobTitle}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2284,8 +2279,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Kepada Yth. {{candidateName}},
+    textContent: `Kepada Yth. {{candidateName}},
 
 Dengan ini kami sampaikan Surat Penawaran Kerja (Offering Letter) untuk posisi {{jobTitle}} di {{companyName}}.
 
@@ -2307,8 +2301,7 @@ Tim Human Capital`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'JSA baru: {{jsaNumber}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2325,8 +2318,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah dokumen Job Safety Analysis (JSA) baru telah dibuat.
+    textContent: `Sebuah dokumen Job Safety Analysis (JSA) baru telah dibuat.
 
 Informasi JSA:
 Nomor JSA: {{jsaNumber}}
@@ -2345,8 +2337,7 @@ Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update JSA: {{jsaNumber}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2363,8 +2354,7 @@ Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Dokumen Job Safety Analysis (JSA) berikut telah diperbarui.
+    textContent: `Dokumen Job Safety Analysis (JSA) berikut telah diperbarui.
 
 Informasi JSA:
 Nomor JSA: {{jsaNumber}}
@@ -2382,8 +2372,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan terbaru.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'HIRADC register baru: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2400,8 +2389,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan terbaru.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah register HIRADC baru telah dibuat.
+    textContent: `Sebuah register HIRADC baru telah dibuat.
 
 Informasi HIRADC:
 Judul: {{title}}
@@ -2420,8 +2408,7 @@ Silakan login ke dashboard HSE untuk meninjau register HIRADC.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update HIRADC register: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2438,8 +2425,7 @@ Silakan login ke dashboard HSE untuk meninjau register HIRADC.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Register HIRADC berikut telah diperbarui.
+    textContent: `Register HIRADC berikut telah diperbarui.
 
 Informasi HIRADC:
 Judul: {{title}}
@@ -2458,8 +2444,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'PTW baru: {{permitNumber}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2476,8 +2461,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah dokumen Permit To Work (PTW) baru telah dibuat.
+    textContent: `Sebuah dokumen Permit To Work (PTW) baru telah dibuat.
 
 Informasi PTW:
 Nomor PTW: {{permitNumber}}
@@ -2497,8 +2481,7 @@ Silakan login ke dashboard HSE untuk meninjau dokumen PTW.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update PTW: {{permitNumber}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2515,8 +2498,7 @@ Silakan login ke dashboard HSE untuk meninjau dokumen PTW.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Dokumen Permit To Work (PTW) berikut telah diperbarui.
+    textContent: `Dokumen Permit To Work (PTW) berikut telah diperbarui.
 
 Informasi PTW:
 Nomor PTW: {{permitNumber}}
@@ -2535,8 +2517,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Observasi HSE baru: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2553,8 +2534,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah observasi HSE baru telah dilaporkan.
+    textContent: `Sebuah observasi HSE baru telah dilaporkan.
 
 Informasi Observasi:
 Judul: {{title}}
@@ -2575,8 +2555,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update observasi HSE: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2593,8 +2572,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Status observasi HSE berikut telah berubah.
+    textContent: `Status observasi HSE berikut telah berubah.
 
 Informasi Observasi:
 Judul: {{title}}
@@ -2612,8 +2590,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Incident HSE baru: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2630,8 +2607,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah insiden HSE baru telah dilaporkan.
+    textContent: `Sebuah insiden HSE baru telah dilaporkan.
 
 Informasi Insiden:
 Judul: {{title}}
@@ -2651,8 +2627,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update incident HSE: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2669,8 +2644,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Status insiden HSE berikut telah berubah.
+    textContent: `Status insiden HSE berikut telah berubah.
 
 Informasi Insiden:
 Judul: {{title}}
@@ -2688,8 +2662,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Incident report baru: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2706,8 +2679,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah laporan insiden HSE baru telah dicatat.
+    textContent: `Sebuah laporan insiden HSE baru telah dicatat.
 
 Informasi Laporan Insiden:
 Judul: {{title}}
@@ -2727,8 +2699,7 @@ Silakan login ke dashboard HSE untuk meninjau laporan.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update incident report: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2745,8 +2716,7 @@ Silakan login ke dashboard HSE untuk meninjau laporan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Status laporan insiden HSE berikut telah berubah.
+    textContent: `Status laporan insiden HSE berikut telah berubah.
 
 Informasi Laporan Insiden:
 Judul: {{title}}
@@ -2766,8 +2736,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Safety inspection baru: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2784,8 +2753,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah safety inspection baru telah dibuat.
+    textContent: `Sebuah safety inspection baru telah dibuat.
 
 Informasi Inspeksi:
 Judul: {{title}}
@@ -2806,8 +2774,7 @@ Silakan login ke dashboard HSE untuk meninjau inspeksi.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Update safety inspection: {{title}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2824,8 +2791,7 @@ Silakan login ke dashboard HSE untuk meninjau inspeksi.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Status safety inspection berikut telah berubah.
+    textContent: `Status safety inspection berikut telah berubah.
 
 Informasi Inspeksi:
 Judul: {{title}}
@@ -2845,8 +2811,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: 'Safety induction baru: {{fullName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2863,8 +2828,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah formulir safety induction baru telah disubmit.
+    textContent: `Sebuah formulir safety induction baru telah disubmit.
 
 Informasi Induction:
 Nama: {{fullName}}
@@ -2883,8 +2847,7 @@ Silakan login ke dashboard HSE untuk memproses induction.`,
     recipientScope: 'hse',
     ccEmail: '',
     subject: '[HERO HSE] Pengingat Kedaluwarsa Aset: {{itemName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2901,8 +2864,7 @@ Silakan login ke dashboard HSE untuk memproses induction.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Aset HSE berikut mendekati masa kedaluwarsa dan memerlukan perhatian segera.
+    textContent: `Aset HSE berikut mendekati masa kedaluwarsa dan memerlukan perhatian segera.
 
 Informasi Aset:
 Nama Aset: {{itemName}}
@@ -2924,8 +2886,7 @@ Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku 
     recipientScope: 'hc',
     ccEmail: '',
     subject: 'Data employee baru: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2942,8 +2903,7 @@ Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku 
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Seorang karyawan baru telah berhasil didaftarkan ke dalam sistem HERO.
+    textContent: `Seorang karyawan baru telah berhasil didaftarkan ke dalam sistem HERO.
 
 Informasi Karyawan:
 Nama: {{employeeName}}
@@ -2962,8 +2922,7 @@ Silakan login ke dashboard HC untuk memverifikasi data.`,
     recipientScope: 'hc',
     ccEmail: '',
     subject: 'Update employee: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -2980,8 +2939,7 @@ Silakan login ke dashboard HC untuk memverifikasi data.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Data karyawan berikut telah diperbarui di dalam sistem HERO.
+    textContent: `Data karyawan berikut telah diperbarui di dalam sistem HERO.
 
 Informasi Karyawan:
 Nama: {{employeeName}}
@@ -3000,8 +2958,7 @@ Silakan login ke dashboard HC untuk melihat perubahan.`,
     recipientScope: 'hc,employee',
     ccEmail: '',
     subject: 'Tindakan disipliner baru: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3018,8 +2975,7 @@ Silakan login ke dashboard HC untuk melihat perubahan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah tindakan disipliner baru telah dicatat untuk karyawan berikut.
+    textContent: `Sebuah tindakan disipliner baru telah dicatat untuk karyawan berikut.
 
 Informasi Disipliner:
 Karyawan: {{employeeName}}
@@ -3040,8 +2996,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     recipientScope: 'hc,employee',
     ccEmail: '',
     subject: 'Update disipliner: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3058,8 +3013,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Status tindakan disipliner untuk karyawan berikut telah berubah.
+    textContent: `Status tindakan disipliner untuk karyawan berikut telah berubah.
 
 Informasi Disipliner:
 Karyawan: {{employeeName}}
@@ -3078,8 +3032,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     recipientScope: 'hc,employee,reviewer',
     ccEmail: '',
     subject: 'Performance review baru: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3096,8 +3049,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Sebuah performance review baru telah dibuat untuk karyawan berikut.
+    textContent: `Sebuah performance review baru telah dibuat untuk karyawan berikut.
 
 Informasi Performance Review:
 Karyawan: {{employeeName}}
@@ -3116,8 +3068,7 @@ Silakan login ke dashboard HC untuk mengisi review.`,
     recipientScope: 'hc,employee,reviewer',
     ccEmail: '',
     subject: 'Performance review disubmit: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3134,8 +3085,7 @@ Silakan login ke dashboard HC untuk mengisi review.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Performance review untuk karyawan berikut telah disubmit oleh reviewer.
+    textContent: `Performance review untuk karyawan berikut telah disubmit oleh reviewer.
 
 Informasi Performance Review:
 Karyawan: {{employeeName}}
@@ -3154,8 +3104,7 @@ Silakan login ke dashboard HC untuk meninjau hasil review.`,
     recipientScope: 'hc,employee,reviewer',
     ccEmail: '',
     subject: 'Performance review diacknowledge: {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3172,8 +3121,7 @@ Silakan login ke dashboard HC untuk meninjau hasil review.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.
+    textContent: `Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.
  
 Informasi Performance Review:
 Karyawan: {{employeeName}}
@@ -3193,8 +3141,7 @@ Silakan login ke dashboard HC untuk melihat hasil akhir.`,
     recipientScope: 'hc,employee,reviewer',
     ccEmail: '',
     subject: 'Evaluasi Leader Performance disubmit: {{leaderName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#0f172a,#334155);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3211,8 +3158,7 @@ Silakan login ke dashboard HC untuk melihat hasil akhir.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Evaluasi Leader Performance untuk pimpinan berikut telah disubmit.
+    textContent: `Evaluasi Leader Performance untuk pimpinan berikut telah disubmit.
       
 Informasi Evaluasi:
 Leader: {{leaderName}}
@@ -3231,8 +3177,7 @@ Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.`,
     recipientScope: 'hc,employee,reviewer',
     ccEmail: '',
     subject: 'Evaluasi Leader Performance selesai ditinjau: {{leaderName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#0f172a,#334155);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3249,8 +3194,7 @@ Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Evaluasi Leader Performance untuk pimpinan berikut telah selesai ditinjau oleh HC / Admin.
+    textContent: `Evaluasi Leader Performance untuk pimpinan berikut telah selesai ditinjau oleh HC / Admin.
       
 Informasi Evaluasi:
 Leader: {{leaderName}}
@@ -3269,8 +3213,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: 'Selamat! Anda diterima di PT Chitra Paratama',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3287,8 +3230,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Selamat! Anda dinyatakan lulus seleksi dan diterima untuk bergabung sebagai {{jobTitle}} di PT Chitra Paratama.
 
@@ -3313,8 +3255,7 @@ Tim Human Capital`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: 'Informasi mulai kerja {{candidateName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3331,8 +3272,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Selamat datang di PT Chitra Paratama! Kami sangat senang menyambut Anda sebagai bagian dari keluarga besar perusahaan kami.
 
@@ -3388,8 +3328,7 @@ Tim Human Capital`,
     recipientScope: 'clinic,hc',
     ccEmail: '',
     subject: '[HERO] Surat Pengantar Medical Check Up - {{candidateName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3406,8 +3345,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Kepada Yth. Admin {{clinicName}},
+    textContent: `Kepada Yth. Admin {{clinicName}},
 
 Mohon bantuannya untuk melaksanakan Medical Check Up (MCU) bagi calon karyawan berikut.
 
@@ -3429,8 +3367,7 @@ Atas perhatian dan bantuannya, kami ucapkan terima kasih.`,
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: '[HERO] Undangan Medical Check Up - {{jobTitle}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3447,8 +3384,7 @@ Atas perhatian dan bantuannya, kami ucapkan terima kasih.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Halo {{candidateName}},
+    textContent: `Halo {{candidateName}},
 
 Anda dijadwalkan untuk mengikuti Medical Check Up (MCU) sebagai bagian dari proses seleksi untuk posisi {{jobTitle}}.
 
@@ -3471,9 +3407,9 @@ Tim Human Capital`,
     deliveryChannel: 'email',
     recipientScope: 'approver,hc',
     ccEmail: '',
-    subject: '[Contract Review] Reminder: {{employeeName}} ({{employeeSn}}) berakhir {{contractEndDate}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    subject:
+      '[Contract Review] Reminder: {{employeeName}} ({{employeeSn}}) berakhir {{contractEndDate}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3490,8 +3426,7 @@ Tim Human Capital`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Yth. {{recipientName}},
+    textContent: `Yth. {{recipientName}},
 
 Berikut adalah pengingat untuk dokumen Contract Review yang masih perlu ditindaklanjuti.
 
@@ -3515,8 +3450,7 @@ Segera lakukan review sebelum masa kontrak berakhir.`,
     recipientScope: 'approver,hc',
     ccEmail: '',
     subject: '[Contract Review] Menunggu Persetujuan Anda - {{employeeName}} ({{employeeSn}})',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3533,8 +3467,7 @@ Segera lakukan review sebelum masa kontrak berakhir.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Yth. {{approverName}},
+    textContent: `Yth. {{approverName}},
 
 Dokumen Contract Review berikut membutuhkan persetujuan Anda.
 
@@ -3558,8 +3491,7 @@ Harap segera memberikan keputusan persetujuan Anda.`,
     recipientScope: 'approver,hc',
     ccEmail: '',
     subject: '[TEST] Contract Review - {{employeeName}}',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
 <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
@@ -3576,8 +3508,7 @@ Harap segera memberikan keputusan persetujuan Anda.`,
 </tr></table>
 </div>
 </div>`,
-    textContent:
-      `Dokumen Contract Review untuk uji coba telah berhasil dibuat.
+    textContent: `Dokumen Contract Review untuk uji coba telah berhasil dibuat.
 
 Informasi Tes:
 Nama Karyawan: {{employeeName}}
@@ -3714,6 +3645,29 @@ function dedupeMenuItemsByPage<
   })
 }
 
+const HSE_MANAGED_RESOURCES = new Set([
+  'hse',
+  'safety_dashboard',
+  'safety_data_management',
+  'safety_inspections',
+  'hse_checklist_generator',
+  'hse_hiradc',
+  'hse_sia_sio_tools_certification',
+  'hse_inventaris',
+  'hse_izin_kerja_ptw',
+  'hse_jsa',
+  'safety_induction',
+  'hse_incident_report',
+  'hse_tire_inspection',
+])
+
+const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
+
+const HSE_ROLE_FULL_ACCESS_RESOURCES = new Set([
+  ...HSE_MANAGED_RESOURCES,
+  ...WELLNESS_MANAGED_RESOURCES,
+])
+
 const OWN_SCOPE_RESOURCES = new Set([
   'tire_service',
   'overtime_requests',
@@ -3732,6 +3686,8 @@ const OWN_SCOPE_RESOURCES = new Set([
   'attendance_records',
   'attendance_exceptions',
   'scheduling_timesheet',
+  ...HSE_MANAGED_RESOURCES,
+  ...WELLNESS_MANAGED_RESOURCES,
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
@@ -3745,12 +3701,24 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
-  if (resource === 'hse_checklist_generator') {
-    const allowed = roleName === 'User Safety'
+  if (roleName === 'HSE') {
+    const allowed = HSE_ROLE_FULL_ACCESS_RESOURCES.has(resource)
     return {
       canView: allowed,
       canEdit: allowed,
       canDelete: allowed,
+      canSelectAll: allowed,
+      dataScope: allowed ? 'global' : 'own',
+    }
+  }
+
+  if (HSE_MANAGED_RESOURCES.has(resource)) {
+    const canManageOwnChecklist =
+      roleName === 'User Safety' && resource === 'hse_checklist_generator'
+    return {
+      canView: true,
+      canEdit: canManageOwnChecklist,
+      canDelete: canManageOwnChecklist,
       canSelectAll: false,
       dataScope: 'own',
     }
@@ -3770,6 +3738,16 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       ].includes(resource),
       canSelectAll: false,
       dataScope: 'global',
+    }
+  }
+
+  if (WELLNESS_MANAGED_RESOURCES.has(resource)) {
+    return {
+      canView: true,
+      canEdit: false,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'own',
     }
   }
 
@@ -5081,14 +5059,18 @@ export async function getPointsAnalyticsPageData() {
   const previousByEmployee = sumByEmployee(previousEvents)
   const penaltyByEmployee = new Map<number, number>()
   for (const row of periodPenalties) {
-    penaltyByEmployee.set(row.employeeId, (penaltyByEmployee.get(row.employeeId) ?? 0) + row.pointsDeducted)
+    penaltyByEmployee.set(
+      row.employeeId,
+      (penaltyByEmployee.get(row.employeeId) ?? 0) + row.pointsDeducted
+    )
   }
 
   const leaderboard = base.leaderboard.map((employee, index) => {
     const periodPoints = periodByEmployee.get(employee.id) ?? 0
     const previousPoints = previousByEmployee.get(employee.id) ?? 0
     const penaltyPoints = penaltyByEmployee.get(employee.id) ?? 0
-    const trend = periodPoints > previousPoints ? 'Naik' : periodPoints < previousPoints ? 'Turun' : 'Stabil'
+    const trend =
+      periodPoints > previousPoints ? 'Naik' : periodPoints < previousPoints ? 'Turun' : 'Stabil'
 
     return {
       ...employee,
@@ -5097,24 +5079,44 @@ export async function getPointsAnalyticsPageData() {
       previousPoints,
       penaltyPoints,
       trend,
-      needsReview: penaltyPoints > 0 || periodPoints < 0 || openDisputes.some((dispute) => dispute.employeeId === employee.id),
+      needsReview:
+        penaltyPoints > 0 ||
+        periodPoints < 0 ||
+        openDisputes.some((dispute) => dispute.employeeId === employee.id),
     }
   })
 
   const topImprover = [...leaderboard].sort((a, b) => b.periodPoints - a.periodPoints)[0]
   const biggestDrop = [...leaderboard].sort((a, b) => a.periodPoints - b.periodPoints)[0]
-  const employeesWithoutActivity = base.leaderboard.filter((employee) => !periodByEmployee.has(employee.id)).length
-  const rewardPoints = periodEvents.filter((event) => event.points > 0).reduce((total, event) => total + event.points, 0)
-  const adjustmentPoints = periodEvents.filter((event) => event.points < 0).reduce((total, event) => total + Math.abs(event.points), 0)
+  const employeesWithoutActivity = base.leaderboard.filter(
+    (employee) => !periodByEmployee.has(employee.id)
+  ).length
+  const rewardPoints = periodEvents
+    .filter((event) => event.points > 0)
+    .reduce((total, event) => total + event.points, 0)
+  const adjustmentPoints = periodEvents
+    .filter((event) => event.points < 0)
+    .reduce((total, event) => total + Math.abs(event.points), 0)
   const penaltyPoints = periodPenalties.reduce((total, event) => total + event.pointsDeducted, 0)
   const averagePoints = activeEmployees.length
-    ? Math.round(activeEmployees.reduce((total, employee) => total + employee.totalPoints, 0) / activeEmployees.length)
+    ? Math.round(
+        activeEmployees.reduce((total, employee) => total + employee.totalPoints, 0) /
+          activeEmployees.length
+      )
     : 0
 
-  const departmentMap = new Map<string, { department: string; employees: number; points: number; penalties: number }>()
+  const departmentMap = new Map<
+    string,
+    { department: string; employees: number; points: number; penalties: number }
+  >()
   for (const employee of leaderboard) {
     const key = employee.department || 'Tanpa department'
-    const current = departmentMap.get(key) ?? { department: key, employees: 0, points: 0, penalties: 0 }
+    const current = departmentMap.get(key) ?? {
+      department: key,
+      employees: 0,
+      points: 0,
+      penalties: 0,
+    }
     current.employees += 1
     current.points += employee.periodPoints
     current.penalties += employee.penaltyPoints
@@ -5146,7 +5148,9 @@ export async function getPointsAnalyticsPageData() {
       points: -event.pointsDeducted,
       createdAt: event.createdAt,
     })),
-  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80)
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 80)
 
   const hrManualHistory = [
     ...base.recentPointEvents
@@ -5169,7 +5173,9 @@ export async function getPointsAnalyticsPageData() {
         points: -event.pointsDeducted,
         createdAt: event.createdAt,
       })),
-  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80)
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 80)
 
   return {
     ...base,
@@ -5187,9 +5193,18 @@ export async function getPointsAnalyticsPageData() {
       unifiedTimeline,
       hrManualHistory,
       hrWorkflow: [
-        { title: 'Section Head', body: 'List pekerjaan harian, input output kerja, sistem hitung poin dasar.' },
-        { title: 'PJO / Atasan', body: 'Review pekerjaan dan approve. Poin masuk setelah approval.' },
-        { title: 'HR', body: 'Analisa orang, tambah poin, buat badge, kelola penalty dan dispute.' },
+        {
+          title: 'Section Head',
+          body: 'List pekerjaan harian, input output kerja, sistem hitung poin dasar.',
+        },
+        {
+          title: 'PJO / Atasan',
+          body: 'Review pekerjaan dan approve. Poin masuk setelah approval.',
+        },
+        {
+          title: 'HR',
+          body: 'Analisa orang, tambah poin, buat badge, kelola penalty dan dispute.',
+        },
       ],
     },
     analyticsLeaderboard: leaderboard,
@@ -5237,6 +5252,17 @@ export async function evaluatePointThresholdBadges(
 
 export async function getHsePageData() {
   await ensureHeroSeedData()
+  const [permission, accessContext] = await Promise.all([
+    getCurrentMenuPermission('hse'),
+    getCurrentEmployeeAccessContext(),
+  ])
+
+  if (!permission.canView) {
+    return { observations: [], incidents: [] }
+  }
+
+  const hasGlobalScope = hasGlobalDataAccess(permission)
+  const ownEmployeeId = accessContext?.employeeId ?? -1
 
   const observations = await db
     .select({
@@ -5254,6 +5280,7 @@ export async function getHsePageData() {
     })
     .from(hseObservations)
     .leftJoin(employees, eq(hseObservations.employeeId, employees.id))
+    .where(hasGlobalScope ? undefined : eq(hseObservations.employeeId, ownEmployeeId))
     .orderBy(desc(hseObservations.observedAt))
 
   const incidents = await db
@@ -5268,6 +5295,7 @@ export async function getHsePageData() {
       reportedAt: hseIncidents.reportedAt,
     })
     .from(hseIncidents)
+    .where(hasGlobalScope ? undefined : eq(hseIncidents.employeeId, ownEmployeeId))
     .orderBy(desc(hseIncidents.reportedAt))
 
   return { observations, incidents }
@@ -5948,12 +5976,12 @@ export async function getSecurityUsersData() {
       directManagerId: employees.directManagerId,
       section: masterSections.name,
       sectionId: employees.sectionId,
-      jobTitle:
-        sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as('job_title'),
-      workLocation:
-        sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, '')`.as(
-          'work_location'
-        ),
+      jobTitle: sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as(
+        'job_title'
+      ),
+      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, '')`.as(
+        'work_location'
+      ),
       phoneNumber: employees.phoneNumber,
       email: employees.email,
       employmentStatus: employees.employmentStatus,
@@ -5965,8 +5993,9 @@ export async function getSecurityUsersData() {
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
       department: masterDepartments.name,
       departmentId: employees.departmentId,
-      levelName:
-        sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as('level_name'),
+      levelName: sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as(
+        'level_name'
+      ),
       fitStatus: sql<string>`'fit'`.as('fit_status'),
       isActive: employees.isActive,
       siteName: sites.name,
@@ -6202,7 +6231,6 @@ export async function getHumanCapitalNotificationConfigData() {
   )
 }
 
-
 export async function getActiveEmployeesForSelect() {
   const rows = await db
     .select({
@@ -6310,9 +6338,9 @@ export async function getGroupLabelStyles() {
   const [style] = await db
     .select()
     .from(navbarGroupLabelStyles)
-    .where(eq(navbarGroupLabelStyles.section, "__global__"))
+    .where(eq(navbarGroupLabelStyles.section, '__global__'))
     .limit(1)
-  return style?.textColor ?? "#6B7280"
+  return style?.textColor ?? '#6B7280'
 }
 
 export async function getSecurityRoleOptions() {
@@ -6458,6 +6486,3 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
-
-
-

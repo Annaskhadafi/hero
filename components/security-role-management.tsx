@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { useFormStatus } from 'react-dom'
 import {
   ChevronDown,
   Copy,
@@ -16,20 +16,13 @@ import {
   Search,
   Settings,
   Zap,
-} from "lucide-react";
-import {
-  manageSecurityRoleAction,
-  type AdminMutationState,
-} from "@/app/dashboard/admin-actions";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from 'lucide-react'
+import { manageSecurityRoleAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -37,17 +30,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+} from '@/components/ui/select'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Table,
   TableBody,
@@ -55,115 +48,118 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EnterpriseScorecards } from "@/components/ui/enterprise-table-kit";
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EnterpriseScorecards } from '@/components/ui/enterprise-table-kit'
 
 type RoleRow = {
-  id: number;
-  name: string;
-  description: string;
-  scope: string;
-  assignedUsers: number;
-};
+  id: number
+  name: string
+  description: string
+  scope: string
+  assignedUsers: number
+}
 
 type MenuRow = {
-  id: number;
-  menuArea: string;
-  section: string;
-  title: string;
-  url: string;
-  resource: string;
-  sortOrder?: number | null;
-  groupLabel?: string | null;
-};
+  id: number
+  menuArea: string
+  section: string
+  title: string
+  url: string
+  resource: string
+  sortOrder?: number | null
+  groupLabel?: string | null
+}
 
 type MenuPermissionRow = {
-  id: number;
-  roleId: number;
-  menuItemId: number;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canSelectAll: boolean;
-  dataScope: string;
-};
+  id: number
+  roleId: number
+  menuItemId: number
+  canView: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canSelectAll: boolean
+  dataScope: string
+}
 
 type DraftPermission = {
-  menuItemId: number;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canSelectAll: boolean;
-  dataScope: string;
-};
+  menuItemId: number
+  canView: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canSelectAll: boolean
+  dataScope: string
+}
 
 type UserRow = {
-  id: number;
-  name: string;
-  email: string;
-  accessRole: string;
-  jobTitle: string;
-  section: string;
-  isActive: boolean;
-};
+  id: number
+  name: string
+  email: string
+  accessRole: string
+  jobTitle: string
+  section: string
+  isActive: boolean
+}
 
 const PERMISSION_FIELDS = [
-  { key: "canView", label: "Lihat" },
-  { key: "canEdit", label: "Ubah" },
-  { key: "canDelete", label: "Hapus" },
-  { key: "canSelectAll", label: "Akses penuh" },
-] as const;
+  { key: 'canView', label: 'Lihat' },
+  { key: 'canEdit', label: 'Ubah' },
+  { key: 'canDelete', label: 'Hapus' },
+  { key: 'canSelectAll', label: 'Akses penuh' },
+] as const
 
-const MENU_AREA_META: Record<string, { label: string; description: string; icon: React.ReactNode }> = {
+const MENU_AREA_META: Record<
+  string,
+  { label: string; description: string; icon: React.ReactNode }
+> = {
   admin: {
-    label: "Pengaturan Sistem",
-    description: "Konfigurasi, keamanan, dan manajemen portal",
+    label: 'Pengaturan Sistem',
+    description: 'Konfigurasi, keamanan, dan manajemen portal',
     icon: <Settings className="size-4" />,
   },
   central_service: {
-    label: "Layanan Pusat",
-    description: "Master data, approval, email, dan notifikasi",
+    label: 'Layanan Pusat',
+    description: 'Master data, approval, email, dan notifikasi',
     icon: <Zap className="size-4" />,
   },
   performance: {
-    label: "Aktivitas & Performa",
-    description: "Daily activity, timesheet, HSE, training, dan wellness",
+    label: 'Aktivitas & Performa',
+    description: 'Daily activity, timesheet, HSE, training, dan wellness',
     icon: <ListChecks className="size-4" />,
   },
-};
+}
 
 const DESKTOP_MENU_ORDER = [
-  "Portal Chitra",
-  "Aktivitas Harian",
-  "Roster & Timesheet",
-  "Approval",
-  "Data Induk",
-  "Human Capital",
-  "Attendance",
-  "HSE",
-  "Central Service",
-  "Laporan",
-  "Pengaturan",
-] as const;
+  'Portal Chitra',
+  'Aktivitas Harian',
+  'Roster & Timesheet',
+  'Approval',
+  'Data Induk',
+  'Human Capital',
+  'Attendance',
+  'HSE',
+  'Central Service',
+  'Laporan',
+  'Pengaturan',
+] as const
 
 const sectionLabelMap: Record<string, string> = {
-  "Daily Activity": "Aktivitas Harian",
-  "Central Service": "Central Service",
-  Approval: "Approval",
-  "Master Data": "Data Induk",
-  HR: "Human Capital",
-  HSE: "HSE",
-  Report: "Laporan",
-  Setting: "Pengaturan",
-};
+  'Daily Activity': 'Aktivitas Harian',
+  'Central Service': 'Central Service',
+  Approval: 'Approval',
+  'Master Data': 'Data Induk',
+  HR: 'Human Capital',
+  HSE: 'HSE',
+  Report: 'Laporan',
+  Setting: 'Pengaturan',
+}
 
-type ViewFilter = "all" | "desktop" | "mobile";
+type ViewFilter = 'all' | 'desktop' | 'mobile'
 
 const QUICK_PRESETS = [
   {
-    label: "Full Akses",
-    description: "Semua menu aktif (Lihat + Ubah + Hapus + Full)",
+    label: 'Full Akses',
+    description: 'Semua menu aktif (Lihat + Ubah + Hapus + Full)',
     icon: <Shield className="size-4" />,
     apply: (items: MenuRow[]) =>
       items.map<DraftPermission>((item) => ({
@@ -172,12 +168,12 @@ const QUICK_PRESETS = [
         canEdit: true,
         canDelete: true,
         canSelectAll: true,
-        dataScope: "global",
+        dataScope: 'global',
       })),
   },
   {
-    label: "Hanya Lihat",
-    description: "Semua menu hanya bisa dilihat",
+    label: 'Hanya Lihat',
+    description: 'Semua menu hanya bisa dilihat',
     icon: <ListChecks className="size-4" />,
     apply: (items: MenuRow[]) =>
       items.map<DraftPermission>((item) => ({
@@ -186,12 +182,12 @@ const QUICK_PRESETS = [
         canEdit: false,
         canDelete: false,
         canSelectAll: false,
-        dataScope: "own",
+        dataScope: 'own',
       })),
   },
   {
-    label: "Reset Semua",
-    description: "Nonaktifkan semua permission",
+    label: 'Reset Semua',
+    description: 'Nonaktifkan semua permission',
     icon: <Trash2 className="size-4" />,
     apply: (items: MenuRow[]) =>
       items.map<DraftPermission>((item) => ({
@@ -200,113 +196,147 @@ const QUICK_PRESETS = [
         canEdit: false,
         canDelete: false,
         canSelectAll: false,
-        dataScope: "own",
+        dataScope: 'own',
       })),
   },
-];
+]
 
 const INITIAL_STATE: AdminMutationState = {
-  status: "idle",
-  message: "",
-};
+  status: 'idle',
+  message: '',
+}
 
 function formatScopeLabel(value: string) {
   const labels: Record<string, string> = {
-    site: "Site tertentu",
-    all_sites: "Semua site",
-  };
-  return labels[value] ?? value.replaceAll("_", " ");
+    site: 'Site tertentu',
+    all_sites: 'Semua site',
+  }
+  return labels[value] ?? value.replaceAll('_', ' ')
 }
 
 function formatMenuArea(value: string) {
-  return MENU_AREA_META[value]?.label ?? value.replaceAll("_", " ");
+  return MENU_AREA_META[value]?.label ?? value.replaceAll('_', ' ')
 }
 
 function getSidebarSection(menuItem: MenuRow) {
-  return sectionLabelMap[menuItem.section] ?? menuItem.section ?? "Menu";
+  return sectionLabelMap[menuItem.section] ?? menuItem.section ?? 'Menu'
 }
 
 function isDesktopMenu(menuItem: MenuRow) {
-  return !menuItem.url.startsWith("/mobile");
+  return !menuItem.url.startsWith('/mobile')
 }
 
 function matchesViewFilter(menuItem: MenuRow, viewFilter: ViewFilter) {
-  if (viewFilter === "mobile") return hasMobileCounterpart(menuItem.url, menuItem.resource);
-  if (viewFilter === "desktop") return isDesktopMenu(menuItem);
-  return true;
+  if (viewFilter === 'mobile') return hasMobileCounterpart(menuItem.url, menuItem.resource)
+  if (viewFilter === 'desktop') return isDesktopMenu(menuItem)
+  return true
 }
 
-function hasMobileCounterpart(url: string | null | undefined, resource: string | null | undefined): boolean {
-  if (!url) return false;
-  if (url.startsWith("/mobile")) return true;
-  const cleanUrl = url.split("?")[0];
-  if (cleanUrl === "/dashboard/activity-hub/my-day") return true;
-  if (cleanUrl.startsWith("/dashboard/activity-hub")) return true;
-  if (cleanUrl === "/dashboard/overtime-requests" || cleanUrl.startsWith("/dashboard/overtime")) return true;
-  if (cleanUrl === "/dashboard/timesheet" || cleanUrl.startsWith("/dashboard/scheduling-timesheet")) return true;
-  if (cleanUrl === "/dashboard/approval") return true;
-  if (cleanUrl === "/dashboard/curhat") return true;
-  if (cleanUrl === "/dashboard/hr-counseling") return true;
-  if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return true;
-  if (cleanUrl === "/dashboard/gamification") return true;
-  if (cleanUrl === "/dashboard/wellness") return true;
-  if (cleanUrl === "/dashboard/executive") return true;
-  if (cleanUrl === "/dashboard/cargo-manifest") return true;
-  if (cleanUrl === "/dashboard/security/roles") return true;
-  if (cleanUrl === "/dashboard/reports") return true;
-  if (cleanUrl === "/dashboard/training") return true;
-  if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return true;
-  if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return true;
+function hasMobileCounterpart(
+  url: string | null | undefined,
+  resource: string | null | undefined
+): boolean {
+  if (!url) return false
+  if (url.startsWith('/mobile')) return true
+  const cleanUrl = url.split('?')[0]
+  if (cleanUrl === '/dashboard/activity-hub/my-day') return true
+  if (cleanUrl.startsWith('/dashboard/activity-hub')) return true
+  if (cleanUrl === '/dashboard/overtime-requests' || cleanUrl.startsWith('/dashboard/overtime'))
+    return true
+  if (cleanUrl === '/dashboard/timesheet' || cleanUrl.startsWith('/dashboard/scheduling-timesheet'))
+    return true
+  if (cleanUrl === '/dashboard/approval') return true
+  if (cleanUrl === '/dashboard/curhat') return true
+  if (cleanUrl === '/dashboard/hr-counseling') return true
+  if (cleanUrl === '/dashboard/safety' || cleanUrl.startsWith('/dashboard/safety/')) return true
+  if (cleanUrl === '/dashboard/hse' || cleanUrl.startsWith('/dashboard/hse/')) return true
+  if (cleanUrl === '/dashboard/safety-induction') return true
+  if (cleanUrl === '/dashboard/gamification') return true
+  if (cleanUrl === '/dashboard/wellness' || cleanUrl === '/dashboard/hc/mcu-wellness') return true
+  if (cleanUrl === '/dashboard/executive') return true
+  if (cleanUrl === '/dashboard/cargo-manifest') return true
+  if (cleanUrl === '/dashboard/security/roles') return true
+  if (cleanUrl === '/dashboard/reports') return true
+  if (cleanUrl === '/dashboard/training') return true
+  if (cleanUrl === '/dashboard/attendance' || cleanUrl.startsWith('/dashboard/attendance/'))
+    return true
+  if (cleanUrl === '/dashboard/lms' || cleanUrl.startsWith('/api/lms')) return true
 
-  const segments = cleanUrl.split("/").filter(Boolean);
-  const lastSegment = segments[segments.length - 1];
+  const segments = cleanUrl.split('/').filter(Boolean)
+  const lastSegment = segments[segments.length - 1]
   const knownMobilePages = [
-    "activity", "approval", "attendance", "cargo-manifest", "curhat",
-    "executive", "gamification", "hr-counseling", "hse", "lms",
-    "notifications", "overtime", "profile", "reports", "timesheet",
-    "training", "wellness"
-  ];
-  return knownMobilePages.includes(lastSegment);
+    'activity',
+    'approval',
+    'attendance',
+    'cargo-manifest',
+    'curhat',
+    'executive',
+    'gamification',
+    'hr-counseling',
+    'hse',
+    'lms',
+    'notifications',
+    'overtime',
+    'profile',
+    'reports',
+    'timesheet',
+    'training',
+    'wellness',
+    'hiradc',
+    'inventaris',
+    'incident-report',
+    'safety-data',
+    'inspections',
+    'induction',
+    'sia-sio-tools',
+    'observasi-emergency',
+    'corrective-action',
+    'ptw',
+    'jsa',
+    'checklist',
+    'tire-inspection',
+  ]
+  return knownMobilePages.includes(lastSegment)
 }
 
 function SubmitButton({
   children,
-  variant = "default",
-  size = "default",
+  variant = 'default',
+  size = 'default',
 }: {
-  children: React.ReactNode;
-  variant?: "default" | "outline" | "destructive";
-  size?: "default" | "sm" | "lg" | "icon";
+  children: React.ReactNode
+  variant?: 'default' | 'outline' | 'destructive'
+  size?: 'default' | 'sm' | 'lg' | 'icon'
 }) {
-  const { pending } = useFormStatus();
+  const { pending } = useFormStatus()
   return (
     <Button type="submit" variant={variant} size={size} disabled={pending}>
-      {pending ? "Memproses..." : children}
+      {pending ? 'Memproses...' : children}
     </Button>
-  );
+  )
 }
 
 function buildDraftPermissions(
   roleId: number,
   menuItems: MenuRow[],
-  menuPermissions: MenuPermissionRow[],
+  menuPermissions: MenuPermissionRow[]
 ) {
   const permissionByMenu = new Map(
     menuPermissions
       .filter((permission) => permission.roleId === roleId)
-      .map((permission) => [permission.menuItemId, permission]),
-  );
+      .map((permission) => [permission.menuItemId, permission])
+  )
   return menuItems.map<DraftPermission>((menuItem) => {
-    const permission = permissionByMenu.get(menuItem.id);
+    const permission = permissionByMenu.get(menuItem.id)
     return {
       menuItemId: menuItem.id,
       canView: permission?.canView ?? false,
       canEdit: permission?.canEdit ?? false,
       canDelete: permission?.canDelete ?? false,
       canSelectAll: permission?.canSelectAll ?? false,
-      dataScope: permission?.dataScope ?? "own",
-    };
-  });
+      dataScope: permission?.dataScope ?? 'own',
+    }
+  })
 }
 
 function countEnabledPermissions(permissions: DraftPermission[]) {
@@ -317,8 +347,8 @@ function countEnabledPermissions(permissions: DraftPermission[]) {
       Number(permission.canEdit) +
       Number(permission.canDelete) +
       Number(permission.canSelectAll)
-    );
-  }, 0);
+    )
+  }, 0)
 }
 
 function RoleChangeSelect({
@@ -327,12 +357,12 @@ function RoleChangeSelect({
   roles,
   formAction,
 }: {
-  userId: number;
-  currentRoleId: number;
-  roles: { id: number; name: string }[];
-  formAction: (formData: FormData) => void;
+  userId: number
+  currentRoleId: number
+  roles: { id: number; name: string }[]
+  formAction: (formData: FormData) => void
 }) {
-  const formRef = useRef<HTMLFormElement>(null);
+  const formRef = useRef<HTMLFormElement>(null)
 
   return (
     <form ref={formRef} action={formAction} className="flex items-center gap-1.5">
@@ -342,12 +372,12 @@ function RoleChangeSelect({
       <Select
         defaultValue={String(currentRoleId)}
         onValueChange={(value) => {
-          const form = formRef.current;
-          if (!form) return;
-          const input = form.querySelector('input[name="roleId"]') as HTMLInputElement;
+          const form = formRef.current
+          if (!form) return
+          const input = form.querySelector('input[name="roleId"]') as HTMLInputElement
           if (input) {
-            input.value = value;
-            form.requestSubmit();
+            input.value = value
+            form.requestSubmit()
           }
         }}
       >
@@ -363,7 +393,7 @@ function RoleChangeSelect({
         </SelectContent>
       </Select>
     </form>
-  );
+  )
 }
 
 export function SecurityRoleManagement({
@@ -372,142 +402,144 @@ export function SecurityRoleManagement({
   menuPermissions,
   users,
 }: {
-  roles: RoleRow[];
-  menuItems: MenuRow[];
-  menuPermissions: MenuPermissionRow[];
-  users: UserRow[];
+  roles: RoleRow[]
+  menuItems: MenuRow[]
+  menuPermissions: MenuPermissionRow[]
+  users: UserRow[]
 }) {
-  const [selectedRoleId, setSelectedRoleId] = useState<number>(roles[0]?.id ?? 0);
+  const [selectedRoleId, setSelectedRoleId] = useState<number>(roles[0]?.id ?? 0)
   const [draftPermissions, setDraftPermissions] = useState<DraftPermission[]>(
-    buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions),
-  );
+    buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions)
+  )
   const [openMenuAreas, setOpenMenuAreas] = useState<Set<string>>(
-    () => new Set(menuItems.map((menuItem) => getSidebarSection(menuItem))),
-  );
-  const [roleState, roleFormAction] = useActionState(
-    manageSecurityRoleAction,
-    INITIAL_STATE,
-  );
-  const [userSearchQuery, setUserSearchQuery] = useState("");
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
+    () => new Set(menuItems.map((menuItem) => getSidebarSection(menuItem)))
+  )
+  const [roleState, roleFormAction] = useActionState(manageSecurityRoleAction, INITIAL_STATE)
+  const [userSearchQuery, setUserSearchQuery] = useState('')
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false)
+  const [viewFilter, setViewFilter] = useState<ViewFilter>('all')
 
   useEffect(() => {
-    setDraftPermissions(
-      buildDraftPermissions(selectedRoleId, menuItems, menuPermissions),
-    );
-  }, [menuItems, menuPermissions, selectedRoleId]);
+    setDraftPermissions(buildDraftPermissions(selectedRoleId, menuItems, menuPermissions))
+  }, [menuItems, menuPermissions, selectedRoleId])
 
   useEffect(() => {
     setOpenMenuAreas(
       new Set(
         menuItems
           .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
-          .map((menuItem) => getSidebarSection(menuItem)),
-      ),
-    );
-  }, [menuItems, viewFilter]);
+          .map((menuItem) => getSidebarSection(menuItem))
+      )
+    )
+  }, [menuItems, viewFilter])
 
-  const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0];
+  const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0]
   const groupedMenus = useMemo(() => {
     const filteredItems = menuItems
       .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
       .sort((left, right) => {
-        const leftSection = getSidebarSection(left);
-        const rightSection = getSidebarSection(right);
-        const leftSectionIndex = DESKTOP_MENU_ORDER.indexOf(leftSection as (typeof DESKTOP_MENU_ORDER)[number]);
-        const rightSectionIndex = DESKTOP_MENU_ORDER.indexOf(rightSection as (typeof DESKTOP_MENU_ORDER)[number]);
-        const sectionDiff = (leftSectionIndex === -1 ? 999 : leftSectionIndex) - (rightSectionIndex === -1 ? 999 : rightSectionIndex);
-        if (sectionDiff !== 0) return sectionDiff;
-        return (left.sortOrder ?? 999) - (right.sortOrder ?? 999) || left.title.localeCompare(right.title);
-      });
+        const leftSection = getSidebarSection(left)
+        const rightSection = getSidebarSection(right)
+        const leftSectionIndex = DESKTOP_MENU_ORDER.indexOf(
+          leftSection as (typeof DESKTOP_MENU_ORDER)[number]
+        )
+        const rightSectionIndex = DESKTOP_MENU_ORDER.indexOf(
+          rightSection as (typeof DESKTOP_MENU_ORDER)[number]
+        )
+        const sectionDiff =
+          (leftSectionIndex === -1 ? 999 : leftSectionIndex) -
+          (rightSectionIndex === -1 ? 999 : rightSectionIndex)
+        if (sectionDiff !== 0) return sectionDiff
+        return (
+          (left.sortOrder ?? 999) - (right.sortOrder ?? 999) ||
+          left.title.localeCompare(right.title)
+        )
+      })
 
-    return filteredItems.reduce<Array<{ section: string; items: MenuRow[] }>>((accumulator, menuItem) => {
-      const section = getSidebarSection(menuItem);
-      const group = accumulator.find((item) => item.section === section);
-      if (group) {
-        group.items.push(menuItem);
-      } else {
-        accumulator.push({ section, items: [menuItem] });
-      }
-      return accumulator;
-    }, []);
-  }, [menuItems, viewFilter]);
+    return filteredItems.reduce<Array<{ section: string; items: MenuRow[] }>>(
+      (accumulator, menuItem) => {
+        const section = getSidebarSection(menuItem)
+        const group = accumulator.find((item) => item.section === section)
+        if (group) {
+          group.items.push(menuItem)
+        } else {
+          accumulator.push({ section, items: [menuItem] })
+        }
+        return accumulator
+      },
+      []
+    )
+  }, [menuItems, viewFilter])
   const permissionByMenuId = useMemo(() => {
-    return new Map(
-      draftPermissions.map((permission) => [permission.menuItemId, permission]),
-    );
-  }, [draftPermissions]);
+    return new Map(draftPermissions.map((permission) => [permission.menuItemId, permission]))
+  }, [draftPermissions])
 
-  const selectedRoleEnabledCount = countEnabledPermissions(draftPermissions);
-  const totalMenuCount = menuItems.length;
-  const activeProgress = totalMenuCount > 0 ? Math.round((selectedRoleEnabledCount / (totalMenuCount * 4)) * 100) : 0;
+  const selectedRoleEnabledCount = countEnabledPermissions(draftPermissions)
+  const totalMenuCount = menuItems.length
+  const activeProgress =
+    totalMenuCount > 0 ? Math.round((selectedRoleEnabledCount / (totalMenuCount * 4)) * 100) : 0
 
   const roleUsers = useMemo(() => {
-    return users.filter((user) => user.accessRole === selectedRole?.name);
-  }, [users, selectedRole]);
+    return users.filter((user) => user.accessRole === selectedRole?.name)
+  }, [users, selectedRole])
 
   const availableUsers = useMemo(() => {
-    const assignedIds = new Set(roleUsers.map((u) => u.id));
-    const query = userSearchQuery.toLowerCase();
+    const assignedIds = new Set(roleUsers.map((u) => u.id))
+    const query = userSearchQuery.toLowerCase()
     return users.filter(
       (user) =>
         !assignedIds.has(user.id) &&
         user.isActive &&
         (user.name.toLowerCase().includes(query) ||
           user.email.toLowerCase().includes(query) ||
-          user.jobTitle.toLowerCase().includes(query)),
-    );
-  }, [users, roleUsers, userSearchQuery]);
+          user.jobTitle.toLowerCase().includes(query))
+    )
+  }, [users, roleUsers, userSearchQuery])
 
   const toggleMenuArea = (menuArea: string) => {
     setOpenMenuAreas((current) => {
-      const next = new Set(current);
+      const next = new Set(current)
       if (next.has(menuArea)) {
-        next.delete(menuArea);
+        next.delete(menuArea)
       } else {
-        next.add(menuArea);
+        next.add(menuArea)
       }
-      return next;
-    });
-  };
+      return next
+    })
+  }
 
   const updatePermission = (
     menuItemId: number,
-    field: (typeof PERMISSION_FIELDS)[number]["key"],
-    checked: boolean,
+    field: (typeof PERMISSION_FIELDS)[number]['key'],
+    checked: boolean
   ) => {
     setDraftPermissions((current) =>
       current.map((permission) =>
-        permission.menuItemId === menuItemId
-          ? { ...permission, [field]: checked }
-          : permission,
-      ),
-    );
-  };
+        permission.menuItemId === menuItemId ? { ...permission, [field]: checked } : permission
+      )
+    )
+  }
 
   const updateDataScope = (menuItemId: number, scope: string) => {
     setDraftPermissions((current) =>
       current.map((permission) =>
-        permission.menuItemId === menuItemId
-          ? { ...permission, dataScope: scope }
-          : permission,
-      ),
-    );
-  };
+        permission.menuItemId === menuItemId ? { ...permission, dataScope: scope } : permission
+      )
+    )
+  }
 
-  const applyPreset = (preset: typeof QUICK_PRESETS[number]) => {
-    setDraftPermissions(preset.apply(menuItems));
-  };
+  const applyPreset = (preset: (typeof QUICK_PRESETS)[number]) => {
+    setDraftPermissions(preset.apply(menuItems))
+  }
 
   return (
     <div className="space-y-6">
-      {roleState.status !== "idle" ? (
+      {roleState.status !== 'idle' ? (
         <Alert
           className={
-            roleState.status === "error"
-              ? "border-red-200 text-red-700"
-              : "border-emerald-200 text-emerald-700"
+            roleState.status === 'error'
+              ? 'border-red-200 text-red-700'
+              : 'border-emerald-200 text-emerald-700'
           }
         >
           <AlertDescription>{roleState.message}</AlertDescription>
@@ -516,7 +548,7 @@ export function SecurityRoleManagement({
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         {/* ── Left: Role List ── */}
-        <Card className="rounded-xl bg-surface-container-lowest shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
+        <Card className="bg-surface-container-lowest rounded-xl shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base">Daftar Peran</CardTitle>
@@ -567,9 +599,9 @@ export function SecurityRoleManagement({
           <CardContent className="space-y-2">
             {roles.map((role) => {
               const rolePermCount = countEnabledPermissions(
-                buildDraftPermissions(role.id, menuItems, menuPermissions),
-              );
-              const isSelected = selectedRoleId === role.id;
+                buildDraftPermissions(role.id, menuItems, menuPermissions)
+              )
+              const isSelected = selectedRoleId === role.id
               return (
                 <button
                   key={role.id}
@@ -577,14 +609,14 @@ export function SecurityRoleManagement({
                   onClick={() => setSelectedRoleId(role.id)}
                   className={`w-full rounded-xl px-4 py-3.5 text-left transition-all ${
                     isSelected
-                      ? "bg-primary/8 shadow-[inset_3px_0_0_var(--primary),0_8px_20px_rgba(0,52,97,0.08)]"
-                      : "bg-surface-container-low hover:bg-surface-container"
+                      ? 'bg-primary/8 shadow-[inset_3px_0_0_var(--primary),0_8px_20px_rgba(0,52,97,0.08)]'
+                      : 'bg-surface-container-low hover:bg-surface-container'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold">{role.name}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                      <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
                         {role.description}
                       </p>
                     </div>
@@ -592,7 +624,7 @@ export function SecurityRoleManagement({
                       {formatScopeLabel(role.scope)}
                     </Badge>
                   </div>
-                  <div className="mt-2.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+                  <div className="text-muted-foreground mt-2.5 flex items-center gap-3 text-[11px]">
                     <span className="inline-flex items-center gap-1">
                       <Users className="size-3" />
                       {role.assignedUsers} user
@@ -603,32 +635,28 @@ export function SecurityRoleManagement({
                     </span>
                   </div>
                 </button>
-              );
+              )
             })}
           </CardContent>
         </Card>
 
         {/* ── Right: Tabs ── */}
         <div className="space-y-4">
-          <Card className="rounded-xl bg-surface-container-lowest shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
+          <Card className="bg-surface-container-lowest rounded-xl shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
             <CardHeader>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <CardTitle className="text-base">
-                    {selectedRole?.name ?? "—"}
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedRole?.description}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1 font-medium">
+                  <CardTitle className="text-base">{selectedRole?.name ?? '—'}</CardTitle>
+                  <p className="text-muted-foreground text-sm">{selectedRole?.description}</p>
+                  <div className="text-muted-foreground mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className="bg-surface-container-low inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium">
                       <ListChecks className="size-3.5" />
                       {selectedRoleEnabledCount} dari {totalMenuCount * 4} izin aktif
                     </span>
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-container">
+                      <div className="bg-surface-container h-1.5 w-24 overflow-hidden rounded-full">
                         <div
-                          className="h-full rounded-full bg-primary transition-all"
+                          className="bg-primary h-full rounded-full transition-all"
                           style={{ width: `${activeProgress}%` }}
                         />
                       </div>
@@ -653,18 +681,28 @@ export function SecurityRoleManagement({
                       </DialogHeader>
                       <form action={roleFormAction} className="space-y-4">
                         <input type="hidden" name="intent" value="duplicate-role" />
-                        <input type="hidden" name="sourceRoleId" value={selectedRole ? `${selectedRole.id}` : ""} />
+                        <input
+                          type="hidden"
+                          name="sourceRoleId"
+                          value={selectedRole ? `${selectedRole.id}` : ''}
+                        />
                         <label className="grid gap-2">
                           <Label>Nama Peran Baru</Label>
-                          <Input name="roleName" defaultValue={selectedRole ? `${selectedRole.name} Copy` : ""} />
+                          <Input
+                            name="roleName"
+                            defaultValue={selectedRole ? `${selectedRole.name} Copy` : ''}
+                          />
                         </label>
                         <label className="grid gap-2">
                           <Label>Deskripsi</Label>
-                          <Input name="description" defaultValue={selectedRole?.description ?? ""} />
+                          <Input
+                            name="description"
+                            defaultValue={selectedRole?.description ?? ''}
+                          />
                         </label>
                         <div className="grid gap-2">
                           <Label>Cakupan Akses</Label>
-                          <Select name="scope" defaultValue={selectedRole?.scope ?? "site"}>
+                          <Select name="scope" defaultValue={selectedRole?.scope ?? 'site'}>
                             <SelectTrigger>
                               <SelectValue placeholder="Pilih cakupan" />
                             </SelectTrigger>
@@ -683,7 +721,11 @@ export function SecurityRoleManagement({
 
                   <form action={roleFormAction}>
                     <input type="hidden" name="intent" value="delete-role" />
-                    <input type="hidden" name="roleId" value={selectedRole ? `${selectedRole.id}` : ""} />
+                    <input
+                      type="hidden"
+                      name="roleId"
+                      value={selectedRole ? `${selectedRole.id}` : ''}
+                    />
                     <SubmitButton variant="destructive">
                       <Trash2 className="size-4" />
                       Hapus
@@ -723,10 +765,13 @@ export function SecurityRoleManagement({
                       </Button>
                     ))}
                     <div className="ml-auto flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      <span className="text-muted-foreground text-xs font-semibold tracking-[0.16em] uppercase">
                         View
                       </span>
-                      <Select value={viewFilter} onValueChange={(value) => setViewFilter(value as ViewFilter)}>
+                      <Select
+                        value={viewFilter}
+                        onValueChange={(value) => setViewFilter(value as ViewFilter)}
+                      >
                         <SelectTrigger className="h-8 w-[150px] text-xs">
                           <SelectValue />
                         </SelectTrigger>
@@ -742,59 +787,69 @@ export function SecurityRoleManagement({
                   {/* Permission Form */}
                   <form action={roleFormAction} className="space-y-3">
                     <input type="hidden" name="intent" value="save-menu-permissions" />
-                    <input type="hidden" name="roleId" value={selectedRole ? `${selectedRole.id}` : ""} />
-                    <input type="hidden" name="permissionsJson" value={JSON.stringify(draftPermissions)} />
+                    <input
+                      type="hidden"
+                      name="roleId"
+                      value={selectedRole ? `${selectedRole.id}` : ''}
+                    />
+                    <input
+                      type="hidden"
+                      name="permissionsJson"
+                      value={JSON.stringify(draftPermissions)}
+                    />
 
                     {groupedMenus.map(({ section, items }) => {
                       const areaPermissions = items.map((menuItem) =>
-                        permissionByMenuId.get(menuItem.id),
-                      );
+                        permissionByMenuId.get(menuItem.id)
+                      )
                       const activeCount = countEnabledPermissions(
-                        areaPermissions.filter(Boolean) as DraftPermission[],
-                      );
-                      const isOpen = openMenuAreas.has(section);
+                        areaPermissions.filter(Boolean) as DraftPermission[]
+                      )
+                      const isOpen = openMenuAreas.has(section)
 
                       return (
                         <Collapsible
                           key={section}
                           open={isOpen}
                           onOpenChange={() => toggleMenuArea(section)}
-                          className="overflow-hidden rounded-xl bg-surface-container-low shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
+                          className="bg-surface-container-low overflow-hidden rounded-xl shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
                         >
                           <CollapsibleTrigger asChild>
                             <button
                               type="button"
-                              className="flex min-h-14 w-full items-center justify-between gap-3 bg-surface-container px-4 py-3 text-left transition-colors hover:bg-surface-container-high"
+                              className="bg-surface-container hover:bg-surface-container-high flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors"
                             >
                               <div className="flex min-w-0 items-center gap-3">
                                 <ChevronDown
-                                  className={`size-4 shrink-0 text-primary transition-transform ${
-                                    isOpen ? "rotate-0" : "-rotate-90"
+                                  className={`text-primary size-4 shrink-0 transition-transform ${
+                                    isOpen ? 'rotate-0' : '-rotate-90'
                                   }`}
                                 />
-                                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                                  {MENU_AREA_META[items[0]?.menuArea]?.icon ?? <ListChecks className="size-4" />}
+                                <span className="bg-primary/10 text-primary grid size-8 shrink-0 place-items-center rounded-lg">
+                                  {MENU_AREA_META[items[0]?.menuArea]?.icon ?? (
+                                    <ListChecks className="size-4" />
+                                  )}
                                 </span>
                                 <div className="min-w-0">
                                   <p className="font-medium">{section}</p>
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="text-muted-foreground text-xs">
                                     {items.length} menu mengikuti urutan sidebar
                                   </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
+                                <span className="text-muted-foreground text-xs">
                                   {activeCount}/{items.length * 4}
                                 </span>
                                 <Badge variant="outline" className="rounded-full text-[10px]">
-                                  {isOpen ? "Tutup" : "Buka"}
+                                  {isOpen ? 'Tutup' : 'Buka'}
                                 </Badge>
                               </div>
                             </button>
                           </CollapsibleTrigger>
                           <CollapsibleContent>
                             <div className="hidden space-y-3 p-3 md:block">
-                              <div className="overflow-auto rounded-[1rem] border border-border/70 bg-white shadow-sm">
+                              <div className="border-border/70 overflow-auto rounded-[1rem] border bg-white shadow-sm">
                                 <Table>
                                   <TableHeader>
                                     <TableRow className="hover:bg-transparent">
@@ -809,46 +864,63 @@ export function SecurityRoleManagement({
                                   </TableHeader>
                                   <TableBody>
                                     {items.map((menuItem) => {
-                                      const currentPermission =
-                                        permissionByMenuId.get(menuItem.id) ?? {
-                                          menuItemId: menuItem.id,
-                                          canView: false,
-                                          canEdit: false,
-                                          canDelete: false,
-                                          canSelectAll: false,
-                                          dataScope: "own",
-                                        };
-                                      const isMobile = hasMobileCounterpart(menuItem.url, menuItem.resource);
+                                      const currentPermission = permissionByMenuId.get(
+                                        menuItem.id
+                                      ) ?? {
+                                        menuItemId: menuItem.id,
+                                        canView: false,
+                                        canEdit: false,
+                                        canDelete: false,
+                                        canSelectAll: false,
+                                        dataScope: 'own',
+                                      }
+                                      const isMobile = hasMobileCounterpart(
+                                        menuItem.url,
+                                        menuItem.resource
+                                      )
                                       return (
                                         <TableRow key={menuItem.id}>
                                           <TableCell>
                                             <div className="space-y-1">
                                               {menuItem.groupLabel && (
-                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                                <p className="text-muted-foreground text-[10px] font-black tracking-[0.18em] uppercase">
                                                   {menuItem.groupLabel}
                                                 </p>
                                               )}
                                               <div className="flex items-center gap-2">
                                                 <p className="font-medium">{menuItem.title}</p>
                                                 {!isDesktopMenu(menuItem) && (
-                                                  <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider">
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-[9px] font-black tracking-wider uppercase"
+                                                  >
                                                     Mobile
                                                   </Badge>
                                                 )}
-                                              {isMobile && (
-                                                <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none py-0.5 h-auto">
-                                                  <Smartphone className="size-2.5" /> M
-                                                </Badge>
-                                              )}
+                                                {isMobile && (
+                                                  <Badge
+                                                    variant="secondary"
+                                                    className="h-auto gap-0.5 border-none bg-sky-500/10 py-0.5 text-[9px] font-black tracking-wider text-sky-700 uppercase"
+                                                  >
+                                                    <Smartphone className="size-2.5" /> M
+                                                  </Badge>
+                                                )}
                                               </div>
                                             </div>
                                           </TableCell>
                                           {PERMISSION_FIELDS.map((field) => (
-                                            <TableCell key={`${menuItem.id}-${field.key}`} className="text-center">
+                                            <TableCell
+                                              key={`${menuItem.id}-${field.key}`}
+                                              className="text-center"
+                                            >
                                               <Checkbox
                                                 checked={currentPermission[field.key]}
                                                 onCheckedChange={(checked) =>
-                                                  updatePermission(menuItem.id, field.key, Boolean(checked))
+                                                  updatePermission(
+                                                    menuItem.id,
+                                                    field.key,
+                                                    Boolean(checked)
+                                                  )
                                                 }
                                               />
                                             </TableCell>
@@ -856,9 +928,11 @@ export function SecurityRoleManagement({
                                           <TableCell className="text-center">
                                             <Select
                                               value={currentPermission.dataScope}
-                                              onValueChange={(value) => updateDataScope(menuItem.id, value)}
+                                              onValueChange={(value) =>
+                                                updateDataScope(menuItem.id, value)
+                                              }
                                             >
-                                              <SelectTrigger className="h-8 w-[110px] mx-auto text-[11px]">
+                                              <SelectTrigger className="mx-auto h-8 w-[110px] text-[11px]">
                                                 <SelectValue />
                                               </SelectTrigger>
                                               <SelectContent>
@@ -868,7 +942,7 @@ export function SecurityRoleManagement({
                                             </Select>
                                           </TableCell>
                                         </TableRow>
-                                      );
+                                      )
                                     })}
                                   </TableBody>
                                 </Table>
@@ -877,37 +951,45 @@ export function SecurityRoleManagement({
 
                             <div className="space-y-3 p-3 md:hidden">
                               {items.map((menuItem) => {
-                                const currentPermission =
-                                  permissionByMenuId.get(menuItem.id) ?? {
-                                    menuItemId: menuItem.id,
-                                    canView: false,
-                                    canEdit: false,
-                                    canDelete: false,
-                                    canSelectAll: false,
-                                    dataScope: "own",
-                                  };
-                                const isMobile = hasMobileCounterpart(menuItem.url, menuItem.resource);
+                                const currentPermission = permissionByMenuId.get(menuItem.id) ?? {
+                                  menuItemId: menuItem.id,
+                                  canView: false,
+                                  canEdit: false,
+                                  canDelete: false,
+                                  canSelectAll: false,
+                                  dataScope: 'own',
+                                }
+                                const isMobile = hasMobileCounterpart(
+                                  menuItem.url,
+                                  menuItem.resource
+                                )
                                 return (
                                   <section
                                     key={menuItem.id}
-                                    className="rounded-lg bg-surface-container-lowest p-4 shadow-[0_10px_22px_rgba(0,52,97,0.08)]"
+                                    className="bg-surface-container-lowest rounded-lg p-4 shadow-[0_10px_22px_rgba(0,52,97,0.08)]"
                                   >
                                     <div className="flex items-center gap-2">
                                       <div className="min-w-0">
                                         {menuItem.groupLabel && (
-                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                          <p className="text-muted-foreground text-[10px] font-black tracking-[0.18em] uppercase">
                                             {menuItem.groupLabel}
                                           </p>
                                         )}
                                         <p className="font-medium">{menuItem.title}</p>
                                       </div>
                                       {!isDesktopMenu(menuItem) && (
-                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider">
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[9px] font-black tracking-wider uppercase"
+                                        >
                                           Mobile
                                         </Badge>
                                       )}
                                       {isMobile && (
-                                        <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none py-0.5 h-auto">
+                                        <Badge
+                                          variant="secondary"
+                                          className="h-auto gap-0.5 border-none bg-sky-500/10 py-0.5 text-[9px] font-black tracking-wider text-sky-700 uppercase"
+                                        >
                                           <Smartphone className="size-2.5" /> Mobile
                                         </Badge>
                                       )}
@@ -916,13 +998,17 @@ export function SecurityRoleManagement({
                                       {PERMISSION_FIELDS.map((field) => (
                                         <label
                                           key={`${menuItem.id}-${field.key}`}
-                                          className="flex min-h-10 items-center justify-between gap-2 rounded-md bg-surface-container-low px-3 text-sm font-medium"
+                                          className="bg-surface-container-low flex min-h-10 items-center justify-between gap-2 rounded-md px-3 text-sm font-medium"
                                         >
                                           <span>{field.label}</span>
                                           <Checkbox
                                             checked={currentPermission[field.key]}
                                             onCheckedChange={(checked) =>
-                                              updatePermission(menuItem.id, field.key, Boolean(checked))
+                                              updatePermission(
+                                                menuItem.id,
+                                                field.key,
+                                                Boolean(checked)
+                                              )
                                             }
                                           />
                                         </label>
@@ -931,24 +1017,30 @@ export function SecurityRoleManagement({
                                     <div className="mt-2">
                                       <Select
                                         value={currentPermission.dataScope}
-                                        onValueChange={(value) => updateDataScope(menuItem.id, value)}
+                                        onValueChange={(value) =>
+                                          updateDataScope(menuItem.id, value)
+                                        }
                                       >
                                         <SelectTrigger className="h-9 w-full text-xs">
                                           <SelectValue placeholder="Scope data" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          <SelectItem value="global">Global — Lihat semua data</SelectItem>
-                                          <SelectItem value="own">Own Only — Hanya data sendiri</SelectItem>
+                                          <SelectItem value="global">
+                                            Global — Lihat semua data
+                                          </SelectItem>
+                                          <SelectItem value="own">
+                                            Own Only — Hanya data sendiri
+                                          </SelectItem>
                                         </SelectContent>
                                       </Select>
                                     </div>
                                   </section>
-                                );
+                                )
                               })}
                             </div>
                           </CollapsibleContent>
                         </Collapsible>
-                      );
+                      )
                     })}
 
                     <div className="flex justify-end pt-2">
@@ -963,7 +1055,7 @@ export function SecurityRoleManagement({
                 {/* ── Tab: Users ── */}
                 <TabsContent value="users" className="mt-4 space-y-4">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       {roleUsers.length} user menggunakan peran ini.
                     </p>
                     <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
@@ -982,7 +1074,7 @@ export function SecurityRoleManagement({
                         </DialogHeader>
                         <div className="space-y-3">
                           <div className="relative">
-                            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                             <Input
                               placeholder="Cari nama, email, atau jabatan..."
                               value={userSearchQuery}
@@ -992,21 +1084,27 @@ export function SecurityRoleManagement({
                           </div>
                           <div className="space-y-2">
                             {availableUsers.length === 0 ? (
-                              <p className="py-8 text-center text-sm text-muted-foreground">
+                              <p className="text-muted-foreground py-8 text-center text-sm">
                                 Tidak ada user tersedia untuk ditambahkan.
                               </p>
                             ) : (
                               availableUsers.slice(0, 50).map((user) => (
                                 <form key={user.id} action={roleFormAction}>
                                   <input type="hidden" name="intent" value="assign-user-role" />
-                                  <input type="hidden" name="roleId" value={selectedRole ? `${selectedRole.id}` : ""} />
+                                  <input
+                                    type="hidden"
+                                    name="roleId"
+                                    value={selectedRole ? `${selectedRole.id}` : ''}
+                                  />
                                   <input type="hidden" name="employeeId" value={`${user.id}`} />
-                                  <div className="flex items-center justify-between gap-3 rounded-lg border bg-surface-container-low px-3 py-2.5">
+                                  <div className="bg-surface-container-low flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
                                     <div className="min-w-0">
                                       <p className="font-medium">{user.name}</p>
-                                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                                      <p className="text-muted-foreground text-xs">{user.email}</p>
                                       {user.jobTitle && (
-                                        <p className="text-xs text-muted-foreground">{user.jobTitle}</p>
+                                        <p className="text-muted-foreground text-xs">
+                                          {user.jobTitle}
+                                        </p>
                                       )}
                                     </div>
                                     <SubmitButton size="sm">
@@ -1024,17 +1122,17 @@ export function SecurityRoleManagement({
                   </div>
 
                   {roleUsers.length === 0 ? (
-                    <div className="rounded-xl border border-dashed bg-surface-container-low py-12 text-center">
-                      <Users className="mx-auto size-8 text-muted-foreground/50" />
-                      <p className="mt-2 text-sm text-muted-foreground">
+                    <div className="bg-surface-container-low rounded-xl border border-dashed py-12 text-center">
+                      <Users className="text-muted-foreground/50 mx-auto size-8" />
+                      <p className="text-muted-foreground mt-2 text-sm">
                         Belum ada user dengan peran ini.
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-muted-foreground text-xs">
                         Klik &quot;Tambah User&quot; untuk assign user ke peran ini.
                       </p>
                     </div>
                   ) : (
-                    <div className="overflow-auto rounded-[1rem] border border-border/70 bg-white shadow-sm">
+                    <div className="border-border/70 overflow-auto rounded-[1rem] border bg-white shadow-sm">
                       <Table>
                         <TableHeader>
                           <TableRow className="hover:bg-transparent">
@@ -1051,8 +1149,12 @@ export function SecurityRoleManagement({
                             <TableRow key={user.id}>
                               <TableCell className="font-medium">{user.name}</TableCell>
                               <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                              <TableCell className="text-muted-foreground">{user.jobTitle || "—"}</TableCell>
-                              <TableCell className="text-muted-foreground">{user.section || "—"}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {user.jobTitle || '—'}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {user.section || '—'}
+                              </TableCell>
                               <TableCell>
                                 <RoleChangeSelect
                                   userId={user.id}
@@ -1065,7 +1167,12 @@ export function SecurityRoleManagement({
                                 <form action={roleFormAction} className="inline-flex">
                                   <input type="hidden" name="intent" value="remove-user-role" />
                                   <input type="hidden" name="employeeId" value={`${user.id}`} />
-                                  <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" title={`Hapus ${user.name} dari peran ini`}>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-muted-foreground hover:text-destructive size-7"
+                                    title={`Hapus ${user.name} dari peran ini`}
+                                  >
                                     <UserMinus className="size-3.5" />
                                   </Button>
                                 </form>
@@ -1083,5 +1190,5 @@ export function SecurityRoleManagement({
         </div>
       </div>
     </div>
-  );
+  )
 }

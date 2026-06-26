@@ -7,20 +7,35 @@ import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { employees, hsePtwPermits } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
-import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from '@/lib/hse-safety-email'
+import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
+import {
+  buildHseSafetyEmail,
+  resolveHseSafetyRecipients,
+  sendHseSafetyEmail,
+} from '@/lib/hse-safety-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getAppUrl } from '@/lib/workflow-email'
 
 async function requirePtwPermission(action: 'view' | 'edit' | 'delete') {
   const permission = await getCurrentMenuPermission('hse_izin_kerja_ptw')
-  const allowed = action === 'view' ? permission.canView : action === 'delete' ? permission.canDelete : permission.canEdit
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'delete'
+        ? permission.canDelete
+        : permission.canEdit
   if (!allowed) throw new Error('Role Anda tidak punya akses PTW.')
-  return permission
+  return {
+    permission,
+    hasGlobalScope: hasGlobalDataAccess(permission),
+  }
 }
 
+type PtwAccess = Awaited<ReturnType<typeof requirePtwPermission>>
+
 async function ensurePtwTable() {
-  await db.execute(sql.raw(`
+  await db.execute(
+    sql.raw(`
     CREATE TABLE IF NOT EXISTS hero_hse_ptw_permits (
       id serial PRIMARY KEY,
       permit_number text NOT NULL UNIQUE,
@@ -46,7 +61,8 @@ async function ensurePtwTable() {
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
     );
-  `))
+  `)
+  )
 }
 
 async function getActorEmployeeId() {
@@ -57,21 +73,55 @@ async function getActorEmployeeId() {
   const [employee] = await db
     .select({ id: employees.id })
     .from(employees)
-    .where(or(userId ? eq(employees.authUserId, userId) : undefined, email ? eq(employees.email, email) : undefined))
+    .where(
+      or(
+        userId ? eq(employees.authUserId, userId) : undefined,
+        email ? eq(employees.email, email) : undefined
+      )
+    )
     .limit(1)
   return employee?.id ?? null
 }
 
+async function getScopedPtwActorId(access: PtwAccess) {
+  const actorId = await getActorEmployeeId()
+  if (!access.hasGlobalScope && !actorId) {
+    throw new Error('Role Anda hanya bisa mengakses PTW sendiri.')
+  }
+  return actorId
+}
+
+async function assertPtwScope(id: number, access: PtwAccess, actorId: number | null) {
+  if (access.hasGlobalScope) return
+  const [record] = await db
+    .select({ createdByEmployeeId: hsePtwPermits.createdByEmployeeId })
+    .from(hsePtwPermits)
+    .where(eq(hsePtwPermits.id, id))
+    .limit(1)
+
+  if (!record) throw new Error('PTW tidak ditemukan.')
+  if (record.createdByEmployeeId !== actorId) {
+    throw new Error('Role Anda hanya bisa mengakses PTW sendiri.')
+  }
+}
+
 function generatePermitNumber() {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  const suffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  const suffix = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, '0')
   return `PTW-${stamp}-${suffix}`
 }
 
 export async function getMobilePtwPermits() {
-  await requirePtwPermission('view')
+  const access = await requirePtwPermission('view')
   await ensurePtwTable()
-  return db.select().from(hsePtwPermits).orderBy(desc(hsePtwPermits.createdAt))
+  const actorId = await getScopedPtwActorId(access)
+  return db
+    .select()
+    .from(hsePtwPermits)
+    .where(access.hasGlobalScope ? undefined : eq(hsePtwPermits.createdByEmployeeId, actorId ?? -1))
+    .orderBy(desc(hsePtwPermits.createdAt))
 }
 
 export async function saveMobilePtwPermit(params: {
@@ -91,9 +141,9 @@ export async function saveMobilePtwPermit(params: {
   isolationRequired?: boolean
   hiradcEntryId?: number | null
 }) {
-  await requirePtwPermission('edit')
+  const access = await requirePtwPermission('edit')
   await ensurePtwTable()
-  const actorId = await getActorEmployeeId()
+  const actorId = await getScopedPtwActorId(access)
   const payload = {
     projectName: params.projectName.trim(),
     permitType: params.permitType || 'Hot Work',
@@ -114,7 +164,12 @@ export async function saveMobilePtwPermit(params: {
   if (!payload.projectName) throw new Error('Nama pekerjaan wajib diisi.')
 
   if (params.id) {
-    const [updated] = await db.update(hsePtwPermits).set(payload).where(eq(hsePtwPermits.id, params.id)).returning()
+    await assertPtwScope(params.id, access, actorId)
+    const [updated] = await db
+      .update(hsePtwPermits)
+      .set(payload)
+      .where(eq(hsePtwPermits.id, params.id))
+      .returning()
     try {
       const emailContent = buildHseSafetyEmail({
         title: `PTW diperbarui: ${updated.permitNumber}`,
@@ -162,7 +217,10 @@ export async function saveMobilePtwPermit(params: {
     return updated
   }
 
-  const [created] = await db.insert(hsePtwPermits).values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId }).returning()
+  const [created] = await db
+    .insert(hsePtwPermits)
+    .values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId })
+    .returning()
   try {
     const emailContent = buildHseSafetyEmail({
       title: `PTW baru: ${created.permitNumber}`,
@@ -211,8 +269,10 @@ export async function saveMobilePtwPermit(params: {
 }
 
 export async function deleteMobilePtwPermit(id: number) {
-  await requirePtwPermission('delete')
+  const access = await requirePtwPermission('delete')
   await ensurePtwTable()
+  const actorId = await getScopedPtwActorId(access)
+  await assertPtwScope(id, access, actorId)
   await db.delete(hsePtwPermits).where(eq(hsePtwPermits.id, id))
   revalidatePath('/mobile/hse/ptw')
   return { success: true }

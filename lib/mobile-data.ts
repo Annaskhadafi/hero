@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 
-import { db } from "@/db";
+import { db } from '@/db'
 import {
   activities,
   approvals,
@@ -18,31 +18,35 @@ import {
   timesheetEntries,
   trainingRecords,
   wellnessRecords,
-} from "@/db/schema/hero";
-import { ensureHeroSeedData } from "@/lib/hero-admin";
-import { getRecipientNotifications, getRecipientUnreadNotificationCount } from "@/lib/notification-feed";
-import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
-import { getPushChannelConfig } from "@/lib/push-notifications";
+} from '@/db/schema/hero'
+import { ensureHeroSeedData } from '@/lib/hero-admin'
+import { getMenuPermissionForRole, hasGlobalDataAccess } from '@/lib/hero-access'
+import {
+  getRecipientNotifications,
+  getRecipientUnreadNotificationCount,
+} from '@/lib/notification-feed'
+import { ensureNotificationInfrastructure } from '@/lib/notification-infrastructure'
+import { getPushChannelConfig } from '@/lib/push-notifications'
 
 function startOfMonth(reference = new Date()) {
-  return new Date(reference.getFullYear(), reference.getMonth(), 1);
+  return new Date(reference.getFullYear(), reference.getMonth(), 1)
 }
 
 function endOfMonth(reference = new Date()) {
-  return new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
+  return new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999)
 }
 
 function minutesToHours(minutes: number) {
-  return Number((minutes / 60).toFixed(1));
+  return Number((minutes / 60).toFixed(1))
 }
 
 function minutesToHoursLabel(minutes: number) {
-  return `${(minutes / 60).toFixed(1)} jam`;
+  return `${(minutes / 60).toFixed(1)} jam`
 }
 
 type MobileReadOptions = {
-  ensureSeed?: boolean;
-};
+  ensureSeed?: boolean
+}
 
 const DEFAULT_MOBILE_NOTIFICATION_PREFERENCES = {
   pushEnabled: true,
@@ -52,18 +56,18 @@ const DEFAULT_MOBILE_NOTIFICATION_PREFERENCES = {
   shiftRemindersEnabled: true,
   hseAlertsEnabled: true,
   pointsUpdatesEnabled: true,
-};
+}
 
 export async function getMobileEmployeeContext(
   email?: string | null,
-  options: MobileReadOptions = {},
+  options: MobileReadOptions = {}
 ) {
   if (options.ensureSeed !== false) {
-    await ensureHeroSeedData();
+    await ensureHeroSeedData()
   }
 
   if (!email) {
-    return null;
+    return null
   }
 
   const [row] = await db
@@ -74,40 +78,40 @@ export async function getMobileEmployeeContext(
     .from(employees)
     .innerJoin(sites, eq(employees.siteId, sites.id))
     .where(sql`lower(${employees.email}) = ${email.trim().toLowerCase()}`)
-    .limit(1);
+    .limit(1)
 
-  return row ?? null;
+  return row ?? null
 }
 
 export async function getMobileNotifications(email?: string | null) {
   if (!email) {
-    return [];
+    return []
   }
 
-  return getRecipientNotifications(email, 50);
+  return getRecipientNotifications(email, 50)
 }
 
 export async function getMobileNotificationCount(email?: string | null) {
   if (!email) {
-    return 0;
+    return 0
   }
 
-  return getRecipientUnreadNotificationCount(email);
+  return getRecipientUnreadNotificationCount(email)
 }
 
 export async function getMobileNotificationSettings(email?: string | null) {
-  await ensureNotificationInfrastructure();
+  await ensureNotificationInfrastructure()
 
   if (!email) {
     return {
       preferences: null,
-      pushPublicKey: "",
+      pushPublicKey: '',
       pushConfigured: false,
       activeSubscriptions: 0,
-    };
+    }
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase()
 
   const [employee] = await db
     .select({
@@ -115,22 +119,22 @@ export async function getMobileNotificationSettings(email?: string | null) {
     })
     .from(employees)
     .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
-    .limit(1);
+    .limit(1)
 
   if (!employee) {
     return {
       preferences: null,
-      pushPublicKey: "",
+      pushPublicKey: '',
       pushConfigured: false,
       activeSubscriptions: 0,
-    };
+    }
   }
 
   const [existingPreferences] = await db
     .select()
     .from(notificationUserPreferences)
     .where(eq(notificationUserPreferences.employeeId, employee.id))
-    .limit(1);
+    .limit(1)
 
   const preferences =
     existingPreferences ??
@@ -153,7 +157,7 @@ export async function getMobileNotificationSettings(email?: string | null) {
         .where(eq(notificationUserPreferences.employeeId, employee.id))
         .limit(1)
     )[0] ??
-    null;
+    null
 
   const [pushSettings, subscriptionCount] = await Promise.all([
     getPushChannelConfig(),
@@ -163,28 +167,28 @@ export async function getMobileNotificationSettings(email?: string | null) {
       .where(
         and(
           eq(notificationPushSubscriptions.employeeId, employee.id),
-          eq(notificationPushSubscriptions.isActive, true),
-        ),
+          eq(notificationPushSubscriptions.isActive, true)
+        )
       ),
-  ]);
+  ])
 
   return {
     preferences,
-    pushPublicKey: pushSettings?.vapidPublicKey ?? "",
+    pushPublicKey: pushSettings?.vapidPublicKey ?? '',
     pushConfigured: Boolean(
       pushSettings?.isEnabled &&
-        pushSettings.vapidPublicKey &&
-        pushSettings.vapidPrivateKey &&
-        pushSettings.pushSubject,
+      pushSettings.vapidPublicKey &&
+      pushSettings.vapidPrivateKey &&
+      pushSettings.pushSubject
     ),
     activeSubscriptions: subscriptionCount[0]?.count ?? 0,
-  };
+  }
 }
 
 export async function getMobileTimesheet(email?: string | null) {
-  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false })
   if (!context) {
-    return null;
+    return null
   }
 
   const rows = await db
@@ -192,7 +196,7 @@ export async function getMobileTimesheet(email?: string | null) {
     .from(timesheetEntries)
     .where(eq(timesheetEntries.employeeId, context.employee.id))
     .orderBy(desc(timesheetEntries.updatedAt))
-    .limit(12);
+    .limit(12)
 
   const totals = rows.reduce(
     (acc, row) => ({
@@ -200,8 +204,8 @@ export async function getMobileTimesheet(email?: string | null) {
       overtimeMinutes: acc.overtimeMinutes + row.overtimeMinutes,
       overtimeAmount: acc.overtimeAmount + row.overtimeAmount,
     }),
-    { regularMinutes: 0, overtimeMinutes: 0, overtimeAmount: 0 },
-  );
+    { regularMinutes: 0, overtimeMinutes: 0, overtimeAmount: 0 }
+  )
 
   return {
     context,
@@ -215,13 +219,13 @@ export async function getMobileTimesheet(email?: string | null) {
       overtimeHours: minutesToHours(totals.overtimeMinutes),
       overtimeAmount: totals.overtimeAmount,
     },
-  };
+  }
 }
 
 export async function getMobileReports(email?: string | null) {
-  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false })
   if (!context) {
-    return null;
+    return null
   }
 
   const reports = await db
@@ -229,60 +233,59 @@ export async function getMobileReports(email?: string | null) {
     .from(dailyReports)
     .where(eq(dailyReports.siteId, context.employee.siteId))
     .orderBy(desc(dailyReports.reportDate))
-    .limit(12);
+    .limit(12)
 
-  const chartSeries = [...reports]
-    .reverse()
-    .map((report) => ({
-      label: report.reportDate.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "short",
-      }),
-      readiness: Math.round((report.readySections / Math.max(1, report.totalSections)) * 100),
-      jobsCompleted: report.jobsCompleted,
-      manpowerPresent: report.manpowerPresent,
-    }));
+  const chartSeries = [...reports].reverse().map((report) => ({
+    label: report.reportDate.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+    }),
+    readiness: Math.round((report.readySections / Math.max(1, report.totalSections)) * 100),
+    jobsCompleted: report.jobsCompleted,
+    manpowerPresent: report.manpowerPresent,
+  }))
 
-  return { context, reports, chartSeries };
+  return { context, reports, chartSeries }
 }
 
 export async function getMobileHse(email?: string | null) {
-  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false })
   if (!context) {
-    return null;
+    return null
   }
 
+  const permission = await getMenuPermissionForRole(context.employee.accessRole, 'hse')
+  if (!permission.canView) {
+    return { context, observations: [], incidents: [] }
+  }
+
+  const hasGlobalScope = hasGlobalDataAccess(permission)
   const [observations, incidents] = await Promise.all([
     db
       .select()
       .from(hseObservations)
-      .where(
-        or(
-          eq(hseObservations.employeeId, context.employee.id),
-          eq(hseObservations.siteId, context.employee.siteId),
-        ),
-      )
+      .where(hasGlobalScope ? undefined : eq(hseObservations.employeeId, context.employee.id))
       .orderBy(desc(hseObservations.observedAt))
       .limit(12),
     db
       .select()
       .from(hseIncidents)
-      .where(eq(hseIncidents.siteId, context.employee.siteId))
+      .where(hasGlobalScope ? undefined : eq(hseIncidents.employeeId, context.employee.id))
       .orderBy(desc(hseIncidents.reportedAt))
       .limit(12),
-  ]);
+  ])
 
-  return { context, observations, incidents };
+  return { context, observations, incidents }
 }
 
 export async function getMobileHc(email?: string | null) {
-  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false })
   if (!context) {
-    return null;
+    return null
   }
 
-  const monthStart = startOfMonth();
-  const monthEnd = endOfMonth();
+  const monthStart = startOfMonth()
+  const monthEnd = endOfMonth()
 
   const [attendance, trainings, wellness, mcuRecords] = await Promise.all([
     db
@@ -292,8 +295,8 @@ export async function getMobileHc(email?: string | null) {
         and(
           eq(attendanceRecords.employeeId, context.employee.id),
           gte(attendanceRecords.eventTime, monthStart),
-          lte(attendanceRecords.eventTime, monthEnd),
-        ),
+          lte(attendanceRecords.eventTime, monthEnd)
+        )
       )
       .orderBy(desc(attendanceRecords.eventTime))
       .limit(20),
@@ -301,7 +304,11 @@ export async function getMobileHc(email?: string | null) {
       .select()
       .from(trainingRecords)
       .where(eq(trainingRecords.employeeId, context.employee.id))
-      .orderBy(desc(trainingRecords.completedYear), desc(trainingRecords.expiresAt), asc(trainingRecords.trainingName))
+      .orderBy(
+        desc(trainingRecords.completedYear),
+        desc(trainingRecords.expiresAt),
+        asc(trainingRecords.trainingName)
+      )
       .limit(20),
     db
       .select()
@@ -315,27 +322,33 @@ export async function getMobileHc(email?: string | null) {
       .where(eq(employeeMcu.employeeId, context.employee.id))
       .orderBy(desc(employeeMcu.mcuDate))
       .limit(5),
-  ]);
+  ])
 
   // Fetch metrics for latest MCU records
-  let mcuWithMetrics: Array<typeof mcuRecords[number] & { metrics: typeof employeeMcuMetrics.$inferSelect[] }> = [];
+  let mcuWithMetrics: Array<
+    (typeof mcuRecords)[number] & { metrics: (typeof employeeMcuMetrics.$inferSelect)[] }
+  > = []
   if (mcuRecords.length > 0) {
-    const mcuIds = mcuRecords.map((m) => m.id);
+    const mcuIds = mcuRecords.map((m) => m.id)
     const allMetrics = await db
       .select()
       .from(employeeMcuMetrics)
-      .where(inArray(employeeMcuMetrics.mcuId, mcuIds));
+      .where(inArray(employeeMcuMetrics.mcuId, mcuIds))
     mcuWithMetrics = mcuRecords.map((m) => ({
       ...m,
       metrics: allMetrics.filter((met) => met.mcuId === m.id),
-    }));
+    }))
   }
 
   const presentDays = new Set(
     attendance
-      .filter((record) => record.status.toLowerCase().includes("present") || record.status.toLowerCase().includes("valid"))
-      .map((record) => record.eventTime.toISOString().slice(0, 10)),
-  ).size;
+      .filter(
+        (record) =>
+          record.status.toLowerCase().includes('present') ||
+          record.status.toLowerCase().includes('valid')
+      )
+      .map((record) => record.eventTime.toISOString().slice(0, 10))
+  ).size
 
   return {
     context,
@@ -344,13 +357,13 @@ export async function getMobileHc(email?: string | null) {
     wellness,
     mcuHistory: mcuWithMetrics,
     reliability: Math.min(100, Math.round((presentDays / Math.max(1, new Date().getDate())) * 100)),
-  };
+  }
 }
 
 export async function getMobileGamification(email?: string | null) {
-  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false })
   if (!context) {
-    return null;
+    return null
   }
 
   const leaderboardWhere = context.employee.sectionId
@@ -359,10 +372,7 @@ export async function getMobileGamification(email?: string | null) {
         eq(employees.siteId, context.employee.siteId),
         eq(employees.sectionId, context.employee.sectionId)
       )
-    : and(
-        eq(employees.isActive, true),
-        eq(employees.siteId, context.employee.siteId)
-      );
+    : and(eq(employees.isActive, true), eq(employees.siteId, context.employee.siteId))
 
   const [leaderboard, events] = await Promise.all([
     db
@@ -386,20 +396,20 @@ export async function getMobileGamification(email?: string | null) {
       .where(eq(pointEvents.employeeId, context.employee.id))
       .orderBy(desc(pointEvents.createdAt))
       .limit(20),
-  ]);
+  ])
 
-  const rank = leaderboard.findIndex((employee) => employee.id === context.employee.id) + 1;
+  const rank = leaderboard.findIndex((employee) => employee.id === context.employee.id) + 1
   const weeklyPoints = [...events]
     .reverse()
     .slice(-7)
     .map((event) => ({
-      label: event.createdAt.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "short",
+      label: event.createdAt.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
       }),
       points: event.points,
-    }));
-  const pointsDelta = events.slice(0, 5).reduce((sum, event) => sum + event.points, 0);
+    }))
+  const pointsDelta = events.slice(0, 5).reduce((sum, event) => sum + event.points, 0)
 
   return {
     context,
@@ -408,7 +418,7 @@ export async function getMobileGamification(email?: string | null) {
     rank: rank > 0 ? rank : null,
     weeklyPoints,
     pointsDelta,
-  };
+  }
 }
 
 export async function getMobileExecutive() {
@@ -428,13 +438,15 @@ export async function getMobileExecutive() {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(approvals)
-      .where(eq(approvals.status, "pending")),
-    db.select({ total: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}),0)::int` }).from(timesheetEntries),
+      .where(eq(approvals.status, 'pending')),
+    db
+      .select({ total: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}),0)::int` })
+      .from(timesheetEntries),
     db.select().from(dailyReports).orderBy(desc(dailyReports.reportDate)).limit(1),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(hseObservations)
-      .where(eq(hseObservations.status, "open")),
+      .where(eq(hseObservations.status, 'open')),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(employees)
@@ -455,50 +467,52 @@ export async function getMobileExecutive() {
       })
       .from(activities)
       .groupBy(activities.status),
-  ]);
+  ])
 
-  const site = siteRows[0];
-  const lastReport = lastReportRows[0];
+  const site = siteRows[0]
+  const lastReport = lastReportRows[0]
   const overview = {
     site,
     metrics: [
       {
-        label: "Submitted activities",
+        label: 'Submitted activities',
         value: `${activitiesCount[0]?.count ?? 0}`,
-        meta: "Aktivitas masuk hari ini",
+        meta: 'Aktivitas masuk hari ini',
       },
       {
-        label: "Pending approvals",
+        label: 'Pending approvals',
         value: `${pendingApprovals[0]?.count ?? 0}`,
-        meta: "Approval L1 dan L2",
+        meta: 'Approval L1 dan L2',
       },
       {
-        label: "Overtime tracked",
+        label: 'Overtime tracked',
         value: minutesToHoursLabel(overtimeMinutes[0]?.total ?? 0),
-        meta: "Dari timesheet aktif",
+        meta: 'Dari timesheet aktif',
       },
       {
-        label: "Open HSE items",
+        label: 'Open HSE items',
         value: `${openObservations[0]?.count ?? 0}`,
-        meta: "Observation yang belum close",
+        meta: 'Observation yang belum close',
       },
       {
-        label: "Active workforce",
+        label: 'Active workforce',
         value: `${activeEmployees[0]?.count ?? 0}`,
-        meta: "Karyawan aktif di site",
+        meta: 'Karyawan aktif di site',
       },
       {
-        label: "Last report",
-        value: lastReport ? `${lastReport.readySections}/${lastReport.totalSections} sections` : "Belum ada",
-        meta: "Kesiapan daily report",
+        label: 'Last report',
+        value: lastReport
+          ? `${lastReport.readySections}/${lastReport.totalSections} sections`
+          : 'Belum ada',
+        meta: 'Kesiapan daily report',
       },
     ],
-  };
+  }
   const highlights = {
     site,
     report: lastReport,
     topPerformer: topPerformer[0],
-  };
+  }
 
-  return { overview, highlights, activityTrend };
+  return { overview, highlights, activityTrend }
 }

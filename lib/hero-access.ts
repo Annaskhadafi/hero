@@ -1,17 +1,25 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or } from 'drizzle-orm'
 
-import { db } from "@/db";
-import { user as authUser } from "@/db/schema/auth";
-import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from "@/db/schema/hero";
-import { getServerSession } from "@/lib/auth-session";
+import { db } from '@/db'
+import { user as authUser } from '@/db/schema/auth'
+import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from '@/db/schema/hero'
+import { getServerSession } from '@/lib/auth-session'
 
 export type HeroMenuPermission = {
-  roleName: string | null;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canSelectAll: boolean;
-};
+  roleName: string | null
+  canView: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canSelectAll: boolean
+  dataScope: string
+}
+
+export type HeroEmployeeAccessContext = {
+  employeeId: number
+  siteId: number
+  sectionId: number | null
+  roleName: string | null
+}
 
 export async function getEmployeeAccessRoleByEmail(email: string) {
   const [employee] = await db
@@ -19,16 +27,16 @@ export async function getEmployeeAccessRoleByEmail(email: string) {
     .from(employees)
     .leftJoin(authUser, eq(employees.authUserId, authUser.id))
     .where(or(eq(employees.email, email), eq(authUser.email, email)))
-    .limit(1);
+    .limit(1)
 
-  return employee?.accessRole ?? null;
+  return employee?.accessRole ?? null
 }
 
 export async function getCurrentEmployeeAccessRole() {
-  const session = await getServerSession();
+  const session = await getServerSession()
 
   if (!session?.user?.id && !session?.user?.email) {
-    return null;
+    return null
   }
 
   const [employee] = await db
@@ -37,15 +45,18 @@ export async function getCurrentEmployeeAccessRole() {
     .where(
       or(
         session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-        session.user.email ? eq(employees.email, session.user.email) : undefined,
-      ),
+        session.user.email ? eq(employees.email, session.user.email) : undefined
+      )
     )
-    .limit(1);
+    .limit(1)
 
-  return employee?.accessRole ?? null;
+  return employee?.accessRole ?? null
 }
 
-export async function getMenuPermissionForRole(roleName: string | null, resource: string): Promise<HeroMenuPermission> {
+export async function getMenuPermissionForRole(
+  roleName: string | null,
+  resource: string
+): Promise<HeroMenuPermission> {
   if (!roleName) {
     return {
       roleName: null,
@@ -53,7 +64,8 @@ export async function getMenuPermissionForRole(roleName: string | null, resource
       canEdit: false,
       canDelete: false,
       canSelectAll: false,
-    };
+      dataScope: 'own',
+    }
   }
 
   const [permission] = await db
@@ -62,12 +74,13 @@ export async function getMenuPermissionForRole(roleName: string | null, resource
       canEdit: roleMenuPermissions.canEdit,
       canDelete: roleMenuPermissions.canDelete,
       canSelectAll: roleMenuPermissions.canSelectAll,
+      dataScope: roleMenuPermissions.dataScope,
     })
     .from(roleMenuPermissions)
     .innerJoin(securityRoles, eq(roleMenuPermissions.roleId, securityRoles.id))
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
     .where(and(eq(securityRoles.name, roleName), eq(navbarMenuItems.resource, resource)))
-    .limit(1);
+    .limit(1)
 
   return {
     roleName,
@@ -75,10 +88,43 @@ export async function getMenuPermissionForRole(roleName: string | null, resource
     canEdit: permission?.canEdit ?? false,
     canDelete: permission?.canDelete ?? false,
     canSelectAll: permission?.canSelectAll ?? false,
-  };
+    dataScope: permission?.dataScope ?? 'own',
+  }
 }
 
 export async function getCurrentMenuPermission(resource: string) {
-  const roleName = await getCurrentEmployeeAccessRole();
-  return getMenuPermissionForRole(roleName, resource);
+  const roleName = await getCurrentEmployeeAccessRole()
+  return getMenuPermissionForRole(roleName, resource)
+}
+
+export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAccessContext | null> {
+  const session = await getServerSession()
+
+  if (!session?.user?.id && !session?.user?.email) {
+    return null
+  }
+
+  const [employee] = await db
+    .select({
+      employeeId: employees.id,
+      siteId: employees.siteId,
+      sectionId: employees.sectionId,
+      roleName: employees.accessRole,
+    })
+    .from(employees)
+    .where(
+      or(
+        session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
+        session.user.email ? eq(employees.email, session.user.email) : undefined
+      )
+    )
+    .limit(1)
+
+  return employee ?? null
+}
+
+export function hasGlobalDataAccess(
+  permission: Pick<HeroMenuPermission, 'canSelectAll' | 'dataScope'>
+) {
+  return permission.canSelectAll || permission.dataScope === 'global'
 }
