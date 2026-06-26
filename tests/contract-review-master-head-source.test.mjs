@@ -40,3 +40,14 @@ test("contract review leader signature preview uses latest canvas data", () => {
   assert.match(formSource, /leaderCanvasSignature \|\| previewLeaderSig \|\| initialData\?\.leaderSignatureDataUrl/);
   assert.match(formSource, /const leaderPreviewSignature = previewLeaderSig \|\| leaderApprovalSig/);
 });
+
+test("contract review public approval previews signature history notes and timestamp", () => {
+  const publicApprovalSource = read("app/review/[token]/public-approval.tsx");
+
+  assert.match(publicApprovalSource, /hasVisibleCanvasInk/);
+  assert.match(publicApprovalSource, /previewSignatureDataUrl/);
+  assert.match(publicApprovalSource, /approvalHistoryForDisplay/);
+  assert.match(publicApprovalSource, /onEnd=\{updateSignaturePreview\}/);
+  assert.match(publicApprovalSource, /Waktu TTD:/);
+  assert.match(publicApprovalSource, /Catatan:/);
+});

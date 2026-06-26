@@ -16,9 +16,9 @@ type PublicApprovalProps = {
   employee: any
 }
 
-function formatDate(value: string | Date | null | undefined) {
+function formatDateTime(value: string | Date | null | undefined) {
   if (!value) return '-'
-  return new Date(value).toLocaleDateString('id-ID')
+  return new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -30,15 +30,28 @@ const ROLE_LABELS: Record<string, string> = {
   hr: 'HR',
 }
 
-function getApprovedSig(approvals: any[], role: string) {
-  return approvals.find((s: any) => s.status === 'approved' && s.signatureDataUrl && s.approverRole === role)
+function getSignatureStep(approvals: any[], role: string) {
+  return approvals.find((s: any) => ['approved', 'preview'].includes(s.status) && s.signatureDataUrl && s.approverRole === role)
+}
+
+function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) return false
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+  for (let i = 3; i < pixels.length; i += 4) {
+    if (pixels[i] > 0) return true
+  }
+  return false
 }
 
 export function ContractReviewPublicApproval({ token, approval, review, allApprovals, employee }: PublicApprovalProps) {
   const signatureRef = useRef<SignatureCanvas | null>(null)
-  const [remarks, setRemarks] = useState('')
+  const [remarks, setRemarks] = useState(approval.remarks || '')
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
+  const [approvalHistory, setApprovalHistory] = useState(allApprovals)
+  const [previewSignatureDataUrl, setPreviewSignatureDataUrl] = useState(approval.signatureDataUrl || '')
+  const [previewSignedAt, setPreviewSignedAt] = useState<string | Date | null>(approval.signedAt || null)
   const [isPending, startTransition] = useTransition()
 
   const [recommendation, setRecommendation] = useState<string>(review.recommendation || '')
@@ -52,14 +65,35 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const canEditRecommendation = !done && (isSectionHead || isDeptHead || isHr)
   const canEditLetterIssuance = !done && isHr
 
+  function getSignatureDataUrl() {
+    const signature = signatureRef.current
+    if (!signature) return ''
+    const canvas = signature.getCanvas()
+    if (!hasVisibleCanvasInk(canvas) && signature.isEmpty()) return ''
+    try {
+      return signature.getTrimmedCanvas().toDataURL('image/png')
+    } catch {
+      return signature.toDataURL('image/png')
+    }
+  }
+
+  function updateSignaturePreview() {
+    const signatureDataUrl = getSignatureDataUrl()
+    if (!signatureDataUrl) return
+    setPreviewSignatureDataUrl(signatureDataUrl)
+    setPreviewSignedAt((current) => current || new Date())
+  }
+
   function handleSubmit() {
     setError('')
-    const canvas = signatureRef.current
-    if (!canvas || canvas.isEmpty()) {
+    const signatureDataUrl = getSignatureDataUrl()
+    if (!signatureDataUrl) {
       setError('TTD digital wajib diisi.')
       return
     }
-    const signatureDataUrl = canvas.getTrimmedCanvas().toDataURL('image/png')
+    const signedAt = new Date()
+    setPreviewSignatureDataUrl(signatureDataUrl)
+    setPreviewSignedAt(signedAt)
     startTransition(async () => {
       const result = await approveContractReviewStep(token, {
         signatureDataUrl,
@@ -68,16 +102,48 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
         letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
       })
-      if (result.success) setDone(true)
-      else setError(result.error || 'Gagal menyimpan approval.')
+      if (result.success) {
+        setDone(true)
+        setApprovalHistory((current) =>
+          current.map((step: any) =>
+            step.id === approval.id
+              ? { ...step, status: 'approved', signatureDataUrl, remarks, signedAt }
+              : step
+          )
+        )
+      } else setError(result.error || 'Gagal menyimpan approval.')
     })
   }
 
-  const leaderSig = getApprovedSig(allApprovals, 'pjo_or_te_initial') || getApprovedSig(allApprovals, 'section_head_initial')
-  const employeeSig = getApprovedSig(allApprovals, 'employee')
-  const sectionHeadSig = getApprovedSig(allApprovals, 'section_head_confirmation')
-  const managerSig = getApprovedSig(allApprovals, 'central_service_manager')
-  const hrSig = getApprovedSig(allApprovals, 'hr')
+  const shouldShowCurrentPreview = done || Boolean(previewSignatureDataUrl || remarks.trim())
+  const approvalHistoryForDisplay = shouldShowCurrentPreview
+    ? approvalHistory.map((step: any) =>
+        step.id === approval.id
+          ? {
+              ...step,
+              status: done ? 'approved' : 'preview',
+              signatureDataUrl: previewSignatureDataUrl || step.signatureDataUrl,
+              remarks,
+              signedAt: previewSignedAt || step.signedAt,
+            }
+          : step
+      )
+    : approvalHistory
+
+  const leaderSig = getSignatureStep(approvalHistoryForDisplay, 'pjo_or_te_initial') || getSignatureStep(approvalHistoryForDisplay, 'section_head_initial')
+  const employeeSig = getSignatureStep(approvalHistoryForDisplay, 'employee')
+  const sectionHeadSig = getSignatureStep(approvalHistoryForDisplay, 'section_head_confirmation')
+  const managerSig = getSignatureStep(approvalHistoryForDisplay, 'central_service_manager')
+  const hrSig = getSignatureStep(approvalHistoryForDisplay, 'hr')
+
+  function renderApprovalMeta(step: any) {
+    return (
+      <>
+        <div style={{ marginTop: '2px', fontSize: '7pt', color: '#6b7280' }}>Waktu TTD: {formatDateTime(step?.signedAt)}</div>
+        {step?.remarks ? <div style={{ marginTop: '2px', fontSize: '7pt', color: '#4b5563' }}>Catatan: {step.remarks}</div> : null}
+      </>
+    )
+  }
 
   // Calculate achievement score
   const aVals = (review.performanceActivities ?? []).map((a: any) => a.achievement).filter(Boolean)
@@ -278,6 +344,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.leaderName}</div>
             <div className="text-xs">{review.leaderTitle || 'Leader'}</div>
+            {renderApprovalMeta(leaderSig)}
           </div>
         )}
         <div>
@@ -287,6 +354,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </div>
           <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{employee?.name || review.employeeNameStr || '\u00A0'}</div>
           <div className="text-xs">{employee?.position || 'Employee'}</div>
+          {renderApprovalMeta(employeeSig)}
         </div>
         {review.superiorName && (
           <div>
@@ -296,6 +364,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.superiorName}</div>
             <div className="text-xs">{review.superiorTitle || 'Superior'}</div>
+            {renderApprovalMeta(sectionHeadSig)}
           </div>
         )}
         {review.hrName && (
@@ -306,6 +375,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.hrName}</div>
             <div className="text-xs">{review.hrTitle || 'HR'}</div>
+            {renderApprovalMeta(hrSig)}
           </div>
         )}
         {review.nextSuperiorName && (
@@ -316,6 +386,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.nextSuperiorName}</div>
             <div className="text-xs">{review.nextSuperiorTitle || 'Manager'}</div>
+            {renderApprovalMeta(managerSig)}
           </div>
         )}
         <div>
@@ -401,16 +472,27 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
             <h2 className="text-sm font-semibold text-slate-950 mb-3">Status Approval</h2>
             <div className="space-y-2">
-              {allApprovals.map((step: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between gap-3 rounded-lg border p-2.5">
+              {approvalHistoryForDisplay.map((step: any, idx: number) => (
+                <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
                     <p className="text-[10px] text-slate-500">{ROLE_LABELS[step.approverRole] || step.approverRole}</p>
+                    {['approved', 'preview'].includes(step.status) ? (
+                      <div className="mt-1 space-y-0.5 text-[10px] text-slate-500">
+                        <p>Waktu TTD: {formatDateTime(step.signedAt)}</p>
+                        {step.remarks ? <p className="line-clamp-2">Catatan: {step.remarks}</p> : null}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {step.status === 'approved' ? (
                       <>
                         <Badge className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-2 text-[10px]">Disetujui</Badge>
+                        {step.signatureDataUrl && <img src={step.signatureDataUrl} alt="TTD" className="h-6 object-contain" />}
+                      </>
+                    ) : step.status === 'preview' ? (
+                      <>
+                        <Badge className="bg-sky-50 text-sky-700 rounded-full border-0 px-2 text-[10px]">Preview Anda</Badge>
                         {step.signatureDataUrl && <img src={step.signatureDataUrl} alt="TTD" className="h-6 object-contain" />}
                       </>
                     ) : step.status === 'rejected' ? (
@@ -432,7 +514,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             {done ? (
               <div className="space-y-3">
                 <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
-                {allApprovals.every((s: any) => s.status === 'approved') && (
+                {approvalHistoryForDisplay.every((s: any) => s.status === 'approved') && (
                   <Button type="button" size="sm" className="w-full" onClick={() => {
                     // Sync values to attributes for print
                     document.querySelectorAll('#pdf-page-2 input[type="checkbox"]').forEach((el: any) => {
@@ -491,12 +573,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
-                  <SignatureCanvas ref={signatureRef} canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }} />
+                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }} />
                 </div>
                 <Textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Catatan opsional..." rows={2} />
                 {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>Bersihkan</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => {
+                    signatureRef.current?.clear()
+                    setPreviewSignatureDataUrl('')
+                    setPreviewSignedAt(null)
+                  }}>Bersihkan</Button>
                   <Button type="button" size="sm" className="flex-1" onClick={handleSubmit} disabled={isPending}>{isPending ? 'Menyimpan...' : 'Setuju & Tanda Tangani'}</Button>
                 </div>
               </div>
