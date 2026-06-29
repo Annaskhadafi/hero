@@ -102,9 +102,10 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
   "Laporan": [
     { title: "Analytics", url: "/dashboard/analytics", section: "Laporan", iconName: "chart-bar", resource: "dashboard_repair", sortOrder: 1 },
     { title: "Reports", url: "/dashboard/reports", section: "Laporan", iconName: "report", resource: "repair_productivity", sortOrder: 2 },
-    { title: "Points Overview", url: "/dashboard/leaderboard", section: "Laporan", iconName: "settings", resource: "point_setting", sortOrder: 3 },
-    { title: "Security Overview", url: "/dashboard/security", section: "Laporan", iconName: "database", resource: "security_session", sortOrder: 4 },
-    { title: "Audit Log", url: "/dashboard/security/audit-logs", section: "Laporan", iconName: "report", resource: "security_audit", sortOrder: 5 },
+    { title: "Road Condition Analysis", url: "/dashboard/reports/road-condition", section: "Laporan", groupLabel: "Field Analysis", iconName: "report", resource: "hse_road_condition_analysis", sortOrder: 3 },
+    { title: "Points Overview", url: "/dashboard/leaderboard", section: "Laporan", iconName: "settings", resource: "point_setting", sortOrder: 4 },
+    { title: "Security Overview", url: "/dashboard/security", section: "Laporan", iconName: "database", resource: "security_session", sortOrder: 5 },
+    { title: "Audit Log", url: "/dashboard/security/audit-logs", section: "Laporan", iconName: "report", resource: "security_audit", sortOrder: 6 },
   ],
   "Pengaturan": [
     { title: "Role Management", url: "/dashboard/security/roles", section: "Pengaturan", iconName: "shield", resource: "security_roles", sortOrder: 1 },

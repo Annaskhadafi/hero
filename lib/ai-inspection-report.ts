@@ -73,11 +73,14 @@ export function getInspectionAiConfig() {
     "";
   
   // Vision-capable model required if photos are processed
-  const model =
+  const configuredModel =
     process.env.INSPECTION_AI_MODEL ||
     process.env.TIRE_PATTERN_MODEL ||
     process.env.OLLAMA_MODEL ||
     "openai/gpt-4o-mini";
+  // ponytail: legacy OpenRouter model id has no endpoint; remove after envs are cleaned up.
+  const model =
+    configuredModel === "anthropic/claude-3.5-sonnet" ? "openai/gpt-4o-mini" : configuredModel;
     
   return { apiUrl, apiKey, model };
 }

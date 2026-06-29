@@ -1243,6 +1243,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
+    section: 'Laporan',
+    groupLabel: 'Field Analysis',
+    title: 'Road Condition Analysis',
+    url: '/dashboard/reports/road-condition',
+    iconName: 'report',
+    resource: 'hse_road_condition_analysis',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
     section: 'Human Capital',
     groupLabel: 'Point System',
     title: 'Point Dashboard',
@@ -3659,6 +3671,7 @@ const HSE_MANAGED_RESOURCES = new Set([
   'safety_induction',
   'hse_incident_report',
   'hse_tire_inspection',
+  'hse_road_condition_analysis',
 ])
 
 const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
