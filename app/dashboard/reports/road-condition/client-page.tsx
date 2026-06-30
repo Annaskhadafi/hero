@@ -1688,32 +1688,40 @@ export function RoadConditionAnalysisClient({
           return (
             <article
               key={draft.id}
-              className="road-condition-slide grid aspect-video grid-rows-[22%_42%_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
+              className="road-condition-slide grid aspect-video grid-rows-[32%_38%_1fr] sm:grid-rows-[22%_42%_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
             >
               <header
-                className="grid min-h-0 gap-2 sm:gap-3 px-3 sm:px-5 py-2 sm:py-3 text-white md:grid-cols-[1fr_auto]"
+                className="grid min-h-0 overflow-hidden gap-1.5 sm:gap-3 px-2 sm:px-5 py-1.5 sm:py-3 text-white md:grid-cols-[1fr_auto]"
                 style={{ background: CATEGORY_GRADIENTS[draft.categoryKey] }}
               >
                 <div className="min-w-0">
-                  <div className="mb-0.5 sm:mb-1 flex items-center gap-1.5 sm:gap-2">
+                  <div className="hidden sm:flex mb-0.5 sm:mb-1 items-center gap-1.5 sm:gap-2">
                     {React.createElement(CATEGORY_ICONS[draft.categoryKey], { className: 'size-3 sm:size-4 opacity-80' })}
                     <p className="text-[7px] sm:text-[8px] lg:text-[10px] font-black uppercase tracking-[0.22em] text-white/70">
                       Report Analysis Road Condition
                     </p>
                   </div>
-                  <h2 className="mt-0.5 sm:mt-1 truncate font-display text-lg sm:text-2xl lg:text-3xl font-semibold leading-tight">
+                  <h2 className="mt-0 sm:mt-1 truncate font-display text-base sm:text-2xl lg:text-3xl font-semibold leading-tight">
                     {category.reportLabel}
                   </h2>
-                  <p className="text-[10px] sm:text-xs lg:text-sm font-black uppercase tracking-[0.14em] text-white/80">{pointLabel}</p>
-                  {analysis ? <p className="mt-0.5 sm:mt-1 line-clamp-2 max-w-3xl text-[8px] sm:text-[9px] lg:text-xs font-semibold text-white/75">{analysis.summary}</p> : null}
+                  <p className="text-[8px] sm:text-xs lg:text-sm font-black uppercase tracking-[0.14em] text-white/80">{pointLabel}</p>
+                  {analysis ? <p className="hidden sm:block mt-0.5 sm:mt-1 line-clamp-2 max-w-3xl text-[8px] sm:text-[9px] lg:text-xs font-semibold text-white/75">{analysis.summary}</p> : null}
                 </div>
-                <div className="grid min-w-0 sm:min-w-[180px] lg:min-w-[250px] gap-0.5 sm:gap-1 rounded-lg bg-white/15 p-1.5 sm:p-2 text-[8px] sm:text-[9px] lg:text-xs font-semibold ring-1 ring-white/20 backdrop-blur-sm">
+                <div className="hidden md:grid min-w-[180px] lg:min-w-[250px] gap-0.5 sm:gap-1 rounded-lg bg-white/15 p-1.5 sm:p-2 text-[8px] sm:text-[9px] lg:text-xs font-semibold ring-1 ring-white/20 backdrop-blur-sm">
                   <span>Site: {siteName || '-'}</span>
                   <span>Customer: {customerName || '-'}</span>
                   <span>Inspector: {inspectorName || '-'}</span>
                   <span>Point: {pointLabel}</span>
                   <span>Tanggal: {formatReportDate(reportDate)}</span>
                   <span>Nilai Akhir: {overallScore ?? '-'}/5</span>
+                </div>
+                <div className="grid md:hidden grid-cols-3 gap-x-2 gap-y-0 text-[6px] sm:text-[7px] font-semibold text-white/90">
+                  <span>Site: {siteName || '-'}</span>
+                  <span>Customer: {customerName || '-'}</span>
+                  <span>Inspector: {inspectorName || '-'}</span>
+                  <span>Point: {pointLabel}</span>
+                  <span>{formatReportDate(reportDate)}</span>
+                  <span>Nilai: {overallScore ?? '-'}/5</span>
                 </div>
               </header>
 
