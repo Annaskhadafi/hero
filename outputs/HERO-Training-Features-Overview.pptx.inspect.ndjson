@@ -1,0 +1,195 @@
+{"kind":"deck","id":"pr/mqnhzi","name":"Deck"}
+{"kind":"layout","layoutId":"e066580d-cb79-413c-812a-c996fa8cb200","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"d147cb4e-d401-417e-84a0-7fef34ec1d06","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/rmaeav","slide":1,"title":"M7 - Training Intelligence","textShapes":15}
+{"kind":"textbox","id":"sh/u54zidon","slide":1,"text":"M7 - Training Intelligence","textPreview":"M7 - Training Intelligence","textChars":26,"textLines":1,"bbox":[64,56,220,18]}
+{"kind":"textbox","id":"sh/5sneloj2","slide":1,"name":"cover-title","text":"Semua Fitur\nTraining","textPreview":"Semua Fitur | Training","textChars":20,"textLines":2,"bbox":[64,112,620,180]}
+{"kind":"textbox","id":"sh/cbulwval","slide":1,"text":"Workspace riwayat, analitik expiry, import LMS, sertifikasi SIO/POP/POM, dan tampilan mobile.","textPreview":"Workspace riwayat, analitik expiry, import LMS, sertifikasi SIO/POP/POM, dan tampilan mobile.","textChars":93,"textLines":1,"bbox":[64,300,560,88]}
+{"kind":"shape","id":"sh/neloj2t8","slide":1,"bbox":[64,414,120,4]}
+{"kind":"shape","id":"sh/ytsvu9kn","slide":1,"name":"cover-outline","bbox":[794,96,422,516]}
+{"kind":"textbox","id":"sh/5kb6xkf6","slide":1,"text":"Ruang lingkup","textPreview":"Ruang lingkup","textChars":13,"textLines":1,"bbox":[824,126,180,22]}
+{"kind":"textbox","id":"sh/czed8v6p","slide":1,"text":"01  Workspace riwayat","textPreview":"01  Workspace riwayat","textChars":21,"textLines":1,"bbox":[824,168,310,26]}
+{"kind":"textbox","id":"sh/n29gr2p8","slide":1,"text":"Filter, group, edit, dan export.","textPreview":"Filter, group, edit, dan export.","textChars":32,"textLines":1,"bbox":[824,196,300,22]}
+{"kind":"textbox","id":"sh/yhgn29gr","slide":1,"text":"02  Dashboard training","textPreview":"02  Dashboard training","textChars":22,"textLines":1,"bbox":[824,244,310,26]}
+{"kind":"textbox","id":"sh/kb6xkf6d","slide":1,"text":"Valid, expiry, source mix, coverage.","textPreview":"Valid, expiry, source mix, coverage.","textChars":36,"textLines":1,"bbox":[824,272,300,22]}
+{"kind":"textbox","id":"sh/9w3m94fu","slide":1,"text":"03  Import & sync","textPreview":"03  Import & sync","textChars":17,"textLines":1,"bbox":[824,320,310,26]}
+{"kind":"textbox","id":"sh/25kb6xkf","slide":1,"text":"LMS auto-sync dan file import.","textPreview":"LMS auto-sync dan file import.","textChars":30,"textLines":1,"bbox":[824,348,300,22]}
+{"kind":"textbox","id":"sh/rqd4vmtw","slide":1,"text":"04  SIO / POP / POM","textPreview":"04  SIO / POP / POM","textChars":19,"textLines":1,"bbox":[824,396,310,26]}
+{"kind":"textbox","id":"sh/kzupwb2h","slide":1,"text":"Reminder, points, dan email.","textPreview":"Reminder, points, dan email.","textChars":28,"textLines":1,"bbox":[824,424,300,22]}
+{"kind":"textbox","id":"sh/9knih4by","slide":1,"text":"05  Mobile training","textPreview":"05  Mobile training","textChars":19,"textLines":1,"bbox":[824,472,310,26]}
+{"kind":"textbox","id":"sh/2t83itgf","slide":1,"text":"Review cepat per tahun.","textPreview":"Review cepat per tahun.","textChars":23,"textLines":1,"bbox":[824,500,300,22]}
+{"kind":"textbox","id":"sh/re1w7mp0","slide":1,"text":"Routes: /dashboard/training-records | /mobile/training","textPreview":"Routes: /dashboard/training-records | /mobile/training","textChars":54,"textLines":1,"bbox":[824,534,300,22]}
+{"kind":"notes","id":"nt/rmaeav","slide":1,"text":""}
+{"kind":"slide","id":"sl/k9z2ao","slide":2,"title":"RINGKASAN MODUL","textShapes":12}
+{"kind":"textbox","id":"sh/u18jqh0f","slide":2,"text":"RINGKASAN MODUL","textPreview":"RINGKASAN MODUL","textChars":15,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/1orytsvu","slide":2,"text":"Peta fitur training","textPreview":"Peta fitur training","textChars":19,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/c7u54zid","slide":2,"text":"Satu modul, empat jalur kerja. Desktop untuk review dan maintenance. Mobile untuk cek cepat di lapangan.","textPreview":"Satu modul, empat jalur kerja. Desktop untuk review dan maintenance. Mobile untuk cek cepat di lapangan.","textChars":104,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/judg7ads","slide":2,"bbox":[64,156,90,4]}
+{"kind":"shape","id":"sh/u9knih4b","slide":2,"bbox":[64,194,560,162]}
+{"kind":"shape","id":"sh/1032lszq","slide":2,"bbox":[64,194,560,4]}
+{"kind":"textbox","id":"sh/cfa9w3m9","slide":2,"text":"Workspace riwayat","textPreview":"Workspace riwayat","textChars":17,"textLines":1,"bbox":[84,212,520,34]}
+{"kind":"textbox","id":"sh/nyd0z610","slide":2,"text":"Filter employee, department, section, dan year. Expand per karyawan untuk lihat detail training.","textPreview":"Filter employee, department, section, dan year. Expand per karyawan untuk lihat detail training.","textChars":96,"textLines":1,"bbox":[84,250,520,86]}
+{"kind":"shape","id":"sh/udg7adsj","slide":2,"bbox":[656,194,560,162]}
+{"kind":"shape","id":"sh/czed8v6p","slide":2,"bbox":[656,194,560,4]}
+{"kind":"textbox","id":"sh/5kb6xkf6","slide":2,"text":"Dashboard training","textPreview":"Dashboard training","textChars":18,"textLines":1,"bbox":[676,212,520,34]}
+{"kind":"textbox","id":"sh/ytsvu9kn","slide":2,"text":"Valid aktif, expiry 30 hari, expired, top training, coverage departemen, dan source mix.","textPreview":"Valid aktif, expiry 30 hari, expired, top training, coverage departemen, dan source mix.","textChars":88,"textLines":1,"bbox":[676,250,520,86]}
+{"kind":"shape","id":"sh/neloj2t8","slide":2,"bbox":[64,388,560,162]}
+{"kind":"shape","id":"sh/cbulwval","slide":2,"bbox":[64,388,560,4]}
+{"kind":"textbox","id":"sh/5sneloj2","slide":2,"text":"Import & sync","textPreview":"Import & sync","textChars":13,"textLines":1,"bbox":[84,406,520,34]}
+{"kind":"textbox","id":"sh/u54zidon","slide":2,"text":"Auto-sync LMS, import CSV/XLSX, preview data, lalu update record yang sudah ada.","textPreview":"Auto-sync LMS, import CSV/XLSX, preview data, lalu update record yang sudah ada.","textChars":80,"textLines":1,"bbox":[84,444,520,86]}
+{"kind":"shape","id":"sh/nqxs72x4","slide":2,"bbox":[656,388,560,162]}
+{"kind":"shape","id":"sh/gbq1oryt","slide":2,"bbox":[656,388,560,4]}
+{"kind":"textbox","id":"sh/5wjudg7a","slide":2,"text":"SIO / POP / POM","textPreview":"SIO / POP / POM","textChars":15,"textLines":1,"bbox":[676,406,520,34]}
+{"kind":"textbox","id":"sh/t47y1kre","slide":2,"text":"Kelola sertifikat, reminder email, template, dan points produktivitas dari satu tempat.","textPreview":"Kelola sertifikat, reminder email, template, dan points produktivitas dari satu tempat.","textChars":87,"textLines":1,"bbox":[676,444,520,86]}
+{"kind":"textbox","id":"sh/0je9cvix","slide":2,"text":"Mobile route: /mobile/training","textPreview":"Mobile route: /mobile/training","textChars":30,"textLines":1,"bbox":[64,586,1152,24]}
+{"kind":"notes","id":"nt/k9z2ao","slide":2,"text":""}
+{"kind":"slide","id":"sl/z7u22t","slide":3,"title":"WORKSPACE RIWAYAT","textShapes":19}
+{"kind":"textbox","id":"sh/wfyxobm5","slide":3,"text":"WORKSPACE RIWAYAT","textPreview":"WORKSPACE RIWAYAT","textChars":17,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/7u54zido","slide":3,"text":"Table-first, bukan dashboard-first","textPreview":"Table-first, bukan dashboard-first","textChars":34,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/ed8bat47","slide":3,"text":"Semua data training dibaca dari workspace riwayat. Fokusnya review cepat, koreksi data, dan tindakan lanjut.","textPreview":"Semua data training dibaca dari workspace riwayat. Fokusnya review cepat, koreksi data, dan tindakan lanjut.","textChars":108,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/lc7u54zi","slide":3,"bbox":[64,156,90,4]}
+{"kind":"textbox","id":"sh/wra5gbq1","slide":3,"text":"Apa yang dipakai user","textPreview":"Apa yang dipakai user","textChars":21,"textLines":1,"bbox":[64,196,450,28]}
+{"kind":"textbox","id":"sh/36hcrmhk","slide":3,"text":"Filter scope aktif","textPreview":"Filter scope aktif","textChars":18,"textLines":1,"bbox":[64,238,474,24]}
+{"kind":"textbox","id":"sh/eloj2t83","slide":3,"text":"Employee, department, section, year.","textPreview":"Employee, department, section, year.","textChars":36,"textLines":1,"bbox":[64,272,474,24]}
+{"kind":"textbox","id":"sh/pg3ex0nu","slide":3,"text":"Preset cepat","textPreview":"Preset cepat","textChars":12,"textLines":1,"bbox":[64,306,474,24]}
+{"kind":"textbox","id":"sh/wval87ed","slide":3,"text":"Tahun berjalan, fokus operasi, reset.","textPreview":"Tahun berjalan, fokus operasi, reset.","textChars":37,"textLines":1,"bbox":[64,340,474,24]}
+{"kind":"textbox","id":"sh/6hcrmhk3","slide":3,"text":"Expand per karyawan","textPreview":"Expand per karyawan","textChars":19,"textLines":1,"bbox":[64,374,474,24]}
+{"kind":"textbox","id":"sh/z25kb6xk","slide":3,"text":"Lihat semua training, expiry, status, dan row actions.","textPreview":"Lihat semua training, expiry, status, dan row actions.","textChars":54,"textLines":1,"bbox":[64,408,474,48]}
+{"kind":"shape","id":"sh/onyd0z61","slide":3,"bbox":[638,194,578,420]}
+{"kind":"textbox","id":"sh/d8v6psfi","slide":3,"text":"Alur kerja utama","textPreview":"Alur kerja utama","textChars":16,"textLines":1,"bbox":[660,216,240,24]}
+{"kind":"shape","id":"sh/6tovahoz","slide":3,"bbox":[660,268,10,54]}
+{"kind":"textbox","id":"sh/vahoza1g","slide":3,"text":"1. Scope filter","textPreview":"1. Scope filter","textChars":15,"textLines":1,"bbox":[684,262,470,24]}
+{"kind":"textbox","id":"sh/ovahoza1","slide":3,"text":"Pilih employee, department, section, atau year.","textPreview":"Pilih employee, department, section, atau year.","textChars":47,"textLines":1,"bbox":[684,290,470,30]}
+{"kind":"shape","id":"sh/dg7adsji","slide":3,"bbox":[660,350,10,54]}
+{"kind":"textbox","id":"sh/61032lsz","slide":3,"text":"2. Group review","textPreview":"2. Group review","textChars":15,"textLines":1,"bbox":[684,344,470,24]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":3,"text":"Satu employee row membuka timeline training lengkap.","textPreview":"Satu employee row membuka timeline training lengkap.","textChars":52,"textLines":1,"bbox":[684,372,470,30]}
+{"kind":"shape","id":"sh/nqxs72x4","slide":3,"bbox":[660,432,10,54]}
+{"kind":"textbox","id":"sh/u54zidon","slide":3,"text":"3. Row action","textPreview":"3. Row action","textChars":13,"textLines":1,"bbox":[684,426,470,24]}
+{"kind":"textbox","id":"sh/5sneloj2","slide":3,"text":"Add, edit, update status, atau delete dari surface yang sama.","textPreview":"Add, edit, update status, atau delete dari surface yang sama.","textChars":61,"textLines":1,"bbox":[684,454,470,30]}
+{"kind":"shape","id":"sh/cbulwval","slide":3,"bbox":[660,514,10,54]}
+{"kind":"textbox","id":"sh/neloj2t8","slide":3,"text":"4. Export / import","textPreview":"4. Export / import","textChars":18,"textLines":1,"bbox":[684,508,470,24]}
+{"kind":"textbox","id":"sh/ytsvu9kn","slide":3,"text":"Export Excel tersedia, import punya dialog dan preview.","textPreview":"Export Excel tersedia, import punya dialog dan preview.","textChars":55,"textLines":1,"bbox":[684,536,470,30]}
+{"kind":"notes","id":"nt/z7u22t","slide":3,"text":""}
+{"kind":"slide","id":"sl/kupf49","slide":4,"title":"DASHBOARD TRAINING","textShapes":22}
+{"kind":"textbox","id":"sh/dcbulwva","slide":4,"text":"DASHBOARD TRAINING","textPreview":"DASHBOARD TRAINING","textChars":18,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/6psfil0r","slide":4,"text":"Expiry, source mix, dan coverage","textPreview":"Expiry, source mix, dan coverage","textChars":32,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/val87ed8","slide":4,"text":"Dashboard ini menjawab tiga pertanyaan operasional: siapa aman, siapa perlu tindak lanjut, dan training apa yang paling dominan.","textPreview":"Dashboard ini menjawab tiga pertanyaan operasional: siapa aman, siapa perlu tindak lanjut, dan training apa yang paling dominan.","textChars":128,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/k3q5o7qp","slide":4,"bbox":[64,156,90,4]}
+{"kind":"shape","id":"sh/donyd0z6","slide":4,"bbox":[64,194,273,118]}
+{"kind":"shape","id":"sh/2x4nap4r","slide":4,"bbox":[64,194,273,3]}
+{"kind":"textbox","id":"sh/vixczed8","slide":4,"text":"Valid aktif","textPreview":"Valid aktif","textChars":11,"textLines":1,"bbox":[82,214,237,30]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":4,"text":"Cert masih aman dan belum masuk window expiry.","textPreview":"Cert masih aman dan belum masuk window expiry.","textChars":46,"textLines":1,"bbox":[82,252,237,40]}
+{"kind":"shape","id":"sh/d0z61032","slide":4,"bbox":[357,194,273,118]}
+{"kind":"shape","id":"sh/dsji5sne","slide":4,"bbox":[357,194,273,3]}
+{"kind":"textbox","id":"sh/o7qpg3ex","slide":4,"text":"Segera expiry","textPreview":"Segera expiry","textChars":13,"textLines":1,"bbox":[375,214,237,30]}
+{"kind":"textbox","id":"sh/vmtwra5g","slide":4,"text":"Record dengan sisa masa berlaku 30 hari atau kurang.","textPreview":"Record dengan sisa masa berlaku 30 hari atau kurang.","textChars":52,"textLines":1,"bbox":[375,252,237,40]}
+{"kind":"shape","id":"sh/61032lsz","slide":4,"bbox":[650,194,273,118]}
+{"kind":"shape","id":"sh/d4vmtwra","slide":4,"bbox":[650,194,273,3]}
+{"kind":"textbox","id":"sh/oj2t83it","slide":4,"text":"Expired","textPreview":"Expired","textChars":7,"textLines":1,"bbox":[668,214,237,30]}
+{"kind":"textbox","id":"sh/vy90je9c","slide":4,"text":"Record yang sudah lewat masa berlaku.","textPreview":"Record yang sudah lewat masa berlaku.","textChars":37,"textLines":1,"bbox":[668,252,237,40]}
+{"kind":"shape","id":"sh/6dcbulwv","slide":4,"bbox":[943,194,273,118]}
+{"kind":"shape","id":"sh/d8v6psfi","slide":4,"bbox":[943,194,273,3]}
+{"kind":"textbox","id":"sh/onyd0z61","slide":4,"text":"Total record","textPreview":"Total record","textChars":12,"textLines":1,"bbox":[961,214,237,30]}
+{"kind":"textbox","id":"sh/kre1w7mp","slide":4,"text":"Semua training yang masuk scope filter aktif.","textPreview":"Semua training yang masuk scope filter aktif.","textChars":45,"textLines":1,"bbox":[961,252,237,40]}
+{"kind":"shape","id":"sh/dcbulwva","slide":4,"bbox":[64,344,560,264]}
+{"kind":"textbox","id":"sh/6psfil0r","slide":4,"text":"Distribusi sumber","textPreview":"Distribusi sumber","textChars":17,"textLines":1,"bbox":[84,366,240,24]}
+{"kind":"textbox","id":"sh/val87ed8","slide":4,"text":"LMS Chitra Learning","textPreview":"LMS Chitra Learning","textChars":19,"textLines":1,"bbox":[84,398,500,20]}
+{"kind":"shape","id":"sh/k3q5o7qp","slide":4,"bbox":[84,424,430,10]}
+{"kind":"textbox","id":"sh/donyd0z6","slide":4,"text":"Auto-sync","textPreview":"Auto-sync","textChars":9,"textLines":1,"bbox":[524,416,92,20]}
+{"kind":"textbox","id":"sh/2x4nap4r","slide":4,"text":"External training","textPreview":"External training","textChars":17,"textLines":1,"bbox":[84,458,500,20]}
+{"kind":"shape","id":"sh/vixczed8","slide":4,"bbox":[84,484,280,10]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":4,"text":"Manual entry","textPreview":"Manual entry","textChars":12,"textLines":1,"bbox":[374,476,110,20]}
+{"kind":"textbox","id":"sh/d0z61032","slide":4,"text":"Sistem otomatis memisahkan LMS dan eksternal, lalu menyorot training yang paling sering muncul.","textPreview":"Sistem otomatis memisahkan LMS dan eksternal, lalu menyorot training yang paling sering muncul.","textChars":95,"textLines":1,"bbox":[84,530,490,48]}
+{"kind":"shape","id":"sh/3ylc7u54","slide":4,"bbox":[656,344,560,264]}
+{"kind":"textbox","id":"sh/adsji5sn","slide":4,"text":"What the dashboard answers","textPreview":"What the dashboard answers","textChars":26,"textLines":1,"bbox":[676,366,380,24]}
+{"kind":"textbox","id":"sh/h4byhgn2","slide":4,"text":"Which certificates are at risk now?","textPreview":"Which certificates are at risk now?","textChars":35,"textLines":1,"bbox":[676,404,500,24]}
+{"kind":"textbox","id":"sh/sji5snel","slide":4,"text":"Which training is most common?","textPreview":"Which training is most common?","textChars":30,"textLines":1,"bbox":[676,440,500,24]}
+{"kind":"textbox","id":"sh/3m94fu18","slide":4,"text":"Which department needs follow-up?","textPreview":"Which department needs follow-up?","textChars":33,"textLines":1,"bbox":[676,476,500,24]}
+{"kind":"textbox","id":"sh/a5gbq1or","slide":4,"text":"Top 5 trainings, department coverage, and expiry watchlist stay visible.","textPreview":"Top 5 trainings, department coverage, and expiry watchlist stay visible.","textChars":72,"textLines":1,"bbox":[676,512,500,36]}
+{"kind":"notes","id":"nt/kupf49","slide":4,"text":""}
+{"kind":"slide","id":"sl/kdkuq8","slide":5,"title":"IMPORT & SYNC","textShapes":15}
+{"kind":"textbox","id":"sh/szqtcj6t","slide":5,"text":"IMPORT & SYNC","textPreview":"IMPORT & SYNC","textChars":13,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/3ex0nuxc","slide":5,"text":"LMS auto-sync + file import","textPreview":"LMS auto-sync + file import","textChars":27,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/at47y1kr","slide":5,"text":"Dua pintu masuk data: tarikan otomatis dari LMS, atau input manual dari CSV/XLSX dengan preview dan update rule yang jelas.","textPreview":"Dua pintu masuk data: tarikan otomatis dari LMS, atau input manual dari CSV/XLSX dengan preview dan update rule yang jelas.","textChars":123,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/l87ed8ba","slide":5,"bbox":[64,156,90,4]}
+{"kind":"shape","id":"sh/sneloj2t","slide":5,"bbox":[64,194,360,224]}
+{"kind":"shape","id":"sh/32lszqtc","slide":5,"bbox":[64,194,360,4]}
+{"kind":"textbox","id":"sh/ahoza1gv","slide":5,"text":"1. Auto-sync LMS","textPreview":"1. Auto-sync LMS","textChars":16,"textLines":1,"bbox":[84,212,320,34]}
+{"kind":"textbox","id":"sh/lwval87e","slide":5,"text":"Tarik completed course dari Chitra Learning sebelum halaman dipakai.","textPreview":"Tarik completed course dari Chitra Learning sebelum halaman dipakai.","textChars":68,"textLines":1,"bbox":[84,250,320,148]}
+{"kind":"shape","id":"sh/wb2hwfyx","slide":5,"bbox":[448,194,360,224]}
+{"kind":"shape","id":"sh/2lszqtcj","slide":5,"bbox":[448,194,360,4]}
+{"kind":"textbox","id":"sh/v6psfil0","slide":5,"text":"2. Import file","textPreview":"2. Import file","textChars":14,"textLines":1,"bbox":[468,212,320,34]}
+{"kind":"textbox","id":"sh/knih4byh","slide":5,"text":"CSV/XLSX atau paste data. Template contoh dan preview ikut disediakan.","textPreview":"CSV/XLSX atau paste data. Template contoh dan preview ikut disediakan.","textChars":70,"textLines":1,"bbox":[468,250,320,148]}
+{"kind":"shape","id":"sh/d8bat47y","slide":5,"bbox":[832,194,360,224]}
+{"kind":"shape","id":"sh/29gr2p8n","slide":5,"bbox":[832,194,360,4]}
+{"kind":"textbox","id":"sh/vu9knih4","slide":5,"text":"3. Match & update","textPreview":"3. Match & update","textChars":17,"textLines":1,"bbox":[852,212,320,34]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":5,"text":"SN, email, atau nama. Update key = employee + training + year.","textPreview":"SN, email, atau nama. Update key = employee + training + year.","textChars":62,"textLines":1,"bbox":[852,250,320,148]}
+{"kind":"shape","id":"sh/d0z61032","slide":5,"bbox":[64,454,1152,154]}
+{"kind":"textbox","id":"sh/2x4nap4r","slide":5,"text":"Aturan hasil","textPreview":"Aturan hasil","textChars":12,"textLines":1,"bbox":[86,478,160,22]}
+{"kind":"textbox","id":"sh/vixczed8","slide":5,"text":"Hasil import selalu dibagi jadi new, update, dan skip.","textPreview":"Hasil import selalu dibagi jadi new, update, dan skip.","textChars":54,"textLines":1,"bbox":[86,506,320,50]}
+{"kind":"textbox","id":"sh/neloj2t8","slide":5,"text":"Kunci update","textPreview":"Kunci update","textChars":12,"textLines":1,"bbox":[454,478,160,22]}
+{"kind":"textbox","id":"sh/ytsvu9kn","slide":5,"text":"Employee + training + year. Itu yang mencegah duplikat saat import ulang.","textPreview":"Employee + training + year. Itu yang mencegah duplikat saat import ulang.","textChars":73,"textLines":1,"bbox":[454,506,360,50]}
+{"kind":"textbox","id":"sh/5kb6xkf6","slide":5,"text":"Provider default","textPreview":"Provider default","textChars":16,"textLines":1,"bbox":[856,478,160,22]}
+{"kind":"textbox","id":"sh/czed8v6p","slide":5,"text":"Chitra Learning LMS untuk record hasil sync otomatis.","textPreview":"Chitra Learning LMS untuk record hasil sync otomatis.","textChars":53,"textLines":1,"bbox":[856,506,290,50]}
+{"kind":"notes","id":"nt/kdkuq8","slide":5,"text":""}
+{"kind":"slide","id":"sl/2qd5nw","slide":6,"title":"SIO / POP / POM","textShapes":17}
+{"kind":"textbox","id":"sh/5o7qpg3e","slide":6,"text":"SIO / POP / POM","textPreview":"SIO / POP / POM","textChars":15,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/yxobm58z","slide":6,"text":"Sertifikasi alat dan operator","textPreview":"Sertifikasi alat dan operator","textChars":29,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/nih4byhg","slide":6,"text":"Bagian ini mengelola sertifikat kerja yang perlu expiry watch, reminder email, dan kadang reward points.","textPreview":"Bagian ini mengelola sertifikat kerja yang perlu expiry watch, reminder email, dan kadang reward points.","textChars":104,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/gr2p8nqx","slide":6,"bbox":[64,156,90,4]}
+{"kind":"shape","id":"sh/9cvixcze","slide":6,"bbox":[64,194,570,430]}
+{"kind":"textbox","id":"sh/ylc7u54z","slide":6,"text":"Apa yang bisa dilakukan","textPreview":"Apa yang bisa dilakukan","textChars":23,"textLines":1,"bbox":[86,218,250,24]}
+{"kind":"textbox","id":"sh/r65wjudg","slide":6,"text":"Filter All / SIO / POP / POM.","textPreview":"Filter All / SIO / POP / POM.","textChars":29,"textLines":1,"bbox":[86,260,490,24]}
+{"kind":"textbox","id":"sh/gfmlkjm1","slide":6,"text":"Create, edit, delete, dan import Excel.","textPreview":"Create, edit, delete, dan import Excel.","textChars":39,"textLines":1,"bbox":[86,296,490,24]}
+{"kind":"textbox","id":"sh/90je9cvi","slide":6,"text":"Status active, expiring soon, expired.","textPreview":"Status active, expiring soon, expired.","textChars":38,"textLines":1,"bbox":[86,332,490,24]}
+{"kind":"textbox","id":"sh/lc7u54zi","slide":6,"text":"Reminder email ke Section Head + CC.","textPreview":"Reminder email ke Section Head + CC.","textChars":36,"textLines":1,"bbox":[86,368,490,24]}
+{"kind":"textbox","id":"sh/wra5gbq1","slide":6,"text":"Reward points opsional saat sertifikat baru ditambahkan.","textPreview":"Reward points opsional saat sertifikat baru ditambahkan.","textChars":56,"textLines":1,"bbox":[86,404,490,48]}
+{"kind":"shape","id":"sh/36hcrmhk","slide":6,"bbox":[670,194,546,430]}
+{"kind":"textbox","id":"sh/eloj2t83","slide":6,"text":"Reminder and routing","textPreview":"Reminder and routing","textChars":20,"textLines":1,"bbox":[692,218,220,24]}
+{"kind":"shape","id":"sh/l0rqd4vm","slide":6,"bbox":[692,260,502,96]}
+{"kind":"textbox","id":"sh/wfyxobm5","slide":6,"text":"Reminder preview","textPreview":"Reminder preview","textChars":16,"textLines":1,"bbox":[712,276,280,20]}
+{"kind":"textbox","id":"sh/7u54zido","slide":6,"text":"Section Head recipients, CC tambahan, dan template email tampil sebelum send.","textPreview":"Section Head recipients, CC tambahan, dan template email tampil sebelum send.","textChars":77,"textLines":1,"bbox":[712,302,448,32]}
+{"kind":"shape","id":"sh/ed8bat47","slide":6,"bbox":[692,372,502,96]}
+{"kind":"textbox","id":"sh/psfil0rq","slide":6,"text":"User Management link","textPreview":"User Management link","textChars":20,"textLines":1,"bbox":[712,388,280,20]}
+{"kind":"textbox","id":"sh/w7mp0bi9","slide":6,"text":"SN dan email dipakai untuk resolve employee master, bukan daftar statis.","textPreview":"SN dan email dipakai untuk resolve employee master, bukan daftar statis.","textChars":72,"textLines":1,"bbox":[712,414,448,32]}
+{"kind":"shape","id":"sh/wb2hwfyx","slide":6,"bbox":[692,484,502,96]}
+{"kind":"textbox","id":"sh/lwval87e","slide":6,"text":"Points","textPreview":"Points","textChars":6,"textLines":1,"bbox":[712,500,280,20]}
+{"kind":"textbox","id":"sh/e9cvixcz","slide":6,"text":"SIO = 50, POP / POM = 25 when award toggle is on.","textPreview":"SIO = 50, POP / POM = 25 when award toggle is on.","textChars":49,"textLines":1,"bbox":[712,526,448,32]}
+{"kind":"textbox","id":"sh/3q5o7qpg","slide":6,"text":"Reminder windows: 30 or 60 days before expiry.","textPreview":"Reminder windows: 30 or 60 days before expiry.","textChars":46,"textLines":1,"bbox":[692,562,440,18]}
+{"kind":"notes","id":"nt/2qd5nw","slide":6,"text":""}
+{"kind":"slide","id":"sl/rr7u3g","slide":7,"title":"MOBILE TRAINING","textShapes":11}
+{"kind":"textbox","id":"sh/0bi9s36h","slide":7,"text":"MOBILE TRAINING","textPreview":"MOBILE TRAINING","textChars":15,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/7qpg3ex0","slide":7,"text":"Route /mobile/training","textPreview":"Route /mobile/training","textChars":22,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/i5sneloj","slide":7,"text":"View ini dipakai untuk review cepat di lapangan. Fokusnya status, expiry, dan timeline per tahun.","textPreview":"View ini dipakai untuk review cepat di lapangan. Fokusnya status, expiry, dan timeline per tahun.","textChars":97,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/p4r65wju","slide":7,"bbox":[64,156,90,4]}
+{"kind":"textbox","id":"sh/wjudg7ad","slide":7,"text":"What users see on mobile","textPreview":"What users see on mobile","textChars":24,"textLines":1,"bbox":[64,184,600,24]}
+{"kind":"textbox","id":"sh/7y1kre1w","slide":7,"text":"Timeline grouped by completed year.","textPreview":"Timeline grouped by completed year.","textChars":35,"textLines":1,"bbox":[64,226,560,24]}
+{"kind":"textbox","id":"sh/ed8v6psf","slide":7,"text":"Each record shows provider, expiry, and status.","textPreview":"Each record shows provider, expiry, and status.","textChars":47,"textLines":1,"bbox":[64,262,560,24]}
+{"kind":"textbox","id":"sh/p8nqxs72","slide":7,"text":"Expiring items are visible at a glance.","textPreview":"Expiring items are visible at a glance.","textChars":39,"textLines":1,"bbox":[64,298,560,24]}
+{"kind":"textbox","id":"sh/0nuxc3yl","slide":7,"text":"Sync runs before the page is shown.","textPreview":"Sync runs before the page is shown.","textChars":35,"textLines":1,"bbox":[64,334,560,24]}
+{"kind":"textbox","id":"sh/ih4byhgn","slide":7,"text":"Best for fast self-check in the field.","textPreview":"Best for fast self-check in the field.","textChars":38,"textLines":1,"bbox":[64,370,560,24]}
+{"kind":"shape","id":"sh/72x4nap4","slide":7,"bbox":[938,188,278,472]}
+{"kind":"textbox","id":"sh/0nuxc3yl","slide":7,"text":"Mobile preview","textPreview":"Mobile preview","textChars":14,"textLines":1,"bbox":[958,208,180,18]}
+{"kind":"textbox","id":"sh/itgfmlkj","slide":7,"text":"The mobile route is the quick review layer; the desktop workspace remains the system of record.","textPreview":"The mobile route is the quick review layer; the desktop workspace remains the system of record.","textChars":95,"textLines":1,"bbox":[64,500,560,40]}
+{"kind":"image","id":"im/q1orytsv","slide":7,"name":"","geometry":"roundRect","alt":"Mobile training screenshot","bbox":[958,234,238,416]}
+{"kind":"notes","id":"nt/rr7u3g","slide":7,"text":""}
+{"kind":"slide","id":"sl/eeik83","slide":8,"title":"RINGKASAN","textShapes":11}
+{"kind":"textbox","id":"sh/3itgfmlk","slide":8,"text":"RINGKASAN","textPreview":"RINGKASAN","textChars":9,"textLines":1,"bbox":[64,28,220,18]}
+{"kind":"textbox","id":"sh/w3m94fu1","slide":8,"text":"Inti yang dibawa modul training","textPreview":"Inti yang dibawa modul training","textChars":31,"textLines":1,"bbox":[64,58,900,58]}
+{"kind":"textbox","id":"sh/loj2t83i","slide":8,"text":"Training di HERO bukan cuma daftar sertifikat. Dia jadi alur kerja: input, review, analisis, dan tindak lanjut.","textPreview":"Training di HERO bukan cuma daftar sertifikat. Dia jadi alur kerja: input, review, analisis, dan tindak lanjut.","textChars":111,"textLines":1,"bbox":[64,118,1000,50]}
+{"kind":"shape","id":"sh/e9cvixcz","slide":8,"bbox":[64,156,90,4]}
+{"kind":"shape","id":"sh/3q5o7qpg","slide":8,"bbox":[64,210,330,214]}
+{"kind":"shape","id":"sh/wb2hwfyx","slide":8,"bbox":[64,210,330,4]}
+{"kind":"textbox","id":"sh/lwval87e","slide":8,"text":"Kendalikan","textPreview":"Kendalikan","textChars":10,"textLines":1,"bbox":[84,228,290,34]}
+{"kind":"textbox","id":"sh/ahoza1gv","slide":8,"text":"Filter scope, grouped table, edit, status change, import, dan export.","textPreview":"Filter scope, grouped table, edit, status change, import, dan export.","textChars":69,"textLines":1,"bbox":[84,266,290,138]}
+{"kind":"shape","id":"sh/32lszqtc","slide":8,"bbox":[424,210,330,214]}
+{"kind":"shape","id":"sh/rqd4vmtw","slide":8,"bbox":[424,210,330,4]}
+{"kind":"textbox","id":"sh/25kb6xkf","slide":8,"text":"Analisis","textPreview":"Analisis","textChars":8,"textLines":1,"bbox":[444,228,290,34]}
+{"kind":"textbox","id":"sh/9w3m94fu","slide":8,"text":"Expiry risk, source mix, top training, dan coverage departemen.","textPreview":"Expiry risk, source mix, top training, dan coverage departemen.","textChars":63,"textLines":1,"bbox":[444,266,290,138]}
+{"kind":"shape","id":"sh/kb6xkf6d","slide":8,"bbox":[784,210,330,214]}
+{"kind":"shape","id":"sh/re1w7mp0","slide":8,"bbox":[784,210,330,4]}
+{"kind":"textbox","id":"sh/2t83itgf","slide":8,"text":"Tindak lanjut","textPreview":"Tindak lanjut","textChars":13,"textLines":1,"bbox":[804,228,290,34]}
+{"kind":"textbox","id":"sh/9knih4by","slide":8,"text":"Sync LMS, reminder SIO, dan mobile review per user.","textPreview":"Sync LMS, reminder SIO, dan mobile review per user.","textChars":51,"textLines":1,"bbox":[804,266,290,138]}
+{"kind":"textbox","id":"sh/kzupwb2h","slide":8,"text":"Training workspace jadi alat kerja harian, bukan sekadar arsip.","textPreview":"Training workspace jadi alat kerja harian, bukan sekadar arsip.","textChars":63,"textLines":1,"bbox":[64,494,1152,54]}
+{"kind":"textbox","id":"sh/ra5gbq1o","slide":8,"text":"Satu modul, banyak jalur: desktop admin, dashboard insight, import/sync, reminder, dan mobile review.","textPreview":"Satu modul, banyak jalur: desktop admin, dashboard insight, import/sync, reminder, dan mobile review.","textChars":101,"textLines":1,"bbox":[64,548,900,24]}
+{"kind":"notes","id":"nt/eeik83","slide":8,"text":""}
