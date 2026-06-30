@@ -23,7 +23,9 @@ type RoadConditionPhotoPayload = {
 type RoadConditionAnalyzePayload = {
   siteName: string
   customerName: string
+  inspectorName: string
   reportDate: string
+  pointName: string
   category: RoadConditionCategoryKey
   photos: RoadConditionPhotoPayload[]
 }
@@ -59,7 +61,9 @@ function validatePayload(input: unknown): RoadConditionAnalyzePayload {
   return {
     siteName: readString(body.siteName, 'Lokasi site'),
     customerName: readString(body.customerName, 'Customer'),
+    inspectorName: readString(body.inspectorName, 'Nama inspector'),
     reportDate: readString(body.reportDate, 'Tanggal'),
+    pointName: readString(body.pointName, 'Nama point'),
     category: category.key,
     photos: photos.map((photo, index) => {
       const mimeType = readString(photo?.mimeType, `Mime foto ${index + 1}`)
@@ -166,8 +170,10 @@ async function callRoadConditionAi(payload: RoadConditionAnalyzePayload) {
   const userText = `Analisis road condition tambang.
 Site: ${payload.siteName}
 Customer: ${payload.customerName}
+Inspector: ${payload.inspectorName}
 Tanggal: ${payload.reportDate}
 Kategori: ${category.reportLabel}
+Nama point/segment: ${payload.pointName}
 
 Gunakan 3 foto angle berbeda sebagai bukti visual. Caption user:
 ${payload.photos.map((photo, index) => `${index + 1}. ${photo.angle}: ${photo.caption || '-'}`).join('\n')}

@@ -18,6 +18,15 @@ export type RoadConditionCategory = {
   criteria: RoadConditionCriterion[]
 }
 
+export type RoadConditionScore = 1 | 2 | 3 | 4 | 5
+
+export type RoadConditionAssessmentTemplate = {
+  criterionId: string
+  score: RoadConditionScore
+  description: string
+  recommendation: string
+}
+
 const spillageRatings = {
   1: 'Tumpahan material sangat banyak dan tidak mungkin dihindari unit; berpotensi menyebabkan kegagalan BAN dalam waktu singkat.',
   2: 'Tumpahan material banyak dan sulit dihindari unit; berpotensi menyebabkan kerusakan BAN serius.',
@@ -55,7 +64,7 @@ export const ROAD_CONDITION_CATEGORIES: Record<RoadConditionCategoryKey, RoadCon
     key: 'loading_point',
     label: 'Loading Point',
     reportLabel: 'LOADING POINT',
-    color: '#8fd877',
+    color: '#0f4c75',
     criteria: [
       {
         id: 'spillage',
@@ -104,7 +113,7 @@ export const ROAD_CONDITION_CATEGORIES: Record<RoadConditionCategoryKey, RoadCon
     key: 'haulroad',
     label: 'Haulroad',
     reportLabel: 'HAULROAD',
-    color: '#cf63c7',
+    color: '#1a365d',
     criteria: [
       {
         id: 'spillage',
@@ -192,7 +201,7 @@ export const ROAD_CONDITION_CATEGORIES: Record<RoadConditionCategoryKey, RoadCon
     key: 'disposal',
     label: 'Disposal',
     reportLabel: 'DISPOSAL',
-    color: '#41cf59',
+    color: '#1a4731',
     criteria: [
       {
         id: 'spillage',
@@ -255,6 +264,43 @@ export const ROAD_CONDITION_CATEGORIES: Record<RoadConditionCategoryKey, RoadCon
 export const ROAD_CONDITION_CATEGORY_OPTIONS = Object.values(ROAD_CONDITION_CATEGORIES).map(
   ({ key, label }) => ({ value: key, label })
 )
+
+const ROAD_CONDITION_SCORE_RECOMMENDATIONS: Record<RoadConditionScore, string> = {
+  1: 'Segera lakukan perbaikan prioritas tinggi pada parameter ini dan amankan area sebelum operasi dilanjutkan.',
+  2: 'Lakukan tindakan korektif prioritas tinggi dan selesaikan sesegera mungkin.',
+  3: 'Masukkan ke perbaikan terjadwal dan pantau ulang setelah tindakan selesai.',
+  4: 'Pertahankan kondisi saat ini dan lakukan monitoring rutin.',
+  5: 'Pertahankan kondisi baik ini sebagai standar operasi.',
+}
+
+export function normalizeRoadConditionScore(value: number): RoadConditionScore {
+  const score = Math.round(Number(value))
+  if (!Number.isFinite(score)) return 3
+  return Math.max(1, Math.min(5, score)) as RoadConditionScore
+}
+
+export function getRoadConditionAssessmentTemplate(
+  categoryKey: RoadConditionCategoryKey,
+  criterionId: string,
+  score: number
+): RoadConditionAssessmentTemplate {
+  const category = ROAD_CONDITION_CATEGORIES[categoryKey]
+  const criterion = category.criteria.find((item) => item.id === criterionId) ?? category.criteria[0]
+  const normalizedScore = normalizeRoadConditionScore(score)
+
+  return {
+    criterionId: criterion?.id ?? criterionId,
+    score: normalizedScore,
+    description: criterion?.ratings[normalizedScore] ?? '-',
+    recommendation: `${criterion?.title ?? 'Parameter'}: ${ROAD_CONDITION_SCORE_RECOMMENDATIONS[normalizedScore]}`,
+  }
+}
+
+export function getRoadConditionOverallScore(assessments: Array<{ score: number }>) {
+  if (!assessments.length) return 3
+  const average = assessments.reduce((total, item) => total + normalizeRoadConditionScore(item.score), 0) / assessments.length
+  return normalizeRoadConditionScore(average)
+}
 
 export function getRoadConditionCategory(key: string): RoadConditionCategory | null {
   return ROAD_CONDITION_CATEGORIES[key as RoadConditionCategoryKey] ?? null

@@ -565,6 +565,21 @@ export const dailyReports = pgTable('hero_daily_reports', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const roadConditionReports = pgTable('hero_road_condition_reports', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  siteName: text('site_name').notNull(),
+  customerName: text('customer_name').notNull(),
+  inspectorName: text('inspector_name').notNull(),
+  reportDate: date('report_date').notNull(),
+  averageScore: decimal('average_score', { precision: 5, scale: 2 }).notNull().default('0.00'),
+  modelUsed: text('model_used').notNull().default(''),
+  reportData: jsonb('report_data').notNull(),
+  createdBy: text('created_by').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const pointEvents = pgTable('hero_point_events', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id')
