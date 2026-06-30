@@ -1218,6 +1218,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Field Analysis',
+    title: 'Site Condition Report',
+    url: '/dashboard/central-service/site-condition',
+    iconName: 'report',
+    resource: 'site_condition_report',
+    sortOrder: 15,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Laporan
   {
     menuArea: 'main',

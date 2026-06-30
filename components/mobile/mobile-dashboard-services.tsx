@@ -16,7 +16,8 @@ import {
   Bell,
   User,
   Dumbbell,
-  Trophy
+  Trophy,
+  Route
 } from "lucide-react";
 import {
   IconBook,
@@ -100,6 +101,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "hse",
       icon: ShieldCheck,
       bg: "bg-emerald-500/10 text-emerald-600",
+    },
+    {
+      title: "Site Condition",
+      href: "/mobile/reports/road-condition",
+      resource: "hse_road_condition_analysis",
+      icon: Route,
+      bg: "bg-cyan-500/10 text-cyan-600",
     },
     {
       title: "Input Progress",

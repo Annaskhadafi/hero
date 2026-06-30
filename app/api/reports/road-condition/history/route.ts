@@ -29,7 +29,7 @@ type SavedDraft = {
   categoryKey: RoadConditionCategoryKey
   pointName: string
   model?: string
-  photos?: Array<{ angle: string; caption: string }>
+  photos?: Array<{ angle: string; caption: string; dataUrl?: string }>
   analysis?: {
     summary: string
     overallScore: number
@@ -58,6 +58,11 @@ function toDateInput(value: unknown) {
   const text = readString(value, 'Tanggal')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new Error('Format tanggal harus YYYY-MM-DD.')
   return text
+}
+
+function readImageDataUrl(value: unknown) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text.startsWith('data:image/') ? text : ''
 }
 
 function normalizeDrafts(value: unknown) {
@@ -92,9 +97,10 @@ function normalizeDrafts(value: unknown) {
       pointName: readString(draft?.pointName, 'Nama point'),
       model: typeof draft?.model === 'string' ? draft.model : '',
       photos: Array.isArray(draft?.photos)
-        ? draft.photos.map((photo: { angle?: unknown; caption?: unknown }) => ({
+        ? draft.photos.map((photo: { angle?: unknown; caption?: unknown; dataUrl?: unknown }) => ({
             angle: typeof photo.angle === 'string' ? photo.angle : '',
             caption: typeof photo.caption === 'string' ? photo.caption : '',
+            dataUrl: readImageDataUrl(photo.dataUrl),
           }))
         : [],
       analysis,
