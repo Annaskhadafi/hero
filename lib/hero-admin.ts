@@ -379,6 +379,40 @@ const GOVERNANCE_ROLE_SEEDS = [
 ]
 
 const RAW_SIDEBAR_MENU_SEEDS = [
+  // 360 Service
+  {
+    menuArea: 'main',
+    section: '360 Service',
+    title: 'Master Customers',
+    url: '/dashboard/360-service/customers',
+    iconName: 'users',
+    resource: 'service360_customers',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: '360 Service',
+    title: 'Master Items (Barang/Service)',
+    url: '/dashboard/360-service/items',
+    iconName: 'packages',
+    resource: 'service360_items',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: '360 Service',
+    title: 'Quotations',
+    url: '/dashboard/360-service/quotations',
+    iconName: 'file-text',
+    resource: 'service360_quotations',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Portal Chitra
   {
     menuArea: 'main',
@@ -808,6 +842,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     sortOrder: 13,
     isVisible: true,
     openInNewTab: true,
+  },
+  {
+    menuArea: 'main',
+    section: 'ChitraLearning LMS',
+    groupLabel: 'Internal LMS Baru',
+    title: 'Learning Workspace',
+    url: '/dashboard/chitralearning-lms',
+    iconName: 'book-open',
+    resource: 'chitralearning_lms_workspace',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
   },
   {
     menuArea: 'main',

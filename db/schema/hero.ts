@@ -902,6 +902,238 @@ export const trainingRecords = pgTable('hero_training_records', {
   status: text('status').notNull(),
 })
 
+export const chitraLearningCourses = pgTable('hero_chitralearning_courses', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description').notNull().default(''),
+  category: text('category').notNull().default('Internal'),
+  status: text('status').notNull().default('draft'),
+  coverImageUrl: text('cover_image_url').notNull().default(''),
+  passingScore: integer('passing_score').notNull().default(80),
+  estimatedMinutes: integer('estimated_minutes').notNull().default(0),
+  dueDays: integer('due_days').notNull().default(14),
+  certificateEnabled: boolean('certificate_enabled').notNull().default(true),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const chitraLearningLessons = pgTable('hero_chitralearning_lessons', {
+  id: serial('id').primaryKey(),
+  courseId: integer('course_id')
+    .notNull()
+    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  lessonType: text('lesson_type').notNull().default('video'),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  videoUrl: text('video_url').notNull().default(''),
+  fileUrl: text('file_url').notNull().default(''),
+  durationMinutes: integer('duration_minutes').notNull().default(0),
+  sortOrder: integer('sort_order').notNull().default(1),
+  isRequired: boolean('is_required').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const chitraLearningQuizQuestions = pgTable('hero_chitralearning_quiz_questions', {
+  id: serial('id').primaryKey(),
+  courseId: integer('course_id')
+    .notNull()
+    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  lessonId: integer('lesson_id').references(() => chitraLearningLessons.id, { onDelete: 'set null' }),
+  testPhase: text('test_phase').notNull().default('posttest'),
+  questionText: text('question_text').notNull(),
+  questionImageUrl: text('question_image_url').notNull().default(''),
+  optionA: text('option_a').notNull(),
+  optionAImageUrl: text('option_a_image_url').notNull().default(''),
+  optionB: text('option_b').notNull(),
+  optionBImageUrl: text('option_b_image_url').notNull().default(''),
+  optionC: text('option_c').notNull().default(''),
+  optionCImageUrl: text('option_c_image_url').notNull().default(''),
+  optionD: text('option_d').notNull().default(''),
+  optionDImageUrl: text('option_d_image_url').notNull().default(''),
+  correctOption: text('correct_option').notNull().default('A'),
+  points: integer('points').notNull().default(1),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const chitraLearningCourseAccess = pgTable('hero_chitralearning_course_access', {
+  id: serial('id').primaryKey(),
+  courseId: integer('course_id')
+    .notNull()
+    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  accessType: text('access_type').notNull().default('all'),
+  accessValue: text('access_value').notNull().default('*'),
+  description: text('description').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const chitraLearningEnrollments = pgTable(
+  'hero_chitralearning_enrollments',
+  {
+    id: serial('id').primaryKey(),
+    courseId: integer('course_id')
+      .notNull()
+      .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    assignedByEmployeeId: integer('assigned_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    status: text('status').notNull().default('assigned'),
+    progress: integer('progress').notNull().default(0),
+    score: integer('score'),
+    pretestScore: integer('pretest_score'),
+    pretestStatus: text('pretest_status').notNull().default('not_started'),
+    posttestScore: integer('posttest_score'),
+    posttestStatus: text('posttest_status').notNull().default('not_started'),
+    dueAt: timestamp('due_at'),
+    lastLessonId: integer('last_lesson_id').references(() => chitraLearningLessons.id, {
+      onDelete: 'set null',
+    }),
+    lastPositionSeconds: integer('last_position_seconds').notNull().default(0),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeCourseUnique: uniqueIndex('hero_chitralearning_enrollments_employee_course_uq').on(
+      table.employeeId,
+      table.courseId
+    ),
+  })
+)
+
+export const chitraLearningCertificates = pgTable(
+  'hero_chitralearning_certificates',
+  {
+    id: serial('id').primaryKey(),
+    courseId: integer('course_id')
+      .notNull()
+      .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    enrollmentId: integer('enrollment_id').references(() => chitraLearningEnrollments.id, {
+      onDelete: 'set null',
+    }),
+    trainingRecordId: integer('training_record_id').references(() => trainingRecords.id, {
+      onDelete: 'set null',
+    }),
+    certificateNumber: text('certificate_number').notNull(),
+    status: text('status').notNull().default('issued'),
+    issuedAt: timestamp('issued_at').notNull().defaultNow(),
+    expiresAt: timestamp('expires_at'),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  },
+  (table) => ({
+    certificateNumberUnique: uniqueIndex('hero_chitralearning_certificates_number_uq').on(
+      table.certificateNumber
+    ),
+    employeeCourseCertificateUnique: uniqueIndex('hero_chitralearning_certificates_employee_course_uq').on(
+      table.employeeId,
+      table.courseId
+    ),
+  })
+)
+
+export const chitraLearningCampaigns = pgTable('hero_chitralearning_campaigns', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  courseId: integer('course_id').references(() => chitraLearningCourses.id, {
+    onDelete: 'set null',
+  }),
+  campaignType: text('campaign_type').notNull().default('posttest'),
+  targetType: text('target_type').notNull().default('all'),
+  targetValue: text('target_value').notNull().default('*'),
+  dueAt: timestamp('due_at'),
+  recurrence: text('recurrence').notNull().default('manual'),
+  status: text('status').notNull().default('draft'),
+  passingScore: integer('passing_score').notNull().default(80),
+  assignmentPrompt: text('assignment_prompt').notNull().default(''),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  publishedAt: timestamp('published_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const chitraLearningCampaignParticipants = pgTable(
+  'hero_chitralearning_campaign_participants',
+  {
+    id: serial('id').primaryKey(),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => chitraLearningCampaigns.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    enrollmentId: integer('enrollment_id').references(() => chitraLearningEnrollments.id, {
+      onDelete: 'set null',
+    }),
+    status: text('status').notNull().default('assigned'),
+    score: integer('score'),
+    submittedAt: timestamp('submitted_at'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    campaignEmployeeUnique: uniqueIndex('hero_chitralearning_campaign_employee_uq').on(
+      table.campaignId,
+      table.employeeId
+    ),
+  })
+)
+
+export const chitraLearningAssignmentResponses = pgTable('hero_chitralearning_assignment_responses', {
+  id: serial('id').primaryKey(),
+  campaignId: integer('campaign_id')
+    .notNull()
+    .references(() => chitraLearningCampaigns.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  responseText: text('response_text').notNull().default(''),
+  fileUrl: text('file_url').notNull().default(''),
+  status: text('status').notNull().default('submitted'),
+  submittedAt: timestamp('submitted_at').notNull().defaultNow(),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewedByEmployeeId: integer('reviewed_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  score: integer('score'),
+  feedback: text('feedback').notNull().default(''),
+})
+
+export const chitraLearningAuditLogs = pgTable('hero_chitralearning_audit_logs', {
+  id: serial('id').primaryKey(),
+  actorEmployeeId: integer('actor_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  action: text('action').notNull(),
+  courseId: integer('course_id').references(() => chitraLearningCourses.id, {
+    onDelete: 'set null',
+  }),
+  employeeId: integer('employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  beforeValue: jsonb('before_value').$type<Record<string, unknown>>().notNull().default({}),
+  afterValue: jsonb('after_value').$type<Record<string, unknown>>().notNull().default({}),
+  note: text('note').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
 export const wellnessRecords = pgTable('hero_wellness_records', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id')
