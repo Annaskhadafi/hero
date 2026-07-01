@@ -8,8 +8,8 @@ import { Suspense } from "react"
 
 export const dynamic = "force-dynamic"
 
-export default async function QuotationPrintPreview({ params }: { params: Promise<{ id: string }> | { id: string } }) {
-  const resolvedParams = await Promise.resolve(params);
+export default async function QuotationPrintPreview({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
   const id = parseInt(resolvedParams.id)
   if (isNaN(id)) {
     return notFound()
