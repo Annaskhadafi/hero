@@ -46,7 +46,7 @@ export default async function ItemsPage() {
               <CardTitle>Item List</CardTitle>
             </CardHeader>
             <CardContent>
-              <MinimalTableShell>
+              <MinimalTableShell label="Items">
                 <Table>
                   <TableHeader>
                     <TableRow>

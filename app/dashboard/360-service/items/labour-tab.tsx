@@ -80,7 +80,7 @@ export function LabourTab({ employees, sections }: { employees: EmployeeLabour[]
         </div>
       </div>
 
-      <MinimalTableShell>
+      <MinimalTableShell label="Labour Data">
         <Table>
           <TableHeader>
             <TableRow>

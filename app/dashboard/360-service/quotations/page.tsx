@@ -23,7 +23,7 @@ export default async function QuotationsPage() {
           <CardTitle>Quotation List</CardTitle>
         </CardHeader>
         <CardContent>
-          <MinimalTableShell>
+          <MinimalTableShell label="Quotations">
             <Table>
               <TableHeader>
                 <TableRow>

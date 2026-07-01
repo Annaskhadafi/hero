@@ -194,7 +194,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
         </CardContent>
       </Card>
 
-      <MinimalTableShell>
+      <MinimalTableShell label="Rates">
         <Table>
           <TableHeader>
             <TableRow>

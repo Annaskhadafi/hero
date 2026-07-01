@@ -40,7 +40,7 @@ export default async function CustomersPage() {
             <CardTitle>Customer List</CardTitle>
           </CardHeader>
           <CardContent>
-            <MinimalTableShell>
+            <MinimalTableShell label="Customers">
               <Table>
                 <TableHeader>
                   <TableRow>
