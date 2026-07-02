@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
+import { DeleteCustomerButton } from "./delete-customer-button"
 
 export default async function CustomersPage() {
   const customers = await getCustomers()
@@ -55,12 +56,7 @@ export default async function CustomersPage() {
                       <TableCell className="font-medium">{c.customerName}</TableCell>
                       <TableCell>{new Date(c.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell>
-                        <form action={async () => {
-                          "use server"
-                          await deleteCustomer(c.id)
-                        }}>
-                          <Button variant="destructive" size="sm">Delete</Button>
-                        </form>
+                        <DeleteCustomerButton customerId={c.id} />
                       </TableCell>
                     </TableRow>
                   ))}

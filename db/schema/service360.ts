@@ -65,6 +65,11 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   subTotal: decimal("sub_total", { precision: 15, scale: 2 }).notNull().default("0"),
   totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).notNull().default("0"),
   status: text("status").notNull().default("Draft"),
+  showLevel: boolean("show_level").notNull().default(true),
+  showQty: boolean("show_qty").notNull().default(false),
+  notes: text("notes"),
+  showIntro: boolean("show_intro").notNull().default(true),
+  customIntro: text("custom_intro"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -94,4 +99,16 @@ export const service360QuotationItems = pgTable("hero_service360_quotation_items
   backupPrice: decimal("backup_price", { precision: 15, scale: 2 }).notNull().default("0"),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const service360FormHistory = pgTable("hero_service360_form_history", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => service360Customers.id, { onDelete: "cascade" }),
+  field: text("field").notNull(),
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    customerFieldUnique: uniqueIndex("hero_service360_form_history_unique_idx").on(table.customerId, table.field, table.value),
+  }
 });

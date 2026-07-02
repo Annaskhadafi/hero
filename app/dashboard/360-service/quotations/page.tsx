@@ -4,7 +4,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import Link from "next/link"
-import { Eye, Download, Trash2 } from "lucide-react"
+import { Eye, Download, Trash2, Edit, Copy } from "lucide-react"
+import { QuotationStatusSelect } from "./quotation-status-select"
+import { QuotationPreviewDialog } from "./quotation-preview-dialog"
 
 export default async function QuotationsPage() {
   const quotations = await getQuotations()
@@ -42,17 +44,25 @@ export default async function QuotationsPage() {
                     <TableCell>{new Date(quotation.quotationDate).toLocaleDateString()}</TableCell>
                     <TableCell>{customer?.customerName}</TableCell>
                     <TableCell>{Number(quotation.totalAmount).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell>{quotation.status}</TableCell>
+                    <TableCell>
+                      <QuotationStatusSelect quotationId={quotation.id} initialStatus={quotation.status} />
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Link href={`/dashboard/360-service/quotations/${quotation.id}`}>
-                          <Button variant="secondary" size="icon" className="h-8 w-8" title="Preview">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <QuotationPreviewDialog quotationId={quotation.id} />
                         <Link href={`/dashboard/360-service/quotations/${quotation.id}?download=true`}>
                           <Button variant="outline" size="icon" className="h-8 w-8" title="Download PDF">
                             <Download className="h-4 w-4 text-teal-600" />
+                          </Button>
+                        </Link>
+                        <Link href={`/dashboard/360-service/quotations/${quotation.id}/edit`}>
+                          <Button variant="outline" size="icon" className="h-8 w-8" title="Edit">
+                            <Edit className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        </Link>
+                        <Link href={`/dashboard/360-service/quotations/create?duplicate=${quotation.id}`}>
+                          <Button variant="outline" size="icon" className="h-8 w-8" title="Duplicate">
+                            <Copy className="h-4 w-4 text-amber-600" />
                           </Button>
                         </Link>
                         <form action={async () => {

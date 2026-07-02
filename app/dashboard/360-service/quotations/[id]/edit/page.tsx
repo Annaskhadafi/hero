@@ -1,28 +1,25 @@
-import { getCustomers, getItems, generateNextQuotationNumber, getQuotationById } from "@/app/actions/service360"
-import { QuotationForm } from "./quotation-form"
+import { getCustomers, getItems, getQuotationById } from "@/app/actions/service360"
+import { QuotationForm } from "../../create/quotation-form"
 import { db } from "@/db"
 import { sites } from "@/db/schema/hero"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
-export default async function CreateQuotationPage({ searchParams }: { searchParams: Promise<{ duplicate?: string }> }) {
-  const resolvedParams = await searchParams;
-  
+export default async function EditQuotationPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  const id = parseInt(resolvedParams.id)
+  if (isNaN(id)) return notFound()
+
+  const quotation = await getQuotationById(id)
+  if (!quotation) return notFound()
+
   const customers = await getCustomers()
   const items = await getItems()
   const siteList = await db.select().from(sites)
-  const nextQuotationNumber = await generateNextQuotationNumber()
-
-  let initialData = null;
-  if (resolvedParams.duplicate) {
-    const duplicateId = parseInt(resolvedParams.duplicate);
-    if (!isNaN(duplicateId)) {
-      initialData = await getQuotationById(duplicateId);
-    }
-  }
 
   return (
     <div className="w-full p-4 md:p-6 space-y-6">
@@ -33,16 +30,17 @@ export default async function CreateQuotationPage({ searchParams }: { searchPara
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">Create Quotation</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Edit Quotation {quotation.quotationNumber}</h1>
         </div>
       </div>
+      
       <QuotationForm 
         customers={customers} 
         items={items} 
         siteList={siteList} 
-        initialQuotationNumber={nextQuotationNumber} 
-        initialData={initialData}
-        isEdit={false} // Even if duplicating, we are creating a new one
+        initialQuotationNumber={quotation.quotationNumber}
+        initialData={quotation}
+        isEdit={true}
       />
     </div>
   )

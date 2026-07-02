@@ -1,53 +1,182 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { createQuotation, createCustomer } from "@/app/actions/service360"
+import { createQuotation, createCustomer, saveItemToMaster, updateQuotation, getFormHistory, deleteFormHistory } from "@/app/actions/service360"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { toast } from "sonner"
+import { Switch } from "@/components/ui/switch"
+import { SearchableSelect } from "@/components/ui/searchable-select"
+import { Save, X } from "lucide-react"
+import { HistoryCombobox } from "@/components/ui/history-combobox"
 
-type SelectedItem = {
-  id: number
-  itemId: number | null
-  category: string
-  monthPeriod: string
-  startDate?: string
-  endDate?: string
-  level: string
-  customDescription: string
-  quantity: number
-  price: number
-  isBackup?: boolean
-  backupStartDate?: string
-  backupEndDate?: string
-  backupLevel?: string
-  backupDescription?: string
-  backupPrice?: number
-}
+const itemSchema = z.object({
+  id: z.number(),
+  itemId: z.number().nullable(),
+  category: z.string(),
+  monthPeriod: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  level: z.string().optional(),
+  customDescription: z.string(),
+  quantity: z.number().min(0.01, "Quantity > 0"),
+  price: z.number().min(0, "Price cannot be negative"),
+  isBackup: z.boolean().optional(),
+  backupStartDate: z.string().optional(),
+  backupEndDate: z.string().optional(),
+  backupLevel: z.string().optional(),
+  backupDescription: z.string().optional(),
+  backupPrice: z.number().min(0, "Cannot be negative").optional(),
+}).refine(data => {
+  if (data.startDate && data.endDate) {
+    return new Date(data.endDate) >= new Date(data.startDate)
+  }
+  return true
+}, { message: "End Date must be >= Start Date", path: ["endDate"] })
+.refine(data => {
+  if (data.isBackup && data.backupStartDate && data.backupEndDate) {
+    return new Date(data.backupEndDate) >= new Date(data.backupStartDate)
+  }
+  return true
+}, { message: "Backup End Date must be >= Start Date", path: ["backupEndDate"] })
 
-export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string }) {
-  const router = useRouter()
+
+const quotationSchema = z.object({
+  quotationNumber: z.string().min(1, "Quotation Number is required"),
+  quotationDate: z.string().min(1, "Date is required"),
+  customerId: z.string().min(1, "Customer is required"),
+  manualCustomerName: z.string().optional(),
+  attn: z.string().optional(),
+  cc: z.string().optional(),
+  fromName: z.string().optional(),
+  subject: z.string().optional(),
+  poNumber: z.string().optional(),
+  selectedProjectSite: z.string().optional(),
+  projectName: z.string().optional(),
+  poPeriodStart: z.string().optional(),
+  poPeriodEnd: z.string().optional(),
+  taxRate: z.number().min(0).max(100),
+  showLevel: z.boolean(),
+  showQty: z.boolean(),
+  notes: z.string().optional(),
+  items: z.array(itemSchema).min(1, "At least one item is required")
+}).refine(data => {
+  if (data.customerId === "manual" && !data.manualCustomerName) {
+    return false
+  }
+  return true
+}, { message: "Manual Customer Name is required", path: ["manualCustomerName"] })
+
+export type SelectedItem = z.infer<typeof itemSchema>;
+
+export type QuotationFormValues = z.infer<typeof quotationSchema>;
+
+export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; isEdit?: boolean }) {
+const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([])
   const [customers, setCustomers] = useState(initialCustomers)
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("")
-  const [manualCustomerName, setManualCustomerName] = useState("")
-  
-  const [selectedProjectSite, setSelectedProjectSite] = useState<string>("")
-  const [manualProjectName, setManualProjectName] = useState("")
 
-  const [poPeriodStart, setPoPeriodStart] = useState("")
-  const [poPeriodEnd, setPoPeriodEnd] = useState("")
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuotationFormValues>({
+    resolver: zodResolver(quotationSchema),
+    defaultValues: {
+      quotationNumber: isEdit ? (initialData?.quotationNumber || initialQuotationNumber || "") : (initialQuotationNumber || ""),
+      quotationDate: initialData?.quotationDate ? new Date(initialData.quotationDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      customerId: initialData?.customerId?.toString() || "",
+      manualCustomerName: "",
+      taxRate: initialData?.taxRate ? Number(initialData.taxRate) : 11,
+      showLevel: initialData?.showLevel ?? true,
+      showQty: initialData?.showQty ?? false,
+      attn: initialData?.attn || "",
+      cc: initialData?.cc || "",
+      fromName: initialData?.fromName || "",
+      subject: initialData?.subject || "",
+      poNumber: initialData?.poNumber || "",
+      projectName: initialData?.projectName || "",
+      notes: initialData?.notes || "",
+      showIntro: initialData?.showIntro ?? true,
+      customIntro: initialData?.customIntro || "",
+      items: initialData?.items?.map((i: any, idx: number) => ({
+        id: idx,
+        itemId: i.quotationItem.itemId,
+        category: i.item?.category || "General",
+        monthPeriod: i.quotationItem.monthPeriod || "",
+        startDate: "", 
+        endDate: "",
+        level: i.quotationItem.level || "",
+        customDescription: i.quotationItem.customDescription || i.item?.name || "",
+        quantity: Number(i.quotationItem.quantity) || 1,
+        price: Number(i.quotationItem.price) || 0,
+        isBackup: i.quotationItem.isBackup || false,
+        backupMonthPeriod: i.quotationItem.backupMonthPeriod || "",
+        backupLevel: i.quotationItem.backupLevel || "",
+        backupDescription: i.quotationItem.backupDescription || "",
+        backupPrice: Number(i.quotationItem.backupPrice) || 0,
+      })) || []
+    }
+  })
 
-  const [taxRate, setTaxRate] = useState(11)
+  const formItems = watch("items") || []
+  const taxRate = watch("taxRate")
+  const selectedProjectSite = watch("selectedProjectSite")
+  const poPeriodStart = watch("poPeriodStart")
+  const showIntro = watch("showIntro")
+  const customIntro = watch("customIntro")
+  const poPeriodEnd = watch("poPeriodEnd")
+  const selectedCustomerId = watch("customerId")
+  const manualCustomerName = watch("manualCustomerName")
+  const showLevel = watch("showLevel")
+  const showQty = watch("showQty")
+  const attn = watch("attn") || ""
+  const cc = watch("cc") || ""
+  const fromName = watch("fromName") || ""
+  const subject = watch("subject") || ""
+
+  const [historyAttn, setHistoryAttn] = useState<string[]>([])
+  const [historyCc, setHistoryCc] = useState<string[]>([])
+  const [historyFrom, setHistoryFrom] = useState<string[]>([])
+  const [historySubject, setHistorySubject] = useState<string[]>([])
+
+  useEffect(() => {
+    if (selectedCustomerId && selectedCustomerId !== "manual") {
+      getFormHistory(parseInt(selectedCustomerId)).then(data => {
+        setHistoryAttn(data.filter(d => d.field === 'attn').map(d => d.value))
+        setHistoryCc(data.filter(d => d.field === 'cc').map(d => d.value))
+        setHistoryFrom(data.filter(d => d.field === 'fromName').map(d => d.value))
+        setHistorySubject(data.filter(d => d.field === 'subject').map(d => d.value))
+      })
+    } else {
+      setHistoryAttn([])
+      setHistoryCc([])
+      setHistoryFrom([])
+      setHistorySubject([])
+    }
+  }, [selectedCustomerId])
+
+  const handleDeleteHistory = async (field: string, value: string) => {
+    if (selectedCustomerId && selectedCustomerId !== "manual") {
+      const data = await getFormHistory(parseInt(selectedCustomerId))
+      const target = data.find(d => d.field === field && d.value === value)
+      if (target) {
+        await deleteFormHistory(target.id)
+        if (field === 'attn') setHistoryAttn(prev => prev.filter(v => v !== value))
+        if (field === 'cc') setHistoryCc(prev => prev.filter(v => v !== value))
+        if (field === 'fromName') setHistoryFrom(prev => prev.filter(v => v !== value))
+        if (field === 'subject') setHistorySubject(prev => prev.filter(v => v !== value))
+      }
+    }
+  }
 
   const handlePoPeriodChange = (start: string, end: string) => {
-    setPoPeriodStart(start)
-    setPoPeriodEnd(end)
-    setSelectedItems(prev => prev.map(item => ({ ...item, startDate: start, endDate: end })))
+    setValue("poPeriodStart", start)
+    setValue("poPeriodEnd", end)
+    setValue("items", formItems.map(item => ({ ...item, startDate: start, endDate: end })))
   }
 
   const calculateDays = (start?: string, end?: string) => {
@@ -60,24 +189,27 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
   }
 
   const getRowSubtotal = (item: SelectedItem) => {
+    return getPrimaryProrate(item) + getBackupProrate(item)
+  }
+
+  const getPrimaryProrate = (item: SelectedItem) => {
     if (item.category === "Labour Cost") {
       const primaryDays = calculateDays(item.startDate, item.endDate)
-      const primaryProrate = (primaryDays / 31) * item.price * item.quantity
-      
-      let backupProrate = 0
-      if (item.isBackup) {
-        const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
-        backupProrate = (backupDays / 31) * (item.backupPrice || 0) * item.quantity
-      }
-      return primaryProrate + backupProrate
+      return (primaryDays / 31) * item.price * item.quantity
     }
     return item.price * item.quantity
   }
 
+  const getBackupProrate = (item: SelectedItem) => {
+    if (item.category === "Labour Cost" && item.isBackup) {
+      const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
+      return (backupDays / 31) * (item.backupPrice || 0) * item.quantity
+    }
+    return 0
+  }
+
   const handleAddBlankRow = () => {
-    setSelectedItems(prev => [
-      ...prev,
-      {
+    setValue("items", [...formItems, {
         id: Date.now(),
         itemId: null,
         category: "",
@@ -88,8 +220,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
         customDescription: "",
         quantity: 1,
         price: 0
-      }
-    ])
+      }])
   }
 
   const handleAddItem = (itemIdStr: string) => {
@@ -98,21 +229,20 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
     const itemDef = items.find(i => i.id === itemId)
     if (!itemDef) return
 
-    setSelectedItems(prev => [
-      ...prev,
-      {
+    setValue("items", [...formItems, {
         id: Date.now(),
         itemId,
         category: itemDef.category,
         monthPeriod: "",
         startDate: poPeriodStart,
         endDate: poPeriodEnd,
-        level: itemDef.level || "",
-        customDescription: itemDef.name, // pre-fill with master item name
+        level: itemDef.level?.toString() || "",
+        customDescription: itemDef.category === "Labour Cost" 
+          ? `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`.replace('  ', ' ')
+          : itemDef.name,
         quantity: 1,
         price: Number(itemDef.price)
-      }
-    ])
+      }])
   }
 
   const handleAddAllLabour = () => {
@@ -138,33 +268,56 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
       monthPeriod: "",
       startDate: poPeriodStart,
       endDate: poPeriodEnd,
-      level: itemDef.level || "",
+      level: itemDef.level?.toString() || "",
       customDescription: `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`,
       quantity: 1,
       price: Number(itemDef.price)
     }))
 
-    setSelectedItems(prev => [...prev, ...newItems])
+    setValue("items", [...formItems, ...newItems])
   }
 
   const updateItem = (id: number, field: keyof SelectedItem, value: any) => {
-    setSelectedItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item))
+    setValue("items", formItems.map(item => item.id === id ? { ...item, [field]: value } : item))
   }
 
   const removeItem = (id: number) => {
-    setSelectedItems(prev => prev.filter(item => item.id !== id))
+    setValue("items", formItems.filter(item => item.id !== id))
   }
 
-  const subTotal = selectedItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
+  const handleSaveItemToMaster = async (selItem: SelectedItem) => {
+    if (!selItem.customDescription) {
+      toast.error("Please enter a description before saving")
+      return
+    }
+    
+    try {
+      const res = await saveItemToMaster({
+        name: selItem.customDescription,
+        category: selItem.category || "General",
+        price: selItem.price
+      });
+      
+      if (res.success && res.item) {
+        updateItem(selItem.id, 'itemId', res.item.id);
+        toast.success("Item saved to Master Data");
+      } else {
+        toast.error("Failed to save item to master");
+      }
+    } catch (e) {
+      toast.error("Error saving item to master");
+    }
+  }
+
+  const subTotal = formItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
   const taxAmount = (subTotal * taxRate) / 100
   const totalAmount = subTotal + taxAmount
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  
+  const onSubmit = async (data: QuotationFormValues) => {
     setLoading(true)
-
-    const formData = new FormData(e.currentTarget)
     try {
+
       let finalCustomerId = selectedCustomerId
       if (selectedCustomerId === "manual" && manualCustomerName) {
         // Create new customer and get its ID
@@ -174,7 +327,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
         }
       }
       
-      let finalProjectName = formData.get("projectName") as string
+      let finalProjectName = data.projectName || ""
       if (selectedProjectSite && selectedProjectSite !== "manual") {
         const site = siteList?.find(s => s.id.toString() === selectedProjectSite)
         if (site) {
@@ -188,57 +341,87 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
         return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
       }
 
-      const data = {
-        quotationNumber: formData.get("quotationNumber"),
+      const payload = {
+        quotationNumber: data.quotationNumber,
         customerId: parseInt(finalCustomerId),
-        quotationDate: formData.get("quotationDate"),
-      attn: formData.get("attn"),
-      cc: formData.get("cc"),
-      fromName: formData.get("fromName"),
-      subject: formData.get("subject"),
-      poNumber: formData.get("poNumber"),
-      projectName: finalProjectName,
-      poPeriod: (poPeriodStart && poPeriodEnd) ? `${formatDt(poPeriodStart)} - ${formatDt(poPeriodEnd)}` : (formData.get("poPeriod") || ""),
-      taxRate: taxRate,
-      taxAmount: taxAmount,
-      subTotal: subTotal,
-      totalAmount: totalAmount,
-      status: "Draft",
-      items: selectedItems.map(item => ({
-        itemId: item.itemId,
-        monthPeriod: (item.startDate && item.endDate) ? `${formatDt(item.startDate)} - ${formatDt(item.endDate)}` : item.monthPeriod,
-        level: item.level,
-        customDescription: item.customDescription,
-        quantity: item.quantity,
-        price: item.price,
-        subtotal: getRowSubtotal(item),
-        isBackup: item.isBackup,
-        backupStartDate: item.backupStartDate,
-        backupEndDate: item.backupEndDate,
-        backupMonthPeriod: (item.backupStartDate && item.backupEndDate) ? `${formatDt(item.backupStartDate)} - ${formatDt(item.backupEndDate)}` : "",
-        backupLevel: item.backupLevel,
-        backupDescription: item.backupDescription,
-        backupPrice: item.backupPrice,
-      }))
-    }
+        quotationDate: data.quotationDate,
+        attn: data.attn,
+        cc: data.cc,
+        fromName: data.fromName,
+        subject: data.subject,
+        poNumber: data.poNumber,
+        projectName: finalProjectName,
+        poPeriod: (data.poPeriodStart && data.poPeriodEnd) ? `${formatDt(data.poPeriodStart)} - ${formatDt(data.poPeriodEnd)}` : "",
+        taxRate: data.taxRate.toString(),
+        taxAmount: taxAmount.toString(),
+        subTotal: subTotal.toString(),
+        totalAmount: totalAmount.toString(),
+        status: "Draft",
+        showLevel: data.showLevel,
+        notes: data.notes,
+        showIntro: data.showIntro,
+        customIntro: data.customIntro,
+        items: formItems.map(item => ({
+          itemId: item.itemId,
+          monthPeriod: (item.startDate && item.endDate) ? `${formatDt(item.startDate)} - ${formatDt(item.endDate)}` : item.monthPeriod,
+          level: item.level,
+          customDescription: item.customDescription,
+          quantity: item.quantity,
+          price: item.price.toString(),
+          subtotal: getRowSubtotal(item).toString(),
+          isBackup: item.isBackup,
+          backupStartDate: item.backupStartDate,
+          backupEndDate: item.backupEndDate,
+          backupMonthPeriod: (item.backupStartDate && item.backupEndDate) ? `${formatDt(item.backupStartDate)} - ${formatDt(item.backupEndDate)}` : "",
+          backupLevel: item.backupLevel,
+          backupDescription: item.backupDescription,
+          backupPrice: item.backupPrice ? item.backupPrice.toString() : null,
+        }))
+      }
 
-      const newQuotation = await createQuotation(data)
-      if (newQuotation && newQuotation.id) {
-        router.push(`/dashboard/360-service/quotations/${newQuotation.id}`)
+      let result;
+      if (isEdit && initialData?.id) {
+        result = await updateQuotation(initialData.id, payload)
+      } else {
+        result = await createQuotation(payload)
+      }
+      
+      if (result && result.id) {
+        router.push(`/dashboard/360-service/quotations/${result.id}`)
       } else {
         router.push("/dashboard/360-service/quotations")
       }
     } catch (error) {
       console.error(error)
-      alert("Failed to create quotation")
+      alert(`Failed to ${isEdit ? 'update' : 'create'} quotation`)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit(onSubmit)}>
+      
       <div className="grid gap-6">
+        {Object.keys(errors).length > 0 && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm border border-red-200 mb-4">
+            <p className="font-bold mb-2">Please fix the following validation errors:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              {Object.entries(errors).map(([key, err]) => {
+                if (key === "items" && Array.isArray(err)) {
+                  return err.map((itemErr, i) => {
+                    if (!itemErr) return null
+                    return Object.entries(itemErr).map(([itemKey, e]: [string, any]) => (
+                      <li key={`${i}-${itemKey}`}>Row {i + 1} ({itemKey}): {e.message}</li>
+                    ))
+                  })
+                }
+                return <li key={key}>{String(err?.message)}</li>
+              })}
+            </ul>
+          </div>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Header Details</CardTitle>
@@ -246,19 +429,19 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
           <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div>
               <label className="text-sm font-medium">Quotation Number</label>
-              <Input name="quotationNumber" required defaultValue={initialQuotationNumber || ""} placeholder="e.g. 298/SSA-SRV-CKBMB/VI/26/AP" />
+              <Input {...register("quotationNumber")} required defaultValue={initialQuotationNumber || ""} placeholder="e.g. 298/SSA-SRV-CKBMB/VI/26/AP" />
             </div>
             <div>
               <label className="text-sm font-medium">Date</label>
-              <Input name="quotationDate" type="date" required defaultValue={new Date().toISOString().split('T')[0]} />
+              <Input {...register("quotationDate")} type="date" required defaultValue={new Date().toISOString().split('T')[0]} />
             </div>
             <div>
               <label className="text-sm font-medium">Customer (To)</label>
               <select 
-                name="customerId" 
+                 
                 required 
-                value={selectedCustomerId}
-                onChange={e => setSelectedCustomerId(e.target.value)}
+                
+                {...register("customerId")}
                 className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               >
                 <option value="">Select Customer</option>
@@ -271,8 +454,8 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                 <Input 
                   placeholder="Type new customer name..." 
                   className="mt-2"
-                  value={manualCustomerName}
-                  onChange={e => setManualCustomerName(e.target.value)}
+                  
+                  {...register("manualCustomerName")}
                   required
                 />
               )}
@@ -280,25 +463,48 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
             
             <div>
               <label className="text-sm font-medium">Attn</label>
-              <Input name="attn" placeholder="e.g. Mr. Irawanto" />
+              <HistoryCombobox
+                value={attn}
+                onValueChange={(val) => setValue("attn", val)}
+                history={historyAttn}
+                onDeleteHistory={(val) => handleDeleteHistory('attn', val)}
+                placeholder="e.g. Mr. Irawanto"
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Cc</label>
-              <Input name="cc" placeholder="e.g. Mr. M Julia Wanda" />
+              <HistoryCombobox
+                value={cc}
+                onValueChange={(val) => setValue("cc", val)}
+                history={historyCc}
+                onDeleteHistory={(val) => handleDeleteHistory('cc', val)}
+                placeholder="e.g. Mr. M Julia Wanda"
+              />
             </div>
             <div>
               <label className="text-sm font-medium">From</label>
-              <Input name="fromName" placeholder="e.g. Nur Sabrina F.U" />
+              <HistoryCombobox
+                value={fromName}
+                onValueChange={(val) => setValue("fromName", val)}
+                history={historyFrom}
+                onDeleteHistory={(val) => handleDeleteHistory('fromName', val)}
+                placeholder="e.g. Nur Sabrina F.U"
+              />
             </div>
-
-            <div className="lg:col-span-3 grid gap-4 md:grid-cols-2 lg:grid-cols-3 border-t pt-4 mt-2">
+            <div className="lg:col-span-3 grid gap-4 md:grid-cols-2 lg:grid-cols-4 border-t pt-4 mt-2">
               <div>
                 <label className="text-sm font-medium">Subject</label>
-                <Input name="subject" placeholder="e.g. Quotation for SSA" />
+                <HistoryCombobox
+                  value={subject}
+                  onValueChange={(val) => setValue("subject", val)}
+                  history={historySubject}
+                  onDeleteHistory={(val) => handleDeleteHistory('subject', val)}
+                  placeholder="e.g. Quotation for SSA"
+                />
               </div>
               <div>
                 <label className="text-sm font-medium">PO Number</label>
-                <Input name="poNumber" placeholder="e.g. 4501075835" />
+                <Input {...register("poNumber")} placeholder="e.g. 4501075835" />
               </div>
               <div>
                 <label className="text-sm font-medium">Tax</label>
@@ -307,11 +513,31 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                     type="number" 
                     step="0.01" 
                     min="0"
-                    value={taxRate}
-                    onChange={(e) => setTaxRate(Number(e.target.value))}
+                    {...register("taxRate", { valueAsNumber: true })}
+                    
                     className="w-24"
                   />
                   <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Show Level Column</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <Switch 
+                    checked={showLevel} 
+                    onCheckedChange={(val) => setValue("showLevel", val)} 
+                  />
+                  <span className="text-sm text-muted-foreground">{showLevel ? 'Visible' : 'Hidden'}</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Show QTY Column</label>
+                <div className="flex items-center gap-2 mt-2">
+                  <Switch 
+                    checked={showQty} 
+                    onCheckedChange={(val) => setValue("showQty", val)} 
+                  />
+                  <span className="text-sm text-muted-foreground">{showQty ? 'Visible' : 'Hidden'}</span>
                 </div>
               </div>
             </div>
@@ -320,8 +546,8 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
               <div>
                 <label className="text-sm font-medium">Project Name (for intro text)</label>
                 <select 
-                  value={selectedProjectSite}
-                  onChange={e => setSelectedProjectSite(e.target.value)}
+                  
+                  {...register("selectedProjectSite")}
                   className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mb-2"
                 >
                   <option value="">Select Site Location (Optional)</option>
@@ -331,7 +557,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                   <option value="manual">Manual Input</option>
                 </select>
                 {selectedProjectSite === "manual" && (
-                  <Input name="projectName" placeholder="e.g. CK BMB Project" />
+                  <Input {...register("projectName")} placeholder="e.g. CK BMB Project" />
                 )}
               </div>
               <div>
@@ -339,19 +565,41 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                 <div className="flex items-center gap-2 mt-1.5">
                   <Input 
                     type="date" 
-                    value={poPeriodStart}
-                    onChange={e => handlePoPeriodChange(e.target.value, poPeriodEnd)}
+                    
+                    onChange={e => handlePoPeriodChange(e.target.value, poPeriodEnd || "")}
                     className="flex-1"
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input 
                     type="date" 
-                    value={poPeriodEnd}
-                    onChange={e => handlePoPeriodChange(poPeriodStart, e.target.value)}
+                    
+                    onChange={e => handlePoPeriodChange(poPeriodStart || "", e.target.value)}
                     className="flex-1"
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="lg:col-span-3 border-t pt-4 mt-2">
+              <div className="flex items-center gap-2 mb-4">
+                <Switch 
+                  checked={showIntro} 
+                  onCheckedChange={(val) => setValue("showIntro", val)} 
+                />
+                <label className="text-sm font-medium">Show Custom Intro Message</label>
+              </div>
+              {showIntro && (
+                <div className="space-y-2">
+                  <Textarea 
+                    {...register("customIntro")} 
+                    placeholder="Dear Mr. - / Mr. -,\n\nAs you are aware, Tire Maintenance is performing services at CK BMB..." 
+                    className="min-h-[120px]"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    If you turn this off, the intro text will not appear in the PDF. If on, this exact text will be displayed. You can use standard text.
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -364,21 +612,19 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
             <div className="flex gap-4 items-end">
               <div className="flex-1">
                 <label className="text-sm font-medium mb-2 block">Add Item from Master Data</label>
-                <select 
-                  id="itemSelect"
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  onChange={(e) => {
-                    handleAddItem(e.target.value);
-                    e.target.value = "";
+                <SearchableSelect
+                  label="Item"
+                  value=""
+                  onValueChange={(val) => {
+                    if (val) handleAddItem(val);
                   }}
-                >
-                  <option value="">Select an item to add...</option>
-                  {items.map(item => (
-                    <option key={item.id} value={item.id}>
-                      [{item.category}] {item.name} - {Number(item.price).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select an item to add..."
+                  options={items.map(item => ({
+                    value: item.id.toString(),
+                    label: `[${item.category}] ${item.name} - ${Number(item.price).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  }))}
+                  widthClassName="w-full"
+                />
               </div>
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" onClick={handleAddAllLabour}>
@@ -396,7 +642,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                   <TableRow>
                     <TableHead className="w-[160px]">Month</TableHead>
                     <TableHead className="min-w-[250px] w-auto">Description</TableHead>
-                    <TableHead className="w-[120px]">Level</TableHead>
+                    {showLevel && <TableHead className="w-[120px]">Level</TableHead>}
                     <TableHead className="w-[100px]">Qty</TableHead>
                     <TableHead className="min-w-[180px]">Price / Month</TableHead>
                     <TableHead className="w-[150px]">Labor Price</TableHead>
@@ -404,7 +650,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {selectedItems.map((selItem) => {
+                  {formItems.map((selItem) => {
                     return (
                       <TableRow key={selItem.id}>
                         <TableCell className="min-w-[150px] align-top">
@@ -439,37 +685,69 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                               rows={3}
                             />
                             {selItem.isBackup && (
-                              <div className="mt-4 pt-4 border-t border-slate-200 relative">
+                              <div className="mt-4 pt-4 border-t border-slate-200 relative flex flex-col gap-2">
                                 <span className="absolute -top-[9px] bg-white px-1 text-[10px] font-bold text-teal-600 uppercase tracking-wider">Backup Desc</span>
+                                <SearchableSelect
+                                  label=""
+                                  value=""
+                                  onValueChange={(val) => {
+                                    if (val) {
+                                      const itemDef = items.find(i => i.id === parseInt(val));
+                                      if (itemDef) {
+                                        const newItems = formItems.map(item => {
+                                          if (item.id === selItem.id) {
+                                            return {
+                                              ...item,
+                                              backupDescription: itemDef.category === "Labour Cost" 
+                                                ? `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`.replace('  ', ' ') 
+                                                : itemDef.name,
+                                              backupLevel: itemDef.level?.toString() || "",
+                                              backupPrice: Number(itemDef.price)
+                                            }
+                                          }
+                                          return item;
+                                        });
+                                        setValue("items", newItems);
+                                      }
+                                    }
+                                  }}
+                                  placeholder="Select backup person..."
+                                  options={items.map((i) => ({
+                                    label: i.category === "Labour Cost" ? `[Labour Cost] ${i.name}` : `[${i.category}] ${i.name}`,
+                                    value: i.id.toString(),
+                                  }))}
+                                />
                                 <Textarea 
                                   value={selItem.backupDescription || ''} 
                                   onChange={(e) => updateItem(selItem.id, 'backupDescription', e.target.value)} 
                                   placeholder="Backup Description"
-                                  rows={3}
+                                  rows={2}
                                 />
                               </div>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="align-top">
-                          <div className="flex flex-col">
-                            <Input 
-                              value={selItem.level} 
-                              onChange={(e) => updateItem(selItem.id, 'level', e.target.value)} 
-                              placeholder="Level"
-                            />
-                            {selItem.isBackup && (
-                              <div className="mt-4 pt-4 border-t border-slate-200 relative">
-                                <span className="absolute -top-[9px] bg-white px-1 text-[10px] font-bold text-teal-600 uppercase tracking-wider">Lvl</span>
-                                <Input 
-                                  value={selItem.backupLevel || ''} 
-                                  onChange={(e) => updateItem(selItem.id, 'backupLevel', e.target.value)} 
-                                  placeholder="Level"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
+                        {showLevel && (
+                          <TableCell className="align-top">
+                            <div className="flex flex-col">
+                              <Input 
+                                value={selItem.level} 
+                                onChange={(e) => updateItem(selItem.id, 'level', e.target.value)} 
+                                placeholder="Level"
+                              />
+                              {selItem.isBackup && (
+                                <div className="mt-4 pt-4 border-t border-slate-200 relative">
+                                  <span className="absolute -top-[9px] bg-white px-1 text-[10px] font-bold text-teal-600 uppercase tracking-wider">Lvl</span>
+                                  <Input 
+                                    value={selItem.backupLevel || ''} 
+                                    onChange={(e) => updateItem(selItem.id, 'backupLevel', e.target.value)} 
+                                    placeholder="Level"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell className="align-top">
                           <Input 
                             type="number" 
@@ -501,13 +779,27 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                           </div>
                         </TableCell>
                         <TableCell className="align-top font-semibold text-teal-700">
-                          {Number(getRowSubtotal(selItem)).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          <div className="flex flex-col gap-1">
+                            <span>{Number(getPrimaryProrate(selItem)).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                            {selItem.isBackup && (
+                              <div className="mt-4 pt-4 border-t border-slate-200">
+                                <span>{Number(getBackupProrate(selItem)).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="align-top">
                           <div className="flex flex-col gap-2">
-                            <Button variant="ghost" size="sm" type="button" onClick={() => removeItem(selItem.id)} className="text-red-500 hover:text-red-700">
-                              X
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button variant="ghost" size="icon" type="button" onClick={() => removeItem(selItem.id)} className="text-red-500 hover:text-red-700 size-7">
+                                <X className="size-4" />
+                              </Button>
+                              {!selItem.itemId && (
+                                <Button variant="ghost" size="icon" type="button" onClick={() => handleSaveItemToMaster(selItem)} className="text-teal-600 hover:text-teal-800 size-7" title="Save to Master Data">
+                                  <Save className="size-4" />
+                                </Button>
+                              )}
+                            </div>
                             {selItem.category === "Labour Cost" && (
                               <Button 
                                 variant={selItem.isBackup ? "default" : "outline"}
@@ -524,7 +816,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
                       </TableRow>
                     )
                   })}
-                  {selectedItems.length === 0 && (
+                  {formItems.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                         No items added yet.
@@ -535,8 +827,16 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
               </Table>
             </div>
 
-            <div className="flex justify-end pt-6">
-              <div className="w-64 space-y-3">
+            <div className="flex flex-col md:flex-row justify-between gap-6 pt-6">
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-2 block">Notes</label>
+                <Textarea 
+                  {...register("notes")} 
+                  placeholder="e.g. Terms and conditions, payment terms, etc." 
+                  className="min-h-[100px]"
+                />
+              </div>
+              <div className="w-full md:w-64 space-y-3 shrink-0">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">AMOUNT</span>
                   <span className="font-medium">{subTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
@@ -556,7 +856,7 @@ export function QuotationForm({ customers: initialCustomers, items, siteList, in
             <Button variant="outline" type="button" onClick={() => router.push("/dashboard/360-service/quotations")}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || selectedItems.length === 0}>
+            <Button type="submit" disabled={loading || formItems.length === 0}>
               {loading ? "Saving..." : "Create Quotation"}
             </Button>
           </CardFooter>

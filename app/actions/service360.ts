@@ -7,7 +7,8 @@ import {
   service360Quotations,
   service360QuotationItems,
   service360EmployeeLevels,
-  service360RateSettings
+  service360RateSettings,
+  service360FormHistory
 } from "@/db/schema/service360"
 import { employees, sites, masterDepartments, masterSections } from "@/db/schema/hero"
 import { eq, desc, and, sql } from "drizzle-orm"
@@ -24,16 +25,17 @@ export async function generateNextQuotationNumber() {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
   
-  // Get count of total quotations to create sequence
-  const allQuotations = await db.select().from(service360Quotations)
-  const nextSeq = allQuotations.length + 1
+  // Get the last quotation to create sequence safely (even if some were deleted)
+  const lastQuotation = await db.select().from(service360Quotations).orderBy(desc(service360Quotations.id)).limit(1)
+  const nextSeq = lastQuotation.length > 0 ? lastQuotation[0].id + 1 : 1
   
   const paddedSeq = nextSeq.toString().padStart(3, '0')
   const romanMonth = ROMAN_NUMERALS[currentMonth]
   const shortYear = currentYear.toString().slice(-2)
+  const currentDate = new Date().getDate().toString().padStart(2, '0')
   
-  // Format: 001/QUO-360/VII/26/AP
-  return `${paddedSeq}/QUO-360/${romanMonth}/${shortYear}/AP`
+  // Format requested: QUO/CP/Bulan ( Romawi)/ Tanggal/ Nomor
+  return `QUO/CP/${romanMonth}/${currentDate}/${paddedSeq}`
 }
 
 export async function createCustomer(data: { customerName: string }) {
@@ -43,8 +45,51 @@ export async function createCustomer(data: { customerName: string }) {
 }
 
 export async function deleteCustomer(id: number) {
-  await db.delete(service360Customers).where(eq(service360Customers.id, id))
-  revalidatePath("/dashboard/360-service/customers")
+  try {
+    await db.delete(service360Customers).where(eq(service360Customers.id, id))
+    revalidatePath("/dashboard/360-service/customers")
+    return { success: true }
+  } catch (e: any) {
+    if (e.code === '23503') { // Foreign key constraint
+      return { error: "Cannot delete this customer because they have existing quotations." }
+    }
+    return { error: "Failed to delete customer." }
+  }
+}
+
+export async function saveItemToMaster(data: { name: string, category: string, price: number }) {
+  try {
+    const [item] = await db.insert(service360Items).values({
+      name: data.name,
+      category: data.category || "General",
+      price: data.price.toString()
+    }).returning()
+    return { success: true, item }
+  } catch (error) {
+    console.error("Error setting active revision:", error)
+    return { success: false, error: "Failed to set active revision" }
+  }
+}
+
+export async function getFormHistory(customerId: number) {
+  return db.select().from(service360FormHistory).where(eq(service360FormHistory.customerId, customerId)).orderBy(desc(service360FormHistory.createdAt))
+}
+
+export async function saveFormHistory(customerId: number, data: { attn?: string, cc?: string, fromName?: string, subject?: string }) {
+  const entries: any[] = []
+  if (data.attn?.trim()) entries.push({ customerId, field: 'attn', value: data.attn.trim() })
+  if (data.cc?.trim()) entries.push({ customerId, field: 'cc', value: data.cc.trim() })
+  if (data.fromName?.trim()) entries.push({ customerId, field: 'fromName', value: data.fromName.trim() })
+  if (data.subject?.trim()) entries.push({ customerId, field: 'subject', value: data.subject.trim() })
+
+  if (entries.length > 0) {
+    await db.insert(service360FormHistory).values(entries).onConflictDoNothing()
+  }
+}
+
+export async function deleteFormHistory(id: number) {
+  await db.delete(service360FormHistory).where(eq(service360FormHistory.id, id))
+  return { success: true }
 }
 
 export async function getItems() {
@@ -184,7 +229,7 @@ export async function getQuotationById(id: number) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, subject, poNumber, projectName, poPeriod 
+    items, attn, cc, fromName, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -203,6 +248,11 @@ export async function createQuotation(data: any) {
     subTotal,
     totalAmount,
     status,
+    showLevel: showLevel ?? true,
+    showQty: showQty ?? false,
+    notes,
+    showIntro: showIntro ?? true,
+    customIntro,
   }).returning()
 
   if (items && items.length > 0) {
@@ -221,10 +271,75 @@ export async function createQuotation(data: any) {
       backupMonthPeriod: item.backupMonthPeriod || null,
       backupLevel: item.backupLevel || null,
       backupDescription: item.backupDescription || null,
-      backupPrice: item.backupPrice ? item.backupPrice.toString() : "0",
+      backupPrice: (item.backupPrice !== undefined && item.backupPrice !== null) ? item.backupPrice.toString() : "0",
     }))
     await db.insert(service360QuotationItems).values(quotationItems)
   }
+
+  // Save history
+  await saveFormHistory(customerId, { attn, cc, fromName, subject })
+
+  revalidatePath("/dashboard/360-service/quotations")
+  return quotation
+}
+
+export async function updateQuotation(id: number, data: any) {
+  const { 
+    quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
+    items, attn, cc, fromName, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
+  } = data
+  
+  const [quotation] = await db.update(service360Quotations).set({
+    quotationNumber,
+    customerId,
+    quotationDate,
+    attn,
+    cc,
+    fromName,
+    subject,
+    poNumber,
+    projectName,
+    poPeriod,
+    taxRate,
+    taxAmount,
+    subTotal,
+    totalAmount,
+    status,
+    showLevel: showLevel ?? true,
+    showQty: showQty ?? false,
+    notes,
+    showIntro: showIntro ?? true,
+    customIntro,
+    updatedAt: new Date()
+  }).where(eq(service360Quotations.id, id)).returning()
+
+  // Re-create items
+  await db.delete(service360QuotationItems).where(eq(service360QuotationItems.quotationId, id))
+
+  if (items && items.length > 0) {
+    const quotationItems = items.map((item: any) => ({
+      quotationId: quotation.id,
+      itemId: (item.itemId && item.itemId > 1000000) ? null : item.itemId,
+      monthPeriod: item.monthPeriod,
+      level: item.level,
+      customDescription: item.customDescription,
+      quantity: item.quantity.toString(),
+      price: item.price.toString(),
+      subtotal: item.subtotal.toString(),
+      isBackup: item.isBackup ?? false,
+      backupStartDate: item.backupStartDate,
+      backupEndDate: item.backupEndDate,
+      backupMonthPeriod: item.backupMonthPeriod,
+      backupLevel: item.backupLevel,
+      backupDescription: item.backupDescription,
+      backupPrice: (item.backupPrice !== undefined && item.backupPrice !== null) ? item.backupPrice.toString() : "0",
+    }))
+    
+    await db.insert(service360QuotationItems).values(quotationItems)
+  }
+
+  // Save history
+  await saveFormHistory(customerId, { attn, cc, fromName, subject })
 
   revalidatePath("/dashboard/360-service/quotations")
   return quotation
@@ -418,4 +533,9 @@ export async function duplicateRateSettingsGroup(
   }
 
   revalidatePath("/dashboard/360-service/items")
+}
+
+export async function updateQuotationStatus(id: number, status: string) {
+  await db.update(service360Quotations).set({ status, updatedAt: new Date() }).where(eq(service360Quotations.id, id))
+  revalidatePath('/dashboard/360-service/quotations')
 }
