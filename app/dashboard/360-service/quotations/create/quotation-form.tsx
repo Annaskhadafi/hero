@@ -520,24 +520,26 @@ const router = useRouter()
                   <span className="text-sm text-muted-foreground">%</span>
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Show Level Column</label>
-                <div className="flex items-center gap-2 mt-2">
-                  <Switch 
-                    checked={showLevel} 
-                    onCheckedChange={(val) => setValue("showLevel", val)} 
-                  />
-                  <span className="text-sm text-muted-foreground">{showLevel ? 'Visible' : 'Hidden'}</span>
+              <div className="flex gap-8">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Show Level Column</label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Switch 
+                      checked={showLevel} 
+                      onCheckedChange={(val) => setValue("showLevel", val)} 
+                    />
+                    <span className="text-sm text-muted-foreground">{showLevel ? 'Visible' : 'Hidden'}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Show QTY Column</label>
-                <div className="flex items-center gap-2 mt-2">
-                  <Switch 
-                    checked={showQty} 
-                    onCheckedChange={(val) => setValue("showQty", val)} 
-                  />
-                  <span className="text-sm text-muted-foreground">{showQty ? 'Visible' : 'Hidden'}</span>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Show QTY Column</label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Switch 
+                      checked={showQty} 
+                      onCheckedChange={(val) => setValue("showQty", val)} 
+                    />
+                    <span className="text-sm text-muted-foreground">{showQty ? 'Visible' : 'Hidden'}</span>
+                  </div>
                 </div>
               </div>
             </div>
