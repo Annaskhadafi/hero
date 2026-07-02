@@ -34,8 +34,6 @@ type RateSetting = {
 export function RateSettingsTab({ settings, locations, sections }: { settings: RateSetting[], locations: string[], sections: string[] }) {
   const [workLocation, setWorkLocation] = useState("")
   const [section, setSection] = useState("")
-  const [level, setLevel] = useState("1")
-  const [price, setPrice] = useState("")
   const [level, setLevel] = useState("0")
   const [price, setPrice] = useState("")
   const [loading, setLoading] = useState(false)
