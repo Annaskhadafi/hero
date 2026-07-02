@@ -28,6 +28,7 @@ type RateSetting = {
   section: string
   level: number
   price: string
+  isDefault?: boolean
 }
 
 export function RateSettingsTab({ settings, locations, sections }: { settings: RateSetting[], locations: string[], sections: string[] }) {
@@ -35,6 +36,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
   const [section, setSection] = useState("")
   const [level, setLevel] = useState("1")
   const [price, setPrice] = useState("")
+  const [isDefault, setIsDefault] = useState("No")
   const [loading, setLoading] = useState(false)
 
   async function handleSave(e: React.FormEvent) {
@@ -42,7 +44,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
     if (!workLocation || !section || !price) return
     setLoading(true)
     try {
-      await updateRateSetting(workLocation, section, parseInt(level), Number(price))
+      await updateRateSetting(workLocation, section, parseInt(level), Number(price), isDefault === "Yes")
       setPrice("") // Reset price on success
     } finally {
       setLoading(false)
@@ -65,6 +67,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
   const [editLvl1, setEditLvl1] = useState("")
   const [editLvl2, setEditLvl2] = useState("")
   const [editLvl3, setEditLvl3] = useState("")
+  const [editDefaultLevel, setEditDefaultLevel] = useState("0")
 
   async function handleDelete(loc: string, sec: string) {
     if (confirm(`Are you sure you want to delete all rate settings for ${loc} - ${sec}?`)) {
@@ -72,7 +75,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
     }
   }
 
-  function handleEdit(loc: string, sec: string, lvl1: string, lvl2: string, lvl3: string) {
+  function handleEdit(loc: string, sec: string, lvl1: string, lvl2: string, lvl3: string, defaultLvl: number) {
     const normalize = (val: string) => val && Number(val) > 0 ? Math.floor(Number(val)).toString() : ""
     
     setEditOldLoc(loc)
@@ -82,6 +85,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
     setEditLvl1(normalize(lvl1))
     setEditLvl2(normalize(lvl2))
     setEditLvl3(normalize(lvl3))
+    setEditDefaultLevel(defaultLvl.toString())
     setEditOpen(true)
   }
 
@@ -94,7 +98,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
         level1: editLvl1,
         level2: editLvl2,
         level3: editLvl3
-      })
+      }, Number(editDefaultLevel))
       setEditOpen(false)
     } finally {
       setLoading(false)
@@ -176,6 +180,17 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 <option value="3">Level 3</option>
               </select>
             </div>
+            <div className="w-24">
+              <label className="text-sm font-medium block mb-1">Default</label>
+              <select 
+                value={isDefault} 
+                onChange={e => setIsDefault(e.target.value)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
             <div className="flex-1">
               <label className="text-sm font-medium block mb-1">Price (IDR)</label>
               <Input 
@@ -200,6 +215,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
             <TableRow>
               <TableHead>Site Location</TableHead>
               <TableHead>Section</TableHead>
+              <TableHead>Default</TableHead>
               <TableHead>Level 1</TableHead>
               <TableHead>Level 2</TableHead>
               <TableHead>Level 3</TableHead>
@@ -213,10 +229,13 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 const setting = siteSettings.find(s => s.level === lvl)
                 return setting ? Number(setting.price).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "-"
               }
+              const defaultLevel = siteSettings.find(s => s.isDefault)?.level || 0
+              
               return (
                 <TableRow key={key}>
                   <TableCell className="font-semibold">{siteName}</TableCell>
                   <TableCell>{sectionName}</TableCell>
+                  <TableCell>{defaultLevel ? `Level ${defaultLevel}` : "-"}</TableCell>
                   <TableCell>{getPrice(1)}</TableCell>
                   <TableCell>{getPrice(2)}</TableCell>
                   <TableCell>{getPrice(3)}</TableCell>
@@ -226,7 +245,8 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                       sectionName, 
                       siteSettings.find(s => s.level === 1)?.price || "",
                       siteSettings.find(s => s.level === 2)?.price || "",
-                      siteSettings.find(s => s.level === 3)?.price || ""
+                      siteSettings.find(s => s.level === 3)?.price || "",
+                      defaultLevel
                     )}>
                       Edit
                     </Button>
@@ -371,6 +391,20 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                   placeholder="e.g. 2000000"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1 block">Default Level</label>
+              <select 
+                value={editDefaultLevel} 
+                onChange={e => setEditDefaultLevel(e.target.value)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                <option value="0">None</option>
+                <option value="1">Level 1</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+              </select>
             </div>
 
             <div className="flex justify-end pt-4">

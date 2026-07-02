@@ -420,19 +420,33 @@ export async function getCentralServiceSections() {
   return secs.map(s => s.name).sort()
 }
 
-export async function updateRateSetting(workLocation: string, section: string, level: number, price: number) {
+export async function updateRateSetting(workLocation: string, section: string, level: number, price: number, isDefault: boolean = false) {
+  // If we set this level as default, we might want to unset others for the same location & section
+  if (isDefault) {
+    await db.update(service360RateSettings)
+      .set({ isDefault: false })
+      .where(
+        and(
+          eq(service360RateSettings.workLocation, workLocation),
+          eq(service360RateSettings.section, section)
+        )
+      )
+  }
+
   await db
     .insert(service360RateSettings)
     .values({
       workLocation,
       section,
       level,
-      price: price.toString()
+      price: price.toString(),
+      isDefault
     })
     .onConflictDoUpdate({
       target: [service360RateSettings.workLocation, service360RateSettings.section, service360RateSettings.level],
       set: {
         price: price.toString(),
+        isDefault,
         updatedAt: new Date()
       }
     })
@@ -444,7 +458,8 @@ export async function updateRateSettingsGroupComplete(
   oldSec: string,
   newLoc: string,
   newSec: string,
-  prices: { level1: string, level2: string, level3: string }
+  prices: { level1: string, level2: string, level3: string },
+  defaultLevel: number = 0
 ) {
   // First, delete the old ones if the location/section changed
   if (oldLoc !== newLoc || oldSec !== newSec) {
@@ -472,12 +487,14 @@ export async function updateRateSettingsGroupComplete(
         workLocation: newLoc,
         section: newSec,
         level: item.level,
-        price: item.price
+        price: item.price,
+        isDefault: defaultLevel === item.level
       })
       .onConflictDoUpdate({
         target: [service360RateSettings.workLocation, service360RateSettings.section, service360RateSettings.level],
         set: {
           price: item.price,
+          isDefault: defaultLevel === item.level,
           updatedAt: new Date()
         }
       })

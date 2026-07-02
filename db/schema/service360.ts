@@ -23,6 +23,7 @@ export const service360RateSettings = pgTable("hero_service360_rate_settings", {
   section: text("section").notNull(),
   level: integer("level").notNull(), // 1, 2, or 3
   price: decimal("price", { precision: 15, scale: 2 }).notNull().default("0"),
+  isDefault: boolean("is_default").notNull().default(false),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => {
   return {
