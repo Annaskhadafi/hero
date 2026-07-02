@@ -6,6 +6,7 @@
 
 import {
   boolean,
+  index,
   integer,
   pgTable,
   serial,
@@ -106,3 +107,50 @@ export const centralServiceManpowerTargets = pgTable(
   })
 );
 
+// Central Service Assets
+export const centralServiceAssets = pgTable(
+  "hero_central_service_assets",
+  {
+    id: serial("id").primaryKey(),
+    workSection: text("work_section").notNull().default(""),
+    section: text("section").notNull().default(""),
+    location: text("location").notNull().default(""),
+    description: text("description").notNull().default(""),
+    assetNumber: text("asset_number"),
+    serialNumber: text("serial_number"),
+    purchaseDate: timestamp("purchase_date"),
+    deliveryToSiteDate: timestamp("delivery_to_site_date"),
+    lastCalibrationDate: timestamp("last_calibration_date"),
+    calibrationCycleMonths: integer("calibration_cycle_months"),
+    calibrationDueDate: timestamp("calibration_due_date"),
+    certificateDate: timestamp("certificate_date"),
+    certificateCycleMonths: integer("certificate_cycle_months"),
+    certificateDueDate: timestamp("certificate_due_date"),
+    condition: text("condition").notNull().default(""),
+    qty: integer("qty").notNull().default(1),
+    remarks: text("remarks"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // uniqueIndex removed — assetNumber is now optional (nullable)
+  })
+);
+
+export const centralServiceAssetAttachments = pgTable(
+  "hero_central_service_asset_attachments",
+  {
+    id: serial("id").primaryKey(),
+    assetId: integer("asset_id")
+      .notNull()
+      .references(() => centralServiceAssets.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull().default(""),
+    fileUrl: text("file_url").notNull(),
+    mimeType: text("mime_type").notNull().default("application/octet-stream"),
+    fileSize: integer("file_size"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    assetIdx: index("cs_asset_attachment_asset_idx").on(table.assetId),
+  })
+);
