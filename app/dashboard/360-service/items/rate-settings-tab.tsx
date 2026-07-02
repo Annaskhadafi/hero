@@ -26,7 +26,7 @@ type RateSetting = {
   id: number
   workLocation: string
   section: string
-  level: number
+  level: string
   price: string
   isDefault?: boolean
 }
@@ -35,16 +35,21 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
   const [workLocation, setWorkLocation] = useState("")
   const [section, setSection] = useState("")
   const [level, setLevel] = useState("0")
+  const [customLevel, setCustomLevel] = useState("")
   const [price, setPrice] = useState("")
   const [loading, setLoading] = useState(false)
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!workLocation || !section || !price) return
+    const finalLevel = level === "others" ? customLevel.trim() : level
+    if (!finalLevel) return
+    
     setLoading(true)
     try {
-      await updateRateSetting(workLocation, section, parseInt(level), Number(price))
+      await updateRateSetting(workLocation, section, finalLevel, Number(price))
       setPrice("") // Reset price on success
+      if (level === "others") setCustomLevel("")
     } finally {
       setLoading(false)
     }
@@ -139,8 +144,8 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
     <div className="space-y-6">
       <Card>
         <CardContent className="pt-6">
-          <form onSubmit={handleSave} className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1">
+          <form onSubmit={handleSave} className="flex flex-col md:flex-row gap-4 items-start md:items-end">
+            <div className="flex-1 w-full md:w-auto">
               <label className="text-sm font-medium block mb-1">Site Location</label>
               <select 
                 value={workLocation} 
@@ -154,7 +159,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 ))}
               </select>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 w-full md:w-auto">
               <label className="text-sm font-medium block mb-1">Section</label>
               <select 
                 value={section} 
@@ -168,20 +173,34 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 ))}
               </select>
             </div>
-            <div className="w-32">
-              <label className="text-sm font-medium block mb-1">Level</label>
-              <select 
-                value={level} 
-                onChange={e => setLevel(e.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="0">Default</option>
-                <option value="1">Level 1</option>
-                <option value="2">Level 2</option>
-                <option value="3">Level 3</option>
-              </select>
+            <div className="w-full md:w-32 flex flex-col gap-2">
+              <div>
+                <label className="text-sm font-medium block mb-1">Level</label>
+                <select 
+                  value={level} 
+                  onChange={e => setLevel(e.target.value)}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <option value="0">Default</option>
+                  <option value="1">Level 1</option>
+                  <option value="2">Level 2</option>
+                  <option value="3">Level 3</option>
+                  <option value="others">Others</option>
+                </select>
+              </div>
+              {level === "others" && (
+                <div>
+                  <Input 
+                    type="text" 
+                    value={customLevel}
+                    onChange={e => setCustomLevel(e.target.value)}
+                    placeholder="e.g. Manager"
+                    required
+                  />
+                </div>
+              )}
             </div>
-            <div className="flex-1">
+            <div className="flex-1 w-full md:w-auto">
               <label className="text-sm font-medium block mb-1">Price (IDR)</label>
               <Input 
                 type="number" 
@@ -192,7 +211,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 required
               />
             </div>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="w-full md:w-auto mt-4 md:mt-0">
               {loading ? "Saving..." : "Save Setting"}
             </Button>
           </form>
@@ -209,32 +228,47 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
               <TableHead>Level 1</TableHead>
               <TableHead>Level 2</TableHead>
               <TableHead>Level 3</TableHead>
+              <TableHead>Other Levels</TableHead>
               <TableHead className="w-[200px] text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {Object.entries(groupedSettings || {}).map(([key, siteSettings]) => {
               const [siteName, sectionName] = key.split("###")
-              const getPrice = (lvl: number) => {
-                const setting = siteSettings.find(s => s.level === lvl)
+              const getPrice = (lvl: string) => {
+                const setting = siteSettings.find(s => String(s.level) === lvl)
                 return setting ? Number(setting.price).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "-"
               }
+              const standardLevels = ["0", "1", "2", "3"]
+              const otherSettings = siteSettings.filter(s => !standardLevels.includes(String(s.level)))
+              
               return (
                 <TableRow key={key}>
                   <TableCell className="font-semibold">{siteName}</TableCell>
                   <TableCell>{sectionName}</TableCell>
-                  <TableCell>{getPrice(0)}</TableCell>
-                  <TableCell>{getPrice(1)}</TableCell>
-                  <TableCell>{getPrice(2)}</TableCell>
-                  <TableCell>{getPrice(3)}</TableCell>
+                  <TableCell>{getPrice("0")}</TableCell>
+                  <TableCell>{getPrice("1")}</TableCell>
+                  <TableCell>{getPrice("2")}</TableCell>
+                  <TableCell>{getPrice("3")}</TableCell>
+                  <TableCell>
+                    {otherSettings.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {otherSettings.map(s => (
+                          <span key={s.level} className="text-xs bg-muted px-2 py-1 rounded-md border border-border">
+                            {s.level}: {Number(s.price).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+                        ))}
+                      </div>
+                    ) : "-"}
+                  </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => handleEdit(
                       siteName, 
                       sectionName, 
-                      siteSettings.find(s => s.level === 0)?.price || "",
-                      siteSettings.find(s => s.level === 1)?.price || "",
-                      siteSettings.find(s => s.level === 2)?.price || "",
-                      siteSettings.find(s => s.level === 3)?.price || ""
+                      siteSettings.find(s => s.level === "0")?.price || "",
+                      siteSettings.find(s => s.level === "1")?.price || "",
+                      siteSettings.find(s => s.level === "2")?.price || "",
+                      siteSettings.find(s => s.level === "3")?.price || ""
                     )}>
                       Edit
                     </Button>

@@ -115,7 +115,7 @@ export default async function ItemsPage() {
               <CardTitle>Labour List (Synced from User Management)</CardTitle>
             </CardHeader>
             <CardContent>
-              <LabourTab employees={employeeLabours} sections={centralServiceSections} />
+              <LabourTab employees={employeeLabours} sections={centralServiceSections} rateSettings={rateSettings} />
             </CardContent>
           </Card>
         </TabsContent>

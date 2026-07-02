@@ -1,0 +1,276 @@
+"use client";
+
+import { useState, useMemo, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { RefreshCw, Save, TrendingUp, Banknote, Wallet, Trophy } from "lucide-react";
+import { updatePeriodExchangeRate } from "@/app/actions/central-service-forecast";
+
+const formatCurrency = (val: number) => {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val);
+};
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
+export function DashboardClientPage({ periods, allItems, allActuals }: { periods: any[], allItems: any[], allActuals: any[] }) {
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
+  const [editRate, setEditRate] = useState<string>("");
+
+  const selectedPeriod = periods.find(p => p.id.toString() === selectedPeriodId);
+  
+  // Set edit rate when period changes
+  useEffect(() => {
+    if (selectedPeriod?.exchangeRateIdrToUsd) {
+      setEditRate(selectedPeriod.exchangeRateIdrToUsd);
+    }
+  }, [selectedPeriodId, selectedPeriod]);
+
+  const handleFetchRate = async () => {
+    try {
+      const res = await fetch("https://open.er-api.com/v6/latest/USD");
+      const data = await res.json();
+      if (data && data.rates && data.rates.IDR) {
+        setEditRate(data.rates.IDR.toString());
+        toast.success("Realtime rate fetched: " + data.rates.IDR);
+      }
+    } catch (e) {
+      toast.error("Failed to fetch API");
+    }
+  };
+
+  const handleSaveRate = async () => {
+    if (!selectedPeriodId || !editRate) return;
+    try {
+      await updatePeriodExchangeRate(Number(selectedPeriodId), editRate);
+      toast.success("Rate saved to Period");
+    } catch (e) {
+      toast.error("Failed to save rate");
+    }
+  };
+
+  const itemsInPeriod = allItems.filter(i => i.periodId.toString() === selectedPeriodId);
+  const actualsInPeriod = allActuals.filter(a => a.periodId.toString() === selectedPeriodId);
+
+  const kpi = useMemo(() => {
+    let totalForecast = 0;
+    let totalActuals = 0;
+    let totalWaiting = 0;
+
+    itemsInPeriod.forEach(item => {
+      if (!item.isProductAccessories) {
+        totalForecast += Number(item.totalForecastIdr);
+      } else {
+        totalForecast += Number(item.accessoriesAmountIdr);
+      }
+
+      if (item.status === "Waiting") {
+        totalWaiting += 1;
+      }
+    });
+
+    actualsInPeriod.forEach(actual => {
+      totalActuals += Number(actual.amountIdr);
+    });
+
+    const achievement = totalForecast > 0 ? (totalActuals / totalForecast) * 100 : 0;
+
+    return { totalForecast, totalActuals, totalWaiting, achievement };
+  }, [itemsInPeriod, actualsInPeriod]);
+
+  // Bar Chart Data
+  const categoryData = useMemo(() => {
+    const categories = ['Repair', 'Retread', 'Service', 'Accessories'];
+    const data = categories.map(cat => ({ name: cat, Forecast: 0, Actual: 0 }));
+
+    itemsInPeriod.forEach(item => {
+      if (!item.isProductAccessories) {
+        data[0].Forecast += Number(item.repairForecast);
+        data[1].Forecast += Number(item.retreadForecast);
+        data[2].Forecast += Number(item.serviceForecast);
+      } else {
+        data[3].Forecast += Number(item.accessoriesAmountIdr);
+      }
+    });
+
+    actualsInPeriod.forEach(actual => {
+      const idx = categories.indexOf(actual.category);
+      if (idx !== -1) {
+        data[idx].Actual += Number(actual.amountIdr);
+      }
+    });
+
+    return data;
+  }, [itemsInPeriod, actualsInPeriod]);
+
+  // Donut Chart
+  const pieData = useMemo(() => {
+    return categoryData.map(c => ({ name: c.name, value: c.Forecast })).filter(c => c.value > 0);
+  }, [categoryData]);
+
+  const outstandingItems = itemsInPeriod
+    .filter(i => i.status === "Waiting")
+    .sort((a, b) => {
+      const aVal = a.isProductAccessories ? Number(a.accessoriesAmountIdr) : Number(a.totalForecastIdr);
+      const bVal = b.isProductAccessories ? Number(b.accessoriesAmountIdr) : Number(b.totalForecastIdr);
+      return bVal - aVal;
+    })
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Dashboard</h2>
+        <div className="w-[200px]">
+          <Select value={selectedPeriodId} onValueChange={setSelectedPeriodId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select Period" />
+            </SelectTrigger>
+            <SelectContent>
+              {periods.map(p => (
+                <SelectItem key={p.id} value={p.id.toString()}>{p.monthYear}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex justify-between items-center bg-muted/30 p-3 rounded-md border mb-4">
+        <div className="flex items-center gap-4">
+          <Label>Kurs USD ke IDR</Label>
+          <Input 
+            type="number" 
+            className="w-32 bg-background" 
+            value={editRate} 
+            onChange={(e) => setEditRate(e.target.value)} 
+          />
+          <Button variant="outline" size="sm" onClick={handleFetchRate}><RefreshCw className="w-3 h-3 mr-2"/> Fetch Realtime</Button>
+          <Button variant="default" size="sm" onClick={handleSaveRate}><Save className="w-3 h-3 mr-2"/> Save</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Forecast</CardTitle>
+            <TrendingUp className="h-6 w-6 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+              <span>{formatCurrency(kpi.totalForecast)}</span>
+              <span className="text-muted-foreground font-light text-xl">|</span>
+              <span className="text-blue-600">${(kpi.totalForecast / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Actual</CardTitle>
+            <Banknote className="h-6 w-6 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+              <span className="text-green-600">{formatCurrency(kpi.totalActuals)}</span>
+              <span className="text-muted-foreground font-light text-xl">|</span>
+              <span className="text-emerald-600">${(kpi.totalActuals / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Sisa Target</CardTitle>
+            <Wallet className="h-6 w-6 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+              <span className="text-orange-600">{formatCurrency(Math.max(0, kpi.totalForecast - kpi.totalActuals))}</span>
+              <span className="text-muted-foreground font-light text-xl">|</span>
+              <span className="text-amber-600">${(Math.max(0, kpi.totalForecast - kpi.totalActuals) / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Achievement</CardTitle>
+            <Trophy className="h-6 w-6 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{kpi.achievement.toFixed(1)}%</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Forecast vs Actual (By Category)</CardTitle>
+            <CardDescription>Comparison in IDR</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={categoryData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis tickFormatter={(val) => `${val / 1000000}M`} />
+                <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                <Legend />
+                <Bar dataKey="Forecast" fill="#8884d8" />
+                <Bar dataKey="Actual" fill="#82ca9d" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Forecast Composition</CardTitle>
+            <CardDescription>Share of forecast per category</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} label dataKey="value">
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Outstanding (Waiting) Items</CardTitle>
+          <CardDescription>Largest forecasted revenue items still waiting for invoice</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {outstandingItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No outstanding items.</p>
+            ) : (
+              outstandingItems.map(item => {
+                const total = item.isProductAccessories ? Number(item.accessoriesAmountIdr) : Number(item.totalForecastIdr);
+                return (
+                  <div key={item.id} className="flex items-center justify-between border-b pb-2">
+                    <div>
+                      <p className="font-medium">{item.customer}</p>
+                      <p className="text-xs text-muted-foreground">PIC: {item.picSales} | Remark: {item.remark || "None"}</p>
+                    </div>
+                    <div className="font-bold">{formatCurrency(total)}</div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

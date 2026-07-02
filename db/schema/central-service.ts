@@ -8,6 +8,7 @@ import {
   boolean,
   index,
   integer,
+  numeric,
   pgTable,
   serial,
   text,
@@ -152,5 +153,116 @@ export const centralServiceAssetAttachments = pgTable(
   },
   (table) => ({
     assetIdx: index("cs_asset_attachment_asset_idx").on(table.assetId),
+  })
+);
+
+// ==========================================
+// FORECAST REVENUE MODULE
+// ==========================================
+
+export const centralServiceForecastPeriods = pgTable(
+  "hero_central_service_forecast_periods",
+  {
+    id: serial("id").primaryKey(),
+    monthYear: text("month_year").notNull().unique(), // Format: "YYYY-MM"
+    exchangeRateIdrToUsd: numeric("exchange_rate_idr_to_usd").notNull().default("15000"),
+    status: text("status").notNull().default("Draft"), // 'Draft', 'Locked'
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const centralServiceForecastItems = pgTable(
+  "hero_central_service_forecast_items",
+  {
+    id: serial("id").primaryKey(),
+    periodId: integer("period_id")
+      .notNull()
+      .references(() => centralServiceForecastPeriods.id, { onDelete: "cascade" }),
+    
+    customer: text("customer").notNull(),
+    picSales: text("pic_sales").notNull().default(""),
+    
+    // Core Forecast Categories (Amounts in IDR)
+    osInvoicePrevMonth: numeric("os_invoice_prev_month").notNull().default("0"),
+    repairForecast: numeric("repair_forecast").notNull().default("0"),
+    retreadForecast: numeric("retread_forecast").notNull().default("0"),
+    serviceForecast: numeric("service_forecast").notNull().default("0"),
+    totalForecastIdr: numeric("total_forecast_idr").notNull().default("0"),
+    
+    // Remaining Forecast (Total Forecast - Actuals)
+    remainingRepair: numeric("remaining_repair").notNull().default("0"),
+    remainingRetread: numeric("remaining_retread").notNull().default("0"),
+    remainingService: numeric("remaining_service").notNull().default("0"),
+    remainingTotalIdr: numeric("remaining_total_idr").notNull().default("0"),
+    
+    // Product Accessories fields
+    isProductAccessories: boolean("is_product_accessories").notNull().default(false),
+    accessoriesAmountIdr: numeric("accessories_amount_idr").notNull().default("0"),
+    accessoriesAmountUsd: numeric("accessories_amount_usd").notNull().default("0"),
+    remainingAccessoriesIdr: numeric("remaining_accessories_idr").notNull().default("0"),
+    remainingAccessoriesUsd: numeric("remaining_accessories_usd").notNull().default("0"),
+    
+    // Workflow tracking
+    status: text("status").notNull().default("Waiting"), // 'Waiting', 'Invoiced', 'Cancel'
+    remark: text("remark").notNull().default(""),
+    
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    periodIdx: index("cs_forecast_items_period_idx").on(table.periodId),
+  })
+);
+
+export const centralServiceForecastActuals = pgTable(
+  "hero_central_service_forecast_actuals",
+  {
+    id: serial("id").primaryKey(),
+    periodId: integer("period_id")
+      .notNull()
+      .references(() => centralServiceForecastPeriods.id, { onDelete: "cascade" }),
+    forecastItemId: integer("forecast_item_id")
+      .references(() => centralServiceForecastItems.id, { onDelete: "set null" }), // Null if unplanned/takeout
+    
+    updateDate: timestamp("update_date").notNull().defaultNow(),
+    invoiceNumber: text("invoice_number").notNull(),
+    customer: text("customer"), // Mostly for unplanned
+    
+    category: text("category").notNull(), // 'Repair', 'Retread', 'Service', 'Accessories'
+    jobCode: text("job_code").notNull().default(""), // 'ZCP1', 'ZCP2', 'ZCP3', 'ZCP8'
+    
+    amountIdr: numeric("amount_idr").notNull().default("0"),
+    amountUsd: numeric("amount_usd").notNull().default("0"),
+    
+    remark: text("remark").notNull().default(""),
+    
+    createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    periodIdx: index("cs_forecast_actuals_period_idx").on(table.periodId),
+    itemIdx: index("cs_forecast_actuals_item_idx").on(table.forecastItemId),
+  })
+);
+
+export const centralServiceForecastHistories = pgTable(
+  "hero_central_service_forecast_histories",
+  {
+    id: serial("id").primaryKey(),
+    forecastItemId: integer("forecast_item_id")
+      .notNull()
+      .references(() => centralServiceForecastItems.id, { onDelete: "cascade" }),
+    
+    previousStatus: text("previous_status").notNull(),
+    newStatus: text("new_status").notNull(),
+    
+    actionRemark: text("action_remark").notNull().default(""),
+    
+    actionById: text("action_by_id").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    itemIdx: index("cs_forecast_history_item_idx").on(table.forecastItemId),
   })
 );

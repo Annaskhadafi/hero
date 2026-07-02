@@ -371,18 +371,18 @@ export async function getEmployeeLabours() {
       and(
         eq(employees.workLocation, service360RateSettings.workLocation),
         eq(employees.section, service360RateSettings.section),
-        eq(sql`COALESCE(${service360EmployeeLevels.level}, 1)`, service360RateSettings.level)
+        eq(sql`COALESCE(${service360EmployeeLevels.level}, '1')`, service360RateSettings.level)
       )
     )
     
   return allEmployees.map(emp => ({
     ...emp,
-    level: emp.level || 1, // Default level 1
+    level: emp.level || "1", // Default level "1"
     price: emp.price || "0"
   }))
 }
 
-export async function updateEmployeeLevel(employeeId: number, level: number) {
+export async function updateEmployeeLevel(employeeId: number, level: string) {
   await db
     .insert(service360EmployeeLevels)
     .values({
@@ -420,7 +420,7 @@ export async function getCentralServiceSections() {
   return secs.map(s => s.name).sort()
 }
 
-export async function updateRateSetting(workLocation: string, section: string, level: number, price: number) {
+export async function updateRateSetting(workLocation: string, section: string, level: string, price: number) {
   await db
     .insert(service360RateSettings)
     .values({
@@ -446,8 +446,22 @@ export async function updateRateSettingsGroupComplete(
   newSec: string,
   prices: { level0: string, level1: string, level2: string, level3: string }
 ) {
-  // First, delete the old ones if the location/section changed
+  // If the location/section changed, move all existing levels (including custom ones) to the new loc/sec
   if (oldLoc !== newLoc || oldSec !== newSec) {
+    const existing = await db.select().from(service360RateSettings).where(
+      and(
+        eq(service360RateSettings.workLocation, oldLoc),
+        eq(service360RateSettings.section, oldSec)
+      )
+    )
+    for (const setting of existing) {
+      await db.insert(service360RateSettings).values({
+        workLocation: newLoc,
+        section: newSec,
+        level: setting.level,
+        price: setting.price
+      }).onConflictDoNothing()
+    }
     await db.delete(service360RateSettings).where(
       and(
         eq(service360RateSettings.workLocation, oldLoc),
@@ -458,10 +472,10 @@ export async function updateRateSettingsGroupComplete(
 
   // Insert or update the new values for level 0, 1, 2, 3
   const levelsToUpdate = [
-    { level: 0, price: prices.level0 },
-    { level: 1, price: prices.level1 },
-    { level: 2, price: prices.level2 },
-    { level: 3, price: prices.level3 }
+    { level: "0", price: prices.level0 },
+    { level: "1", price: prices.level1 },
+    { level: "2", price: prices.level2 },
+    { level: "3", price: prices.level3 }
   ]
 
   for (const item of levelsToUpdate) {

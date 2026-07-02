@@ -734,6 +734,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+
   {
     menuArea: 'main',
     section: 'Human Capital',
@@ -1107,6 +1108,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // Central Service
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'CS Forecast',
+    url: '/dashboard/central-service/forecast',
+    iconName: 'trending-up',
+    resource: 'cs-forecast',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
   {
     menuArea: 'main',
     section: 'Central Service',

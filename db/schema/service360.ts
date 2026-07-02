@@ -13,7 +13,7 @@ import { sites, employees } from "@/db/schema/hero";
 
 export const service360EmployeeLevels = pgTable("hero_service360_employee_levels", {
   employeeId: integer("employee_id").primaryKey().references(() => employees.id, { onDelete: "cascade" }),
-  level: integer("level").notNull().default(1),
+  level: text("level").notNull().default("1"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
@@ -21,7 +21,7 @@ export const service360RateSettings = pgTable("hero_service360_rate_settings", {
   id: serial("id").primaryKey(),
   workLocation: text("work_location").notNull(),
   section: text("section").notNull(),
-  level: integer("level").notNull(), // 1, 2, or 3
+  level: text("level").notNull(), // "0", "1", "2", "3" or custom text
   price: decimal("price", { precision: 15, scale: 2 }).notNull().default("0"),
   isDefault: boolean("is_default").notNull().default(false),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
