@@ -41,23 +41,13 @@ interface AssetFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   asset: any | null;
+  categories: string[];
   locations: string[];
   workSections: string[];
   onSuccess: (asset: any) => void;
 }
 
 type AssetAttachmentFormValue = NonNullable<AssetFormValues["attachments"]>[number];
-
-const SECTIONS = [
-  "RAD",
-  "MANUAL TORQUE",
-  "MASTER GAUGE",
-  "JACK 80 TON",
-  "JACK HYDRAULIC",
-  "IMPACT WRENCH",
-  "BEAD BREAKER + HYD PUMP",
-  "RADIO",
-];
 
 const CONDITIONS = ["ACTIVE", "GOOD", "BAD", "SCRAP"];
 
@@ -74,6 +64,7 @@ export function AssetFormDialog({
   open,
   onOpenChange,
   asset,
+  categories,
   locations,
   workSections,
   onSuccess,
@@ -256,20 +247,19 @@ export function AssetFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Kategori Alat *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Pilih kategori..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {SECTIONS.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input
+                        list="asset-category-options"
+                        placeholder="Pilih / isi kategori"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <datalist id="asset-category-options">
+                      {categories.map((category) => (
+                        <option key={category} value={category} />
+                      ))}
+                    </datalist>
                     <FormMessage />
                   </FormItem>
                 )}

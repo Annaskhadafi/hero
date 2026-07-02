@@ -401,6 +401,14 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
     [data]
   );
 
+  const categoryOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([...SECTIONS, ...(data.map((asset) => asset.section?.trim()).filter(Boolean) as string[])])
+      ).sort((a, b) => a.localeCompare(b)),
+    [data]
+  );
+
   const workSectionOptions = useMemo(
     () =>
       Array.from(
@@ -473,6 +481,8 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
           </button>
         ),
         size: 140,
+        filterFn: (row, columnId, filterValue) =>
+          !filterValue || String(row.getValue(columnId) ?? "") === String(filterValue),
         cell: ({ getValue }) => (
           <span className="font-medium text-xs">{String(getValue())}</span>
         ),
@@ -786,7 +796,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Semua Kategori</SelectItem>
-              {SECTIONS.map((s) => (
+              {categoryOptions.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
@@ -1008,6 +1018,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         asset={selectedAsset}
+        categories={categoryOptions}
         locations={locationOptions}
         workSections={workSectionOptions}
         onSuccess={(updatedAsset) => {

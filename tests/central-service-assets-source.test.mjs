@@ -38,6 +38,19 @@ test("central service assets exposes workbook section and master section options
   assert.match(importSource, /work_section, section, location/);
 });
 
+test("central service asset category can use existing options or manual input", () => {
+  const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
+  const formSource = read("app/dashboard/central-service/assets/components/asset-form-dialog.tsx");
+
+  assert.match(tableSource, /const categoryOptions = useMemo/);
+  assert.match(tableSource, /data\.map\(\(asset\) => asset\.section\?\.trim\(\)/);
+  assert.match(tableSource, /categories=\{categoryOptions\}/);
+  assert.match(formSource, /categories: string\[\]/);
+  assert.match(formSource, /list="asset-category-options"/);
+  assert.match(formSource, /categories\.map\(\(category\)/);
+  assert.doesNotMatch(formSource, /name="section"[\s\S]*SelectValue placeholder="Pilih kategori/);
+});
+
 test("central service assets supports multiple attachments with list and preview popup", () => {
   const schemaSource = read("db/schema/central-service.ts");
   const actionsSource = read("app/dashboard/central-service/assets/actions.ts");
