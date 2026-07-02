@@ -53,6 +53,7 @@ docker-compose*
 
 # Git
 .git
+.gitattributes
 .gitignore
 README.md
 AGENTS.md
@@ -62,6 +63,13 @@ prd.txt
 # Testing
 coverage
 .coverage
+
+# Large generated/tracked directories (not needed for build)
+outputs/
+graphify-out/
+tools/
+scratch/
+attandance site/
 
 # Documentation & reference
 documentation/
@@ -77,3 +85,4 @@ scripts/
 # Tools & dev configs
 .prettierrc
 eslint.config.mjs
+
