@@ -68,22 +68,38 @@ const drawerItems: DrawerItem[] = [
   { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
   { type: 'section', label: 'AKTIVITAS' },
   { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
-  { type: 'link', label: mobileActivityDrawerItem.label, href: mobileActivityDrawerItem.href, icon: ClipboardList },
+  {
+    type: 'link',
+    label: mobileActivityDrawerItem.label,
+    href: mobileActivityDrawerItem.href,
+    icon: ClipboardList,
+  },
   { type: 'section', label: 'IZIN & ROSTER' },
-  { type: 'link', label: 'Izin Sakit & Terlambat', href: '/mobile/attendance/permission', icon: ShieldAlert },
+  {
+    type: 'link',
+    label: 'Izin Sakit & Terlambat',
+    href: '/mobile/attendance/permission',
+    icon: ShieldAlert,
+  },
   { type: 'link', label: 'Overtime', href: '/mobile/overtime', icon: FileSignature },
   { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer },
   { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
   { type: 'section', label: 'SAFETY & HSE' },
   { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
   { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck },
-  { type: 'link', label: 'Tire Site Inspection', href: '/mobile/hse/tire-inspection', icon: ShieldCheck },
+  {
+    type: 'link',
+    label: 'Tire Site Inspection',
+    href: '/mobile/hse/tire-inspection',
+    icon: ShieldCheck,
+  },
   { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck },
   { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck },
   { type: 'section', label: 'LAINNYA' },
   { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },
   { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
   { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText },
+  { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature },
   { type: 'link', label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
   { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert },
   { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
@@ -108,7 +124,9 @@ export function MobileAppShell({
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount)
   const isCurrentPathAllowed = isMobileHrefAllowed(pathname, allowedLinks)
-  const visibleBottomNavItems = bottomNavItems.filter((item) => isMobileHrefAllowed(item.href, allowedLinks))
+  const visibleBottomNavItems = bottomNavItems.filter((item) =>
+    isMobileHrefAllowed(item.href, allowedLinks)
+  )
   const permittedDrawerItems = drawerItems.reduce<DrawerItem[]>((items, item) => {
     if (item.type === 'section') {
       items.push(item)
@@ -124,9 +142,10 @@ export function MobileAppShell({
   const visibleDrawerItems = permittedDrawerItems.filter((item, index, items) => {
     if (item.type === 'link') return true
     const nextSectionIndex = items.findIndex(
-      (nextItem, nextIndex) => nextIndex > index && nextItem.type === 'section',
+      (nextItem, nextIndex) => nextIndex > index && nextItem.type === 'section'
     )
-    const sectionItems = nextSectionIndex === -1 ? items.slice(index + 1) : items.slice(index + 1, nextSectionIndex)
+    const sectionItems =
+      nextSectionIndex === -1 ? items.slice(index + 1) : items.slice(index + 1, nextSectionIndex)
     return sectionItems.some((nextItem) => nextItem.type === 'link')
   })
 
@@ -291,7 +310,7 @@ export function MobileAppShell({
                           <span className="text-[9px] font-black tracking-[0.22em] text-[#6b8ba3] uppercase">
                             {item.label}
                           </span>
-                          <div className="flex-1 h-px bg-[#d8e8f3]" />
+                          <div className="h-px flex-1 bg-[#d8e8f3]" />
                         </div>
                       )
                     }
@@ -372,7 +391,7 @@ export function MobileAppShell({
                 <h2 className="mt-4 text-lg font-black tracking-tight text-[#082033]">
                   Anda tidak memiliki akses
                 </h2>
-                <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
+                <p className="mt-2 text-sm leading-6 font-semibold text-[#486275]">
                   Halaman ini dibatasi untuk role tertentu. Hubungi admin untuk membuka akses.
                 </p>
                 <Link
@@ -391,7 +410,9 @@ export function MobileAppShell({
         <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] bg-white/94 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-18px_36px_rgba(8,32,51,0.08)] backdrop-blur-xl">
           <div
             className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(${Math.max(visibleBottomNavItems.length, 1)}, minmax(0, 1fr))` }}
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(visibleBottomNavItems.length, 1)}, minmax(0, 1fr))`,
+            }}
           >
             {visibleBottomNavItems.map((item) => {
               const Icon = item.icon

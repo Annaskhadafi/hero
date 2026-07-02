@@ -26,6 +26,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/timesheet', mobile: '/mobile/timesheet' },
   { desktop: '/dashboard/scheduling-timesheet', mobile: '/mobile/timesheet' },
   { desktop: '/dashboard/approval', mobile: '/mobile/approval' },
+  { desktop: '/dashboard/360-service/service-form', mobile: '/mobile/service-form' },
   { desktop: '/dashboard/curhat', mobile: '/mobile/curhat' },
   { desktop: '/dashboard/hr-counseling', mobile: '/mobile/hr-counseling' },
   { desktop: '/dashboard/safety/data', mobile: '/mobile/hse/safety-data' },
@@ -40,7 +41,10 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/hse/sia-sio-tools-certification', mobile: '/mobile/hse/sia-sio-tools' },
   { desktop: '/dashboard/hse/tire-inspection', mobile: '/mobile/hse/tire-inspection' },
   { desktop: '/dashboard/reports/road-condition', mobile: '/mobile/reports/road-condition' },
-  { desktop: '/dashboard/central-service/site-condition', mobile: '/mobile/reports/road-condition' },
+  {
+    desktop: '/dashboard/central-service/site-condition',
+    mobile: '/mobile/reports/road-condition',
+  },
   { desktop: '/dashboard/hse', mobile: '/mobile/hse' },
   { desktop: '/dashboard/safety-induction', mobile: '/mobile/hse/induction' },
   { desktop: '/dashboard/gamification', mobile: '/mobile/gamification' },
@@ -93,6 +97,7 @@ const fallbackMobileSegments = new Set([
   'observasi-emergency',
   'ptw',
   'safety-data',
+  'service-form',
   'sia-sio-tools',
   'tire-inspection',
 ])
