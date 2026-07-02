@@ -420,33 +420,19 @@ export async function getCentralServiceSections() {
   return secs.map(s => s.name).sort()
 }
 
-export async function updateRateSetting(workLocation: string, section: string, level: number, price: number, isDefault: boolean = false) {
-  // If we set this level as default, we might want to unset others for the same location & section
-  if (isDefault) {
-    await db.update(service360RateSettings)
-      .set({ isDefault: false })
-      .where(
-        and(
-          eq(service360RateSettings.workLocation, workLocation),
-          eq(service360RateSettings.section, section)
-        )
-      )
-  }
-
+export async function updateRateSetting(workLocation: string, section: string, level: number, price: number) {
   await db
     .insert(service360RateSettings)
     .values({
       workLocation,
       section,
       level,
-      price: price.toString(),
-      isDefault
+      price: price.toString()
     })
     .onConflictDoUpdate({
       target: [service360RateSettings.workLocation, service360RateSettings.section, service360RateSettings.level],
       set: {
         price: price.toString(),
-        isDefault,
         updatedAt: new Date()
       }
     })
@@ -458,8 +444,7 @@ export async function updateRateSettingsGroupComplete(
   oldSec: string,
   newLoc: string,
   newSec: string,
-  prices: { level1: string, level2: string, level3: string },
-  defaultLevel: number = 0
+  prices: { level0: string, level1: string, level2: string, level3: string }
 ) {
   // First, delete the old ones if the location/section changed
   if (oldLoc !== newLoc || oldSec !== newSec) {
@@ -471,8 +456,9 @@ export async function updateRateSettingsGroupComplete(
     )
   }
 
-  // Insert or update the new values for level 1, 2, 3
+  // Insert or update the new values for level 0, 1, 2, 3
   const levelsToUpdate = [
+    { level: 0, price: prices.level0 },
     { level: 1, price: prices.level1 },
     { level: 2, price: prices.level2 },
     { level: 3, price: prices.level3 }
@@ -487,14 +473,12 @@ export async function updateRateSettingsGroupComplete(
         workLocation: newLoc,
         section: newSec,
         level: item.level,
-        price: item.price,
-        isDefault: defaultLevel === item.level
+        price: item.price
       })
       .onConflictDoUpdate({
         target: [service360RateSettings.workLocation, service360RateSettings.section, service360RateSettings.level],
         set: {
           price: item.price,
-          isDefault: defaultLevel === item.level,
           updatedAt: new Date()
         }
       })
