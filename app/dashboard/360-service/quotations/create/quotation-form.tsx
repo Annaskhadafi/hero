@@ -65,6 +65,8 @@ const quotationSchema = z.object({
   taxRate: z.number().min(0).max(100),
   showLevel: z.boolean(),
   showQty: z.boolean(),
+  showIntro: z.boolean().optional(),
+  customIntro: z.string().optional(),
   notes: z.string().optional(),
   items: z.array(itemSchema).min(1, "At least one item is required")
 }).refine(data => {
