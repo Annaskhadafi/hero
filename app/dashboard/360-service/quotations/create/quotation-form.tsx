@@ -25,6 +25,7 @@ const itemSchema = z.object({
   monthPeriod: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  extraDateRanges: z.array(z.object({ start: z.string(), end: z.string() })).optional(),
   level: z.string().optional(),
   customDescription: z.string(),
   quantity: z.number().min(0.01, "Quantity > 0"),
@@ -67,6 +68,8 @@ const quotationSchema = z.object({
   taxRate: z.number().min(0).max(100),
   showLevel: z.boolean(),
   showQty: z.boolean(),
+  hideBackupPrice: z.boolean().optional(),
+  showDays: z.boolean().optional(),
   showIntro: z.boolean().optional(),
   customIntro: z.string().optional(),
   notes: z.string().optional(),
@@ -81,6 +84,45 @@ const quotationSchema = z.object({
 export type SelectedItem = z.infer<typeof itemSchema>;
 
 export type QuotationFormValues = z.infer<typeof quotationSchema>;
+
+const parseFormattedDate = (dateStr: string) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const parseMonthPeriod = (periodStr: string) => {
+  if (!periodStr) return { start: "", end: "", extras: [] };
+  const parts = periodStr.split(" & ");
+  let start = "", end = "";
+  const extras: {start: string, end: string}[] = [];
+  
+  if (parts.length > 0) {
+    const primary = parts[0].split(" - ");
+    if (primary.length === 2) {
+      const s = parseFormattedDate(primary[0].trim());
+      const e = parseFormattedDate(primary[1].trim());
+      if (s && e) { start = s; end = e; }
+    }
+  }
+  
+  for (let i = 1; i < parts.length; i++) {
+    const extra = parts[i].split(" - ");
+    if (extra.length === 2) {
+      const s = parseFormattedDate(extra[0].trim());
+      const e = parseFormattedDate(extra[1].trim());
+      if (s && e) {
+        extras.push({ start: s, end: e });
+      }
+    }
+  }
+  
+  return { start, end, extras };
+};
 
 export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, initialSignatureReadableUrl, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; initialSignatureReadableUrl?: string | null; isEdit?: boolean }) {
 const router = useRouter()
@@ -98,6 +140,8 @@ const router = useRouter()
       taxRate: initialData?.taxRate ? Number(initialData.taxRate) : 11,
       showLevel: initialData?.showLevel ?? true,
       showQty: initialData?.showQty ?? false,
+      hideBackupPrice: initialData?.hideBackupPrice ?? false,
+      showDays: initialData?.showDays ?? true,
       attn: initialData?.attn || "",
       cc: initialData?.cc || "",
       fromName: initialData?.fromName || "",
@@ -108,23 +152,29 @@ const router = useRouter()
       notes: initialData?.notes || "",
       showIntro: initialData?.showIntro ?? true,
       customIntro: initialData?.customIntro || "",
-      items: initialData?.items?.map((i: any, idx: number) => ({
+      items: initialData?.items?.map((i: any, idx: number) => {
+        const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
+        const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
+        return {
         id: idx,
         itemId: i.quotationItem.itemId,
         category: i.item?.category || "General",
         monthPeriod: i.quotationItem.monthPeriod || "",
-        startDate: "", 
-        endDate: "",
+        startDate: parsedPrimary.start, 
+        endDate: parsedPrimary.end,
+        extraDateRanges: parsedPrimary.extras,
         level: i.quotationItem.level || "",
         customDescription: i.quotationItem.customDescription || i.item?.name || "",
         quantity: Number(i.quotationItem.quantity) || 1,
         price: Number(i.quotationItem.price) || 0,
         isBackup: i.quotationItem.isBackup || false,
         backupMonthPeriod: i.quotationItem.backupMonthPeriod || "",
+        backupStartDate: parsedBackup.start,
+        backupEndDate: parsedBackup.end,
         backupLevel: i.quotationItem.backupLevel || "",
         backupDescription: i.quotationItem.backupDescription || "",
         backupPrice: Number(i.quotationItem.backupPrice) || 0,
-      })) || []
+      }}) || []
     }
   })
 
@@ -134,6 +184,8 @@ const router = useRouter()
   const poPeriodStart = watch("poPeriodStart")
   const showIntro = watch("showIntro")
   const customIntro = watch("customIntro")
+  const hideBackupPrice = watch("hideBackupPrice")
+  const showDays = watch("showDays")
   const poPeriodEnd = watch("poPeriodEnd")
   const selectedCustomerId = watch("customerId")
   const manualCustomerName = watch("manualCustomerName")
@@ -226,9 +278,22 @@ const router = useRouter()
 
   const getPrimaryProrate = (item: SelectedItem) => {
     if (item.category === "Labour Cost") {
-      const primaryDays = calculateDays(item.startDate, item.endDate)
-      const daysInMonth = getDaysInMonthOfStartDate(item.startDate)
-      return (primaryDays / daysInMonth) * item.price * item.quantity
+      let totalProrate = 0;
+      if (item.startDate && item.endDate) {
+        const primaryDays = calculateDays(item.startDate, item.endDate)
+        const daysInMonth = getDaysInMonthOfStartDate(item.startDate)
+        totalProrate += (primaryDays / daysInMonth) * item.price * item.quantity
+      }
+      if (item.extraDateRanges && item.extraDateRanges.length > 0) {
+        item.extraDateRanges.forEach(range => {
+          if (range.start && range.end) {
+            const extraDays = calculateDays(range.start, range.end)
+            const extraDaysInMonth = getDaysInMonthOfStartDate(range.start)
+            totalProrate += (extraDays / extraDaysInMonth) * item.price * item.quantity
+          }
+        })
+      }
+      return totalProrate || (item.price * item.quantity)
     }
     return item.price * item.quantity
   }
@@ -250,6 +315,7 @@ const router = useRouter()
         monthPeriod: "",
         startDate: "",
         endDate: "",
+        extraDateRanges: [],
         level: "",
         customDescription: "",
         quantity: 1,
@@ -302,6 +368,7 @@ const router = useRouter()
       monthPeriod: "",
       startDate: poPeriodStart,
       endDate: poPeriodEnd,
+      extraDateRanges: [],
       level: itemDef.level?.toString() || "",
       customDescription: `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`,
       quantity: 1,
@@ -348,7 +415,7 @@ const router = useRouter()
   const totalAmount = subTotal + taxAmount
 
   
-  const onSubmit = async (data: QuotationFormValues) => {
+  const submitHandler = async (data: QuotationFormValues, stayOnPage: boolean = false) => {
     setLoading(true)
     try {
 
@@ -393,12 +460,25 @@ const router = useRouter()
         totalAmount: totalAmount.toString(),
         status: "Draft",
         showLevel: data.showLevel,
+        showQty: data.showQty,
+        hideBackupPrice: data.hideBackupPrice,
+        showDays: data.showDays,
         notes: data.notes,
         showIntro: data.showIntro,
         customIntro: data.customIntro,
-        items: formItems.map(item => ({
+        items: formItems.map(item => {
+          let mergedMonthPeriod = item.monthPeriod;
+          if (item.startDate && item.endDate) {
+            mergedMonthPeriod = `${formatDt(item.startDate)} - ${formatDt(item.endDate)}`;
+            if (item.extraDateRanges && item.extraDateRanges.length > 0) {
+              const extras = item.extraDateRanges.filter(r => r.start && r.end).map(r => `${formatDt(r.start)} - ${formatDt(r.end)}`).join(" & ");
+              if (extras) mergedMonthPeriod += ` & ${extras}`;
+            }
+          }
+
+          return {
           itemId: item.itemId,
-          monthPeriod: (item.startDate && item.endDate) ? `${formatDt(item.startDate)} - ${formatDt(item.endDate)}` : item.monthPeriod,
+          monthPeriod: mergedMonthPeriod,
           level: item.level,
           customDescription: item.customDescription,
           quantity: item.quantity,
@@ -411,7 +491,8 @@ const router = useRouter()
           backupLevel: item.backupLevel,
           backupDescription: item.backupDescription,
           backupPrice: item.backupPrice ? item.backupPrice.toString() : null,
-        }))
+        }
+        })
       }
 
       let result;
@@ -420,11 +501,18 @@ const router = useRouter()
       } else {
         result = await createQuotation(payload)
       }
-      
-      if (result && result.id) {
-        router.push(`/dashboard/360-service/quotations/${result.id}`)
+
+      if (!stayOnPage) {
+        if (result && result.id) {
+          router.push(`/dashboard/360-service/quotations/${result.id}`)
+        } else {
+          router.push("/dashboard/360-service/quotations")
+        }
       } else {
-        router.push("/dashboard/360-service/quotations")
+        toast.success(isEdit ? "Quotation updated" : "Quotation saved");
+        if (!isEdit && result && result.id) {
+          router.push(`/dashboard/360-service/quotations/edit/${result.id}`)
+        }
       }
     } catch (error) {
       console.error(error)
@@ -435,7 +523,7 @@ const router = useRouter()
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form onSubmit={handleSubmit((data) => submitHandler(data, false))}>
       
       <div className="grid gap-6">
         {Object.keys(errors).length > 0 && (
@@ -592,26 +680,34 @@ const router = useRouter()
                   <span className="text-sm text-muted-foreground">%</span>
                 </div>
               </div>
-              <div className="flex gap-8">
-                <div className="flex flex-col gap-2">
+              <div className="flex gap-6 pt-4 border-t border-slate-100 mt-4">
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={showLevel} 
+                    onCheckedChange={(val) => setValue("showLevel", val)} 
+                  />
                   <label className="text-sm font-medium">Show Level Column</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Switch 
-                      checked={showLevel} 
-                      onCheckedChange={(val) => setValue("showLevel", val)} 
-                    />
-                    <span className="text-sm text-muted-foreground">{showLevel ? 'Visible' : 'Hidden'}</span>
-                  </div>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={showQty} 
+                    onCheckedChange={(val) => setValue("showQty", val)} 
+                  />
                   <label className="text-sm font-medium">Show QTY Column</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Switch 
-                      checked={showQty} 
-                      onCheckedChange={(val) => setValue("showQty", val)} 
-                    />
-                    <span className="text-sm text-muted-foreground">{showQty ? 'Visible' : 'Hidden'}</span>
-                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={hideBackupPrice} 
+                    onCheckedChange={(val) => setValue("hideBackupPrice", val)} 
+                  />
+                  <label className="text-sm font-medium">Hide Backup Price/Mo (PDF)</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={showDays ?? true} 
+                    onCheckedChange={(val) => setValue("showDays", val)} 
+                  />
+                  <label className="text-sm font-medium">Show Hari (PDF)</label>
                 </div>
               </div>
             </div>
@@ -741,6 +837,63 @@ const router = useRouter()
                               onChange={(e) => updateItem(selItem.id, 'endDate', e.target.value)} 
                               title="End Date"
                             />
+                            
+                            {selItem.extraDateRanges?.map((range, rangeIdx) => (
+                              <div key={rangeIdx} className="flex flex-col gap-1 mt-2 pt-2 border-t border-slate-100">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Rentang Tambahan</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 bg-slate-50 border border-slate-200 text-slate-400 hover:text-red-500 rounded-md shrink-0"
+                                    onClick={() => {
+                                      const updatedExtras = [...(selItem.extraDateRanges || [])];
+                                      updatedExtras.splice(rangeIdx, 1);
+                                      updateItem(selItem.id, 'extraDateRanges', updatedExtras);
+                                    }}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                                <Input 
+                                  type="date" 
+                                  value={range.start || ''} 
+                                  onChange={(e) => {
+                                    const updatedExtras = [...(selItem.extraDateRanges || [])];
+                                    updatedExtras[rangeIdx] = { ...updatedExtras[rangeIdx], start: e.target.value };
+                                    updateItem(selItem.id, 'extraDateRanges', updatedExtras);
+                                  }} 
+                                  title="Extra Start Date"
+                                />
+                                <Input 
+                                  type="date" 
+                                  value={range.end || ''} 
+                                  onChange={(e) => {
+                                    const updatedExtras = [...(selItem.extraDateRanges || [])];
+                                    updatedExtras[rangeIdx] = { ...updatedExtras[rangeIdx], end: e.target.value };
+                                    updateItem(selItem.id, 'extraDateRanges', updatedExtras);
+                                  }} 
+                                  title="Extra End Date"
+                                />
+                              </div>
+                            ))}
+
+                            <div className="flex justify-center mt-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-[10px] px-2 text-slate-500 w-full"
+                                onClick={() => {
+                                  const updatedExtras = [...(selItem.extraDateRanges || []), { start: "", end: "" }];
+                                  updateItem(selItem.id, 'extraDateRanges', updatedExtras);
+                                }}
+                              >
+                                + Tanggal
+                              </Button>
+                            </div>
+
                             {selItem.isBackup && (
                               <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col gap-1 relative">
                                 <span className="absolute -top-[9px] bg-white px-1 text-[10px] font-bold text-teal-600 uppercase tracking-wider">Backup Date</span>
@@ -930,8 +1083,11 @@ const router = useRouter()
             <Button variant="outline" type="button" onClick={() => router.push("/dashboard/360-service/quotations")}>
               Cancel
             </Button>
+            <Button variant="secondary" type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, true))}>
+              {loading ? "Saving..." : "Save"}
+            </Button>
             <Button type="submit" disabled={loading || formItems.length === 0}>
-              {loading ? "Saving..." : "Create Quotation"}
+              {loading ? "Saving..." : (isEdit ? "Update Quotation" : "Create Quotation")}
             </Button>
           </CardFooter>
         </Card>

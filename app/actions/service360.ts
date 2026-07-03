@@ -254,7 +254,7 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -279,6 +279,8 @@ export async function createQuotation(data: any) {
     notes,
     showIntro: showIntro ?? true,
     customIntro,
+    hideBackupPrice: hideBackupPrice ?? false,
+    showDays: showDays ?? true,
   }).returning()
 
   if (items && items.length > 0) {
@@ -312,7 +314,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays
   } = data
   
   const [quotation] = await db.update(service360Quotations).set({
@@ -337,6 +339,8 @@ export async function updateQuotation(id: number, data: any) {
     notes,
     showIntro: showIntro ?? true,
     customIntro,
+    hideBackupPrice: hideBackupPrice ?? false,
+    showDays: showDays ?? true,
     updatedAt: new Date()
   }).where(eq(service360Quotations.id, id)).returning()
 

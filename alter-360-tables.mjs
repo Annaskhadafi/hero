@@ -21,7 +21,9 @@ async function alterTables() {
       'ADD COLUMN IF NOT EXISTS "subject" text',
       'ADD COLUMN IF NOT EXISTS "po_number" text',
       'ADD COLUMN IF NOT EXISTS "project_name" text',
-      'ADD COLUMN IF NOT EXISTS "po_period" text'
+      'ADD COLUMN IF NOT EXISTS "po_period" text',
+      'ADD COLUMN IF NOT EXISTS "hide_backup_price" boolean DEFAULT false',
+      'ADD COLUMN IF NOT EXISTS "show_days" boolean DEFAULT true'
     ];
     await client.query(`ALTER TABLE "hero_service360_quotations" ${qCols.join(', ')};`);
 

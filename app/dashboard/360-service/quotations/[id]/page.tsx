@@ -41,6 +41,24 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return diffDays > 0 ? diffDays : 0;
   }
 
+  // Parse total days from a monthPeriod string like "01 Jun 2026 - 10 Jun 2026 & 21 Jun 2026 - 30 Jun 2026"
+  const parseDaysFromMonthPeriod = (periodStr: string): number => {
+    if (!periodStr) return 0;
+    const ranges = periodStr.split(" & ");
+    let total = 0;
+    for (const range of ranges) {
+      const parts = range.trim().split(" - ");
+      if (parts.length === 2) {
+        const start = new Date(parts[0].trim());
+        const end = new Date(parts[1].trim());
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          total += calculateDays(start, end);
+        }
+      }
+    }
+    return total;
+  }
+
   const dateStr = new Date(quotation.quotationDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const formattedDate = dateStr // "June, 2026" based on the image format
 
@@ -245,9 +263,21 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                               <td className="border-r border-slate-100 px-2 text-center text-[8.5pt] align-top py-2">
                                 <div className="flex flex-col gap-1">
                                   <span>{item.quotationItem.monthPeriod}</span>
+                                  {quotation.showDays !== false && (() => {
+                                    const days = parseDaysFromMonthPeriod(item.quotationItem.monthPeriod);
+                                    return days > 0 ? (
+                                      <span className="text-[7.5pt] text-slate-400 font-medium">({days} hari)</span>
+                                    ) : null;
+                                  })()}
                                   {item.quotationItem.isBackup && (
                                     <span className="text-teal-600 font-medium pt-1 border-t border-slate-100">{item.quotationItem.backupMonthPeriod || '-'}</span>
                                   )}
+                                  {item.quotationItem.isBackup && quotation.showDays !== false && (() => {
+                                    const days = parseDaysFromMonthPeriod(item.quotationItem.backupMonthPeriod || '');
+                                    return days > 0 ? (
+                                      <span className="text-[7.5pt] text-teal-400 font-medium">({days} hari)</span>
+                                    ) : null;
+                                  })()}
                                 </div>
                               </td>
                               <td className="border-r border-slate-100 px-3 text-left font-medium text-slate-800 align-top py-2">
@@ -284,7 +314,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                     <span className="text-slate-400">Rp</span>
                                     <span className="font-semibold">{Number(item.quotationItem.price).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                   </div>
-                                  {item.quotationItem.isBackup && (
+                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && (
                                     <div className="flex justify-between w-full pt-1 border-t border-slate-100 text-teal-700">
                                       <span className="text-slate-400">Rp</span>
                                       <span className="font-semibold">{Number(item.quotationItem.backupPrice).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
@@ -296,9 +326,9 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                 <div className="flex flex-col gap-1 w-full text-[8.5pt]">
                                   <div className="flex justify-between w-full">
                                     <span className="text-slate-400">Rp</span>
-                                    <span className="font-bold text-[9pt] text-teal-700">{Number(primaryProrate).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                    <span className="font-bold text-[9pt] text-teal-700">{Number(quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                   </div>
-                                  {item.quotationItem.isBackup && (
+                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && (
                                     <div className="flex justify-between w-full pt-1 border-t border-slate-100">
                                       <span className="text-slate-400">Rp</span>
                                       <span className="font-bold text-[9pt] text-teal-700">{Number(backupProrate).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
