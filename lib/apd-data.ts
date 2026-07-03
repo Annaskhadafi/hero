@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { apdRequests, apdRequestItems, employees, masterDepartments, sites } from "@/db/schema/hero";
+import { apdRequests, apdRequestItems, employees, masterDepartments, sites, approvals } from "@/db/schema/hero";
 import { eq, desc, and } from "drizzle-orm";
 
 export async function fetchApdRequests(currentEmployeeId?: number) {
@@ -58,5 +58,11 @@ export async function fetchApdRequestById(id: number) {
     .from(apdRequestItems)
     .where(eq(apdRequestItems.requestId, id));
 
-  return { ...request, items };
+  const approvalHistory = await db
+    .select()
+    .from(approvals)
+    .where(eq(approvals.apdRequestId, id))
+    .orderBy(desc(approvals.level));
+
+  return { ...request, items, approvalHistory };
 }

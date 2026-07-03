@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -34,7 +34,19 @@ type ApdItemInput = {
   photoUrl?: string;
 };
 
-export function ApdRequestForm() {
+interface ApdRequestFormProps {
+  employeeName: string;
+  employeeSn: string;
+  departmentName: string | null;
+  sectionName: string | null;
+}
+
+export function ApdRequestForm({
+  employeeName,
+  employeeSn,
+  departmentName,
+  sectionName,
+}: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notes, setNotes] = useState("");
@@ -42,6 +54,13 @@ export function ApdRequestForm() {
     { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFile: null },
   ]);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
+
+  const today = new Date().toLocaleDateString("id-ID", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   const addItem = () => {
     setItems((prev) => [
@@ -120,6 +139,32 @@ export function ApdRequestForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <Card className="border-border shadow-sm bg-muted/50">
+        <CardContent className="p-6">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Informasi Pemohon (Otomatis)</h3>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Tanggal Pengajuan</p>
+              <p className="font-medium text-sm">{today}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Nama Karyawan</p>
+              <p className="font-medium text-sm">{employeeName}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">NIK / SN</p>
+              <p className="font-medium text-sm">{employeeSn}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Departemen / Section</p>
+              <p className="font-medium text-sm">
+                {departmentName || "-"} {sectionName ? `/ ${sectionName}` : ""}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="border-border shadow-sm">
         <CardContent className="p-6 space-y-6">
           <div className="space-y-4">

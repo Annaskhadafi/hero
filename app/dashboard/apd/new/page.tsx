@@ -1,7 +1,30 @@
-﻿import { AdminPageShell } from "@/components/admin-page-shell";
+import { AdminPageShell } from "@/components/admin-page-shell";
 import { ApdRequestForm } from "./apd-form";
+import { getCurrentEmployee } from "@/lib/get-current-employee";
+import { db } from "@/db";
+import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
+import { eq } from "drizzle-orm";
+import { notFound } from "next/navigation";
 
-export default function NewApdRequestPage() {
+export default async function NewApdRequestPage() {
+  const currentEmployee = await getCurrentEmployee();
+  if (!currentEmployee) return notFound();
+
+  const [employeeProfile] = await db
+    .select({
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .where(eq(employees.id, currentEmployee.id))
+    .limit(1);
+
+  if (!employeeProfile) return notFound();
+
   return (
     <AdminPageShell
       eyebrow="Form Permintaan"
@@ -9,7 +32,12 @@ export default function NewApdRequestPage() {
       description="Isi form di bawah ini untuk mengajukan permintaan Alat Pelindung Diri (APD). Jika memilih pergantian, Anda diwajibkan melampirkan foto barang yang rusak/usang."
     >
       <div className="mx-auto max-w-4xl pt-6">
-        <ApdRequestForm />
+        <ApdRequestForm 
+          employeeName={employeeProfile.name}
+          employeeSn={employeeProfile.employeeSn}
+          departmentName={employeeProfile.departmentName}
+          sectionName={employeeProfile.sectionName}
+        />
       </div>
     </AdminPageShell>
   );
