@@ -276,10 +276,11 @@ const router = useRouter()
     return getPrimaryProrate(item) + getBackupProrate(item)
   }
 
-  const PRORATE_CATEGORIES = ["Labour Cost", "Rental & Tools"];
+  const PRORATE_CATEGORIES = ["Labour Cost", "Rental & Tools", "Rental", "Tools"];
+  const isProrateEligible = (cat: string) => PRORATE_CATEGORIES.includes(cat) || cat === "";
 
   const getPrimaryProrate = (item: SelectedItem) => {
-    if (PRORATE_CATEGORIES.includes(item.category)) {
+    if (isProrateEligible(item.category)) {
       let totalProrate = 0;
       if (item.startDate && item.endDate) {
         const primaryDays = calculateDays(item.startDate, item.endDate)
@@ -301,7 +302,7 @@ const router = useRouter()
   }
 
   const getBackupProrate = (item: SelectedItem) => {
-    if (PRORATE_CATEGORIES.includes(item.category) && item.isBackup) {
+    if (isProrateEligible(item.category) && item.isBackup) {
       const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
       const daysInMonth = getDaysInMonthOfStartDate(item.backupStartDate)
       return (backupDays / daysInMonth) * (item.backupPrice || 0) * item.quantity
@@ -513,7 +514,7 @@ const router = useRouter()
       } else {
         toast.success(isEdit ? "Quotation updated" : "Quotation saved");
         if (!isEdit && result && result.id) {
-          router.push(`/dashboard/360-service/quotations/edit/${result.id}`)
+          router.push(`/dashboard/360-service/quotations/${result.id}/edit`)
         }
       }
     } catch (error) {

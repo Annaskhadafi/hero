@@ -18,6 +18,7 @@ import {
 import type { ApprovalRouteResolution } from "@/lib/approval-engine";
 import { parseApprovalNoteEntries } from "@/lib/approval-notes";
 import { ensureHeroSeedData } from "@/lib/hero-admin";
+import { user as authUser } from "@/db/schema/auth";
 
 type ApprovalRecordRow = {
   approvalId: number;
@@ -824,7 +825,11 @@ async function getEmployeeByEmail(email: string) {
       jobTitle: employees.jobTitle,
     })
     .from(employees)
-    .where(sql`lower(${employees.email}) = ${email.trim().toLowerCase()}`)
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .where(or(
+      sql`lower(${employees.email}) = ${email.trim().toLowerCase()}`,
+      sql`lower(${authUser.email}) = ${email.trim().toLowerCase()}`
+    ))
     .limit(1);
 
   return employee ?? null;

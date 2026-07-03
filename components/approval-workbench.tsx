@@ -1,5 +1,6 @@
 import { approveApprovalGroupAction, reviewApprovalAction } from "@/app/dashboard/admin-actions";
 import { AdminDetailDrawer } from "@/components/admin/admin-detail-drawer";
+import { ApdApprovalDialog } from "@/components/admin/apd-approval-dialog";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -157,79 +158,62 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      <AdminDetailDrawer
-                        title={`Review ${item.title}`}
-                        description={`${group.requesterName} • ${group.siteName} • ${item.currentStepLabel}`}
-                        width="wide"
-                        trigger={
-                          <Button type="button" variant="outline" size="dense">
-                            Review
-                          </Button>
-                        }
-                      >
-                        <form action={reviewApprovalAction} className="space-y-3">
-                          <input type="hidden" name="approvalId" value={item.approvalId} />
-                          <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
-                            <div className="flex items-center justify-between">
-                              <p className="font-semibold">Ringkasan kerja</p>
-                              {item.activityType === "Request APD" && (
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button type="button" variant="outline" size="sm">
-                                      Preview Dokumen
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-                                    <DialogHeader>
-                                      <DialogTitle>Preview Permintaan APD</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="flex-1 overflow-hidden mt-4 rounded-md border">
-                                      <iframe 
-                                        src={`/print/apd/${item.activityId}`}
-                                        className="w-full h-full"
-                                        title="Preview Dokumen"
-                                      />
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              )}
+                      {item.activityType === "Request APD" ? (
+                        <ApdApprovalDialog item={item} group={group} />
+                      ) : (
+                        <AdminDetailDrawer
+                          title={`Review ${item.title}`}
+                          description={`${group.requesterName} • ${group.siteName} • ${item.currentStepLabel}`}
+                          width="wide"
+                          trigger={
+                            <Button type="button" variant="outline" size="dense">
+                              Review
+                            </Button>
+                          }
+                        >
+                          <form action={reviewApprovalAction} className="space-y-3">
+                            <input type="hidden" name="approvalId" value={item.approvalId} />
+                            <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
+                              <div className="flex items-center justify-between">
+                                <p className="font-semibold">Ringkasan kerja</p>
+                              </div>
+                              <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>
                             </div>
-                            <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>
-                          </div>
-                          <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
-                            <p className="font-semibold">Catatan terakhir</p>
-                            <p className="mt-1 text-muted-foreground">
-                              {item.lastNote ? item.lastNote.message : "Belum ada komentar approval sebelumnya."}
-                            </p>
-                          </div>
-                          <Textarea
-                            name="note"
-                            rows={3}
-                            placeholder="Isi komentar bila reject atau revisi. Approve boleh kosong atau beri konteks singkat."
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="submit" name="decision" value="approved" size="dense">
-                              Setujui
-                            </Button>
-                            <Button type="submit" name="decision" value="needs_correction" variant="outline" size="dense">
-                              Minta revisi
-                            </Button>
-                            <Button type="submit" name="decision" value="rejected" variant="secondary" size="dense">
-                              Tolak
-                            </Button>
-                          </div>
-                        </form>
-                        {group.items.length > 1 ? (
-                          <form action={approveApprovalGroupAction} className="mt-3 border-t border-outline-ghost/70 pt-3">
-                            {group.items.map((approvalItem) => (
-                              <input key={approvalItem.approvalId} type="hidden" name="approvalIds" value={approvalItem.approvalId} />
-                            ))}
-                            <Button type="submit" variant="outline" size="dense">
-                              Setujui semua milik {group.requesterName}
-                            </Button>
+                            <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
+                              <p className="font-semibold">Catatan terakhir</p>
+                              <p className="mt-1 text-muted-foreground">
+                                {item.lastNote ? item.lastNote.message : "Belum ada komentar approval sebelumnya."}
+                              </p>
+                            </div>
+                            <Textarea
+                              name="note"
+                              rows={3}
+                              placeholder="Isi komentar bila reject atau revisi. Approve boleh kosong atau beri konteks singkat."
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="submit" name="decision" value="approved" size="dense">
+                                Setujui
+                              </Button>
+                              <Button type="submit" name="decision" value="needs_correction" variant="outline" size="dense">
+                                Minta revisi
+                              </Button>
+                              <Button type="submit" name="decision" value="rejected" variant="secondary" size="dense">
+                                Tolak
+                              </Button>
+                            </div>
                           </form>
-                        ) : null}
-                      </AdminDetailDrawer>
+                          {group.items.length > 1 ? (
+                            <form action={approveApprovalGroupAction} className="mt-3 border-t border-outline-ghost/70 pt-3">
+                              {group.items.map((approvalItem) => (
+                                <input key={approvalItem.approvalId} type="hidden" name="approvalIds" value={approvalItem.approvalId} />
+                              ))}
+                              <Button type="submit" variant="outline" size="dense">
+                                Setujui semua milik {group.requesterName}
+                              </Button>
+                            </form>
+                          ) : null}
+                        </AdminDetailDrawer>
+                      )}
                     </TableCell>
                   </TableRow>
                 )),

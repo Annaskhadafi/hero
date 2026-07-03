@@ -146,20 +146,32 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                 <div className="mt-20 font-bold underline relative z-10">{data.employeeName}</div>
                 <div className="text-[8pt] text-gray-600 relative z-10">Karyawan</div>
               </td>
-              <td className="border border-black p-2 align-bottom h-32 relative">
+              <td className="border border-black p-2 align-bottom h-32 relative" id="approver-cell-1">
                 {firstApprover && firstApprover.status === 'approved' && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-green-600/30 text-5xl font-bold -rotate-12 border-4 border-green-600/30 rounded p-2">APPROVED</span>
-                  </div>
+                  firstApprover.signatureUrl ? (
+                    <div className="absolute inset-0 flex items-center justify-center p-2">
+                      <img src={firstApprover.signatureUrl} alt="Signature" className="object-contain w-32 h-24" />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-green-600/30 text-5xl font-bold -rotate-12 border-4 border-green-600/30 rounded p-2">APPROVED</span>
+                    </div>
+                  )
                 )}
                 <div className="mt-20 font-bold underline relative z-10">{firstApprover ? firstApprover.approverName : "_______________________"}</div>
                 <div className="text-[8pt] text-gray-600 relative z-10">PJO / Atasan Site</div>
               </td>
-              <td className="border border-black p-2 align-bottom h-32 relative">
+              <td className="border border-black p-2 align-bottom h-32 relative" id="approver-cell-2">
                 {secondApprover && secondApprover.status === 'approved' && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-green-600/30 text-5xl font-bold -rotate-12 border-4 border-green-600/30 rounded p-2">APPROVED</span>
-                  </div>
+                  secondApprover.signatureUrl ? (
+                    <div className="absolute inset-0 flex items-center justify-center p-2">
+                      <img src={secondApprover.signatureUrl} alt="Signature" className="object-contain w-32 h-24" />
+                    </div>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-green-600/30 text-5xl font-bold -rotate-12 border-4 border-green-600/30 rounded p-2">APPROVED</span>
+                    </div>
+                  )
                 )}
                 <div className="mt-20 font-bold underline relative z-10">{secondApprover ? secondApprover.approverName : "_______________________"}</div>
                 <div className="text-[8pt] text-gray-600 relative z-10">Section Head</div>
@@ -173,6 +185,37 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
         </div>
 
       </div>
+      <script dangerouslySetInnerHTML={{__html: `
+        window.addEventListener('message', function(event) {
+          if (event.data && event.data.type === 'previewSignature') {
+            const dataUrl = event.data.dataUrl;
+            // Target the correct cell based on the pending level. We'll just target cell 1 for now if it's empty, or cell 2.
+            // Since we know the admin page only previews the CURRENT pending approval, we can just find the first cell without an APPROVED stamp.
+            const cell1 = document.getElementById('approver-cell-1');
+            const cell2 = document.getElementById('approver-cell-2');
+            
+            let targetCell = null;
+            if (cell1 && !cell1.innerHTML.includes('APPROVED') && !cell1.innerHTML.includes('img')) {
+              targetCell = cell1;
+            } else if (cell2 && !cell2.innerHTML.includes('APPROVED') && !cell2.innerHTML.includes('img')) {
+              targetCell = cell2;
+            }
+            
+            if (targetCell) {
+              const existingPreview = targetCell.querySelector('.live-preview-sig');
+              if (existingPreview) {
+                existingPreview.remove();
+              }
+              if (dataUrl) {
+                const imgDiv = document.createElement('div');
+                imgDiv.className = 'absolute inset-0 flex items-center justify-center p-2 live-preview-sig';
+                imgDiv.innerHTML = '<img src="' + dataUrl + '" alt="Live Preview" class="object-contain w-32 h-24" />';
+                targetCell.appendChild(imgDiv);
+              }
+            }
+          }
+        });
+      `}} />
     </div>
   );
 }

@@ -43,9 +43,22 @@ export async function uploadFile(formData: FormData) {
           : await uploadAnyFileToS3(file);
       const readableUrl = await getS3ObjectReadUrl(result.url);
       return { success: true, url: result.url, readableUrl };
-    } else {
-        return { success: false, error: "S3 Upload Driver is not properly configured." };
     }
+
+    // Local fallback storage when S3 is not configured
+    const uploadDir = join(process.cwd(), "public", "uploads");
+    await mkdir(uploadDir, { recursive: true });
+
+    const ext = getCurhatFileExtension(file.name, file.type);
+    const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, "")) || "file";
+    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`;
+    const filePath = join(uploadDir, uniqueName);
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    await writeFile(filePath, buffer);
+
+    const publicUrl = `/api/uploads/${uniqueName}`;
+    return { success: true, url: publicUrl, readableUrl: publicUrl };
   } catch (error) {
     console.error("Upload error:", error);
     return { success: false, error: "Failed to upload file to Object Storage" };

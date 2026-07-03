@@ -7,6 +7,7 @@ import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
 import { sendApdRequestSubmittedEmail } from "@/lib/apd-email";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 
 export async function submitApdRequest(formData: FormData) {
   const currentEmployee = await getCurrentEmployee();
@@ -113,6 +114,16 @@ export async function submitApdRequest(formData: FormData) {
              approverEmail: approverEmailRec.email,
              approverName: firstStep.approverName
           }).catch(console.error);
+
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmailRec.email],
+            eventType: "apd_request_review",
+            category: "approval",
+            title: "Review Permintaan APD",
+            body: `${currentEmployee.name} mengajukan permintaan APD baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
+            url: `/dashboard/approval`,
+            tagPrefix: "apd",
+          }).catch(console.error);
         }
       }
     } else {
@@ -121,6 +132,7 @@ export async function submitApdRequest(formData: FormData) {
     }
 
     revalidatePath("/dashboard/apd");
+    revalidatePath("/dashboard/approval");
     return { success: true, requestId: request.id };
   });
 }
@@ -153,5 +165,6 @@ export async function deleteApdRequest(id: number) {
   await db.delete(apdRequests).where(eq(apdRequests.id, id));
 
   revalidatePath("/dashboard/apd");
+  revalidatePath("/dashboard/approval");
   return { success: true };
 }

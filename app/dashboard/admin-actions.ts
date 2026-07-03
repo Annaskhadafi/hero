@@ -3636,11 +3636,32 @@ export async function reviewApprovalAction(formData: FormData) {
     decision: formData.get('decision'),
     note: formData.get('note'),
   })
+
+  // Check if a signature file is provided
+  const signatureFile = formData.get('signatureFile') as File | null;
+  let signatureUrl: string | undefined;
+
+  if (signatureFile && signatureFile.size > 0) {
+    const { uploadFile } = await import('@/app/actions/upload')
+    const uploadFormData = new FormData()
+    uploadFormData.append('file', signatureFile)
+    const result = await uploadFile(uploadFormData)
+    if (result.success) {
+      signatureUrl = result.url
+    }
+  }
+
   await applyApprovalDecision({
     approvalId: payload.approvalId,
     decision: payload.decision,
     note: payload.note,
   })
+
+  if (signatureUrl) {
+    await db.update(approvals)
+      .set({ signatureUrl })
+      .where(eq(approvals.id, payload.approvalId))
+  }
 
   revalidateAdminSurfaces()
 }

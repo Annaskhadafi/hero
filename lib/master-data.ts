@@ -421,7 +421,7 @@ export async function getMasterSites(): Promise<MasterSite[]> {
     db
       .select({
         siteId: employees.siteId,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`count(distinct ${employees.id})::int`,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
@@ -494,7 +494,7 @@ export async function getMasterDepartments(): Promise<MasterDepartment[]> {
     db
       .select({
         departmentId: employees.departmentId,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`count(distinct ${employees.id})::int`,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
@@ -540,7 +540,7 @@ export async function getMasterSections(): Promise<MasterSection[]> {
     db
       .select({
         sectionId: employees.sectionId,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`count(distinct ${employees.id})::int`,
       })
       .from(employees)
       .where(eq(employees.isActive, true))

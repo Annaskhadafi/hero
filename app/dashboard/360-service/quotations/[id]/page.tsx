@@ -229,7 +229,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           <>
                             <p className="mb-3 font-medium text-slate-800">Dear Mr. {quotation.attn || '-'} / Mr. {quotation.cc || '-'},</p>
                             <p>
-                              As you are aware, <span className="font-semibold text-slate-800">Tire Maintenance</span> is performing services at <span className="font-semibold text-slate-800">{quotation.projectName || '[Project Name]'}</span>. Could you please raise a Purchase Order (PO) for the period of <span className="font-semibold text-teal-700">{quotation.poPeriod || '[PO Period]'}</span>? 
+                              As you are aware, <span className="font-semibold text-slate-800">Tire Maintenance</span> is performing services at <span className="font-semibold text-slate-800">{quotation.projectName || '[Project Name]'}</span>. Could you please raise a Purchase Order (PO) for the period of <span className="font-semibold text-teal-700">{quotation.poPeriod || '[PO Period]'}</span> 
                             </p>
                             <p className="mt-2">
                               We are pleased to quote you the labor price for our Tire Maintenance services as follows:
@@ -263,8 +263,9 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           const globalIndex = chunkStartIndices[pageIndex] + idx;
                           const isEven = idx % 2 === 0;
 
-                          const PRORATE_CATS = ["Labour Cost", "Rental & Tools"];
+                          const PRORATE_CATS = ["Labour Cost", "Rental & Tools", "Rental", "Tools"];
                           const itemCategory = item.item?.category || "";
+                          const isProrateEligible = PRORATE_CATS.includes(itemCategory) || itemCategory === "";
 
                           const getDaysInStartMonth = (dateStr: string | null) => {
                             if (!dateStr) return 31;
@@ -273,7 +274,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           };
 
                           let backupProrate = 0;
-                          if (item.quotationItem.isBackup && PRORATE_CATS.includes(itemCategory)) {
+                          if (item.quotationItem.isBackup && isProrateEligible) {
                             const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
                             const daysInMonth = getDaysInStartMonth(item.quotationItem.backupStartDate);
                             backupProrate = (backupDays / daysInMonth) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
