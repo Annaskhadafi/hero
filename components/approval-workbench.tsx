@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { getApprovalCenterData } from "@/lib/approval-workspace";
 import Link from "next/link";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
 
@@ -172,11 +173,25 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
                             <div className="flex items-center justify-between">
                               <p className="font-semibold">Ringkasan kerja</p>
                               {item.activityType === "Request APD" && (
-                                <Button type="button" variant="outline" size="sm" asChild>
-                                  <Link href={`/dashboard/apd/${item.activityId}`} target="_blank">
-                                    Preview Dokumen
-                                  </Link>
-                                </Button>
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button type="button" variant="outline" size="sm">
+                                      Preview Dokumen
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+                                    <DialogHeader>
+                                      <DialogTitle>Preview Permintaan APD</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="flex-1 overflow-hidden mt-4 rounded-md border">
+                                      <iframe 
+                                        src={`/print/apd/${item.activityId}`}
+                                        className="w-full h-full"
+                                        title="Preview Dokumen"
+                                      />
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               )}
                             </div>
                             <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>

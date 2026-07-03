@@ -7,6 +7,7 @@ import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default async function ApdRequestsPage() {
   const currentEmployee = await getCurrentEmployee();
@@ -60,11 +61,25 @@ export default async function ApdRequestsPage() {
           row.siteName,
           row.pendingWith || "-",
           <AdminStatusBadge key={`status-${row.id}`} value={row.status} />,
-          <Button key={`action-${row.id}`} variant="outline" size="sm" asChild>
-            <Link href={`/dashboard/apd/${row.id}`}>
-              Preview Dokumen
-            </Link>
-          </Button>,
+          <Dialog key={`action-${row.id}`}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                Preview Dokumen
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Preview Permintaan APD</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-hidden mt-4 rounded-md border">
+                <iframe 
+                  src={`/print/apd/${row.id}`}
+                  className="w-full h-full"
+                  title="Preview Dokumen"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>,
         ])}
       />
     </AdminPageShell>
