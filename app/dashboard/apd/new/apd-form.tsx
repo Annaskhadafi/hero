@@ -141,9 +141,9 @@ export function ApdRequestForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card className="border-border shadow-sm bg-muted/50">
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <h3 className="text-sm font-semibold text-foreground mb-4">Informasi Pemohon (Otomatis)</h3>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Tanggal Pengajuan</p>
               <p className="font-medium text-sm">{today}</p>
@@ -167,7 +167,7 @@ export function ApdRequestForm({
       </Card>
 
       <Card className="border-border shadow-sm">
-        <CardContent className="p-6 space-y-6">
+        <CardContent className="p-4 sm:p-6 space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">Daftar Item APD</h3>
@@ -186,7 +186,7 @@ export function ApdRequestForm({
                   )}
                 </div>
                 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-2">
                     <Label>Jenis APD</Label>
                     <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
