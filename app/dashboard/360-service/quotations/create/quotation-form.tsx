@@ -276,8 +276,10 @@ const router = useRouter()
     return getPrimaryProrate(item) + getBackupProrate(item)
   }
 
+  const PRORATE_CATEGORIES = ["Labour Cost", "Rental & Tools"];
+
   const getPrimaryProrate = (item: SelectedItem) => {
-    if (item.category === "Labour Cost") {
+    if (PRORATE_CATEGORIES.includes(item.category)) {
       let totalProrate = 0;
       if (item.startDate && item.endDate) {
         const primaryDays = calculateDays(item.startDate, item.endDate)
@@ -299,7 +301,7 @@ const router = useRouter()
   }
 
   const getBackupProrate = (item: SelectedItem) => {
-    if (item.category === "Labour Cost" && item.isBackup) {
+    if (PRORATE_CATEGORIES.includes(item.category) && item.isBackup) {
       const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
       const daysInMonth = getDaysInMonthOfStartDate(item.backupStartDate)
       return (backupDays / daysInMonth) * (item.backupPrice || 0) * item.quantity

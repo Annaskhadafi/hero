@@ -84,7 +84,6 @@ export const service360QuotationItems = pgTable("hero_service360_quotation_items
     .notNull()
     .references(() => service360Quotations.id, { onDelete: "cascade" }),
   itemId: integer("item_id")
-    .notNull()
     .references(() => service360Items.id),
   monthPeriod: text("month_period"),
   level: text("level"),

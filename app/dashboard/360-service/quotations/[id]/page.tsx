@@ -62,30 +62,45 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   const dateStr = new Date(quotation.quotationDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const formattedDate = dateStr // "June, 2026" based on the image format
 
-  // Advanced Pagination logic for A4 size
-  const ITEMS_PER_PAGE_FIRST = 7;
-  const ITEMS_PER_PAGE_REST = 12;
-  const FOOTER_RESERVED_ROWS = 2;
+  // Pagination: A4 page capacity estimates
+  // First page has a tall header so fewer items fit
+  // Footer (Total box + TTD) takes ~4 row-heights worth of space
+  const ITEMS_PER_PAGE_FIRST = 6;   // conservative for first page (header is tall)
+  const ITEMS_PER_PAGE_REST = 11;   // conservative for subsequent pages
+  const FOOTER_ROWS = 4;             // rows worth of space the footer+total+signature needs
 
   const chunks: any[][] = [];
-  let remaining = quotation.items;
+  let remaining = [...quotation.items];
   let pageIndexCounter = 0;
 
   while (remaining.length > 0 || pageIndexCounter === 0) {
     const isFirstPage = pageIndexCounter === 0;
-    const maxItemsThisPage = isFirstPage ? ITEMS_PER_PAGE_FIRST : ITEMS_PER_PAGE_REST;
-    const maxItemsWithFooter = maxItemsThisPage - FOOTER_RESERVED_ROWS;
+    const maxItems = isFirstPage ? ITEMS_PER_PAGE_FIRST : ITEMS_PER_PAGE_REST;
+    const maxItemsWithFooter = maxItems - FOOTER_ROWS; // space needed for footer on last page
 
-    if (remaining.length <= maxItemsWithFooter) {
-      chunks.push(remaining);
-      remaining = [];
-    } else if (remaining.length <= maxItemsThisPage) {
-      chunks.push(remaining);
-      remaining = [];
-      chunks.push([]); // Add empty page for the footer
+    if (remaining.length === 0) {
+      // No items left but we need at least one page
+      chunks.push([]);
+      break;
+    }
+
+    const isLastBatch = remaining.length <= maxItems;
+
+    if (isLastBatch) {
+      if (remaining.length <= maxItemsWithFooter) {
+        // Fits with footer on same page
+        chunks.push(remaining);
+        remaining = [];
+      } else {
+        // Items fit but no room for footer — push items, then empty footer page
+        chunks.push(remaining);
+        remaining = [];
+        chunks.push([]); // dedicated footer page
+      }
     } else {
-      chunks.push(remaining.slice(0, maxItemsThisPage));
-      remaining = remaining.slice(maxItemsThisPage);
+      // More pages needed, fill this page fully
+      chunks.push(remaining.slice(0, maxItems));
+      remaining = remaining.slice(maxItems);
     }
     pageIndexCounter++;
   }
@@ -248,10 +263,20 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           const globalIndex = chunkStartIndices[pageIndex] + idx;
                           const isEven = idx % 2 === 0;
 
+                          const PRORATE_CATS = ["Labour Cost", "Rental & Tools"];
+                          const itemCategory = item.item?.category || "";
+
+                          const getDaysInStartMonth = (dateStr: string | null) => {
+                            if (!dateStr) return 31;
+                            const d = new Date(dateStr);
+                            return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                          };
+
                           let backupProrate = 0;
-                          if (item.quotationItem.isBackup) {
+                          if (item.quotationItem.isBackup && PRORATE_CATS.includes(itemCategory)) {
                             const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
-                            backupProrate = (backupDays / 31) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            const daysInMonth = getDaysInStartMonth(item.quotationItem.backupStartDate);
+                            backupProrate = (backupDays / daysInMonth) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
                           }
                           const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
 
