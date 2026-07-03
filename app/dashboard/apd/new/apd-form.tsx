@@ -143,7 +143,7 @@ export function ApdRequestForm({
       <Card className="border-border shadow-sm bg-muted/50">
         <CardContent className="p-4 sm:p-6">
           <h3 className="text-sm font-semibold text-foreground mb-4">Informasi Pemohon (Otomatis)</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Tanggal Pengajuan</p>
               <p className="font-medium text-sm">{today}</p>
@@ -186,7 +186,7 @@ export function ApdRequestForm({
                   )}
                 </div>
                 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Jenis APD</Label>
                     <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>

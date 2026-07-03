@@ -64,7 +64,7 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
       {/* Info Pemohon */}
       <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">Informasi Pemohon</h2>
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
           <div>
             <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Nama</p>
             <p className="font-semibold text-gray-900 mt-0.5">{request.employeeName}</p>
