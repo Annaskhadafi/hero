@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { db } from "@/db";
 import { apdRequests, apdRequestItems, approvals, employees } from "@/db/schema/hero";
@@ -123,4 +123,35 @@ export async function submitApdRequest(formData: FormData) {
     revalidatePath("/dashboard/apd");
     return { success: true, requestId: request.id };
   });
+}
+
+export async function deleteApdRequest(id: number) {
+  const currentEmployee = await getCurrentEmployee();
+  if (!currentEmployee) {
+    throw new Error("Unauthorized");
+  }
+
+  const [request] = await db.select().from(apdRequests).where(eq(apdRequests.id, id));
+  if (!request) {
+    throw new Error("Request not found");
+  }
+
+  // Allow delete if it's their own request, or they are admin/superadmin
+  // Optional: check if status is still pending. If it's already approved/completed, maybe prevent deletion?
+  if (
+    request.employeeId !== currentEmployee.id && 
+    currentEmployee.role !== "admin" && 
+    currentEmployee.role !== "superadmin"
+  ) {
+    throw new Error("Anda tidak memiliki akses untuk menghapus permintaan ini");
+  }
+
+  if (request.status !== "pending") {
+    throw new Error("Hanya permintaan berstatus 'Pending' yang dapat dihapus");
+  }
+
+  await db.delete(apdRequests).where(eq(apdRequests.id, id));
+
+  revalidatePath("/dashboard/apd");
+  return { success: true };
 }
