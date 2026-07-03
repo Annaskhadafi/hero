@@ -1,4 +1,4 @@
-﻿import { AdminMetricGrid } from "@/components/admin-metric-grid";
+import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
@@ -52,17 +52,17 @@ export default async function ApdRequestsPage() {
       <AdminTableCard
         title="Daftar Permintaan APD"
         description="Pantau status permintaan APD dari seluruh karyawan."
-        columns={["No. Tiket", "Tanggal", "Karyawan", "Departemen", "Lokasi", "Status", "Aksi"]}
+        columns={["No. Tiket", "Tanggal", "Karyawan", "Lokasi", "Menunggu Review", "Status", "Aksi"]}
         rows={rows.map((row) => [
           <span className="font-medium text-foreground" key="req">{row.requestNumber}</span>,
           row.requestDate?.toLocaleDateString("id-ID", { dateStyle: "medium" }),
           row.employeeName,
-          row.departmentName ?? "-",
           row.siteName,
+          row.pendingWith || "-",
           <AdminStatusBadge key={`status-${row.id}`} value={row.status} />,
           <Button key={`action-${row.id}`} variant="outline" size="sm" asChild>
             <Link href={`/dashboard/apd/${row.id}`}>
-              Preview
+              Preview Dokumen
             </Link>
           </Button>,
         ])}

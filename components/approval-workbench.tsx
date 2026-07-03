@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { getApprovalCenterData } from "@/lib/approval-workspace";
+import Link from "next/link";
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
 
@@ -168,7 +169,16 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
                         <form action={reviewApprovalAction} className="space-y-3">
                           <input type="hidden" name="approvalId" value={item.approvalId} />
                           <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
-                            <p className="font-semibold">Ringkasan kerja</p>
+                            <div className="flex items-center justify-between">
+                              <p className="font-semibold">Ringkasan kerja</p>
+                              {item.activityType === "Request APD" && (
+                                <Button type="button" variant="outline" size="sm" asChild>
+                                  <Link href={`/dashboard/apd/${item.activityId}`} target="_blank">
+                                    Preview Dokumen
+                                  </Link>
+                                </Button>
+                              )}
+                            </div>
                             <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>
                           </div>
                           <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">

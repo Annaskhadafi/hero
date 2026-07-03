@@ -15,11 +15,19 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
       departmentName: masterDepartments.name,
       siteName: sites.name,
       employeeId: apdRequests.employeeId,
+      pendingWith: approvals.approverName,
     })
     .from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .innerJoin(sites, eq(apdRequests.siteId, sites.id));
+    .innerJoin(sites, eq(apdRequests.siteId, sites.id))
+    .leftJoin(
+      approvals,
+      and(
+        eq(approvals.apdRequestId, apdRequests.id),
+        eq(approvals.status, "pending")
+      )
+    );
     
   if (currentEmployeeId != null) {
     query.where(eq(apdRequests.employeeId, currentEmployeeId));
