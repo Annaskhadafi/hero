@@ -119,7 +119,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
     },
     {
       title: "Request APD",
-      href: "/dashboard/apd",
+      href: "/mobile/apd",
       resource: "apd-request",
       icon: HardHat,
       bg: "bg-blue-500/10 text-blue-600",

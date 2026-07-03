@@ -1,0 +1,129 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { HardHat, Plus, ArrowRight, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { getServerSession } from "@/lib/auth-session";
+import { fetchApdRequests } from "@/lib/apd-data";
+import { getCurrentEmployee } from "@/lib/get-current-employee";
+
+function statusBadgeClass(status: string) {
+  const n = status.toLowerCase();
+  if (n.includes("approved") || n.includes("completed")) return "bg-emerald-50 text-emerald-700";
+  if (n.includes("pending")) return "bg-amber-50 text-amber-700";
+  if (n.includes("reject")) return "bg-rose-50 text-rose-700";
+  return "bg-blue-50 text-blue-700";
+}
+
+export default async function MobileApdPage() {
+  const session = await getServerSession();
+  if (!session?.user?.email) redirect("/sign-in");
+
+  const currentEmployee = await getCurrentEmployee();
+  if (!currentEmployee) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-5 text-sm text-gray-500">
+        Data employee belum tersedia untuk akun ini.
+      </div>
+    );
+  }
+
+  const requests = await fetchApdRequests(currentEmployee.id);
+  const pendingCount = requests.filter(r => r.status === "pending").length;
+  const approvedCount = requests.filter(r => r.status === "approved" || r.status === "completed").length;
+
+  return (
+    <div className="space-y-4 pb-6">
+      {/* Header */}
+      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE &bull; APD</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Permintaan APD</h1>
+          </div>
+          <Link
+            prefetch={false}
+            href="/mobile/apd/new"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 active:scale-95 transition-transform"
+            aria-label="Ajukan APD"
+          >
+            <Plus className="size-5 text-blue-200" />
+          </Link>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-white/10 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-medium text-blue-100">
+                <ShieldCheck className="size-3" /> Safety First
+              </span>
+              <p className="mt-3 text-3xl font-bold leading-none">{requests.length}</p>
+              <p className="mt-2 text-sm text-blue-200">
+                Total pengajuan APD Anda
+              </p>
+            </div>
+            <Link
+              prefetch={false}
+              href="/mobile/apd/new"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-xs font-semibold text-blue-700 active:scale-95 transition-transform"
+            >
+              Ajukan <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium text-blue-200">Menunggu Approval</p>
+              <p className="mt-0.5 text-base font-bold text-amber-300">{pendingCount}</p>
+            </div>
+            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium text-blue-200">Selesai / Disetujui</p>
+              <p className="mt-0.5 text-base font-bold text-emerald-300">{approvedCount}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* List */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Riwayat Pengajuan</h2>
+          <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{requests.length} tiket</span>
+        </div>
+
+        {requests.length > 0 ? (
+          <div className="space-y-3">
+            {requests.map((request) => (
+              <Link 
+                key={request.id} 
+                href={`/mobile/apd/${request.id}`}
+                className="block active:scale-[0.98] transition-transform"
+              >
+                <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{request.requestNumber}</p>
+                      <h2 className="mt-1 text-sm font-semibold leading-tight text-gray-900">Pengajuan APD</h2>
+                      <p className="mt-1 text-xs text-gray-500">{request.requestDate?.toLocaleDateString("id-ID", { dateStyle: "medium" })}</p>
+                    </div>
+                    <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium shrink-0 uppercase tracking-wider ${statusBadgeClass(request.status)}`}>
+                      {request.status}
+                    </span>
+                  </div>
+
+                  {request.notes ? (
+                    <div className="mt-3 rounded-lg bg-gray-50 p-3">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Catatan</p>
+                      <p className="mt-0.5 text-xs text-gray-700 line-clamp-2">{request.notes}</p>
+                    </div>
+                  ) : null}
+                </article>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-500">Belum ada riwayat pengajuan APD.</div>
+        )}
+      </section>
+    </div>
+  );
+}
