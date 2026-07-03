@@ -89,10 +89,11 @@ export function ApdRequestForm({
 
       let signatureUrl = "";
       if (signatureFile) {
-        const sigForm = new FormData();
-        sigForm.append("file", signatureFile);
-        const sigRes = await uploadFile(sigForm);
-        if (sigRes.success) signatureUrl = sigRes.url as string;
+        signatureUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(signatureFile);
+        });
       }
 
       // Upload photos for replacements
