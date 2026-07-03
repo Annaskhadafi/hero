@@ -17,7 +17,8 @@ import {
   User,
   Dumbbell,
   Trophy,
-  Route
+  Route,
+  HardHat
 } from "lucide-react";
 import {
   IconBook,
@@ -115,6 +116,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "tire_service",
       icon: FileSignature,
       bg: "bg-amber-500/10 text-amber-600",
+    },
+    {
+      title: "Request APD",
+      href: "/dashboard/apd",
+      resource: "apd-request",
+      icon: HardHat,
+      bg: "bg-blue-500/10 text-blue-600",
     },
     {
       title: "Izin & Terlambat",
