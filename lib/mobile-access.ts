@@ -19,6 +19,7 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/apd', mobile: '/dashboard/apd' },
   { desktop: '/dashboard/activity-hub/my-day', mobile: '/mobile/activity/input' },
   { desktop: '/dashboard/activity-hub', mobile: '/mobile/activity' },
   { desktop: '/dashboard/overtime-requests', mobile: '/mobile/overtime' },
