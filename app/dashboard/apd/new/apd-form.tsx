@@ -12,6 +12,7 @@ import { uploadFile } from "@/app/actions/upload";
 import { submitApdRequest } from "../actions";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { SignaturePad } from "@/components/signature-pad";
 
 const APD_ITEMS = [
   "Sepatu Safety",
@@ -260,12 +261,8 @@ export function ApdRequestForm({
 
           <div className="space-y-2">
             <Label>Tanda Tangan Digital (Opsional)</Label>
-            <p className="text-sm text-muted-foreground">Upload gambar tanda tangan Anda</p>
-            <Input 
-              type="file" 
-              accept="image/*" 
-              onChange={(e) => setSignatureFile(e.target.files?.[0] || null)} 
-            />
+            <p className="text-sm text-muted-foreground">Tanda tangan langsung pada area di bawah ini</p>
+            <SignaturePad onSignatureChange={setSignatureFile} />
           </div>
         </CardContent>
       </Card>
