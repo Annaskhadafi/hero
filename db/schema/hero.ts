@@ -496,12 +496,14 @@ export const activities = pgTable('hero_activities', {
   penaltyDeducted: integer('penalty_deducted').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
-
 export const approvals = pgTable('hero_approvals', {
   id: serial('id').primaryKey(),
   activityId: integer('activity_id')
     .references(() => activities.id, { onDelete: 'cascade' }),
   submissionId: integer('submission_id').references(() => formSubmissions.id, {
+    onDelete: 'cascade',
+  }),
+  apdRequestId: integer('apd_request_id').references(() => apdRequests.id, {
     onDelete: 'cascade',
   }),
   level: integer('level').notNull(),
@@ -3412,5 +3414,28 @@ export const employeeMcuMetrics = pgTable('hero_employee_mcu_metrics', {
   recordedAt: timestamp('recorded_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
+
+export const apdRequests = pgTable('hero_apd_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  requestDate: timestamp('request_date').notNull().defaultNow(),
+  status: text('status').notNull().default('pending'),
+  notes: text('notes').notNull().default(''),
+  signatureUrl: text('signature_url'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const apdRequestItems = pgTable('hero_apd_request_items', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id').notNull().references(() => apdRequests.id, { onDelete: 'cascade' }),
+  itemType: text('item_type').notNull(),
+  requestType: text('request_type').notNull(), // 'baru' or 'pergantian'
+  photoUrl: text('photo_url'),
+  quantity: integer('quantity').notNull().default(1),
+  notes: text('notes').notNull().default(''),
+});
 
 

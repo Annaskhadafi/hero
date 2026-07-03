@@ -11,7 +11,7 @@ import {
   service360FormHistory
 } from "@/db/schema/service360"
 import { employees, sites, masterDepartments, masterSections } from "@/db/schema/hero"
-import { eq, desc, and, sql } from "drizzle-orm"
+import { eq, desc, and, sql, isNotNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -226,10 +226,35 @@ export async function getQuotationById(id: number) {
   }
 }
 
+export async function getLatestSignatureByFromName(fromName: string) {
+  if (!fromName) return null;
+
+  const [quotation] = await db
+    .select({ fromSignatureUrl: service360Quotations.fromSignatureUrl })
+    .from(service360Quotations)
+    .where(and(
+      eq(service360Quotations.fromName, fromName),
+      isNotNull(service360Quotations.fromSignatureUrl)
+    ))
+    .orderBy(desc(service360Quotations.createdAt))
+    .limit(1);
+
+  if (quotation && quotation.fromSignatureUrl) {
+    const { getS3ObjectReadUrl } = await import('@/lib/s3-storage');
+    const readableUrl = await getS3ObjectReadUrl(quotation.fromSignatureUrl);
+    return {
+      signatureUrl: quotation.fromSignatureUrl,
+      readableUrl
+    };
+  }
+
+  return null;
+}
+
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -239,6 +264,7 @@ export async function createQuotation(data: any) {
     attn,
     cc,
     fromName,
+    fromSignatureUrl,
     subject,
     poNumber,
     projectName,
@@ -286,7 +312,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty
   } = data
   
   const [quotation] = await db.update(service360Quotations).set({
@@ -296,6 +322,7 @@ export async function updateQuotation(id: number, data: any) {
     attn,
     cc,
     fromName,
+    fromSignatureUrl,
     subject,
     poNumber,
     projectName,

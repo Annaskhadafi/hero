@@ -6,6 +6,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
+import { getS3ObjectReadUrl } from "@/lib/s3-storage"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +21,8 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
   const customers = await getCustomers()
   const items = await getItems()
   const siteList = await db.select().from(sites)
+
+  const initialSignatureReadableUrl = quotation.fromSignatureUrl ? await getS3ObjectReadUrl(quotation.fromSignatureUrl) : null;
 
   return (
     <div className="w-full p-4 md:p-6 space-y-6">
@@ -40,6 +43,7 @@ export default async function EditQuotationPage({ params }: { params: Promise<{ 
         siteList={siteList} 
         initialQuotationNumber={quotation.quotationNumber}
         initialData={quotation}
+        initialSignatureReadableUrl={initialSignatureReadableUrl}
         isEdit={true}
       />
     </div>

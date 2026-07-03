@@ -2653,7 +2653,63 @@ ${body}
 </td></tr>
 </table>
 </div>`
-}
+  },
+  {
+    name: 'APD Request Submitted',
+    templateCode: 'apd_request_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: 'Permohonan APD Baru: {{requestNumber}}',
+    htmlContent: 'Silakan merujuk pada format email standar APD.',
+    textContent: 'Silakan merujuk pada format email standar APD.',
+    description: 'Notifikasi saat permohonan APD baru diajukan',
+    variables: ['employeeName', 'requestNumber', 'approverName'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      requestNumber: 'APD-2026-0001',
+      approverName: 'Agus Subiyanto'
+    }
+  },
+  {
+    name: 'APD Request Approved',
+    templateCode: 'apd_request_approved',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: 'Permohonan APD Disetujui: {{requestNumber}}',
+    htmlContent: 'Silakan merujuk pada format email standar APD.',
+    textContent: 'Silakan merujuk pada format email standar APD.',
+    description: 'Notifikasi saat permohonan APD disetujui',
+    variables: ['employeeName', 'requestNumber', 'approverName'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      requestNumber: 'APD-2026-0001',
+      approverName: 'Agus Subiyanto'
+    }
+  },
+  {
+    name: 'APD Request Rejected',
+    templateCode: 'apd_request_rejected',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: 'Permohonan APD Ditolak: {{requestNumber}}',
+    htmlContent: 'Silakan merujuk pada format email standar APD.',
+    textContent: 'Silakan merujuk pada format email standar APD.',
+    description: 'Notifikasi saat permohonan APD ditolak',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      requestNumber: 'APD-2026-0001',
+      approverName: 'Agus Subiyanto',
+      reason: 'Barang sedang tidak tersedia'
+    }
+  }
+]
 
 function buildUnifiedEmailText(preset: EmailTemplatePreset) {
   return `PT Chitra Paratama — HERO Notification\n${preset.subject}\n\n${preset.textContent.trim()}\n\nEmail ini dikirim otomatis oleh sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.`
@@ -2700,6 +2756,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["custom_bulk", "HC Recruitment"],
   ["mcu_", "HC Recruitment"],
   ["hr_counseling_", "HR Counseling"],
+  ["apd_request_", "HSE Safety"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

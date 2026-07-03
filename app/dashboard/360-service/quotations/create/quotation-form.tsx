@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { createQuotation, createCustomer, saveItemToMaster, updateQuotation, getFormHistory, deleteFormHistory } from "@/app/actions/service360"
+import { uploadFile } from "@/app/actions/upload"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -56,6 +57,7 @@ const quotationSchema = z.object({
   attn: z.string().optional(),
   cc: z.string().optional(),
   fromName: z.string().optional(),
+  fromSignatureUrl: z.string().optional(),
   subject: z.string().optional(),
   poNumber: z.string().optional(),
   selectedProjectSite: z.string().optional(),
@@ -80,10 +82,11 @@ export type SelectedItem = z.infer<typeof itemSchema>;
 
 export type QuotationFormValues = z.infer<typeof quotationSchema>;
 
-export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; isEdit?: boolean }) {
+export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, initialSignatureReadableUrl, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; initialSignatureReadableUrl?: string | null; isEdit?: boolean }) {
 const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
+  const [signatureDisplayUrl, setSignatureDisplayUrl] = useState(initialSignatureReadableUrl || initialData?.fromSignatureUrl || "")
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationSchema),
@@ -98,6 +101,7 @@ const router = useRouter()
       attn: initialData?.attn || "",
       cc: initialData?.cc || "",
       fromName: initialData?.fromName || "",
+      fromSignatureUrl: initialData?.fromSignatureUrl || "",
       subject: initialData?.subject || "",
       poNumber: initialData?.poNumber || "",
       projectName: initialData?.projectName || "",
@@ -138,6 +142,7 @@ const router = useRouter()
   const attn = watch("attn") || ""
   const cc = watch("cc") || ""
   const fromName = watch("fromName") || ""
+  const fromSignatureUrl = watch("fromSignatureUrl") || ""
   const subject = watch("subject") || ""
 
   const [historyAttn, setHistoryAttn] = useState<string[]>([])
@@ -160,6 +165,23 @@ const router = useRouter()
       setHistorySubject([])
     }
   }, [selectedCustomerId])
+
+  useEffect(() => {
+    if (!fromName) return;
+    const timer = setTimeout(async () => {
+      if (isEdit && fromName === initialData?.fromName && initialData?.fromSignatureUrl) {
+         return;
+      }
+      
+      const { getLatestSignatureByFromName } = await import('@/app/actions/service360');
+      const sigData = await getLatestSignatureByFromName(fromName);
+      if (sigData && sigData.signatureUrl) {
+        setValue("fromSignatureUrl", sigData.signatureUrl);
+        setSignatureDisplayUrl(sigData.readableUrl);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [fromName, isEdit, initialData, setValue]);
 
   const handleDeleteHistory = async (field: string, value: string) => {
     if (selectedCustomerId && selectedCustomerId !== "manual") {
@@ -190,6 +212,14 @@ const router = useRouter()
     return diffDays > 0 ? diffDays : 0;
   }
 
+  const getDaysInMonthOfStartDate = (start?: string) => {
+    if (!start) return 31;
+    const date = new Date(start);
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  }
+
   const getRowSubtotal = (item: SelectedItem) => {
     return getPrimaryProrate(item) + getBackupProrate(item)
   }
@@ -197,7 +227,8 @@ const router = useRouter()
   const getPrimaryProrate = (item: SelectedItem) => {
     if (item.category === "Labour Cost") {
       const primaryDays = calculateDays(item.startDate, item.endDate)
-      return (primaryDays / 31) * item.price * item.quantity
+      const daysInMonth = getDaysInMonthOfStartDate(item.startDate)
+      return (primaryDays / daysInMonth) * item.price * item.quantity
     }
     return item.price * item.quantity
   }
@@ -205,7 +236,8 @@ const router = useRouter()
   const getBackupProrate = (item: SelectedItem) => {
     if (item.category === "Labour Cost" && item.isBackup) {
       const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
-      return (backupDays / 31) * (item.backupPrice || 0) * item.quantity
+      const daysInMonth = getDaysInMonthOfStartDate(item.backupStartDate)
+      return (backupDays / daysInMonth) * (item.backupPrice || 0) * item.quantity
     }
     return 0
   }
@@ -350,6 +382,7 @@ const router = useRouter()
         attn: data.attn,
         cc: data.cc,
         fromName: data.fromName,
+        fromSignatureUrl: data.fromSignatureUrl,
         subject: data.subject,
         poNumber: data.poNumber,
         projectName: finalProjectName,
@@ -492,6 +525,43 @@ const router = useRouter()
                 onDeleteHistory={(val) => handleDeleteHistory('fromName', val)}
                 placeholder="e.g. Nur Sabrina F.U"
               />
+              <div className="mt-2">
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Signature (TTD)</label>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const formData = new FormData()
+                      formData.append("file", file)
+                      setLoading(true)
+                      try {
+                        const res = await uploadFile(formData)
+                        if (res.success) {
+                          setValue("fromSignatureUrl", res.url)
+                          setSignatureDisplayUrl(res.readableUrl || res.url)
+                          toast.success("Signature uploaded")
+                        } else {
+                          toast.error("Failed to upload signature")
+                        }
+                      } catch (err) {
+                        toast.error("Upload error")
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
+                    className="text-xs w-full"
+                  />
+                  {signatureDisplayUrl && (
+                    <div className="h-8 w-12 border bg-white rounded flex items-center justify-center shrink-0 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={signatureDisplayUrl} alt="TTD" className="h-full object-contain" />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="lg:col-span-3 grid gap-4 md:grid-cols-2 lg:grid-cols-4 border-t pt-4 mt-2">
               <div>

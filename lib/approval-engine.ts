@@ -5,6 +5,7 @@ import {
   approvalMatrixSteps,
   employees,
   masterDepartments,
+  masterSections,
   orgChartNodes,
   orgChartStructures,
   orgNodeAssignments,
@@ -417,6 +418,128 @@ async function resolveCentralServiceSitePjoRoute(
     ],
   };
 }
+
+async function resolveApdApprovalRoute(
+  context: ApprovalContext,
+): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = [];
+  let stepOrder = 1;
+
+  // Step 1: PJO Site / Technical Engineer
+  const siteApprovers = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.id, context.siteHeadEmployeeId ?? 0),
+        eq(employees.siteId, context.siteId),
+        eq(employees.isActive, true),
+      ),
+    )
+    .limit(1);
+  const pjo = siteApprovers[0];
+
+  if (pjo) {
+    steps.push({
+      stepOrder: stepOrder++,
+      label: "Atasan Di Site (PJO)",
+      approverName: pjo.name,
+      approverEmployeeId: pjo.id,
+      approverNodeId: null,
+      approvalMatrixStepId: null,
+      approvalMode: "sequential",
+      resolutionSource: "apd_site_pjo",
+      canDelegate: true,
+      slaHours: 24,
+      nodeLabel: null,
+      fallbackLabel: null,
+      escalationLabel: null,
+    });
+  }
+
+  // Step 2: Head Section
+  if (context.sectionId) {
+    const sections = await db
+      .select({
+        headId: masterSections.headEmployeeId,
+      })
+      .from(masterSections)
+      .where(eq(masterSections.id, context.sectionId))
+      .limit(1);
+
+    if (sections[0]?.headId) {
+      const headSection = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
+        .limit(1);
+
+      if (headSection[0]) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: "Head Section",
+          approverName: headSection[0].name,
+          approverEmployeeId: headSection[0].id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: "sequential",
+          resolutionSource: "apd_head_section",
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: null,
+          fallbackLabel: null,
+          escalationLabel: null,
+        });
+      }
+    }
+  }
+
+  // Fallback to direct manager if no steps found
+  if (steps.length === 0 && context.directManagerId) {
+    const [manager] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+      })
+      .from(employees)
+      .where(and(eq(employees.id, context.directManagerId), eq(employees.isActive, true)))
+      .limit(1);
+
+    if (manager) {
+      steps.push({
+        stepOrder: 1,
+        label: "Direct Manager",
+        approverName: manager.name,
+        approverEmployeeId: manager.id,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: "sequential",
+        resolutionSource: "legacy_manager",
+        canDelegate: true,
+        slaHours: 24,
+        nodeLabel: null,
+        fallbackLabel: null,
+        escalationLabel: null,
+      });
+    }
+  }
+
+  return {
+    matrixId: null,
+    matrixName: null,
+    structureId: null,
+    structureName: null,
+    transactionType: context.transactionType,
+    warnings: ["Menggunakan custom route untuk APD Request (PJO -> Head Section)"],
+    steps,
+  };
+}
 type NodeRow = {
   id: number;
   label: string;
@@ -629,6 +752,11 @@ export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput,
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input);
+  
+  if (context.transactionType === "apd-request") {
+    return resolveApdApprovalRoute(context);
+  }
+
   const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
     "Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.",
   ]);

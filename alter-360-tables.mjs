@@ -17,6 +17,7 @@ async function alterTables() {
       'ADD COLUMN IF NOT EXISTS "attn" text',
       'ADD COLUMN IF NOT EXISTS "cc" text',
       'ADD COLUMN IF NOT EXISTS "from_name" text',
+      'ADD COLUMN IF NOT EXISTS "from_signature_url" text',
       'ADD COLUMN IF NOT EXISTS "subject" text',
       'ADD COLUMN IF NOT EXISTS "po_number" text',
       'ADD COLUMN IF NOT EXISTS "project_name" text',

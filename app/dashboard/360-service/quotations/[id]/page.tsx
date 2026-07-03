@@ -5,6 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { PrintButton } from "./print-button"
 import { Suspense } from "react"
+import { getS3ObjectReadUrl } from "@/lib/s3-storage"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +21,8 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   if (!quotation) {
     return notFound()
   }
+
+  const signatureUrl = quotation.fromSignatureUrl ? await getS3ObjectReadUrl(quotation.fromSignatureUrl) : null;
 
   // Helper to determine row color based on description
   const getRowIndexBg = (desc: string) => {
@@ -353,7 +356,12 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                     <div className="flex flex-col items-center">
                       <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">Prepared By</p>
                       <div className="h-0 w-40 border-b-2 border-dashed border-slate-300 relative">
-                        {/* Placeholder for Signature */}
+                        {signatureUrl && (
+                          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                          </div>
+                        )}
                       </div>
                       <p className="font-bold text-slate-800 text-[10pt] mt-3">{quotation.fromName || 'Nur Sabrina F.U'}</p>
                       <p className="text-slate-500 text-[8pt] font-medium uppercase tracking-wider">PT. Chitra Paratama</p>

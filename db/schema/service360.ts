@@ -57,6 +57,7 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   attn: text("attn"),
   cc: text("cc"),
   fromName: text("from_name"),
+  fromSignatureUrl: text("from_signature_url"),
   subject: text("subject"),
   poNumber: text("po_number"),
   projectName: text("project_name"),

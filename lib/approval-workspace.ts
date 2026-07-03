@@ -13,6 +13,7 @@ import {
   hcEmployeeContractReviews,
   orgChartStructures,
   sites,
+  apdRequests,
 } from "@/db/schema/hero";
 import type { ApprovalRouteResolution } from "@/lib/approval-engine";
 import { parseApprovalNoteEntries } from "@/lib/approval-notes";
@@ -90,6 +91,12 @@ type RawApprovalRecordRow = {
   submissionSubmittedAt: Date | null;
   templateName: string | null;
   templateKey: string | null;
+  apdRequestId?: number | null;
+  apdRequestNumber?: string | null;
+  apdRequestStatus?: string | null;
+  apdRequestDate?: Date | null;
+  apdEmployeeId?: number | null;
+  apdSiteId?: number | null;
 };
 
 type ApprovalQueueItem = ApprovalRecordRow & {
@@ -204,14 +211,14 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
   const requesterIds = Array.from(
     new Set(
       rawRows
-        .map((row) => row.activityEmployeeId ?? row.requesterEmployeeId)
+        .map((row) => row.activityEmployeeId ?? row.requesterEmployeeId ?? row.apdEmployeeId)
         .filter((value): value is number => value != null),
     ),
   );
   const siteIds = Array.from(
     new Set(
       rawRows
-        .map((row) => row.activitySiteId ?? row.submissionSiteId)
+        .map((row) => row.activitySiteId ?? row.submissionSiteId ?? row.apdSiteId)
         .filter((value): value is number => value != null),
     ),
   );
@@ -254,17 +261,17 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       {},
     );
     const requester =
-      requesterMap.get(row.activityEmployeeId ?? row.requesterEmployeeId ?? -1) ??
+      requesterMap.get(row.activityEmployeeId ?? row.requesterEmployeeId ?? row.apdEmployeeId ?? -1) ??
       null;
     const site =
-      siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? -1) ?? null;
+      siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? row.apdSiteId ?? -1) ?? null;
     const effectiveStartTime =
-      row.startTime ?? row.submissionSubmittedAt ?? row.submissionCreatedAt ?? row.submittedAt;
+      row.startTime ?? row.submissionSubmittedAt ?? row.apdRequestDate ?? row.submissionCreatedAt ?? row.submittedAt;
     const effectiveEndTime =
-      row.endTime ?? row.submissionSubmittedAt ?? row.submissionCreatedAt ?? row.submittedAt;
+      row.endTime ?? row.submissionSubmittedAt ?? row.apdRequestDate ?? row.submissionCreatedAt ?? row.submittedAt;
     const effectiveCreatedAt =
-      row.createdAt ?? row.submissionCreatedAt ?? row.submissionSubmittedAt ?? row.submittedAt;
-    const requestId = row.approvalActivityId ?? row.submissionId ?? row.approvalId;
+      row.createdAt ?? row.submissionCreatedAt ?? row.apdRequestDate ?? row.submissionSubmittedAt ?? row.submittedAt;
+    const requestId = row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.approvalId;
     const titleFromSnapshot =
       typeof preview.title === "string"
         ? preview.title
@@ -288,6 +295,23 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           ? payload.siteName
           : null;
 
+    const requestStatus = row.activityStatus ?? row.submissionStatus ?? row.apdRequestStatus ?? "pending";
+    const effectiveActivityType =
+      row.approvalActivityId != null
+        ? (row.activityType ?? "Daily Activity")
+        : row.submissionId != null
+          ? (row.templateName ?? "Workflow")
+          : row.apdRequestId != null
+            ? "Request APD"
+            : "Unknown";
+    const title =
+      titleFromSnapshot ??
+      (row.apdRequestId != null
+        ? `Request APD - ${row.apdRequestNumber ?? row.requestNumber ?? ""}`
+        : row.approvalActivityId != null
+          ? `Daily Activity - ${row.activityCode ?? ""}`
+          : `Workflow - ${row.templateName ?? ""}`);
+
     return {
       approvalId: row.approvalId,
       activityId: requestId,
@@ -309,10 +333,10 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         row.activityCode ??
         row.requestNumber ??
         `REQ-${String(requestId).padStart(5, "0")}`,
-      activityType: row.activityType ?? row.templateKey ?? row.templateName ?? "request",
-      activityTitle: row.activityTitle ?? titleFromSnapshot ?? row.templateName ?? "Untitled Request",
+      activityType: effectiveActivityType,
+      activityTitle: title,
       unitNumber: row.unitNumber ?? unitNumberFromSnapshot ?? "-",
-      activityStatus: row.activityStatus ?? row.submissionStatus ?? "submitted",
+      activityStatus: requestStatus,
       priority: row.priority ?? priorityFromSnapshot ?? "Normal",
       remarks: row.remarks ?? summaryFromSnapshot ?? "",
       startTime: effectiveStartTime,
@@ -572,11 +596,18 @@ async function fetchApprovalRows() {
       submissionSubmittedAt: formSubmissions.submittedAt,
       templateName: formTemplates.name,
       templateKey: formTemplates.templateKey,
+      apdRequestId: approvals.apdRequestId,
+      apdRequestNumber: apdRequests.requestNumber,
+      apdRequestStatus: apdRequests.status,
+      apdRequestDate: apdRequests.requestDate,
+      apdEmployeeId: apdRequests.employeeId,
+      apdSiteId: apdRequests.siteId,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
     .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
     .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
+    .leftJoin(apdRequests, eq(approvals.apdRequestId, apdRequests.id))
     .orderBy(desc(approvals.submittedAt), desc(approvals.id));
 
   return normalizeApprovalRows(rawRows);
