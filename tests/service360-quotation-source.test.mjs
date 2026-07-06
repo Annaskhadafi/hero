@@ -30,3 +30,17 @@ test("service 360 quotation reload keeps backup labour prorate eligible", () => 
   assert.match(formSource, /const PRORATE_CATEGORIES = \["Labour Cost", "Rental & Tools", "Rental", "Tools"\]/);
   assert.match(formSource, /getBackupProrate\(selItem\)/);
 });
+
+test("service 360 quotation edit reloads project name and PO period fields", () => {
+  const formSource = read("app/dashboard/360-service/quotations/create/quotation-form.tsx");
+
+  assert.match(formSource, /const parsePoPeriod = \(periodStr\?: string \| null\)/);
+  assert.match(formSource, /const parsedPoPeriod = parsePoPeriod\(initialData\?\.poPeriod\)/);
+  assert.match(formSource, /const initialProjectSiteId =/);
+  assert.match(formSource, /siteList\?\.find\(\(site\) => site\.name === initialData\?\.projectName\)\?\.id\?\.toString\(\)/);
+  assert.match(formSource, /selectedProjectSite: initialProjectSiteId/);
+  assert.match(formSource, /poPeriodStart: parsedPoPeriod\.start/);
+  assert.match(formSource, /poPeriodEnd: parsedPoPeriod\.end/);
+  assert.match(formSource, /value=\{poPeriodStart \|\| ""\}/);
+  assert.match(formSource, /value=\{poPeriodEnd \|\| ""\}/);
+});

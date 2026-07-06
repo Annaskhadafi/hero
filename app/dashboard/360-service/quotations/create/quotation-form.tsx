@@ -160,11 +160,24 @@ const parseMonthPeriod = (periodStr: string) => {
   return { start, end, extras };
 };
 
+const parsePoPeriod = (periodStr?: string | null) => {
+  if (!periodStr) return { start: "", end: "" };
+  const [startText, endText] = periodStr.split(" - ");
+  return {
+    start: parseFormattedDate(startText?.trim() || ""),
+    end: parseFormattedDate(endText?.trim() || ""),
+  };
+};
+
 export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, initialSignatureReadableUrl, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; initialSignatureReadableUrl?: string | null; isEdit?: boolean }) {
 const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
   const [signatureDisplayUrl, setSignatureDisplayUrl] = useState(initialSignatureReadableUrl || initialData?.fromSignatureUrl || "")
+  const parsedPoPeriod = parsePoPeriod(initialData?.poPeriod)
+  const initialProjectSiteId =
+    siteList?.find((site) => site.name === initialData?.projectName)?.id?.toString() ||
+    (initialData?.projectName ? "manual" : "")
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationSchema),
@@ -184,7 +197,10 @@ const router = useRouter()
       fromSignatureUrl: initialData?.fromSignatureUrl || "",
       subject: initialData?.subject || "",
       poNumber: initialData?.poNumber || "",
+      selectedProjectSite: initialProjectSiteId,
       projectName: initialData?.projectName || "",
+      poPeriodStart: parsedPoPeriod.start,
+      poPeriodEnd: parsedPoPeriod.end,
       notes: initialData?.notes || "",
       showIntro: initialData?.showIntro ?? true,
       customIntro: initialData?.customIntro || "",
@@ -785,14 +801,14 @@ const router = useRouter()
                 <div className="flex items-center gap-2 mt-1.5">
                   <Input 
                     type="date" 
-                    
+                    value={poPeriodStart || ""}
                     onChange={e => handlePoPeriodChange(e.target.value, poPeriodEnd || "")}
                     className="flex-1"
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input 
                     type="date" 
-                    
+                    value={poPeriodEnd || ""}
                     onChange={e => handlePoPeriodChange(poPeriodStart || "", e.target.value)}
                     className="flex-1"
                   />
