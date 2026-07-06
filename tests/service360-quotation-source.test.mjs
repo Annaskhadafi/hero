@@ -22,3 +22,11 @@ test("service 360 quotation line items support drag sorting", () => {
   assert.match(formSource, /restrictToVerticalAxis/);
   assert.match(actionSource, /orderBy\(asc\(service360QuotationItems\.id\)\)/);
 });
+
+test("service 360 quotation reload keeps backup labour prorate eligible", () => {
+  const formSource = read("app/dashboard/360-service/quotations/create/quotation-form.tsx");
+
+  assert.match(formSource, /category: i\.item\?\.category \|\| \(i\.quotationItem\.isBackup \? "Labour Cost" : "General"\)/);
+  assert.match(formSource, /const PRORATE_CATEGORIES = \["Labour Cost", "Rental & Tools", "Rental", "Tools"\]/);
+  assert.match(formSource, /getBackupProrate\(selItem\)/);
+});

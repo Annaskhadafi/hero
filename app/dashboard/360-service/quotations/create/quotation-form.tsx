@@ -194,7 +194,7 @@ const router = useRouter()
         return {
         id: idx,
         itemId: i.quotationItem.itemId,
-        category: i.item?.category || "General",
+        category: i.item?.category || (i.quotationItem.isBackup ? "Labour Cost" : "General"),
         monthPeriod: i.quotationItem.monthPeriod || "",
         startDate: parsedPrimary.start, 
         endDate: parsedPrimary.end,
