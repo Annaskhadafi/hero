@@ -7,6 +7,15 @@ import { PrintButton } from "./print-button"
 import { Suspense } from "react"
 import { getS3ObjectReadUrl } from "@/lib/s3-storage"
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+function abbreviatePeriod(period: string | null) {
+  if (!period) return '-'
+  return period.replace(
+    /(\d{4})-(\d{2})-(\d{2})/g,
+    (_, y, m, d) => `${Number(d)} ${SHORT_MONTHS[Number(m) - 1]} ${y}`
+  )
+}
+
 export const dynamic = "force-dynamic"
 
 export default async function QuotationPrintPreview({ params }: { params: Promise<{ id: string }> }) {
@@ -61,6 +70,51 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
   const dateStr = new Date(quotation.quotationDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const formattedDate = dateStr // "June, 2026" based on the image format
+
+  const getDaysInStartMonth = (dateStr: string | null) => {
+    if (!dateStr) return 31;
+    const d = new Date(dateStr);
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  };
+
+  const rentalItems = quotation.items.filter(i => i.item?.category === "Rental");
+  let totalRental = 0;
+  rentalItems.forEach(item => {
+    let backupProrate = 0;
+    if (item.quotationItem.isBackup) {
+      const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
+      const daysInMonth = getDaysInStartMonth(item.quotationItem.backupStartDate);
+      backupProrate = (backupDays / daysInMonth) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+    }
+    const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
+    totalRental += quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate;
+    if (item.quotationItem.isBackup && !quotation.hideBackupPrice) {
+      totalRental += backupProrate;
+    }
+  });
+
+  const getDayName = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    return days[new Date(dateStr).getDay()];
+  };
+
+  const getDayNumber = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).getDate().toString();
+  };
+
+  const getMonthName = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    return months[new Date(dateStr).getMonth()];
+  };
+
+  const getYearName = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).getFullYear().toString();
+  };
+
 
   // Pagination: A4 page capacity estimates
   // First page has a tall header so fewer items fit
@@ -229,7 +283,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           <>
                             <p className="mb-3 font-medium text-slate-800">Dear Mr. {quotation.attn || '-'} / Mr. {quotation.cc || '-'},</p>
                             <p>
-                              As you are aware, <span className="font-semibold text-slate-800">Tire Maintenance</span> is performing services at <span className="font-semibold text-slate-800">{quotation.projectName || '[Project Name]'}</span>. Could you please raise a Purchase Order (PO) for the period of <span className="font-semibold text-teal-700">{quotation.poPeriod || '[PO Period]'}</span> 
+                              As you are aware, <span className="font-semibold text-slate-800">Tire Maintenance</span> is performing services at <span className="font-semibold text-slate-800">{quotation.projectName || '[Project Name]'}</span>. Could you please raise a Purchase Order (PO) for the period of <span className="font-semibold text-teal-700">{abbreviatePeriod(quotation.poPeriod)}</span> 
                             </p>
                             <p className="mt-2">
                               We are pleased to quote you the labor price for our Tire Maintenance services as follows:
@@ -267,12 +321,6 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           const itemCategory = item.item?.category || "";
                           const isProrateEligible = PRORATE_CATS.includes(itemCategory) || itemCategory === "";
 
-                          const getDaysInStartMonth = (dateStr: string | null) => {
-                            if (!dateStr) return 31;
-                            const d = new Date(dateStr);
-                            return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-                          };
-
                           let backupProrate = 0;
                           if (item.quotationItem.isBackup && isProrateEligible) {
                             const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
@@ -288,7 +336,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                               </td>
                               <td className="border-r border-slate-100 px-2 text-center text-[8.5pt] align-top py-2">
                                 <div className="flex flex-col gap-1">
-                                  <span>{item.quotationItem.monthPeriod}</span>
+                                  <span>{abbreviatePeriod(item.quotationItem.monthPeriod)}</span>
                                   {quotation.showDays !== false && (() => {
                                     const days = parseDaysFromMonthPeriod(item.quotationItem.monthPeriod);
                                     return days > 0 ? (
@@ -436,6 +484,124 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             </div>
           </div>
         ))}
+        
+        {/* BAST PAGE */}
+        {quotation.includeBast && rentalItems.length > 0 && (
+          <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+            <div className="absolute inset-0 z-0 pointer-events-none">
+              <Image 
+                src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" 
+                alt="Letterhead" 
+                fill 
+                className="object-cover"
+              />
+            </div>
+            
+            <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
+              <div className="text-center font-bold text-[14pt] underline mb-8 mt-10 uppercase">
+                BERITA ACARA SERAH TERIMA RENTAL
+              </div>
+              
+              <div className="mb-6 leading-relaxed">
+                <table className="w-full max-w-[200px]">
+                  <tbody>
+                    <tr>
+                      <td className="w-24">Pada hari ini</td>
+                      <td className="w-4">:</td>
+                      <td>{getDayName(quotation.quotationDate)}</td>
+                    </tr>
+                    <tr>
+                      <td>Tanggal</td>
+                      <td>:</td>
+                      <td>{getDayNumber(quotation.quotationDate)}</td>
+                    </tr>
+                    <tr>
+                      <td>Bulan</td>
+                      <td>:</td>
+                      <td>{getMonthName(quotation.quotationDate)}</td>
+                    </tr>
+                    <tr>
+                      <td>Tahun</td>
+                      <td>:</td>
+                      <td>{getYearName(quotation.quotationDate)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mb-4 leading-relaxed text-justify">
+                Kami informasikan untuk tagihan RENTAL periode <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span> site <span className="font-bold">{quotation.projectName || '-'}</span> adalah sebesar <span className="font-bold">IDR {Number(totalRental).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span> (Exclude PPn)
+              </div>
+              
+              <div className="mb-4">
+                Adapun detail keterangannya adalah sebagai berikut;
+              </div>
+
+              <div className="mb-6">
+                <table className="w-full border-collapse border border-slate-800 text-[9pt]">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold text-center">
+                      <th className="border border-slate-800 py-2 px-2 w-[50px]">No</th>
+                      <th className="border border-slate-800 py-2 px-2">Description</th>
+                      <th className="border border-slate-800 py-2 px-2 w-[180px]">Period</th>
+                      <th className="border border-slate-800 py-2 px-2 w-[150px]">Allocation site</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="border border-slate-800 text-center py-2 px-2">{idx + 1}</td>
+                        <td className="border border-slate-800 py-2 px-3">
+                          <div className="flex flex-col gap-1">
+                            <span>{item.quotationItem.customDescription || item.item?.name || ''}</span>
+                            {item.quotationItem.isBackup && (
+                              <span className="text-teal-600 pt-1 border-t border-slate-200">{item.quotationItem.backupDescription || 'Backup Rental'}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-center py-2 px-2">
+                          <div className="flex flex-col gap-1">
+                            <span>{abbreviatePeriod(item.quotationItem.monthPeriod)}</span>
+                            {item.quotationItem.isBackup && (
+                              <span className="text-teal-600 font-medium pt-1 border-t border-slate-200">{item.quotationItem.backupMonthPeriod || '-'}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border border-slate-800 text-center py-2 px-2">{quotation.projectName || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="leading-relaxed mb-10">
+                Demikian Berita Acara ini dibuat dan ditanda tangani oleh kedua belah pihak.<br/>
+                Sebagai dasar lampiran invoice untuk tagihan rental Bulan <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span><br/>
+                <span className="font-bold">Reff PO {quotation.poNumber || '-'}</span>
+              </div>
+
+              <div className="flex justify-between w-full mt-auto pt-10">
+                <div className="flex flex-col items-center w-[250px] text-center">
+                  <p className="mb-20">Yang menerima,<br/>Untuk dan Atas Nama<br/><span className="font-bold">{quotation.customer?.customerName || '-'}</span></p>
+                  <div className="border-b border-slate-800 w-full mb-1 border-dashed"></div>
+                  <p className="font-bold">( {quotation.attn || "Nama Tanda tangan & Cap"} )</p>
+                </div>
+                <div className="flex flex-col items-center w-[250px] text-center">
+                  <p className="mb-20">Yang menyerahkan,<br/>Untuk dan Atas Nama<br/><span className="font-bold">PT. Chitra Paratama</span></p>
+                  <div className="border-b border-slate-800 w-full mb-1 border-dashed relative">
+                    {signatureUrl && (
+                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
+                        <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="font-bold">( {quotation.fromName || "Nama Tanda tangan & Cap"} )</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Global Print Styles specifically for this document */}

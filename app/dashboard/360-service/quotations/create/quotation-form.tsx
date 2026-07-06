@@ -64,8 +64,6 @@ const itemSchema = z.object({
   }
   return true
 }, { message: "Backup End Date must be >= Start Date", path: ["backupEndDate"] })
-
-
 const quotationSchema = z.object({
   quotationNumber: z.string().min(1, "Quotation Number is required"),
   quotationDate: z.string().min(1, "Date is required"),
@@ -89,6 +87,7 @@ const quotationSchema = z.object({
   showIntro: z.boolean().optional(),
   customIntro: z.string().optional(),
   notes: z.string().optional(),
+  includeBast: z.boolean().optional(),
   items: z.array(itemSchema).min(1, "At least one item is required")
 }).refine(data => {
   if (data.customerId === "manual" && !data.manualCustomerName) {
@@ -204,6 +203,7 @@ const router = useRouter()
       notes: initialData?.notes || "",
       showIntro: initialData?.showIntro ?? true,
       customIntro: initialData?.customIntro || "",
+      includeBast: initialData?.includeBast ?? false,
       items: initialData?.items?.map((i: any, idx: number) => {
         const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
         const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
@@ -243,6 +243,7 @@ const router = useRouter()
   const manualCustomerName = watch("manualCustomerName")
   const showLevel = watch("showLevel")
   const showQty = watch("showQty")
+  const includeBast = watch("includeBast")
   const attn = watch("attn") || ""
   const cc = watch("cc") || ""
   const fromName = watch("fromName") || ""
@@ -410,14 +411,14 @@ const router = useRouter()
     const site = siteList?.find(s => s.id.toString() === selectedProjectSite)
     const projectName = site?.name || ""
 
-    const labourItems = items.filter(i => i.category === "Labour Cost" && i.siteName === projectName)
+    const projectItems = items.filter(i => ['Labour Cost', 'Rental', 'Rental & Tools'].includes(i.category) && i.siteName === projectName)
 
-    if (labourItems.length === 0) {
-      alert(`No labour found for project: ${projectName}`)
+    if (projectItems.length === 0) {
+      alert(`No labour or rental items found for project: ${projectName}`)
       return
     }
 
-    const newItems = labourItems.map((itemDef, idx) => ({
+    const newItems = projectItems.map((itemDef, idx) => ({
       id: Date.now() + idx,
       itemId: itemDef.id,
       category: itemDef.category,
@@ -426,7 +427,9 @@ const router = useRouter()
       endDate: poPeriodEnd,
       extraDateRanges: [],
       level: itemDef.level?.toString() || "",
-      customDescription: `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`,
+      customDescription: itemDef.category === 'Labour Cost'
+        ? `Labour cost ${itemDef.jobTitle || ''} (${itemDef.name})`
+        : itemDef.name,
       quantity: 1,
       price: Number(itemDef.price)
     }))
@@ -474,345 +477,274 @@ const router = useRouter()
       toast.error("Error saving item to master");
     }
   }
+  const submitHandler = async (data: QuotationFormValues, isDraft = false) => {
+    setLoading(true);
+    try {
+      // Calculate totals for the payload
+      const calculatedSubTotal = data.items.reduce((acc, item) => acc + getRowSubtotal(item), 0);
+      const calculatedTaxAmount = (calculatedSubTotal * data.taxRate) / 100;
+      const calculatedTotalAmount = calculatedSubTotal + calculatedTaxAmount;
+      
+      let finalProjectName = data.projectName;
+      if (data.selectedProjectSite && data.selectedProjectSite !== "manual") {
+        const site = siteList?.find(s => s.id.toString() === data.selectedProjectSite);
+        if (site) {
+          finalProjectName = site.name;
+        }
+      }
+
+      const payload = {
+        ...data,
+        projectName: finalProjectName,
+        status: isDraft ? 'Draft' : 'Sent',
+        poPeriod: (data.poPeriodStart && data.poPeriodEnd) ? `${data.poPeriodStart} - ${data.poPeriodEnd}` : null,
+        subTotal: calculatedSubTotal,
+        taxAmount: calculatedTaxAmount,
+        totalAmount: calculatedTotalAmount,
+        items: data.items.map(item => ({
+          ...item,
+          subtotal: getRowSubtotal(item),
+          monthPeriod: (item.startDate && item.endDate) ? `${item.startDate} - ${item.endDate}` : null,
+          backupMonthPeriod: (item.backupStartDate && item.backupEndDate) ? `${item.backupStartDate} - ${item.backupEndDate}` : null
+        }))
+      };
+      
+      const res = isEdit && initialData 
+        ? await updateQuotation(initialData.id, payload)
+        : await createQuotation(payload);
+        
+      if (res && res.id) {
+        toast.success(isEdit ? "Quotation updated" : "Quotation created");
+        // Open the download link in a new tab
+        window.open(`/dashboard/360-service/quotations/${res.id}?download=true`, '_blank');
+        // Return to the list page
+        router.push("/dashboard/360-service/quotations");
+      } else {
+        toast.error("Error saving quotation: Unknown error");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSubmit = (data: QuotationFormValues) => submitHandler(data, false);
+  const onInvalid = (errors: any) => {
+    console.error("Form Errors:", errors);
+    
+    // Extract all error messages recursively
+    const extractErrors = (obj: any): string[] => {
+      if (!obj) return [];
+      if (obj.message && typeof obj.message === 'string') return [obj.message];
+      
+      let messages: string[] = [];
+      Object.values(obj).forEach(val => {
+        if (typeof val === 'object') {
+          messages = [...messages, ...extractErrors(val)];
+        }
+      });
+      return messages;
+    };
+    
+    const errorMessages = extractErrors(errors);
+    toast.error("Validation Error: " + [...new Set(errorMessages)].join(", "));
+  };
 
   const subTotal = formItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
   const taxAmount = (subTotal * taxRate) / 100
   const totalAmount = subTotal + taxAmount
   const lineItemColumnCount = 7 + (showLevel ? 1 : 0)
-
-  
-  const submitHandler = async (data: QuotationFormValues, stayOnPage: boolean = false) => {
-    setLoading(true)
-    try {
-
-      let finalCustomerId = selectedCustomerId
-      if (selectedCustomerId === "manual" && manualCustomerName) {
-        // Create new customer and get its ID
-        const newCustomer = await createCustomer({ customerName: manualCustomerName })
-        if (newCustomer && newCustomer.id) {
-          finalCustomerId = newCustomer.id.toString()
-        }
-      }
-      
-      let finalProjectName = data.projectName || ""
-      if (selectedProjectSite && selectedProjectSite !== "manual") {
-        const site = siteList?.find(s => s.id.toString() === selectedProjectSite)
-        if (site) {
-          finalProjectName = site.name
-        }
-      }
-
-      const formatDt = (d?: string) => {
-        if (!d) return ""
-        const date = new Date(d)
-        return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      }
-
-      const payload = {
-        quotationNumber: data.quotationNumber,
-        customerId: parseInt(finalCustomerId),
-        quotationDate: data.quotationDate,
-        attn: data.attn,
-        cc: data.cc,
-        fromName: data.fromName,
-        fromSignatureUrl: data.fromSignatureUrl,
-        subject: data.subject,
-        poNumber: data.poNumber,
-        projectName: finalProjectName,
-        poPeriod: (data.poPeriodStart && data.poPeriodEnd) ? `${formatDt(data.poPeriodStart)} - ${formatDt(data.poPeriodEnd)}` : "",
-        taxRate: data.taxRate.toString(),
-        taxAmount: taxAmount.toString(),
-        subTotal: subTotal.toString(),
-        totalAmount: totalAmount.toString(),
-        status: "Draft",
-        showLevel: data.showLevel,
-        showQty: data.showQty,
-        hideBackupPrice: data.hideBackupPrice,
-        showDays: data.showDays,
-        notes: data.notes,
-        showIntro: data.showIntro,
-        customIntro: data.customIntro,
-        items: formItems.map(item => {
-          let mergedMonthPeriod = item.monthPeriod;
-          if (item.startDate && item.endDate) {
-            mergedMonthPeriod = `${formatDt(item.startDate)} - ${formatDt(item.endDate)}`;
-            if (item.extraDateRanges && item.extraDateRanges.length > 0) {
-              const extras = item.extraDateRanges.filter(r => r.start && r.end).map(r => `${formatDt(r.start)} - ${formatDt(r.end)}`).join(" & ");
-              if (extras) mergedMonthPeriod += ` & ${extras}`;
-            }
-          }
-
-          return {
-          itemId: item.itemId,
-          monthPeriod: mergedMonthPeriod,
-          level: item.level,
-          customDescription: item.customDescription,
-          quantity: item.quantity,
-          price: item.price.toString(),
-          subtotal: getRowSubtotal(item).toString(),
-          isBackup: item.isBackup,
-          backupStartDate: item.backupStartDate,
-          backupEndDate: item.backupEndDate,
-          backupMonthPeriod: (item.backupStartDate && item.backupEndDate) ? `${formatDt(item.backupStartDate)} - ${formatDt(item.backupEndDate)}` : "",
-          backupLevel: item.backupLevel,
-          backupDescription: item.backupDescription,
-          backupPrice: item.backupPrice ? item.backupPrice.toString() : null,
-        }
-        })
-      }
-
-      let result;
-      if (isEdit && initialData?.id) {
-        result = await updateQuotation(initialData.id, payload)
-      } else {
-        result = await createQuotation(payload)
-      }
-
-      if (!stayOnPage) {
-        if (result && result.id) {
-          router.push(`/dashboard/360-service/quotations/${result.id}`)
-        } else {
-          router.push("/dashboard/360-service/quotations")
-        }
-      } else {
-        toast.success(isEdit ? "Quotation updated" : "Quotation saved");
-        if (!isEdit && result && result.id) {
-          router.push(`/dashboard/360-service/quotations/${result.id}/edit`)
-        }
-      }
-    } catch (error) {
-      console.error(error)
-      alert(`Failed to ${isEdit ? 'update' : 'create'} quotation`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <form onSubmit={handleSubmit((data) => submitHandler(data, false))}>
-      
-      <div className="grid gap-6">
-        {Object.keys(errors).length > 0 && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm border border-red-200 mb-4">
-            <p className="font-bold mb-2">Please fix the following validation errors:</p>
-            <ul className="list-disc pl-5 space-y-1">
-              {Object.entries(errors).map(([key, err]) => {
-                if (key === "items" && Array.isArray(err)) {
-                  return err.map((itemErr, i) => {
-                    if (!itemErr) return null
-                    return Object.entries(itemErr).map(([itemKey, e]: [string, any]) => (
-                      <li key={`${i}-${itemKey}`}>Row {i + 1} ({itemKey}): {e.message}</li>
-                    ))
-                  })
-                }
-                return <li key={key}>{String(err?.message)}</li>
-              })}
-            </ul>
-          </div>
-        )}
+    <div className="w-full pb-20">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Create Quotation</h1>
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={() => router.back()}
+        >
+          <X className="w-4 h-4 mr-2" />
+          Cancel
+        </Button>
+      </div>
 
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Header Details</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <CardContent className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             <div>
               <label className="text-sm font-medium">Quotation Number</label>
-              <Input {...register("quotationNumber")} required defaultValue={initialQuotationNumber || ""} placeholder="e.g. 298/SSA-SRV-CKBMB/VI/26/AP" />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Date</label>
-              <Input {...register("quotationDate")} type="date" required defaultValue={new Date().toISOString().split('T')[0]} />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Customer (To)</label>
-              <select 
-                 
-                required 
-                
-                {...register("customerId")}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="">Select Customer</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.customerName}</option>
-                ))}
-                <option value="manual">+ Add Manual Customer</option>
-              </select>
-              {selectedCustomerId === "manual" && (
-                <Input 
-                  placeholder="Type new customer name..." 
-                  className="mt-2"
-                  
-                  {...register("manualCustomerName")}
-                  required
-                />
-              )}
+              <Input {...register("quotationNumber")} placeholder="e.g. 001/TM/VI/2026" className="mt-1.5" />
+              {errors.quotationNumber && <p className="text-red-500 text-xs mt-1">{errors.quotationNumber.message}</p>}
             </div>
             
             <div>
-              <label className="text-sm font-medium">Attn</label>
-              <HistoryCombobox
-                value={attn}
-                onValueChange={(val) => setValue("attn", val)}
-                history={historyAttn}
-                onDeleteHistory={(val) => handleDeleteHistory('attn', val)}
-                placeholder="e.g. Mr. Irawanto"
-              />
+              <label className="text-sm font-medium">Date</label>
+              <Input type="date" {...register("quotationDate")} className="mt-1.5" />
+              {errors.quotationDate && <p className="text-red-500 text-xs mt-1">{errors.quotationDate.message}</p>}
             </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Customer</label>
+              <SearchableSelect
+                label="Customer"
+                value={watch("customerId")}
+                onValueChange={(val) => {
+                  setValue("customerId", val, { shouldValidate: true })
+                  if (val !== "manual") {
+                    const c = customers.find(x => x.id.toString() === val)
+                    if (c) setValue("manualCustomerName", c.customerName)
+                  } else {
+                    setValue("manualCustomerName", "")
+                  }
+                }}
+                placeholder="Select a customer..."
+                options={[
+                  ...customers.map(c => ({ value: c.id.toString(), label: c.customerName })),
+                  { value: "manual", label: "Manual Input..." }
+                ]}
+                widthClassName="w-full"
+              />
+              {watch("customerId") === "manual" && (
+                <Input {...register("manualCustomerName")} placeholder="Enter customer name manually" className="mt-2" />
+              )}
+              {errors.customerId && <p className="text-red-500 text-xs mt-1">{errors.customerId.message}</p>}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Attn (To)</label>
+              <Input {...register("attn")} placeholder="e.g. Mr. John Doe" className="mt-1.5" />
+            </div>
+
             <div>
               <label className="text-sm font-medium">Cc</label>
-              <HistoryCombobox
-                value={cc}
-                onValueChange={(val) => setValue("cc", val)}
-                history={historyCc}
-                onDeleteHistory={(val) => handleDeleteHistory('cc', val)}
-                placeholder="e.g. Mr. M Julia Wanda"
-              />
+              <Input {...register("cc")} placeholder="e.g. Mr. Jane Doe" className="mt-1.5" />
             </div>
+
             <div>
-              <label className="text-sm font-medium">From</label>
+              <label className="text-sm font-medium mb-1.5 block">From (Sender Name)</label>
               <HistoryCombobox
-                value={fromName}
+                value={watch("fromName") || ""}
                 onValueChange={(val) => setValue("fromName", val)}
+                onDeleteHistory={(val) => handleDeleteHistory("fromName", val)}
                 history={historyFrom}
-                onDeleteHistory={(val) => handleDeleteHistory('fromName', val)}
                 placeholder="e.g. Nur Sabrina F.U"
+                className="mb-3"
               />
-              <div className="mt-2">
-                <label className="text-xs font-medium text-muted-foreground block mb-1">Signature (TTD)</label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      const formData = new FormData()
-                      formData.append("file", file)
-                      setLoading(true)
-                      try {
-                        const res = await uploadFile(formData)
-                        if (res.success) {
-                          setValue("fromSignatureUrl", res.url)
-                          setSignatureDisplayUrl(res.readableUrl || res.url)
-                          toast.success("Signature uploaded")
-                        } else {
-                          toast.error("Failed to upload signature")
-                        }
-                      } catch (err) {
-                        toast.error("Upload error")
-                      } finally {
-                        setLoading(false)
-                      }
-                    }}
-                    className="text-xs w-full"
-                  />
-                  {signatureDisplayUrl && (
-                    <div className="h-8 w-12 border bg-white rounded flex items-center justify-center shrink-0 overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={signatureDisplayUrl} alt="TTD" className="h-full object-contain" />
-                    </div>
-                  )}
-                </div>
+              <label className="text-sm font-medium mb-1.5 block">Signature (TTD)</label>
+              <div className="flex items-center gap-2">
+                <Input 
+                  type="file" 
+                  accept="image/*" 
+                  className="text-xs"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const formData = new FormData()
+                    formData.append("file", file)
+                    toast.info("Uploading signature...")
+                    const res = await uploadFile(formData)
+                    if (res.success) {
+                      setValue("fromSignatureUrl", res.url)
+                      setSignatureDisplayUrl(res.readableUrl)
+                      toast.success("Signature uploaded")
+                    } else {
+                      toast.error("Upload failed")
+                    }
+                  }}
+                />
+                {signatureDisplayUrl && (
+                  <img src={signatureDisplayUrl} alt="Signature" className="h-8 object-contain" />
+                )}
               </div>
             </div>
-            <div className="lg:col-span-3 grid gap-4 md:grid-cols-2 lg:grid-cols-4 border-t pt-4 mt-2">
-              <div>
-                <label className="text-sm font-medium">Subject</label>
-                <HistoryCombobox
-                  value={subject}
-                  onValueChange={(val) => setValue("subject", val)}
-                  history={historySubject}
-                  onDeleteHistory={(val) => handleDeleteHistory('subject', val)}
-                  placeholder="e.g. Quotation for SSA"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">PO Number</label>
-                <Input {...register("poNumber")} placeholder="e.g. 4501075835" />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Tax</label>
-                <div className="flex items-center gap-2">
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    {...register("taxRate", { valueAsNumber: true })}
-                    
-                    className="w-24"
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
+
+            <div>
+              <label className="text-sm font-medium">Subject</label>
+              <HistoryCombobox
+                value={watch("subject") || ""}
+                onValueChange={(val) => setValue("subject", val)}
+                onDeleteHistory={(val) => handleDeleteHistory("subject", val)}
+                history={historySubject}
+                placeholder="e.g. Penawaran Harga Jasa Tire Maintenance"
+                className="mt-1.5"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">PO Number</label>
+              <Input {...register("poNumber")} placeholder="e.g. 4600010041" className="mt-1.5" />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Tax</label>
+              <div className="flex gap-4 items-center">
+                <div className="flex items-center gap-2 w-24">
+                  <Input type="number" {...register("taxRate", { valueAsNumber: true })} />
+                  <span className="text-sm">%</span>
                 </div>
-              </div>
-              <div className="flex gap-6 pt-4 border-t border-slate-100 mt-4">
-                <div className="flex items-center gap-2">
-                  <Switch 
-                    checked={showLevel} 
-                    onCheckedChange={(val) => setValue("showLevel", val)} 
-                  />
-                  <label className="text-sm font-medium">Show Level Column</label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch 
-                    checked={showQty} 
-                    onCheckedChange={(val) => setValue("showQty", val)} 
-                  />
-                  <label className="text-sm font-medium">Show QTY Column</label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch 
-                    checked={hideBackupPrice} 
-                    onCheckedChange={(val) => setValue("hideBackupPrice", val)} 
-                  />
-                  <label className="text-sm font-medium">Hide Backup Price/Mo (PDF)</label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch 
-                    checked={showDays ?? true} 
-                    onCheckedChange={(val) => setValue("showDays", val)} 
-                  />
-                  <label className="text-sm font-medium">Show Hari (PDF)</label>
+                
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Switch checked={showLevel} onCheckedChange={(v) => setValue("showLevel", v)} />
+                    <label className="text-xs leading-tight">Show<br/>Level<br/>Column</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={showQty} onCheckedChange={(v) => setValue("showQty", v)} />
+                    <label className="text-xs leading-tight">Show<br/>QTY<br/>Column</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={hideBackupPrice} onCheckedChange={(v) => setValue("hideBackupPrice", v)} />
+                    <label className="text-xs leading-tight">Hide Backup<br/>Price/Mo<br/>(PDF)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={showDays} onCheckedChange={(v) => setValue("showDays", v)} />
+                    <label className="text-xs leading-tight">Show<br/>Hari<br/>(PDF)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={includeBast} onCheckedChange={(v) => setValue("includeBast", v)} />
+                    <label className="text-xs leading-tight text-primary font-bold">Include<br/>BAST</label>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-3 grid gap-4 md:grid-cols-2 border-t pt-4 mt-2">
-              <div>
-                <label className="text-sm font-medium">Project Name (for intro text)</label>
-                <select 
-                  
-                  {...register("selectedProjectSite")}
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mb-2"
-                >
-                  <option value="">Select Site Location (Optional)</option>
-                  {siteList?.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                  <option value="manual">Manual Input</option>
-                </select>
-                {selectedProjectSite === "manual" && (
-                  <Input {...register("projectName")} placeholder="e.g. CK BMB Project" />
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium">PO Period (Date Range)</label>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <Input 
-                    type="date" 
-                    value={poPeriodStart || ""}
-                    onChange={e => handlePoPeriodChange(e.target.value, poPeriodEnd || "")}
-                    className="flex-1"
-                  />
-                  <span className="text-muted-foreground">-</span>
-                  <Input 
-                    type="date" 
-                    value={poPeriodEnd || ""}
-                    onChange={e => handlePoPeriodChange(poPeriodStart || "", e.target.value)}
-                    className="flex-1"
-                  />
-                </div>
+            <div className="lg:col-span-2">
+              <label className="text-sm font-medium block mb-1.5">Project Name (for intro text)</label>
+              <select 
+                {...register("selectedProjectSite")}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mb-2"
+              >
+                <option value="">Select Site Location (Optional)</option>
+                {siteList?.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+                <option value="manual">Manual Input</option>
+              </select>
+              {watch("selectedProjectSite") === "manual" && (
+                <Input {...register("projectName")} placeholder="e.g. CK BMB Project" className="mt-2" />
+              )}
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">PO Period (Date Range)</label>
+              <div className="flex items-center gap-2">
+                <Input 
+                  type="date" 
+                  value={poPeriodStart || ""}
+                  onChange={e => handlePoPeriodChange(e.target.value, poPeriodEnd || "")}
+                  className="flex-1"
+                />
+                <span className="text-muted-foreground">-</span>
+                <Input 
+                  type="date" 
+                  value={poPeriodEnd || ""}
+                  onChange={e => handlePoPeriodChange(poPeriodStart || "", e.target.value)}
+                  className="flex-1"
+                />
               </div>
             </div>
 
@@ -828,7 +760,9 @@ const router = useRouter()
                 <div className="space-y-2">
                   <Textarea 
                     {...register("customIntro")} 
-                    placeholder="Dear Mr. - / Mr. -,\n\nAs you are aware, Tire Maintenance is performing services at CK BMB..." 
+                    placeholder="Dear Mr. - / Mr. -,
+
+As you are aware, Tire Maintenance is performing services at CK BMB..." 
                     className="min-h-[120px]"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -837,7 +771,7 @@ const router = useRouter()
                 </div>
               )}
             </div>
-          </CardContent>
+</CardContent>
         </Card>
 
         <Card>
@@ -864,7 +798,7 @@ const router = useRouter()
               </div>
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" onClick={handleAddAllLabour}>
-                  + Add All Labour for Project
+                  + Add All Labour & Rental for Project
                 </Button>
                 <Button type="button" variant="outline" onClick={handleAddBlankRow}>
                   + Add Blank Row
@@ -874,6 +808,7 @@ const router = useRouter()
 
             <div className="border rounded-md mt-4 overflow-x-auto">
               <DndContext
+                id="quotation-dnd-context"
                 sensors={dragSensors}
                 collisionDetection={closestCenter}
                 modifiers={[restrictToVerticalAxis]}
@@ -1176,15 +1111,15 @@ const router = useRouter()
             <Button variant="outline" type="button" onClick={() => router.push("/dashboard/360-service/quotations")}>
               Cancel
             </Button>
-            <Button variant="secondary" type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, true))}>
+            <Button variant="secondary" type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, true), onInvalid)}>
               {loading ? "Saving..." : "Save"}
             </Button>
-            <Button type="submit" disabled={loading || formItems.length === 0}>
+            <Button type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, false), onInvalid)}>
               {loading ? "Saving..." : (isEdit ? "Update Quotation" : "Create Quotation")}
             </Button>
           </CardFooter>
         </Card>
-      </div>
-    </form>
+      </form>
+    </div>
   )
 }

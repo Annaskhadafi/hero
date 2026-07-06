@@ -27,15 +27,28 @@ export async function generateNextQuotationNumber() {
   
   // Get the last quotation to create sequence safely (even if some were deleted)
   const lastQuotation = await db.select().from(service360Quotations).orderBy(desc(service360Quotations.id)).limit(1)
-  const nextSeq = lastQuotation.length > 0 ? lastQuotation[0].id + 1 : 1
+  let nextSeq = lastQuotation.length > 0 ? lastQuotation[0].id + 1 : 1
   
-  const paddedSeq = nextSeq.toString().padStart(3, '0')
   const romanMonth = ROMAN_NUMERALS[currentMonth]
-  const shortYear = currentYear.toString().slice(-2)
   const currentDate = new Date().getDate().toString().padStart(2, '0')
   
-  // Format requested: QUO/CP/Bulan ( Romawi)/ Tanggal/ Nomor
-  return `QUO/CP/${romanMonth}/${currentDate}/${paddedSeq}`
+  let nextNumber = ""
+  let isDuplicate = true
+  
+  // Keep checking and incrementing until we find a unique number
+  while (isDuplicate) {
+    const paddedSeq = nextSeq.toString().padStart(3, '0')
+    nextNumber = `QUO/CP/${romanMonth}/${currentDate}/${paddedSeq}`
+    
+    const existing = await db.select().from(service360Quotations).where(eq(service360Quotations.quotationNumber, nextNumber)).limit(1)
+    if (existing.length === 0) {
+      isDuplicate = false
+    } else {
+      nextSeq++
+    }
+  }
+  
+  return nextNumber
 }
 
 export async function createCustomer(data: { customerName: string }) {
@@ -255,7 +268,7 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays, includeBast
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -282,6 +295,7 @@ export async function createQuotation(data: any) {
     customIntro,
     hideBackupPrice: hideBackupPrice ?? false,
     showDays: showDays ?? true,
+    includeBast: includeBast ?? false,
   }).returning()
 
   if (items && items.length > 0) {
@@ -315,7 +329,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays, includeBast
   } = data
   
   const [quotation] = await db.update(service360Quotations).set({
@@ -342,6 +356,7 @@ export async function updateQuotation(id: number, data: any) {
     customIntro,
     hideBackupPrice: hideBackupPrice ?? false,
     showDays: showDays ?? true,
+    includeBast: includeBast ?? false,
     updatedAt: new Date()
   }).where(eq(service360Quotations.id, id)).returning()
 
@@ -584,5 +599,10 @@ export async function duplicateRateSettingsGroup(
 
 export async function updateQuotationStatus(id: number, status: string) {
   await db.update(service360Quotations).set({ status, updatedAt: new Date() }).where(eq(service360Quotations.id, id))
+  revalidatePath('/dashboard/360-service/quotations')
+}
+
+export async function updateQuotationPoNumber(id: number, poNumber: string) {
+  await db.update(service360Quotations).set({ poNumber, updatedAt: new Date() }).where(eq(service360Quotations.id, id))
   revalidatePath('/dashboard/360-service/quotations')
 }

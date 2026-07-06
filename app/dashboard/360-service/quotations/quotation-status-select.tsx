@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-const STATUS_OPTIONS = ["Draft", "Pending", "Sent", "Approved", "Rejected"]
+const STATUS_OPTIONS = ["Draft", "Waiting PO", "PO Release", "Cancel"]
 
 export function QuotationStatusSelect({ quotationId, initialStatus }: { quotationId: number, initialStatus: string }) {
   const [isPending, startTransition] = useTransition()
