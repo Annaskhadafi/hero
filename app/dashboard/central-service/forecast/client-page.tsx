@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { RefreshCw, Save, TrendingUp, Banknote, Wallet, Trophy } from "lucide-react";
-import { updatePeriodExchangeRate } from "@/app/actions/central-service-forecast";
+import { getRealtimeExchangeRate, updatePeriodExchangeRate } from "@/app/actions/central-service-forecast";
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val);
@@ -20,6 +20,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 export function DashboardClientPage({ periods, allItems, allActuals }: { periods: any[], allItems: any[], allActuals: any[] }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
   const [editRate, setEditRate] = useState<string>("");
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
 
   const selectedPeriod = periods.find(p => p.id.toString() === selectedPeriodId);
   
@@ -31,15 +32,19 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
   }, [selectedPeriodId, selectedPeriod]);
 
   const handleFetchRate = async () => {
+    setIsFetchingRate(true);
     try {
-      const res = await fetch("https://open.er-api.com/v6/latest/USD");
-      const data = await res.json();
-      if (data && data.rates && data.rates.IDR) {
-        setEditRate(data.rates.IDR.toString());
-        toast.success("Realtime rate fetched: " + data.rates.IDR);
+      const result = await getRealtimeExchangeRate();
+      if (result.success && result.rate) {
+        setEditRate(result.rate.toString());
+        toast.success("Realtime rate fetched: " + result.rate);
+      } else {
+        toast.error(result.error || "Failed to fetch API");
       }
-    } catch (e) {
+    } catch (_error) {
       toast.error("Failed to fetch API");
+    } finally {
+      setIsFetchingRate(false);
     }
   };
 
@@ -147,7 +152,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
             value={editRate} 
             onChange={(e) => setEditRate(e.target.value)} 
           />
-          <Button variant="outline" size="sm" onClick={handleFetchRate}><RefreshCw className="w-3 h-3 mr-2"/> Fetch Realtime</Button>
+          <Button variant="outline" size="sm" onClick={handleFetchRate} disabled={isFetchingRate}><RefreshCw className="w-3 h-3 mr-2"/> {isFetchingRate ? "Fetching..." : "Fetch Realtime"}</Button>
           <Button variant="default" size="sm" onClick={handleSaveRate}><Save className="w-3 h-3 mr-2"/> Save</Button>
         </div>
       </div>

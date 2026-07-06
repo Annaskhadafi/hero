@@ -2,6 +2,22 @@
 
 import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -15,7 +31,7 @@ import * as z from "zod"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/ui/searchable-select"
-import { Save, X } from "lucide-react"
+import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
 
 const itemSchema = z.object({
@@ -84,6 +100,26 @@ const quotationSchema = z.object({
 export type SelectedItem = z.infer<typeof itemSchema>;
 
 export type QuotationFormValues = z.infer<typeof quotationSchema>;
+
+function SortableQuotationItemRow({
+  id,
+  children,
+}: {
+  id: number
+  children: (props: { attributes: any; listeners: any }) => React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <TableRow ref={setNodeRef} style={style} className={isDragging ? "relative z-10 bg-muted/70" : undefined}>
+      {children({ attributes, listeners })}
+    </TableRow>
+  )
+}
 
 const parseFormattedDate = (dateStr: string) => {
   if (!dateStr) return "";
@@ -201,6 +237,7 @@ const router = useRouter()
   const [historyCc, setHistoryCc] = useState<string[]>([])
   const [historyFrom, setHistoryFrom] = useState<string[]>([])
   const [historySubject, setHistorySubject] = useState<string[]>([])
+  const dragSensors = useSensors(useSensor(PointerSensor))
 
   useEffect(() => {
     if (selectedCustomerId && selectedCustomerId !== "manual") {
@@ -389,6 +426,15 @@ const router = useRouter()
     setValue("items", formItems.filter(item => item.id !== id))
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = formItems.findIndex((item) => item.id === active.id)
+    const newIndex = formItems.findIndex((item) => item.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    setValue("items", arrayMove(formItems, oldIndex, newIndex), { shouldDirty: true })
+  }
+
   const handleSaveItemToMaster = async (selItem: SelectedItem) => {
     if (!selItem.customDescription) {
       toast.error("Please enter a description before saving")
@@ -416,6 +462,7 @@ const router = useRouter()
   const subTotal = formItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
   const taxAmount = (subTotal * taxRate) / 100
   const totalAmount = subTotal + taxAmount
+  const lineItemColumnCount = 7 + (showLevel ? 1 : 0)
 
   
   const submitHandler = async (data: QuotationFormValues, stayOnPage: boolean = false) => {
@@ -810,22 +857,45 @@ const router = useRouter()
             </div>
 
             <div className="border rounded-md mt-4 overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[160px]">Month</TableHead>
-                    <TableHead className="min-w-[250px] w-auto">Description</TableHead>
-                    {showLevel && <TableHead className="w-[120px]">Level</TableHead>}
-                    <TableHead className="w-[100px]">Qty</TableHead>
-                    <TableHead className="min-w-[180px]">Price / Month</TableHead>
-                    <TableHead className="w-[150px]">Labor Price</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {formItems.map((selItem) => {
-                    return (
-                      <TableRow key={selItem.id}>
+              <DndContext
+                sensors={dragSensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleDragEnd}
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[44px]"></TableHead>
+                      <TableHead className="w-[160px]">Month</TableHead>
+                      <TableHead className="min-w-[250px] w-auto">Description</TableHead>
+                      {showLevel && <TableHead className="w-[120px]">Level</TableHead>}
+                      <TableHead className="w-[100px]">Qty</TableHead>
+                      <TableHead className="min-w-[180px]">Price / Month</TableHead>
+                      <TableHead className="w-[150px]">Labor Price</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <SortableContext items={formItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+                      {formItems.map((selItem) => {
+                        return (
+                          <SortableQuotationItemRow key={selItem.id} id={selItem.id}>
+                            {({ attributes, listeners }) => (
+                              <>
+                                <TableCell className="align-top pt-3">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 cursor-grab text-muted-foreground active:cursor-grabbing"
+                                    aria-label="Drag item"
+                                    {...attributes}
+                                    {...listeners}
+                                  >
+                                    <GripVertical className="size-4" />
+                                  </Button>
+                                </TableCell>
                         <TableCell className="min-w-[150px] align-top">
                           <div className="flex flex-col gap-1">
                             <Input 
@@ -1043,18 +1113,22 @@ const router = useRouter()
                             )}
                           </div>
                         </TableCell>
+                              </>
+                            )}
+                          </SortableQuotationItemRow>
+                        )
+                      })}
+                    </SortableContext>
+                    {formItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={lineItemColumnCount} className="text-center text-muted-foreground py-8">
+                          No items added yet.
+                        </TableCell>
                       </TableRow>
-                    )
-                  })}
-                  {formItems.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                        No items added yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                    )}
+                  </TableBody>
+                </Table>
+              </DndContext>
             </div>
 
             <div className="flex flex-col md:flex-row justify-between gap-6 pt-6">

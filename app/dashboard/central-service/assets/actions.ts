@@ -1,12 +1,46 @@
 "use server";
 
 import { db } from "@/db";
-import { centralServiceAssetAttachments, centralServiceAssets } from "@/db/schema/central-service";
+import {
+  centralServiceAssetAttachments,
+  centralServiceAssetHistories,
+  centralServiceAssets,
+} from "@/db/schema/central-service";
 import { masterSections } from "@/db/schema/hero";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
-import { eq, asc, inArray } from "drizzle-orm";
+import { eq, asc, desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { assetSchema, type AssetData } from "./schema";
+
+const TRACKED_FIELDS = [
+  ["workSection", "Section"],
+  ["section", "Kategori Alat"],
+  ["location", "Lokasi Site"],
+  ["description", "Description"],
+  ["assetNumber", "Nomor Aset"],
+  ["serialNumber", "Serial Number"],
+  ["purchaseDate", "Tanggal Pembelian"],
+  ["deliveryToSiteDate", "Delivery To Site"],
+  ["lastCalibrationDate", "Last Calibration"],
+  ["calibrationCycleMonths", "Calibration Cycle"],
+  ["calibrationDueDate", "Calibration Due"],
+  ["certificateDate", "Certificate Date"],
+  ["certificateCycleMonths", "Certificate Cycle"],
+  ["certificateDueDate", "Certificate Due"],
+  ["condition", "Kondisi"],
+  ["qty", "Qty"],
+  ["remarks", "Remarks"],
+] as const;
+
+type AssetChangeRow = {
+  assetId: number;
+  action: string;
+  fieldName: string;
+  fieldLabel: string;
+  previousValue: string | null;
+  newValue: string | null;
+  changeRemark?: string | null;
+};
 
 export async function getAssets() {
   try {
@@ -15,14 +49,22 @@ export async function getAssets() {
       .from(centralServiceAssets)
       .orderBy(asc(centralServiceAssets.workSection), asc(centralServiceAssets.section), asc(centralServiceAssets.description));
 
-    const attachmentRows =
-      assets.length > 0
-        ? await db
-            .select()
-            .from(centralServiceAssetAttachments)
-            .where(inArray(centralServiceAssetAttachments.assetId, assets.map((asset) => asset.id)))
-            .orderBy(asc(centralServiceAssetAttachments.createdAt), asc(centralServiceAssetAttachments.id))
-        : [];
+    const assetIds = assets.map((asset) => asset.id);
+    const [attachmentRows, historyRows] =
+      assetIds.length > 0
+        ? await Promise.all([
+            db
+              .select()
+              .from(centralServiceAssetAttachments)
+              .where(inArray(centralServiceAssetAttachments.assetId, assetIds))
+              .orderBy(asc(centralServiceAssetAttachments.createdAt), asc(centralServiceAssetAttachments.id)),
+            db
+              .select()
+              .from(centralServiceAssetHistories)
+              .where(inArray(centralServiceAssetHistories.assetId, assetIds))
+              .orderBy(desc(centralServiceAssetHistories.createdAt), desc(centralServiceAssetHistories.id)),
+          ])
+        : [[], []];
 
     const attachmentsByAsset = new Map<number, Array<typeof attachmentRows[number] & { previewUrl: string | null }>>();
     for (const attachment of attachmentRows) {
@@ -31,12 +73,19 @@ export async function getAssets() {
       current.push({ ...attachment, previewUrl });
       attachmentsByAsset.set(attachment.assetId, current);
     }
+    const historiesByAsset = new Map<number, Array<typeof historyRows[number]>>();
+    for (const history of historyRows) {
+      const current = historiesByAsset.get(history.assetId) ?? [];
+      current.push(history);
+      historiesByAsset.set(history.assetId, current);
+    }
 
     return {
       success: true,
       data: assets.map((asset) => ({
         ...asset,
         attachments: attachmentsByAsset.get(asset.id) ?? [],
+        histories: historiesByAsset.get(asset.id) ?? [],
       })),
     };
   } catch (error) {
@@ -66,29 +115,54 @@ function parseDate(dateStr?: string | null) {
   return date;
 }
 
+function normalizeValue(value: unknown) {
+  if (value === undefined || value === null || value === "") return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value);
+}
+
+function normalizeAttachmentNames(attachments: Array<{ fileName: string }>) {
+  return attachments.map((attachment) => attachment.fileName).sort().join(", ");
+}
+
+function buildAssetValues(parsed: AssetData) {
+  return {
+    workSection: parsed.workSection?.trim() ?? "",
+    section: parsed.section,
+    location: parsed.location,
+    description: parsed.description,
+    assetNumber: parsed.assetNumber ?? undefined,
+    serialNumber: parsed.serialNumber ?? undefined,
+    purchaseDate: parseDate(parsed.purchaseDate),
+    deliveryToSiteDate: parseDate(parsed.deliveryToSiteDate),
+    lastCalibrationDate: parseDate(parsed.lastCalibrationDate),
+    calibrationCycleMonths: parsed.calibrationCycleMonths ?? undefined,
+    calibrationDueDate: parseDate(parsed.calibrationDueDate),
+    certificateDate: parseDate(parsed.certificateDate),
+    certificateCycleMonths: parsed.certificateCycleMonths ?? undefined,
+    certificateDueDate: parseDate(parsed.certificateDueDate),
+    condition: parsed.condition,
+    qty: parsed.qty,
+    remarks: parsed.remarks ?? undefined,
+  };
+}
+
+function buildChangeRows(assetId: number, before: Record<string, unknown>, after: Record<string, unknown>, action = "update") {
+  const rows: AssetChangeRow[] = [];
+  for (const [fieldName, fieldLabel] of TRACKED_FIELDS) {
+    const previousValue = normalizeValue(before[fieldName]);
+    const newValue = normalizeValue(after[fieldName]);
+    if (previousValue !== newValue) rows.push({ assetId, action, fieldName, fieldLabel, previousValue, newValue });
+  }
+  return rows;
+}
+
 export async function createAsset(data: AssetData) {
   try {
     const parsed = assetSchema.parse(data);
     const result = await db.transaction(async (tx) => {
-      const [asset] = await tx.insert(centralServiceAssets).values({
-        workSection: parsed.workSection?.trim() ?? "",
-        section: parsed.section,
-        location: parsed.location,
-        description: parsed.description,
-        assetNumber: parsed.assetNumber ?? undefined,
-        serialNumber: parsed.serialNumber ?? undefined,
-        purchaseDate: parseDate(parsed.purchaseDate),
-        deliveryToSiteDate: parseDate(parsed.deliveryToSiteDate),
-        lastCalibrationDate: parseDate(parsed.lastCalibrationDate),
-        calibrationCycleMonths: parsed.calibrationCycleMonths ?? undefined,
-        calibrationDueDate: parseDate(parsed.calibrationDueDate),
-        certificateDate: parseDate(parsed.certificateDate),
-        certificateCycleMonths: parsed.certificateCycleMonths ?? undefined,
-        certificateDueDate: parseDate(parsed.certificateDueDate),
-        condition: parsed.condition,
-        qty: parsed.qty,
-        remarks: parsed.remarks ?? undefined,
-      }).returning();
+      const assetValues = buildAssetValues(parsed);
+      const [asset] = await tx.insert(centralServiceAssets).values(assetValues).returning();
 
       const attachments =
         parsed.attachments.length > 0
@@ -106,11 +180,43 @@ export async function createAsset(data: AssetData) {
               .returning()
           : [];
 
+      const historyRows = [
+        {
+          assetId: asset.id,
+          action: "create",
+          fieldName: "asset",
+          fieldLabel: "Asset",
+          previousValue: null,
+          newValue: asset.description,
+          changeRemark: parsed.remarks ?? null,
+        },
+        ...buildChangeRows(asset.id, {}, assetValues, "create"),
+        ...(attachments.length > 0
+          ? [
+              {
+                assetId: asset.id,
+                action: "create",
+                fieldName: "attachments",
+                fieldLabel: "Attachment",
+                previousValue: "",
+                newValue: normalizeAttachmentNames(attachments),
+                changeRemark: null,
+              },
+            ]
+          : []),
+      ];
+      await tx.insert(centralServiceAssetHistories).values(historyRows);
+
       return {
         ...asset,
         attachments: attachments.map((attachment) => ({
           ...attachment,
           previewUrl: parsed.attachments.find((item) => item.fileUrl === attachment.fileUrl)?.previewUrl ?? attachment.fileUrl,
+        })),
+        histories: historyRows.map((history, index) => ({
+          id: -index - 1,
+          createdAt: new Date(),
+          ...history,
         })),
       };
     });
@@ -126,28 +232,16 @@ export async function updateAsset(id: number, data: AssetData) {
   try {
     const parsed = assetSchema.parse(data);
     const result = await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(centralServiceAssets).where(eq(centralServiceAssets.id, id)).limit(1);
+      const beforeAttachments = await tx
+        .select()
+        .from(centralServiceAssetAttachments)
+        .where(eq(centralServiceAssetAttachments.assetId, id))
+        .orderBy(asc(centralServiceAssetAttachments.createdAt), asc(centralServiceAssetAttachments.id));
+      const assetValues = buildAssetValues(parsed);
       const [asset] = await tx
         .update(centralServiceAssets)
-        .set({
-          workSection: parsed.workSection?.trim() ?? "",
-          section: parsed.section,
-          location: parsed.location,
-          description: parsed.description,
-          assetNumber: parsed.assetNumber ?? undefined,
-          serialNumber: parsed.serialNumber ?? undefined,
-          purchaseDate: parseDate(parsed.purchaseDate),
-          deliveryToSiteDate: parseDate(parsed.deliveryToSiteDate),
-          lastCalibrationDate: parseDate(parsed.lastCalibrationDate),
-          calibrationCycleMonths: parsed.calibrationCycleMonths ?? undefined,
-          calibrationDueDate: parseDate(parsed.calibrationDueDate),
-          certificateDate: parseDate(parsed.certificateDate),
-          certificateCycleMonths: parsed.certificateCycleMonths ?? undefined,
-          certificateDueDate: parseDate(parsed.certificateDueDate),
-          condition: parsed.condition,
-          qty: parsed.qty,
-          remarks: parsed.remarks ?? undefined,
-          updatedAt: new Date(),
-        })
+        .set({ ...assetValues, updatedAt: new Date() })
         .where(eq(centralServiceAssets.id, id))
         .returning();
 
@@ -168,6 +262,23 @@ export async function updateAsset(id: number, data: AssetData) {
               )
               .returning()
           : [];
+      const changeRows = before ? buildChangeRows(id, before, assetValues) : [];
+      const previousAttachmentNames = normalizeAttachmentNames(beforeAttachments);
+      const newAttachmentNames = normalizeAttachmentNames(attachments);
+      if (previousAttachmentNames !== newAttachmentNames) {
+        changeRows.push({
+          assetId: id,
+          action: "update",
+          fieldName: "attachments",
+          fieldLabel: "Attachment",
+          previousValue: previousAttachmentNames,
+          newValue: newAttachmentNames,
+        });
+      }
+      const histories =
+        changeRows.length > 0
+          ? await tx.insert(centralServiceAssetHistories).values(changeRows).returning()
+          : [];
 
       return {
         ...asset,
@@ -175,6 +286,7 @@ export async function updateAsset(id: number, data: AssetData) {
           ...attachment,
           previewUrl: parsed.attachments.find((item) => item.fileUrl === attachment.fileUrl)?.previewUrl ?? attachment.fileUrl,
         })),
+        histories,
       };
     });
     revalidatePath("/dashboard/central-service/assets");

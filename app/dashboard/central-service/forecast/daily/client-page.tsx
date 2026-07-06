@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { updateForecastItemStatus, addForecastActual, updateForecastActual, deleteForecastActual } from "@/app/actions/central-service-forecast";
+import { getRealtimeExchangeRate, updateForecastItemStatus, addForecastActual, updateForecastActual, deleteForecastActual } from "@/app/actions/central-service-forecast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -20,6 +20,8 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
   const [isActualsDialogOpen, setIsActualsDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [globalRate, setGlobalRate] = useState<string>("15000");
+  const [isFetchingGlobalRate, setIsFetchingGlobalRate] = useState(false);
+  const [isFetchingActualRate, setIsFetchingActualRate] = useState(false);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
 
   const filteredItems = React.useMemo(() => {
@@ -32,15 +34,19 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
   }, []);
 
   const handleFetchGlobalRate = async () => {
+    setIsFetchingGlobalRate(true);
     try {
-      const res = await fetch("https://open.er-api.com/v6/latest/USD");
-      const data = await res.json();
-      if (data && data.rates && data.rates.IDR) {
-        setGlobalRate(data.rates.IDR.toString());
-        toast.success("Realtime rate fetched: " + data.rates.IDR);
+      const result = await getRealtimeExchangeRate();
+      if (result.success && result.rate) {
+        setGlobalRate(result.rate.toString());
+        toast.success("Realtime rate fetched: " + result.rate);
+      } else {
+        toast.error(result.error || "Failed to fetch API");
       }
-    } catch (e) {
+    } catch (_error) {
       toast.error("Failed to fetch API");
+    } finally {
+      setIsFetchingGlobalRate(false);
     }
   };
 
@@ -57,6 +63,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     updateDate: new Date().toISOString().split("T")[0],
     amountIdr: "0",
     amountUsd: "0",
+    exchangeRate: "15000",
     remark: "",
     customer: "",
     periodId: "",
@@ -99,24 +106,49 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
 
   const handleAmountIdrChange = (val: string) => {
     const amountIdr = Number(val);
-    let amountUsd = "0";
-    
-    let rate = 15000;
-    if (selectedItem?.period?.exchangeRateIdrToUsd) {
-      rate = Number(selectedItem.period.exchangeRateIdrToUsd);
-    } else if (actualsForm.periodId) {
-      const p = periods.find((p: any) => p.id.toString() === actualsForm.periodId);
-      if (p?.exchangeRateIdrToUsd) rate = Number(p.exchangeRateIdrToUsd);
-    }
-
-    if (rate && amountIdr > 0) {
-      amountUsd = (amountIdr / rate).toFixed(2);
-    }
+    const rate = Number(actualsForm.exchangeRate) || 15000;
+    const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : "0";
     setActualsForm({ ...actualsForm, amountIdr: val, amountUsd });
   };
 
+  const handleActualRateChange = (val: string) => {
+    const amountIdr = Number(actualsForm.amountIdr);
+    const rate = Number(val) || 0;
+    const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : actualsForm.amountUsd;
+    setActualsForm({ ...actualsForm, exchangeRate: val, amountUsd });
+  };
+
+  const handleFetchActualRate = async () => {
+    setIsFetchingActualRate(true);
+    try {
+      const result = await getRealtimeExchangeRate();
+      if (result.success && result.rate) {
+        const rate = result.rate.toString();
+        setActualsForm((prev) => {
+          const amountIdr = Number(prev.amountIdr);
+          return {
+            ...prev,
+            exchangeRate: rate,
+            amountUsd: amountIdr > 0 ? (amountIdr / Number(rate)).toFixed(2) : prev.amountUsd,
+          };
+        });
+        toast.success("Kurs API terbaru: " + result.rate);
+      } else {
+        toast.error(result.error || "Failed to fetch API");
+      }
+    } catch (_error) {
+      toast.error("Failed to fetch API");
+    } finally {
+      setIsFetchingActualRate(false);
+    }
+  };
+
   const handleSaveActuals = async () => {
-    if (!actualsForm.updateDate || !selectedItem) return;
+    if (!actualsForm.updateDate) return;
+    if (!selectedItem && (!actualsForm.customer || !actualsForm.periodId)) {
+      toast.error("Customer dan period wajib diisi");
+      return;
+    }
     try {
       if (editingActualId) {
         await updateForecastActual(editingActualId, {
@@ -170,20 +202,29 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
       setEditingActualId(actual.id);
       setActualsForm({
         updateDate: new Date(actual.updateDate).toISOString().split("T")[0],
-        amountIdr: actual.amountIdr.toString(),
-        amountUsd: actual.amountUsd.toString(),
-        remark: actual.remark || "",
+          amountIdr: actual.amountIdr.toString(),
+          amountUsd: actual.amountUsd.toString(),
+          exchangeRate:
+            Number(actual.amountUsd) > 0
+              ? (Number(actual.amountIdr) / Number(actual.amountUsd)).toFixed(2)
+              : globalRate,
+          remark: actual.remark || "",
+          customer: item?.item.customer || actual.customer || "",
+          periodId: item?.period.id?.toString() || actual.periodId?.toString() || "",
       });
     } else {
       setEditingActualId(null);
+      const defaultPeriodId = item?.period.id?.toString() || (periods.length > 0 ? periods[0].id.toString() : "");
       setActualsForm({
         updateDate: new Date().toISOString().split("T")[0],
         amountIdr: "0",
         amountUsd: "0",
+        exchangeRate: globalRate,
         remark: "",
         customer: "",
-        periodId: periods.length > 0 ? periods[0].id.toString() : "",
+        periodId: defaultPeriodId,
       });
+      void handleFetchActualRate();
     }
     setIsActualsDialogOpen(true);
   };
@@ -248,8 +289,8 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
             value={globalRate} 
             onChange={(e) => setGlobalRate(e.target.value)} 
           />
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleFetchGlobalRate}>
-            <RefreshCw className="w-3 h-3 mr-1"/> Fetch
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleFetchGlobalRate} disabled={isFetchingGlobalRate}>
+            <RefreshCw className="w-3 h-3 mr-1"/> {isFetchingGlobalRate ? "Fetching" : "Fetch"}
           </Button>
           <Button variant="default" size="sm" className="h-8 text-xs" onClick={handleSaveGlobalRate}>
             Save
@@ -510,6 +551,23 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
             <div className="space-y-2">
               <Label>Date</Label>
               <Input type="date" value={actualsForm.updateDate} onChange={e => setActualsForm({...actualsForm, updateDate: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Kurs USD API / Manual</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={actualsForm.exchangeRate}
+                  onChange={e => handleActualRateChange(e.target.value)}
+                />
+                <Button type="button" variant="outline" onClick={handleFetchActualRate} disabled={isFetchingActualRate}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  {isFetchingActualRate ? "Fetching" : "API"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                USD tersimpan mengikuti kurs saat submit. Edit manual jika kurs SAP berbeda.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

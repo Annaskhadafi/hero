@@ -89,6 +89,40 @@ test("central service asset scorecards follow active filters", () => {
   assert.doesNotMatch(tableSource, /const total = data\.length/);
 });
 
+test("central service assets can filter and default-sort certificate or calibration due items", () => {
+  const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
+
+  assert.match(tableSource, /function dueState/);
+  assert.match(tableSource, /function hasDueAttention/);
+  assert.match(tableSource, /function dueFilterValue/);
+  assert.match(tableSource, /function dueSortValue/);
+  assert.match(tableSource, /useState<SortingState>\(\[\{ id: "duePriority", desc: false \}\]\)/);
+  assert.match(tableSource, /columnVisibility: \{ duePriority: false, dueStatus: false \}/);
+  assert.match(tableSource, /table\.getColumn\("dueStatus"\)\?\.setFilterValue/);
+  assert.match(tableSource, /Calibration Due/);
+  assert.match(tableSource, /Certificate Due/);
+});
+
+test("central service assets stores and shows change history logs", () => {
+  const schemaSource = read("db/schema/central-service.ts");
+  const migrationSource = read("drizzle/0044_create_asset_history_table.sql");
+  const actionsSource = read("app/dashboard/central-service/assets/actions.ts");
+  const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
+  const createSource = read("scripts/create-asset-table.ts");
+
+  assert.match(schemaSource, /centralServiceAssetHistories/);
+  assert.match(schemaSource, /hero_central_service_asset_histories/);
+  assert.match(migrationSource, /CREATE TABLE IF NOT EXISTS "hero_central_service_asset_histories"/);
+  assert.match(createSource, /hero_central_service_asset_histories/);
+  assert.match(actionsSource, /TRACKED_FIELDS/);
+  assert.match(actionsSource, /buildChangeRows/);
+  assert.match(actionsSource, /centralServiceAssetHistories/);
+  assert.match(actionsSource, /fieldName: "attachments"/);
+  assert.match(tableSource, /expandedHistoryId/);
+  assert.match(tableSource, /History Perubahan/);
+  assert.match(tableSource, /histories: \[\.\.\.\(updatedAsset\.histories \?\? \[\]\), \.\.\.\(a\.histories \?\? \[\]\)\]/);
+});
+
 test("master rooster import keeps raw location and rolls back fatal failures", () => {
   const importSource = read("scripts/import-master-rooster.cjs");
   const fixSource = read("scripts/fix-asset-locations.cjs");

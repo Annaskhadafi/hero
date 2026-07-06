@@ -57,6 +57,25 @@ export async function updatePeriodExchangeRate(id: number, rate: string) {
   revalidatePath("/dashboard/central-service/forecast/daily");
 }
 
+export async function getRealtimeExchangeRate() {
+  try {
+    const response = await fetch("https://v6.exchangerate-api.com/v6/06e9b7015f4acef21c8bad94/latest/USD", {
+      next: { revalidate: 3600 },
+    });
+    const data = await response.json();
+    const rate = data?.conversion_rates?.IDR;
+
+    if (data?.result === "success" && Number.isFinite(rate)) {
+      return { success: true, rate };
+    }
+
+    return { success: false, error: "Failed to fetch exchange rate" };
+  } catch (error) {
+    console.error("Exchange rate error:", error);
+    return { success: false, error: "Failed to fetch exchange rate" };
+  }
+}
+
 export async function deleteForecastPeriod(id: number) {
   await db.delete(centralServiceForecastPeriods).where(eq(centralServiceForecastPeriods.id, id));
   revalidatePath("/dashboard/central-service/forecast/monthly");
@@ -194,10 +213,25 @@ async function recalculateItemRemaining(tx: any, itemId: number) {
   }).where(eq(centralServiceForecastItems.id, itemId));
 }
 
+async function syncLatestActualRemark(tx: any, itemId: number) {
+  const [latestActual] = await tx
+    .select()
+    .from(centralServiceForecastActuals)
+    .where(eq(centralServiceForecastActuals.forecastItemId, itemId))
+    .orderBy(desc(centralServiceForecastActuals.updateDate), desc(centralServiceForecastActuals.createdAt), desc(centralServiceForecastActuals.id))
+    .limit(1);
+
+  await tx
+    .update(centralServiceForecastItems)
+    .set({ remark: latestActual?.remark ?? "", updatedAt: new Date() })
+    .where(eq(centralServiceForecastItems.id, itemId));
+}
+
 export async function addForecastActual(data: any, userId?: string) {
   await db.transaction(async (tx) => {
+    const { exchangeRate: _exchangeRate, ...actualData } = data;
     const payload = {
-      ...data,
+      ...actualData,
       invoiceNumber: data.invoiceNumber || "",
       createdById: userId,
     };
@@ -205,6 +239,7 @@ export async function addForecastActual(data: any, userId?: string) {
 
     if (data.forecastItemId) {
       await recalculateItemRemaining(tx, data.forecastItemId);
+      await syncLatestActualRemark(tx, data.forecastItemId);
     }
   });
 
@@ -214,6 +249,7 @@ export async function addForecastActual(data: any, userId?: string) {
 
 export async function updateForecastActual(id: number, data: any) {
   await db.transaction(async (tx) => {
+    const { exchangeRate: _exchangeRate, ...actualData } = data;
     const actuals = await tx.select().from(centralServiceForecastActuals)
       .where(eq(centralServiceForecastActuals.id, id))
       .limit(1);
@@ -221,15 +257,21 @@ export async function updateForecastActual(id: number, data: any) {
     if (!actual) return;
 
     await tx.update(centralServiceForecastActuals).set({
-      ...data,
+      ...actualData,
       invoiceNumber: data.invoiceNumber || "",
     }).where(eq(centralServiceForecastActuals.id, id));
 
     if (actual.forecastItemId) {
       await recalculateItemRemaining(tx, actual.forecastItemId);
+      await syncLatestActualRemark(tx, actual.forecastItemId);
+    }
+    if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
+      await recalculateItemRemaining(tx, data.forecastItemId);
+      await syncLatestActualRemark(tx, data.forecastItemId);
     }
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
+  revalidatePath("/dashboard/central-service/forecast/monthly");
 }
 
 export async function deleteForecastActual(id: number) {
@@ -244,9 +286,11 @@ export async function deleteForecastActual(id: number) {
 
     if (actual.forecastItemId) {
       await recalculateItemRemaining(tx, actual.forecastItemId);
+      await syncLatestActualRemark(tx, actual.forecastItemId);
     }
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
+  revalidatePath("/dashboard/central-service/forecast/monthly");
 }
 
 export async function bulkImportForecastItems(

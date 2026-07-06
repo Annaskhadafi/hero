@@ -54,6 +54,25 @@ async function main() {
     ON "hero_central_service_asset_attachments" ("asset_id");
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "hero_central_service_asset_histories" (
+      "id" serial PRIMARY KEY NOT NULL,
+      "asset_id" integer NOT NULL REFERENCES "hero_central_service_assets"("id") ON DELETE CASCADE,
+      "action" text DEFAULT 'update' NOT NULL,
+      "field_name" text DEFAULT '' NOT NULL,
+      "field_label" text DEFAULT '' NOT NULL,
+      "previous_value" text,
+      "new_value" text,
+      "change_remark" text,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "cs_asset_history_asset_idx"
+    ON "hero_central_service_asset_histories" ("asset_id");
+  `);
+
   console.log("Table hero_central_service_assets created successfully!");
   process.exit(0);
 }

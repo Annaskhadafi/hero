@@ -156,6 +156,26 @@ export const centralServiceAssetAttachments = pgTable(
   })
 );
 
+export const centralServiceAssetHistories = pgTable(
+  "hero_central_service_asset_histories",
+  {
+    id: serial("id").primaryKey(),
+    assetId: integer("asset_id")
+      .notNull()
+      .references(() => centralServiceAssets.id, { onDelete: "cascade" }),
+    action: text("action").notNull().default("update"),
+    fieldName: text("field_name").notNull().default(""),
+    fieldLabel: text("field_label").notNull().default(""),
+    previousValue: text("previous_value"),
+    newValue: text("new_value"),
+    changeRemark: text("change_remark"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    assetIdx: index("cs_asset_history_asset_idx").on(table.assetId),
+  })
+);
+
 // ==========================================
 // FORECAST REVENUE MODULE
 // ==========================================

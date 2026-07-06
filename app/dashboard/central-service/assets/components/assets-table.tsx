@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useCallback, useEffect } from "react";
+import { Fragment, useState, useRef, useMemo, useCallback, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -50,6 +50,8 @@ import {
   AlertTriangle,
   XCircle,
   HelpCircle,
+  History,
+  ChevronDown,
 } from "lucide-react";
 import { AssetFormDialog } from "./asset-form-dialog";
 import { deleteAsset } from "../actions";
@@ -102,6 +104,18 @@ interface Asset {
   qty: number;
   remarks: string | null;
   attachments: AssetAttachment[];
+  histories?: AssetHistory[];
+}
+
+interface AssetHistory {
+  id: number;
+  action: string;
+  fieldName: string;
+  fieldLabel: string;
+  previousValue: string | null;
+  newValue: string | null;
+  changeRemark: string | null;
+  createdAt: Date | string;
 }
 
 interface AssetsTableProps {
@@ -180,6 +194,53 @@ function dueDateCell(dueDate: Date | string | null | undefined) {
   return <span className="text-xs">{format(d, "dd/MM/yyyy")}</span>;
 }
 
+function dueState(dueDate: Date | string | null | undefined) {
+  if (!dueDate) return "none";
+  const d = startOfDay(new Date(dueDate));
+  if (isNaN(d.getTime())) return "none";
+  const today = startOfDay(new Date());
+  if (isBefore(d, today)) return "overdue";
+  if (!isAfter(d, addMonths(today, 1))) return "near";
+  return "ok";
+}
+
+function hasDueAttention(asset: Asset, type: "calibration" | "certificate" | "any" = "any") {
+  const calibration = dueState(asset.calibrationDueDate);
+  const certificate = dueState(asset.certificateDueDate);
+  const attention = (state: string) => state === "overdue" || state === "near";
+
+  if (type === "calibration") return attention(calibration);
+  if (type === "certificate") return attention(certificate);
+  return attention(calibration) || attention(certificate);
+}
+
+function dueFilterValue(asset: Asset) {
+  const calibration = dueState(asset.calibrationDueDate);
+  const certificate = dueState(asset.certificateDueDate);
+
+  return [
+    hasDueAttention(asset) ? "attention" : "",
+    calibration === "overdue" || certificate === "overdue" ? "overdue" : "",
+    calibration === "near" || certificate === "near" ? "near" : "",
+    hasDueAttention(asset, "calibration") ? "calibration" : "",
+    hasDueAttention(asset, "certificate") ? "certificate" : "",
+  ].filter(Boolean);
+}
+
+function dueSortValue(asset: Asset) {
+  const dates = [asset.calibrationDueDate, asset.certificateDueDate]
+    .map((value) => {
+      const date = value ? startOfDay(new Date(value)) : null;
+      if (!date || isNaN(date.getTime())) return null;
+      const state = dueState(date);
+      const priority = state === "overdue" ? 0 : state === "near" ? 1 : 2;
+      return priority * 10_000_000 + Math.floor(date.getTime() / 86_400_000);
+    })
+    .filter((value): value is number => value !== null);
+
+  return dates.length > 0 ? Math.min(...dates) : 30_000_000;
+}
+
 function calcAge(purchaseDate: Date | string | null) {
   if (!purchaseDate) return "-";
   const months = differenceInMonths(new Date(), new Date(purchaseDate));
@@ -197,6 +258,16 @@ function fmtDate(d: Date | string | null | undefined) {
   } catch {
     return "-";
   }
+}
+
+function fmtHistoryValue(value: string | null | undefined) {
+  return value && value.trim() ? value : "-";
+}
+
+function historyActionLabel(action: string) {
+  if (action === "create") return "Dibuat";
+  if (action === "delete") return "Dihapus";
+  return "Diubah";
 }
 
 function attachmentUrl(attachment: AssetAttachment) {
@@ -381,14 +452,24 @@ const SECTIONS = [
 
 const CONDITIONS = ["ACTIVE", "GOOD", "BAD", "SCRAP"];
 
+const DUE_FILTERS = [
+  { value: "__all__", label: "Semua Due" },
+  { value: "attention", label: "Butuh Perhatian" },
+  { value: "overdue", label: "Sudah Due" },
+  { value: "near", label: "Mendekati Due" },
+  { value: "calibration", label: "Calibration Due" },
+  { value: "certificate", label: "Certificate Due" },
+];
+
 export function AssetsTable({ data: initialData, masterSections }: AssetsTableProps) {
   const [data, setData] = useState(initialData);
   const [globalFilter, setGlobalFilter] = useState("");
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "duePriority", desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [attachmentAsset, setAttachmentAsset] = useState<Asset | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -444,6 +525,16 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
 
   const columns = useMemo<ColumnDef<Asset>[]>(
     () => [
+      {
+        id: "duePriority",
+        accessorFn: dueSortValue,
+      },
+      {
+        id: "dueStatus",
+        accessorFn: dueFilterValue,
+        filterFn: (row, columnId, filterValue) =>
+          !filterValue || (row.getValue(columnId) as string[]).includes(String(filterValue)),
+      },
       {
         id: "no",
         header: "No",
@@ -633,6 +724,29 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         ),
       },
       {
+        id: "history",
+        header: "History",
+        size: 100,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const count = row.original.histories?.length ?? 0;
+          const expanded = expandedHistoryId === row.original.id;
+          return (
+            <Button
+              type="button"
+              variant={count > 0 ? "outline" : "ghost"}
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs"
+              onClick={() => setExpandedHistoryId(expanded ? null : row.original.id)}
+            >
+              <History className="h-3.5 w-3.5" />
+              {count}
+              <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+            </Button>
+          );
+        },
+      },
+      {
         id: "attachments",
         header: "Attachment",
         size: 120,
@@ -685,7 +799,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         ),
       },
     ],
-    []
+    [expandedHistoryId]
   );
 
   const table = useReactTable({
@@ -699,7 +813,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 50 } },
+    initialState: { pagination: { pageSize: 50 }, columnVisibility: { duePriority: false, dueStatus: false } },
   });
 
   const filteredAssets = table.getFilteredRowModel().rows.map((row) => row.original);
@@ -839,6 +953,23 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
               ))}
             </SelectContent>
           </Select>
+          <Select
+            value={(table.getColumn("dueStatus")?.getFilterValue() as string) ?? ""}
+            onValueChange={(val) =>
+              table.getColumn("dueStatus")?.setFilterValue(val === "__all__" ? "" : val)
+            }
+          >
+            <SelectTrigger className="h-9 w-44">
+              <SelectValue placeholder="Semua Due" />
+            </SelectTrigger>
+            <SelectContent>
+              {DUE_FILTERS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Actions */}
@@ -914,23 +1045,64 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
                 </tr>
               ) : (
                 rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b transition-colors hover:bg-muted/30"
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className="px-3 py-2 align-middle"
-                        style={{
-                          width: cell.column.getSize(),
-                          minWidth: cell.column.getSize(),
-                        }}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
+                  <Fragment key={row.id}>
+                    <tr
+                      className="border-b transition-colors hover:bg-muted/30"
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="px-3 py-2 align-middle"
+                          style={{
+                            width: cell.column.getSize(),
+                            minWidth: cell.column.getSize(),
+                          }}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                    {expandedHistoryId === row.original.id ? (
+                      <tr key={`${row.id}-history`} className="border-b bg-muted/20">
+                        <td colSpan={row.getVisibleCells().length} className="px-4 py-3">
+                          <div className="rounded-md border bg-background">
+                            <div className="flex items-center justify-between border-b px-3 py-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                History Perubahan
+                              </p>
+                              <span className="text-xs text-muted-foreground">
+                                {row.original.histories?.length ?? 0} log
+                              </span>
+                            </div>
+                            {row.original.histories?.length ? (
+                              <div className="max-h-72 divide-y overflow-y-auto">
+                                {row.original.histories.map((history) => (
+                                  <div key={history.id} className="grid gap-2 px-3 py-2 text-xs sm:grid-cols-[150px_160px_minmax(0,1fr)]">
+                                    <div className="text-muted-foreground">{fmtDate(history.createdAt)}</div>
+                                    <div className="font-semibold text-slate-700">
+                                      {historyActionLabel(history.action)} {history.fieldLabel}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className="text-muted-foreground">{fmtHistoryValue(history.previousValue)}</span>
+                                      <span className="px-2 text-muted-foreground">-&gt;</span>
+                                      <span className="font-semibold">{fmtHistoryValue(history.newValue)}</span>
+                                      {history.changeRemark ? (
+                                        <p className="mt-1 text-muted-foreground">Remark: {history.changeRemark}</p>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                                Belum ada history perubahan.
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))
               )}
             </tbody>
@@ -1024,7 +1196,11 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         onSuccess={(updatedAsset) => {
           if (selectedAsset) {
             setData((prev) =>
-              prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a))
+              prev.map((a) =>
+                a.id === updatedAsset.id
+                  ? { ...updatedAsset, histories: [...(updatedAsset.histories ?? []), ...(a.histories ?? [])] }
+                  : a
+              )
             );
           } else {
             setData((prev) => [updatedAsset, ...prev]);

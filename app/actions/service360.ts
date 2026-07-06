@@ -11,7 +11,7 @@ import {
   service360FormHistory
 } from "@/db/schema/service360"
 import { employees, sites, masterDepartments, masterSections } from "@/db/schema/hero"
-import { eq, desc, and, sql, isNotNull } from "drizzle-orm"
+import { eq, desc, asc, and, sql, isNotNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -218,6 +218,7 @@ export async function getQuotationById(id: number) {
     .from(service360QuotationItems)
     .leftJoin(service360Items, eq(service360QuotationItems.itemId, service360Items.id))
     .where(eq(service360QuotationItems.quotationId, id))
+    .orderBy(asc(service360QuotationItems.id))
 
   return {
     ...quotation,
