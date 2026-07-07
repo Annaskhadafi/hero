@@ -676,7 +676,7 @@ export function EmployeeClientPage({
                     key={emp.id}
                     data-filter-department={emp.departmentName ?? ""}
                     data-filter-section={emp.sectionName ?? ""}
-                    data-filter-location={emp.location ?? ""}
+                    data-filter-location={emp.siteName ?? ""}
                     data-filter-gender={emp.genderCode ?? ""}
                     className={hcTableRowClassName}
                   >
