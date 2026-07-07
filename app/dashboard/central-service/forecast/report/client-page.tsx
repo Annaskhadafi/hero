@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart3, Search, ArrowUpDown, Download } from "lucide-react";
 import { getSapRevenue } from "@/app/actions/central-service-forecast";
 import html2canvas from "html2canvas-pro";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 const fmtIdr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -15,11 +19,39 @@ const fmtIdr = (v: number) =>
 const fmtUsd = (v: number) =>
   "$" + new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
+/** Plain number format with dots (e.g. 14.000.000) — no currency symbol */
+const fmtNum = (v: number) =>
+  new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(v);
+
+const fmtNumUsd = (v: number) =>
+  new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(v);
+
 const fmtPct = (v: number) => v.toFixed(1);
+
+const formatShort = (val: number) => {
+  if (val >= 1000000) return "$" + (val / 1000000).toFixed(1) + "M";
+  if (val >= 1000) return "$" + (val / 1000).toFixed(1) + "K";
+  return "$" + val.toFixed(0);
+};
+
+const renderBarLabel = (props: any) => {
+  const { x, y, width, value } = props;
+  if (!value || value === 0) return null;
+  return (
+    <text x={x + width / 2} y={y - 6} textAnchor="middle" fill="#374151" fontSize={10} fontWeight={600}>
+      {formatShort(value)}
+    </text>
+  );
+};
+
+const renderPieLabel = ({ name, value }: { name: string; value: number }) => {
+  return `${name}: ${formatShort(value)}`;
+};
 
 function CategoryScoreCard({
   label,
   forecast,
+  forecastUsd,
   actual,
   actualUsd,
   colorClass,
@@ -27,6 +59,7 @@ function CategoryScoreCard({
 }: {
   label: string;
   forecast: number;
+  forecastUsd: number;
   actual: number;
   actualUsd?: number;
   colorClass: string;
@@ -47,8 +80,11 @@ function CategoryScoreCard({
       </div>
       <div className="flex justify-between items-end mt-4 pl-2">
         <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-bold uppercase">Forecast (IDR)</span>
-          <span className="text-base font-black tracking-tight">{fmtIdr(forecast)}</span>
+          <span className="text-[10px] text-muted-foreground font-bold uppercase">Forecast</span>
+          <span className="text-lg font-black tracking-tight">{fmtIdr(forecast)}</span>
+          {forecastUsd > 0 && (
+            <span className="text-sm font-bold text-muted-foreground">{fmtUsd(forecastUsd)}</span>
+          )}
         </div>
         <div className="flex flex-col text-right">
           <span className="text-[10px] text-primary/70 font-bold uppercase">Revenue (IDR)</span>
@@ -65,10 +101,40 @@ function CategoryScoreCard({
   );
 }
 
+type CategoryRow = {
+  category: string;
+  forecastIdr: number;
+  actualIdr: number;
+  forecastUsd: number;
+  actualUsd: number;
+  remarkMonthly: string;
+  remarkDaily: string;
+  status: string;
+  color: string;
+};
+
+type CustomerGroup = {
+  key: string;
+  customer: string;
+  pic: string;
+  month: string;
+  categories: CategoryRow[];
+  totalAmountIdr: number;
+  totalAmountUsd: number;
+};
+
+const CAT_COLORS: Record<string, string> = {
+  Repair: "bg-amber-100 text-amber-700",
+  Service: "bg-blue-100 text-blue-700",
+  Retread: "bg-emerald-100 text-emerald-700",
+  Accessories: "bg-gray-100 text-gray-700",
+};
+
 export function ReportClientPage({
   periods,
   dailyItems,
   initialSapRevenue,
+  exchangeRate,
 }: {
   periods: any[];
   dailyItems: any[];
@@ -78,6 +144,7 @@ export function ReportClientPage({
     retread: { idr: number; usd: number };
     rows: any[];
   };
+  exchangeRate: string;
 }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || "");
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,6 +153,8 @@ export function ReportClientPage({
   const [sapRevenue, setSapRevenue] = useState(initialSapRevenue);
   const [isLoadingSap, setIsLoadingSap] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+
+  const rate = Number(exchangeRate) || 15000;
 
   const handleExportJpeg = async () => {
     if (!reportRef.current) return;
@@ -150,56 +219,156 @@ export function ReportClientPage({
     return { serviceFc, serviceAct, repairFc, repairAct, retreadFc, retreadAct };
   }, [filtered]);
 
-  const tableData = useMemo(() => {
-    const rows: any[] = [];
+  const categoryData = useMemo(() => {
+    return [
+      { name: "Repair", Forecast: totals.repairFc / rate, Actual: totals.repairAct / rate },
+      { name: "Retread", Forecast: totals.retreadFc / rate, Actual: totals.retreadAct / rate },
+      { name: "Service", Forecast: totals.serviceFc / rate, Actual: totals.serviceAct / rate },
+    ];
+  }, [totals, rate]);
+
+  const pieData = useMemo(() => {
+    return [
+      { name: "Repair", value: totals.repairFc / rate },
+      { name: "Retread", value: totals.retreadFc / rate },
+      { name: "Service", value: totals.serviceFc / rate },
+    ].filter((c) => c.value > 0);
+  }, [totals, rate]);
+
+  const groupedData = useMemo(() => {
+    const map = new Map<string, CustomerGroup>();
 
     filtered.forEach((w: any) => {
-      const customer = w.item.customer;
-      const pic = w.item.picSales;
-      const isAcc = w.item.isProductAccessories;
+      const item = w.item;
+      const period = w.period;
+      const key = `${item.customer}-${item.id}`;
+      const isAcc = item.isProductAccessories;
 
-      // Add actuals entries
+      if (map.has(key)) return;
+
+      const categories: CategoryRow[] = [];
+
+      if (isAcc) {
+        const forecastIdr = Number(item.accessoriesAmountIdr || 0);
+        const forecastUsd = Number(item.accessoriesAmountUsd || 0);
+        if (forecastIdr > 0) {
+          categories.push({
+            category: "Accessories",
+            forecastIdr,
+            actualIdr: 0,
+            forecastUsd,
+            actualUsd: 0,
+            remarkMonthly: item.remark || "",
+            remarkDaily: "",
+            status: item.status,
+            color: CAT_COLORS.Accessories,
+          });
+        }
+      } else {
+        const repair = Number(item.repairForecast || 0);
+        const service = Number(item.serviceForecast || 0);
+        const retread = Number(item.retreadForecast || 0);
+
+        if (repair > 0) {
+          categories.push({
+            category: "Repair",
+            forecastIdr: repair,
+            actualIdr: 0,
+            forecastUsd: 0,
+            actualUsd: 0,
+            remarkMonthly: item.repairRemark || "",
+            remarkDaily: "",
+            status: item.status,
+            color: CAT_COLORS.Repair,
+          });
+        }
+        if (service > 0) {
+          categories.push({
+            category: "Service",
+            forecastIdr: service,
+            actualIdr: 0,
+            forecastUsd: 0,
+            actualUsd: 0,
+            remarkMonthly: item.serviceRemark || "",
+            remarkDaily: "",
+            status: item.status,
+            color: CAT_COLORS.Service,
+          });
+        }
+        if (retread > 0) {
+          categories.push({
+            category: "Retread",
+            forecastIdr: retread,
+            actualIdr: 0,
+            forecastUsd: 0,
+            actualUsd: 0,
+            remarkMonthly: item.retreadRemark || "",
+            remarkDaily: "",
+            status: item.status,
+            color: CAT_COLORS.Retread,
+          });
+        }
+      }
+
+      // Overlay actuals if they exist (already sorted by updateDate DESC from server)
+      // Track which categories already got their daily remark so we keep only the latest
+      const seenDailyRemark = new Set<string>();
       w.actuals?.forEach((a: any) => {
-        rows.push({
-          customer,
-          pic,
-          amountIdr: Number(a.amountIdr),
-          amountUsd: Number(a.amountUsd),
-          remark: a.remark || "",
-          category: a.category || "Service",
-          id: a.id,
-          type: "actual",
-          status: a.itemStatus || "-",
-        });
+        const existing = categories.find((c) => c.category === a.category);
+        if (existing) {
+          existing.actualIdr = Number(a.amountIdr);
+          existing.actualUsd = Number(a.amountUsd);
+          // Only set remarkDaily from the first (latest) actual per category
+          if (!seenDailyRemark.has(a.category)) {
+            existing.remarkDaily = a.remark || existing.remarkDaily;
+            existing.status = a.itemStatus || existing.status;
+            seenDailyRemark.add(a.category);
+          }
+        } else {
+          if (!seenDailyRemark.has(a.category)) {
+            seenDailyRemark.add(a.category);
+          }
+          categories.push({
+            category: a.category,
+            forecastIdr: 0,
+            actualIdr: Number(a.amountIdr),
+            forecastUsd: 0,
+            actualUsd: Number(a.amountUsd),
+            remarkMonthly: "",
+            remarkDaily: a.remark || "",
+            status: a.itemStatus || "-",
+            color: CAT_COLORS[a.category] || "bg-gray-100 text-gray-700",
+          });
+        }
       });
 
-      // Add waiting items (no actuals or still waiting)
-      if (w.item.status === "Waiting") {
-        const forecastIdr = isAcc ? Number(w.item.accessoriesAmountIdr) : Number(w.item.totalForecastIdr);
-        const forecastUsd = isAcc ? Number(w.item.accessoriesAmountUsd) : 0;
-        rows.push({
-          customer,
-          pic,
-          amountIdr: forecastIdr,
-          amountUsd: forecastUsd,
-          remark: w.item.remark || "",
-          category: isAcc ? "Accessories" : "Core Services",
-          id: `waiting-${w.item.id}`,
-          type: "forecast",
-          status: "Waiting",
-        });
-      }
+      if (categories.length === 0) return;
+
+      const totalAmountIdr = categories.reduce((s, c) => s + c.forecastIdr, 0);
+      const totalAmountUsd = totalAmountIdr / rate;
+
+      map.set(key, {
+        key,
+        customer: item.customer,
+        pic: item.picSales,
+        month: period?.monthYear || "",
+        categories,
+        totalAmountIdr,
+        totalAmountUsd,
+      });
     });
 
-    rows.sort((a, b) => {
-      const valA = sortField === "customer" ? a.customer.toLowerCase() : a.amountIdr;
-      const valB = sortField === "customer" ? b.customer.toLowerCase() : b.amountIdr;
+    let groups = Array.from(map.values());
+
+    groups.sort((a, b) => {
+      const valA = sortField === "customer" ? a.customer.toLowerCase() : a.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
+      const valB = sortField === "customer" ? b.customer.toLowerCase() : b.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
 
-    return rows;
+    return groups;
   }, [filtered, sortField, sortOrder]);
 
   const toggleSort = (field: "customer" | "actual") => {
@@ -207,8 +376,8 @@ export function ReportClientPage({
     else { setSortField(field); setSortOrder("asc"); }
   };
 
-  const totalRowIdr = tableData.filter(r => r.type === "actual").reduce((s, r) => s + r.amountIdr, 0);
-  const totalRowUsd = tableData.filter(r => r.type === "actual").reduce((s, r) => s + r.amountUsd, 0);
+  const totalRowIdr = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr + c.actualIdr, 0), 0);
+  const totalRowUsd = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastUsd + c.actualUsd, 0), 0);
 
   return (
     <div className="space-y-6">
@@ -252,6 +421,7 @@ export function ReportClientPage({
         <CategoryScoreCard
           label="Forecast Service"
           forecast={totals.serviceFc}
+          forecastUsd={totals.serviceFc / rate}
           actual={totals.serviceAct}
           actualUsd={sapRevenue.service.usd}
           colorClass="bg-blue-500"
@@ -260,6 +430,7 @@ export function ReportClientPage({
         <CategoryScoreCard
           label="Forecast Repair"
           forecast={totals.repairFc}
+          forecastUsd={totals.repairFc / rate}
           actual={totals.repairAct}
           actualUsd={sapRevenue.repair.usd}
           colorClass="bg-amber-500"
@@ -268,6 +439,7 @@ export function ReportClientPage({
         <CategoryScoreCard
           label="Forecast Retread"
           forecast={totals.retreadFc}
+          forecastUsd={totals.retreadFc / rate}
           actual={totals.retreadAct}
           actualUsd={sapRevenue.retread.usd}
           colorClass="bg-emerald-500"
@@ -275,7 +447,49 @@ export function ReportClientPage({
         />
       </div>
 
-      <div className="border-2 border-primary/10 bg-white rounded-lg overflow-hidden">
+      <div className="grid gap-4 md:grid-cols-2 mt-6">
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle className="text-sm">Forecast vs Actual (By Category)</CardTitle>
+            <CardDescription className="text-xs">Comparison in USD</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={categoryData} margin={{ top: 25, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis tickFormatter={(val) => formatShort(val)} />
+                <Tooltip formatter={(val: number) => "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                <Legend />
+                <Bar dataKey="Forecast" fill="#8884d8" label={renderBarLabel} />
+                <Bar dataKey="Actual" fill="#82ca9d" label={renderBarLabel} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle className="text-sm">Forecast Composition</CardTitle>
+            <CardDescription className="text-xs">Share of forecast per category</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} label={renderPieLabel} dataKey="value">
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(val: number) => "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="border-2 border-primary/10 bg-white rounded-lg overflow-hidden mt-6">
         <div className="bg-[#0052CC] text-white py-3 px-4">
           <div className="flex items-center justify-between">
             <div className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
@@ -292,90 +506,109 @@ export function ReportClientPage({
         </div>
         <div className="p-0">
           <div>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-yellow-400 hover:bg-yellow-400">
-                  <TableHead className="text-black font-bold text-xs w-[30px]">No</TableHead>
-                  <TableHead
-                    className="text-black font-bold text-xs cursor-pointer hover:bg-yellow-500"
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-yellow-400">
+                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2 w-[40px]">No</th>
+                  <th
+                    className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2 cursor-pointer hover:bg-yellow-500"
                     onClick={() => toggleSort("customer")}
                   >
                     <div className="flex items-center gap-1">
                       Customer <ArrowUpDown className="w-3 h-3" />
                     </div>
-                  </TableHead>
-                  <TableHead className="text-black font-bold text-xs">PIC</TableHead>
-                  <TableHead
-                    className="text-black font-bold text-xs cursor-pointer hover:bg-yellow-500"
-                    onClick={() => toggleSort("actual")}
-                  >
-                    <div className="flex items-center gap-1">
-                      Amount IDR <ArrowUpDown className="w-3 h-3" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-black font-bold text-xs">Amount USD</TableHead>
-                  <TableHead className="text-black font-bold text-xs">Remark</TableHead>
-                  <TableHead className="text-black font-bold text-xs">Status</TableHead>
-                  <TableHead className="text-black font-bold text-xs">Job</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tableData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  </th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">PIC</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Category</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount</th>
+                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount IDR</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount USD</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark</th>
+                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedData.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="text-center py-8 text-muted-foreground">
                       No data for this period
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ) : (
-                  tableData.map((row, i) => (
-                    <TableRow key={row.id} className={row.type === "waiting" ? "bg-yellow-50 hover:bg-yellow-100 transition-colors" : "bg-white hover:bg-gray-50 transition-colors"}>
-                      <TableCell className="text-xs font-medium text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="text-xs font-bold">{row.customer}</TableCell>
-                      <TableCell className="text-xs">{row.pic}</TableCell>
-                      <TableCell className="text-xs font-bold text-green-700">{fmtIdr(row.amountIdr)}</TableCell>
-                      <TableCell className="text-xs">{fmtUsd(row.amountUsd)}</TableCell>
-                      <TableCell className="text-xs max-w-[250px] truncate" title={row.remark}>
-                        {row.remark || "\u2014"}
-                      </TableCell>
-                      <TableCell>
-                        <span className={
-                          row.status === "Waiting" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-200 text-yellow-800" :
-                          row.status === "Invoice" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700" :
-                          row.status === "Cancel" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700" :
-                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-500"
-                        }>
-                          {row.status}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={
-                            "px-2 py-0.5 rounded text-[10px] font-bold uppercase " +
-                            (row.category === "Service"
-                              ? "bg-blue-100 text-blue-700"
-                              : row.category === "Repair"
-                              ? "bg-amber-100 text-amber-700"
-                              : row.category === "Retread"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-gray-100 text-gray-700")
-                          }
-                        >
-                          {row.category}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  groupedData.map((group, gi) => {
+                    const groupRemarkMonthly = group.categories[0]?.remarkMonthly || "";
+                    const groupStatus = group.categories[0]?.status || "";
+                    const catLen = group.categories.length;
+                    return group.categories.map((cat, ci) => {
+                      const isFirst = ci === 0;
+                      const isLast = ci === catLen - 1;
+                      // Border logic: top border on first row, bottom border on last row, side borders always
+                      const groupCellBorder = `border-l border-r border-black/10 ${isFirst ? "border-t border-black/10" : ""} ${isLast ? "border-b border-black/10" : ""}`;
+                      return (
+                        <tr key={`${group.key}-${ci}`} className="bg-white hover:bg-gray-50 transition-colors">
+                          {/* No */}
+                          <td className={`text-xs text-center align-top px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? gi + 1 : ""}
+                          </td>
+                          {/* Customer */}
+                          <td className={`text-xs font-bold align-top px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? group.customer : ""}
+                          </td>
+                          {/* PIC */}
+                          <td className={`text-xs align-top italic px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? group.pic : ""}
+                          </td>
+                          {/* Category */}
+                          <td className="text-xs border border-black/10 px-2 py-1.5">
+                            {cat.category}
+                          </td>
+                          {/* Remark (daily - latest) */}
+                          <td className="text-xs border border-black/10 text-center break-words whitespace-normal px-2 py-1.5">
+                            {cat.remarkDaily || ""}
+                          </td>
+                          {/* Amount */}
+                          <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">
+                            {cat.forecastIdr > 0 ? fmtNum(cat.forecastIdr) : ""}
+                          </td>
+                          {/* Status per category */}
+                          <td className="text-xs text-center border border-black/10 px-2 py-1.5">
+                            {cat.status || ""}
+                          </td>
+                          {/* Amount IDR (group) */}
+                          <td className={`text-xs text-right align-top tabular-nums font-semibold px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst && group.totalAmountIdr > 0 ? fmtNum(group.totalAmountIdr) : ""}
+                          </td>
+                          {/* Amount USD (group) */}
+                          <td className={`text-xs text-right align-top tabular-nums font-semibold px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst && group.totalAmountUsd > 0 ? fmtNumUsd(Math.round(group.totalAmountUsd)) : ""}
+                          </td>
+                          {/* Remark monthly (group) */}
+                          <td className={`text-xs align-top text-center break-words whitespace-normal px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? groupRemarkMonthly : ""}
+                          </td>
+                          {/* Status (group) */}
+                          <td className={`text-xs text-center align-top px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? groupStatus : ""}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })
                 )}
-                {tableData.length > 0 && (
-                  <TableRow className="bg-white font-bold border-t-2">
-                    <TableCell colSpan={3} className="text-xs text-right">TOTAL (Invoiced)</TableCell>
-                    <TableCell className="text-xs text-green-700">{fmtIdr(totalRowIdr)}</TableCell>
-                    <TableCell className="text-xs">{fmtUsd(totalRowUsd)}</TableCell>
-                    <TableCell colSpan={3} />
-                  </TableRow>
+                {groupedData.length > 0 && (
+                  <tr className="bg-yellow-100 font-bold border-t-2">
+                    <td colSpan={5} className="text-xs text-right border border-black/10 px-2 py-1.5">TOTAL</td>
+                    <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0), 0))}</td>
+                    <td className="border border-black/10 px-2 py-1.5" />
+                    <td className="text-xs text-right border border-black/10 tabular-nums font-bold px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.totalAmountIdr, 0))}</td>
+                    <td className="text-xs text-right border border-black/10 tabular-nums font-bold px-2 py-1.5">{fmtNumUsd(Math.round(groupedData.reduce((s, g) => s + g.totalAmountUsd, 0)))}</td>
+                    <td colSpan={2} className="border border-black/10 px-2 py-1.5" />
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
