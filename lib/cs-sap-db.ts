@@ -15,34 +15,89 @@ function getSapPool() {
   return sapPool;
 }
 
-export interface SapActualRow {
-  customer: string;
-  picSales: string;
-  amountIdr: number;
-  amountUsd: number;
-  remark: string;
-  category: string;
-  updateDate: string;
+export interface SapRevenueRow {
+  customerName: string;
+  salesman: string;
+  revenueInDocCurr: number;
+  revenueInLocCurr: number;
+  revType: string;
+  billingDate: string;
 }
 
-export async function fetchSapActuals(): Promise<SapActualRow[]> {
+export async function fetchSapRevenue(monthYear: string): Promise<{
+  service: { idr: number; usd: number };
+  repair: { idr: number; usd: number };
+  retread: { idr: number; usd: number };
+  rows: SapRevenueRow[];
+}> {
   try {
     const pool = getSapPool();
+
+    // monthYear format: "July 2026" → convert to date range
     const result = await pool.query(`
       SELECT
-        customer_name AS "customer",
-        salesman AS "pic_sales",
-        COALESCE(amount_idr, 0) AS "amountIdr",
-        COALESCE(amount_usd, 0) AS "amountUsd",
-        COALESCE(remark, '') AS "remark",
-        COALESCE(job_category, 'Service') AS "category",
-        COALESCE(update_date::text, '') AS "updateDate"
-      FROM revenue_actuals
-      ORDER BY update_date DESC
-    `);
-    return result.rows;
+        COALESCE(customer_name, '') AS "customerName",
+        COALESCE(salesman, '') AS "salesman",
+        COALESCE(NULLIF(revenue_in_doc_curr, 'NaN'::float8), 0) AS "revenueInDocCurr",
+        COALESCE(NULLIF(revenue_in_loc_curr, 'NaN'::float8), 0) AS "revenueInLocCurr",
+        COALESCE(rev_type, '') AS "revType",
+        COALESCE(billing_date::text, '') AS "billingDate"
+      FROM sales_revenue_sap
+      WHERE billing_date IS NOT NULL
+        AND (cancelled IS NULL OR cancelled = '')
+        AND TO_CHAR(billing_date, 'YYYY-MM') = $1
+      ORDER BY billing_date DESC
+    `, [monthYearToKey(monthYear)]);
+
+    const rows = result.rows as SapRevenueRow[];
+
+    const service = { idr: 0, usd: 0 };
+    const repair = { idr: 0, usd: 0 };
+    const retread = { idr: 0, usd: 0 };
+
+    rows.forEach((r) => {
+      const idr = Number(r.revenueInDocCurr) || 0;
+      const usd = Number(r.revenueInLocCurr) || 0;
+      const revType = r.revType.toLowerCase().trim();
+
+      if (revType.includes("repair")) {
+        repair.idr += idr;
+        repair.usd += usd;
+      } else if (revType.includes("service")) {
+        service.idr += idr;
+        service.usd += usd;
+      } else if (revType.includes("retread")) {
+        retread.idr += idr;
+        retread.usd += usd;
+      }
+    });
+
+    return { service, repair, retread, rows };
   } catch (error) {
-    console.error("[SAP DB] Failed to fetch actuals:", error);
-    return [];
+    console.error("[SAP DB] Failed to fetch revenue:", error);
+    return {
+      service: { idr: 0, usd: 0 },
+      repair: { idr: 0, usd: 0 },
+      retread: { idr: 0, usd: 0 },
+      rows: [],
+    };
   }
+}
+
+function monthYearToKey(monthYear: string): string {
+  // "July 2026" → "2026-07"
+  const months: Record<string, string> = {
+    January: "01", February: "02", March: "03", April: "04",
+    May: "05", June: "06", July: "07", August: "08",
+    September: "09", October: "10", November: "11", December: "12",
+  };
+  const parts = monthYear.trim().split(/\s+/);
+  if (parts.length === 2) {
+    const month = months[parts[0]] || "01";
+    const year = parts[1];
+    return `${year}-${month}`;
+  }
+  // If already in YYYY-MM format
+  if (/^\d{4}-\d{2}$/.test(monthYear)) return monthYear;
+  return monthYear;
 }

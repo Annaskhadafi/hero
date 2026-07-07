@@ -385,3 +385,8 @@ export async function copyPreviousMonthForecast(sourcePeriodId: number, targetPe
   await db.insert(centralServiceForecastItems).values(newItems);
   revalidatePath("/dashboard/central-service/forecast/monthly");
 }
+
+export async function getSapRevenue(monthYear: string) {
+  const { fetchSapRevenue } = await import("@/lib/cs-sap-db");
+  return fetchSapRevenue(monthYear);
+}

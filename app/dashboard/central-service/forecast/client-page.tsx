@@ -17,6 +17,26 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
+const formatShort = (val: number) => {
+  if (val >= 1000000) return "$" + (val / 1000000).toFixed(1) + "M";
+  if (val >= 1000) return "$" + (val / 1000).toFixed(1) + "K";
+  return "$" + val.toFixed(0);
+};
+
+const renderBarLabel = (props: any) => {
+  const { x, y, width, value } = props;
+  if (!value || value === 0) return null;
+  return (
+    <text x={x + width / 2} y={y - 6} textAnchor="middle" fill="#374151" fontSize={10} fontWeight={600}>
+      {formatShort(value)}
+    </text>
+  );
+};
+
+const renderPieLabel = ({ name, value }: { name: string; value: number }) => {
+  return `${name}: ${formatShort(value)}`;
+};
+
 export function DashboardClientPage({ periods, allItems, allActuals }: { periods: any[], allItems: any[], allActuals: any[] }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
   const [editRate, setEditRate] = useState<string>("");
@@ -89,18 +109,19 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
     return { totalForecast, totalActuals, totalWaiting, achievement };
   }, [itemsInPeriod, actualsInPeriod]);
 
-  // Bar Chart Data
+  // Bar Chart Data (in USD)
   const categoryData = useMemo(() => {
+    const rate = Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000;
     const categories = ['Repair', 'Retread', 'Service', 'Accessories'];
     const data = categories.map(cat => ({ name: cat, Forecast: 0, Actual: 0 }));
 
     itemsInPeriod.forEach(item => {
       if (!item.isProductAccessories) {
-        data[0].Forecast += Number(item.repairForecast);
-        data[1].Forecast += Number(item.retreadForecast);
-        data[2].Forecast += Number(item.serviceForecast);
+        data[0].Forecast += Number(item.repairForecast) / rate;
+        data[1].Forecast += Number(item.retreadForecast) / rate;
+        data[2].Forecast += Number(item.serviceForecast) / rate;
       } else {
-        data[3].Forecast += Number(item.accessoriesAmountIdr);
+        data[3].Forecast += Number(item.accessoriesAmountIdr) / rate;
       }
     });
 
@@ -108,7 +129,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
       if (!actual.forecastItemId) return;
       const idx = categories.indexOf(actual.category);
       if (idx !== -1) {
-        data[idx].Actual += Number(actual.amountIdr);
+        data[idx].Actual += Number(actual.amountIdr) / rate;
       }
     });
 
@@ -219,14 +240,14 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
           </CardHeader>
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={categoryData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={categoryData} margin={{ top: 25, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
-                <YAxis tickFormatter={(val) => `${val / 1000000}M`} />
-                <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                <YAxis tickFormatter={(val) => formatShort(val)} />
+                <Tooltip formatter={(val: number) => "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
                 <Legend />
-                <Bar dataKey="Forecast" fill="#8884d8" />
-                <Bar dataKey="Actual" fill="#82ca9d" />
+                <Bar dataKey="Forecast" fill="#8884d8" label={renderBarLabel} />
+                <Bar dataKey="Actual" fill="#82ca9d" label={renderBarLabel} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -240,12 +261,12 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} label dataKey="value">
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={100} label={renderPieLabel} dataKey="value">
                   {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                <Tooltip formatter={(val: number) => "$" + val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

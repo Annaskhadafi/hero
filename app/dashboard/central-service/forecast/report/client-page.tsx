@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart3, Search, ArrowUpDown } from "lucide-react";
+import { BarChart3, Search, ArrowUpDown, Download } from "lucide-react";
+import { getSapRevenue } from "@/app/actions/central-service-forecast";
+import html2canvas from "html2canvas-pro";
 
 const fmtIdr = (v: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
@@ -18,12 +21,14 @@ function CategoryScoreCard({
   label,
   forecast,
   actual,
+  actualUsd,
   colorClass,
   textClass,
 }: {
   label: string;
   forecast: number;
   actual: number;
+  actualUsd?: number;
   colorClass: string;
   textClass: string;
 }) {
@@ -42,12 +47,15 @@ function CategoryScoreCard({
       </div>
       <div className="flex justify-between items-end mt-4 pl-2">
         <div className="flex flex-col">
-          <span className="text-[10px] text-muted-foreground font-bold uppercase">Forecast</span>
+          <span className="text-[10px] text-muted-foreground font-bold uppercase">Forecast (IDR)</span>
           <span className="text-base font-black tracking-tight">{fmtIdr(forecast)}</span>
         </div>
         <div className="flex flex-col text-right">
-          <span className="text-[10px] text-primary/70 font-bold uppercase">Revenue</span>
+          <span className="text-[10px] text-primary/70 font-bold uppercase">Revenue (IDR)</span>
           <span className="text-lg font-black text-primary tracking-tighter">{fmtIdr(actual)}</span>
+          {actualUsd !== undefined && actualUsd > 0 && (
+            <span className="text-sm font-bold text-muted-foreground">{fmtUsd(actualUsd)}</span>
+          )}
         </div>
       </div>
       <div className="h-1.5 bg-gray-100 rounded-full w-[calc(100%-8px)] ml-2 overflow-hidden mt-3">
@@ -60,14 +68,42 @@ function CategoryScoreCard({
 export function ReportClientPage({
   periods,
   dailyItems,
+  initialSapRevenue,
 }: {
   periods: any[];
   dailyItems: any[];
+  initialSapRevenue: {
+    service: { idr: number; usd: number };
+    repair: { idr: number; usd: number };
+    retread: { idr: number; usd: number };
+    rows: any[];
+  };
 }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || "");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<"customer" | "actual">("customer");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sapRevenue, setSapRevenue] = useState(initialSapRevenue);
+  const [isLoadingSap, setIsLoadingSap] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const handleExportJpeg = async () => {
+    if (!reportRef.current) return;
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        margin: { top: 40, bottom: 40, left: 40, right: 40 },
+      } as any);
+      const link = document.createElement("a");
+      link.download = `daily-report-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || "export"}.jpeg`;
+      link.href = canvas.toDataURL("image/jpeg", 0.95);
+      link.click();
+    } catch (err) {
+      console.error("Export failed:", err);
+    }
+  };
 
   const filtered = useMemo(() => {
     return dailyItems.filter((w: any) => {
@@ -82,6 +118,15 @@ export function ReportClientPage({
       return true;
     });
   }, [dailyItems, selectedPeriodId, searchQuery]);
+
+  useEffect(() => {
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId);
+    if (!period) return;
+    setIsLoadingSap(true);
+    getSapRevenue(period.monthYear)
+      .then(setSapRevenue)
+      .finally(() => setIsLoadingSap(false));
+  }, [selectedPeriodId, periods]);
 
   const totals = useMemo(() => {
     let serviceFc = 0, serviceAct = 0;
@@ -107,9 +152,13 @@ export function ReportClientPage({
 
   const tableData = useMemo(() => {
     const rows: any[] = [];
+
     filtered.forEach((w: any) => {
       const customer = w.item.customer;
       const pic = w.item.picSales;
+      const isAcc = w.item.isProductAccessories;
+
+      // Add actuals entries
       w.actuals?.forEach((a: any) => {
         rows.push({
           customer,
@@ -119,8 +168,27 @@ export function ReportClientPage({
           remark: a.remark || "",
           category: a.category || "Service",
           id: a.id,
+          type: "actual",
+          status: "Invoiced",
         });
       });
+
+      // Add waiting items (no actuals or still waiting)
+      if (w.item.status === "Waiting") {
+        const forecastIdr = isAcc ? Number(w.item.accessoriesAmountIdr) : Number(w.item.totalForecastIdr);
+        const forecastUsd = isAcc ? Number(w.item.accessoriesAmountUsd) : 0;
+        rows.push({
+          customer,
+          pic,
+          amountIdr: forecastIdr,
+          amountUsd: forecastUsd,
+          remark: w.item.remark || "",
+          category: isAcc ? "Accessories" : "Core Services",
+          id: `waiting-${w.item.id}`,
+          type: "forecast",
+          status: "Waiting",
+        });
+      }
     });
 
     rows.sort((a, b) => {
@@ -139,8 +207,8 @@ export function ReportClientPage({
     else { setSortField(field); setSortOrder("asc"); }
   };
 
-  const totalRowIdr = tableData.reduce((s, r) => s + r.amountIdr, 0);
-  const totalRowUsd = tableData.reduce((s, r) => s + r.amountUsd, 0);
+  const totalRowIdr = tableData.filter(r => r.type === "actual").reduce((s, r) => s + r.amountIdr, 0);
+  const totalRowUsd = tableData.filter(r => r.type === "actual").reduce((s, r) => s + r.amountUsd, 0);
 
   return (
     <div className="space-y-6">
@@ -162,22 +230,30 @@ export function ReportClientPage({
             </Select>
           </div>
         </div>
-        <div className="relative w-[280px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search customer or PIC..."
-            className="pl-9 h-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative w-[280px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search customer or PIC..."
+              className="pl-9 h-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button variant="outline" size="sm" className="h-9" onClick={handleExportJpeg}>
+            <Download className="w-4 h-4 mr-2" />
+            Export JPEG
+          </Button>
         </div>
       </div>
 
+      <div ref={reportRef} className="p-10 bg-white">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <CategoryScoreCard
           label="Forecast Service"
           forecast={totals.serviceFc}
           actual={totals.serviceAct}
+          actualUsd={sapRevenue.service.usd}
           colorClass="bg-blue-500"
           textClass="text-blue-700"
         />
@@ -185,6 +261,7 @@ export function ReportClientPage({
           label="Forecast Repair"
           forecast={totals.repairFc}
           actual={totals.repairAct}
+          actualUsd={sapRevenue.repair.usd}
           colorClass="bg-amber-500"
           textClass="text-amber-700"
         />
@@ -192,6 +269,7 @@ export function ReportClientPage({
           label="Forecast Retread"
           forecast={totals.retreadFc}
           actual={totals.retreadAct}
+          actualUsd={sapRevenue.retread.usd}
           colorClass="bg-emerald-500"
           textClass="text-emerald-700"
         />
@@ -213,7 +291,7 @@ export function ReportClientPage({
           </div>
         </div>
         <div className="p-0">
-          <div className="overflow-auto max-h-[500px]">
+          <div>
             <Table>
               <TableHeader>
                 <TableRow className="bg-yellow-400 hover:bg-yellow-400">
@@ -237,19 +315,20 @@ export function ReportClientPage({
                   </TableHead>
                   <TableHead className="text-black font-bold text-xs">Amount USD</TableHead>
                   <TableHead className="text-black font-bold text-xs">Remark</TableHead>
+                  <TableHead className="text-black font-bold text-xs">Status</TableHead>
                   <TableHead className="text-black font-bold text-xs">Job</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tableData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No actuals data for this period
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      No data for this period
                     </TableCell>
                   </TableRow>
                 ) : (
                   tableData.map((row, i) => (
-                    <TableRow key={row.id} className="bg-white hover:bg-gray-50 transition-colors">
+                    <TableRow key={row.id} className={row.type === "waiting" ? "bg-yellow-50 hover:bg-yellow-100 transition-colors" : "bg-white hover:bg-gray-50 transition-colors"}>
                       <TableCell className="text-xs font-medium text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="text-xs font-bold">{row.customer}</TableCell>
                       <TableCell className="text-xs">{row.pic}</TableCell>
@@ -259,6 +338,11 @@ export function ReportClientPage({
                         {row.remark || "\u2014"}
                       </TableCell>
                       <TableCell>
+                        <span className={row.status === "Waiting" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-200 text-yellow-800" : "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700"}>
+                          {row.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
                         <span
                           className={
                             "px-2 py-0.5 rounded text-[10px] font-bold uppercase " +
@@ -266,7 +350,9 @@ export function ReportClientPage({
                               ? "bg-blue-100 text-blue-700"
                               : row.category === "Repair"
                               ? "bg-amber-100 text-amber-700"
-                              : "bg-emerald-100 text-emerald-700")
+                              : row.category === "Retread"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-gray-100 text-gray-700")
                           }
                         >
                           {row.category}
@@ -277,16 +363,17 @@ export function ReportClientPage({
                 )}
                 {tableData.length > 0 && (
                   <TableRow className="bg-white font-bold border-t-2">
-                    <TableCell colSpan={3} className="text-xs text-right">TOTAL</TableCell>
+                    <TableCell colSpan={3} className="text-xs text-right">TOTAL (Invoiced)</TableCell>
                     <TableCell className="text-xs text-green-700">{fmtIdr(totalRowIdr)}</TableCell>
                     <TableCell className="text-xs">{fmtUsd(totalRowUsd)}</TableCell>
-                    <TableCell colSpan={2} />
+                    <TableCell colSpan={3} />
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

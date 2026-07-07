@@ -1,5 +1,8 @@
-import { getForecastPeriods, getForecastItems, getDailyForecastItems } from "@/app/actions/central-service-forecast";
+import { getForecastPeriods, getDailyForecastItems } from "@/app/actions/central-service-forecast";
+import { fetchSapRevenue } from "@/lib/cs-sap-db";
 import { ReportClientPage } from "./client-page";
+
+export const revalidate = 0;
 
 export default async function DailyReportPage() {
   const [periods, dailyItems] = await Promise.all([
@@ -7,5 +10,17 @@ export default async function DailyReportPage() {
     getDailyForecastItems(),
   ]);
 
-  return <ReportClientPage periods={periods} dailyItems={dailyItems} />;
+  // Fetch SAP revenue for the first period
+  const firstPeriod = periods[0];
+  const sapRevenue = firstPeriod
+    ? await fetchSapRevenue(firstPeriod.monthYear)
+    : { service: { idr: 0, usd: 0 }, repair: { idr: 0, usd: 0 }, retread: { idr: 0, usd: 0 }, rows: [] };
+
+  return (
+    <ReportClientPage
+      periods={periods}
+      dailyItems={dailyItems}
+      initialSapRevenue={sapRevenue}
+    />
+  );
 }
