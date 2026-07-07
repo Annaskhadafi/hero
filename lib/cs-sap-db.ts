@@ -101,3 +101,52 @@ function monthYearToKey(monthYear: string): string {
   if (/^\d{4}-\d{2}$/.test(monthYear)) return monthYear;
   return monthYear;
 }
+
+export interface SapInvoiceRow {
+  billingDate: string;
+  billingNo: string;
+  customer: string;
+  customerName: string;
+  materialNo: string;
+  materialDesc: string;
+  qty: number;
+  uom: string;
+  revenueIdr: number;
+  revenueUsd: number;
+  revType: string;
+  salesman: string;
+  poNo: string;
+}
+
+export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow[]> {
+  try {
+    const pool = getSapPool();
+    const result = await pool.query(`
+      SELECT
+        COALESCE(billing_date::text, '') AS "billingDate",
+        COALESCE(billing_no, '') AS "billingNo",
+        COALESCE(customer, '') AS "customer",
+        COALESCE(customer_name, '') AS "customerName",
+        COALESCE(material_no, '') AS "materialNo",
+        COALESCE(material_description, '') AS "materialDesc",
+        COALESCE(qty, 0)::int AS "qty",
+        COALESCE(uom, '') AS "uom",
+        COALESCE(NULLIF(revenue_in_doc_curr, 'NaN'::float8), 0) AS "revenueIdr",
+        COALESCE(NULLIF(revenue_in_loc_curr, 'NaN'::float8), 0) AS "revenueUsd",
+        COALESCE(rev_type, '') AS "revType",
+        COALESCE(salesman, '') AS "salesman",
+        COALESCE(po_no, '') AS "poNo"
+      FROM sales_revenue_sap
+      WHERE billing_date IS NOT NULL
+        AND (cancelled IS NULL OR cancelled = '')
+        AND TO_CHAR(billing_date, 'YYYY-MM') = $1
+        AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
+      ORDER BY billing_date DESC, billing_no
+    `, [monthYearToKey(monthYear)]);
+
+    return result.rows as SapInvoiceRow[];
+  } catch (error) {
+    console.error("[SAP DB] Failed to fetch invoices:", error);
+    return [];
+  }
+}

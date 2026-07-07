@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Save, Lock, Trash2, Edit, X } from "lucide-react";
+import { Plus, Save, Lock, Trash2, Edit, X, Search } from "lucide-react";
 import { toast } from "sonner";
 import { bulkImportForecastItems } from "@/app/actions/central-service-forecast";
 import { ImportExportButtons } from "./import-export-buttons";
@@ -41,6 +41,7 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [filterQuery, setFilterQuery] = useState("");
 
 
   const selectedPeriod = periods.find(p => p.id.toString() === selectedPeriodId);
@@ -217,6 +218,16 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
   const totalOsPrevMonth = items.reduce((sum, item) => sum + Number(item.osInvoicePrevMonth || 0), 0);
   const grandTotalIdr = items.reduce((sum, item) => sum + Number(item.totalForecastIdr || 0), 0);
 
+  const filteredItems = items.filter(item => {
+    if (!filterQuery) return true;
+    const q = filterQuery.toLowerCase();
+    return (
+      item.customer?.toLowerCase().includes(q) ||
+      item.picSales?.toLowerCase().includes(q) ||
+      item.remark?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -239,6 +250,15 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
               {selectedPeriod.status}
             </Badge>
           )}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Filter customer, PIC, remark..."
+              className="pl-9 w-[250px] h-9"
+              value={filterQuery}
+              onChange={e => setFilterQuery(e.target.value)}
+            />
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
@@ -371,10 +391,10 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={9} className="text-center py-8">Loading...</TableCell></TableRow>
-                ) : items.filter(i => !i.isProductAccessories).length === 0 ? (
+                ) : filteredItems.filter(i => !i.isProductAccessories).length === 0 ? (
                   <TableRow><TableCell colSpan={9} className="text-center py-8">No core service items.</TableCell></TableRow>
                 ) : (
-                  items.filter(i => !i.isProductAccessories).map(item => (
+                  filteredItems.filter(i => !i.isProductAccessories).map(item => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.customer}</TableCell>
                       <TableCell>{item.picSales}</TableCell>
@@ -421,10 +441,10 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
-                ) : items.filter(i => i.isProductAccessories).length === 0 ? (
+                ) : filteredItems.filter(i => i.isProductAccessories).length === 0 ? (
                   <TableRow><TableCell colSpan={6} className="text-center py-8">No accessories items.</TableCell></TableRow>
                 ) : (
-                  items.filter(i => i.isProductAccessories).map(item => (
+                  filteredItems.filter(i => i.isProductAccessories).map(item => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.customer}</TableCell>
                       <TableCell>{item.picSales}</TableCell>

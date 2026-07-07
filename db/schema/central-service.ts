@@ -259,6 +259,7 @@ export const centralServiceForecastActuals = pgTable(
     amountUsd: numeric("amount_usd").notNull().default("0"),
     
     remark: text("remark").notNull().default(""),
+    itemStatus: text("item_status").notNull().default("-"),
     
     createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

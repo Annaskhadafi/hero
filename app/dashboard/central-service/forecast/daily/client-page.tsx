@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { getRealtimeExchangeRate, updateForecastItemStatus, addForecastActual, updateForecastActual, deleteForecastActual } from "@/app/actions/central-service-forecast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +13,10 @@ import { toast } from "sonner";
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val);
 };
-import { Calendar, FileText, Banknote, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown, TrendingUp, Wallet, Trophy, Target } from "lucide-react";
+import { Calendar, FileText, Banknote, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown, TrendingUp, Wallet, Trophy, Target, Download, TableProperties } from "lucide-react";
+import { getSapInvoices } from "@/app/actions/central-service-forecast";
 
-export function DailyClientPage({ initialItems, periods }: { initialItems: any[], periods: any[] }) {
+export function DailyClientPage({ initialItems, periods, initialSapInvoices }: { initialItems: any[], periods: any[], initialSapInvoices: any[] }) {
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isActualsDialogOpen, setIsActualsDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -24,6 +25,12 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
   const [isFetchingActualRate, setIsFetchingActualRate] = useState(false);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<"forecast" | "sap">("forecast");
+  const [sapInvoices, setSapInvoices] = useState(initialSapInvoices);
+  const [isLoadingSap, setIsLoadingSap] = useState(false);
+  const [sapSearch, setSapSearch] = useState("");
+  const [sapCustomerFilter, setSapCustomerFilter] = useState("");
+  const [sapSalesmanFilter, setSapSalesmanFilter] = useState("");
 
   const filteredItems = React.useMemo(() => {
     return initialItems.filter(wrapper => {
@@ -37,6 +44,15 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     const saved = localStorage.getItem("daily_usd_rate");
     if (saved) setGlobalRate(saved);
   }, []);
+
+  useEffect(() => {
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId);
+    if (!period) return;
+    setIsLoadingSap(true);
+    getSapInvoices(period.monthYear)
+      .then(setSapInvoices)
+      .finally(() => setIsLoadingSap(false));
+  }, [selectedPeriodId, periods]);
 
   const handleFetchGlobalRate = async () => {
     setIsFetchingGlobalRate(true);
@@ -72,12 +88,15 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     repairAmountIdr: "0",
     repairAmountUsd: "0",
     repairRemark: "",
+    repairStatus: "-",
     serviceAmountIdr: "0",
     serviceAmountUsd: "0",
     serviceRemark: "",
+    serviceStatus: "-",
     retreadAmountIdr: "0",
     retreadAmountUsd: "0",
     retreadRemark: "",
+    retreadStatus: "-",
     customer: "",
     periodId: "",
   });
@@ -196,6 +215,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
         const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
         const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
         const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
+        const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
         const existingId = editingActualIds[cat];
         const amtIdr = Number(actualsForm[idrKey]);
 
@@ -207,6 +227,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
+            itemStatus: actualsForm[statusKey],
             category: cat,
             forecastItemId: itemId,
             periodId,
@@ -218,6 +239,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
+            itemStatus: actualsForm[statusKey],
             category: cat,
             forecastItemId: itemId,
             periodId,
@@ -269,6 +291,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
       form[`${cat.toLowerCase()}AmountIdr`] = a?.amountIdr?.toString() || "0";
       form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || "0";
       form[`${cat.toLowerCase()}Remark`] = a?.remark || "";
+      form[`${cat.toLowerCase()}Status`] = a?.itemStatus || "-";
     }
 
     setEditingActualIds(ids);
@@ -316,6 +339,53 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
     return 0;
   });
+
+  // SAP Invoice computed values
+  const sapCustomerOptions = useMemo(() => {
+    const names = Array.from(new Set(sapInvoices.map((r: any) => r.customerName).filter(Boolean)));
+    return names.sort();
+  }, [sapInvoices]);
+
+  const sapSalesmanOptions = useMemo(() => {
+    const names = Array.from(new Set(sapInvoices.map((r: any) => r.salesman).filter(Boolean)));
+    return names.sort();
+  }, [sapInvoices]);
+
+  const sapFiltered = useMemo(() => {
+    return sapInvoices.filter((r: any) => {
+      if (sapSearch) {
+        const q = sapSearch.toLowerCase();
+        if (!r.billingNo?.toLowerCase().includes(q) && !r.materialNo?.toLowerCase().includes(q) && !r.customerName?.toLowerCase().includes(q)) return false;
+      }
+      if (sapCustomerFilter && sapCustomerFilter !== "__all__" && r.customerName !== sapCustomerFilter) return false;
+      if (sapSalesmanFilter && sapSalesmanFilter !== "__all__" && r.salesman !== sapSalesmanFilter) return false;
+      return true;
+    });
+  }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter]);
+
+  const sapTotalUsd = useMemo(() => {
+    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0);
+  }, [sapFiltered]);
+
+  const handleExportSapExcel = () => {
+    const headers = ["No", "Billing Date", "Billing No", "Customer", "Customer Name", "Material No", "Material Desc", "Qty", "UOM", "Revenue IDR", "Revenue USD", "Rev Type", "Salesman", "PO No"];
+    const rows = sapFiltered.map((r: any, i: number) => [
+      i + 1, r.billingDate, r.billingNo, r.customer, r.customerName,
+      r.materialNo, r.materialDesc, r.qty, r.uom,
+      r.revenueIdr, r.revenueUsd, r.revType, r.salesman, r.poNo
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = `sap-invoices-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || "export"}.csv`;
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fmtIdr = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+  const fmtUsd = (v: number) => "$" + new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
   return (
     <div className="space-y-6">
@@ -418,6 +488,23 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
         </Card>
       </div>
 
+      <div className="flex gap-1 bg-muted/30 p-1 rounded-md border w-fit">
+        <button
+          className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors ${activeTab === "forecast" ? "bg-background shadow-sm" : "hover:bg-muted/50"}`}
+          onClick={() => setActiveTab("forecast")}
+        >
+          Forecast & Actuals
+        </button>
+        <button
+          className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "sap" ? "bg-background shadow-sm" : "hover:bg-muted/50"}`}
+          onClick={() => setActiveTab("sap")}
+        >
+          <TableProperties className="w-4 h-4" />
+          Detail Invoice Central Service SAP
+        </button>
+      </div>
+
+      {activeTab === "forecast" ? (
       <Card>
         <CardContent className="p-0">
           <div className="rounded-md border overflow-x-auto">
@@ -600,6 +687,114 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
           </div>
         </CardContent>
       </Card>
+      ) : (
+      <Card>
+        <CardContent className="p-0">
+          <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">DATA VALIDASI SALES REVENUE SAP</h3>
+              <p className="text-xs text-muted-foreground">
+                {sapFiltered.length} records | Rev Type: Repair, Service, Retread Job
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Total Revenue USD:</span>
+              <span className="font-bold text-sm">{fmtUsd(sapTotalUsd)}</span>
+            </div>
+          </div>
+          <div className="p-4 flex flex-wrap gap-3 items-center border-b">
+            <Input
+              placeholder="Search billing no, material..."
+              className="w-[200px] h-8 text-xs"
+              value={sapSearch}
+              onChange={(e) => setSapSearch(e.target.value)}
+            />
+            <Select value={sapCustomerFilter} onValueChange={setSapCustomerFilter}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Filter: Customer Name" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Customers</SelectItem>
+                {sapCustomerOptions.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={sapSalesmanFilter} onValueChange={setSapSalesmanFilter}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Filter: Salesman" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Salesmen</SelectItem>
+                {sapSalesmanOptions.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleExportSapExcel}>
+              <Download className="w-3 h-3 mr-1" />
+              Export Excel
+            </Button>
+          </div>
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-blue-600 hover:bg-blue-600">
+                  <TableHead className="text-white font-bold text-xs w-[30px]">No</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Billing Date</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Billing No</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Customer</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Customer Name</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Material No</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Material Desc</TableHead>
+                  <TableHead className="text-white font-bold text-xs text-right">Qty</TableHead>
+                  <TableHead className="text-white font-bold text-xs">UOM</TableHead>
+                  <TableHead className="text-white font-bold text-xs text-right">Revenue IDR</TableHead>
+                  <TableHead className="text-white font-bold text-xs text-right">Revenue USD</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Rev Type</TableHead>
+                  <TableHead className="text-white font-bold text-xs">Salesman</TableHead>
+                  <TableHead className="text-white font-bold text-xs">PO No</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sapFiltered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
+                      {isLoadingSap ? "Loading SAP data..." : "No SAP invoice data for this period"}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sapFiltered.map((row, i) => (
+                    <TableRow key={i} className={i % 2 === 0 ? "bg-white" : "bg-blue-50/40"}>
+                      <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="text-xs">{row.billingDate}</TableCell>
+                      <TableCell className="text-xs font-medium">{row.billingNo}</TableCell>
+                      <TableCell className="text-xs">{row.customer}</TableCell>
+                      <TableCell className="text-xs font-medium">{row.customerName}</TableCell>
+                      <TableCell className="text-xs">{row.materialNo}</TableCell>
+                      <TableCell className="text-xs max-w-[200px] truncate" title={row.materialDesc}>{row.materialDesc}</TableCell>
+                      <TableCell className="text-xs text-right">{row.qty}</TableCell>
+                      <TableCell className="text-xs">{row.uom}</TableCell>
+                      <TableCell className="text-xs text-right font-bold text-green-700">{fmtIdr(row.revenueIdr)}</TableCell>
+                      <TableCell className="text-xs text-right font-bold">{fmtUsd(row.revenueUsd)}</TableCell>
+                      <TableCell className="text-xs">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          row.revType.toLowerCase().includes("repair") ? "bg-amber-100 text-amber-700" :
+                          row.revType.toLowerCase().includes("service") ? "bg-blue-100 text-blue-700" :
+                          "bg-emerald-100 text-emerald-700"
+                        }`}>{row.revType}</span>
+                      </TableCell>
+                      <TableCell className="text-xs">{row.salesman}</TableCell>
+                      <TableCell className="text-xs">{row.poNo}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+      )}
 
       {/* Status Update Dialog */}
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
@@ -690,6 +885,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
               const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
               const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
               const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
+              const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
               return (
                 <div key={cat} className="border rounded-md p-3 bg-muted/10">
                   <h4 className="font-semibold text-sm mb-2">{cat}</h4>
@@ -703,9 +899,25 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                       <Input type="number" value={actualsForm[usdKey]} onChange={e => setActualsForm({...actualsForm, [usdKey]: e.target.value})} />
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Remark</Label>
-                    <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Remark</Label>
+                      <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Status</Label>
+                      <Select value={actualsForm[statusKey]} onValueChange={v => setActualsForm({...actualsForm, [statusKey]: v})}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="-">-</SelectItem>
+                          <SelectItem value="Waiting">Waiting</SelectItem>
+                          <SelectItem value="Invoice">Invoice</SelectItem>
+                          <SelectItem value="Cancel">Cancel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               );

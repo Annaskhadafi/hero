@@ -169,7 +169,7 @@ export function ReportClientPage({
           category: a.category || "Service",
           id: a.id,
           type: "actual",
-          status: "Invoiced",
+          status: a.itemStatus || "-",
         });
       });
 
@@ -338,7 +338,12 @@ export function ReportClientPage({
                         {row.remark || "\u2014"}
                       </TableCell>
                       <TableCell>
-                        <span className={row.status === "Waiting" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-200 text-yellow-800" : "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700"}>
+                        <span className={
+                          row.status === "Waiting" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-200 text-yellow-800" :
+                          row.status === "Invoice" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700" :
+                          row.status === "Cancel" ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700" :
+                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-500"
+                        }>
                           {row.status}
                         </span>
                       </TableCell>

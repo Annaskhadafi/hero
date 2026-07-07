@@ -239,7 +239,6 @@ export async function addForecastActual(data: any, userId?: string) {
 
     if (data.forecastItemId) {
       await recalculateItemRemaining(tx, data.forecastItemId);
-      await syncLatestActualRemark(tx, data.forecastItemId);
     }
   });
 
@@ -263,11 +262,9 @@ export async function updateForecastActual(id: number, data: any) {
 
     if (actual.forecastItemId) {
       await recalculateItemRemaining(tx, actual.forecastItemId);
-      await syncLatestActualRemark(tx, actual.forecastItemId);
     }
     if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
       await recalculateItemRemaining(tx, data.forecastItemId);
-      await syncLatestActualRemark(tx, data.forecastItemId);
     }
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
@@ -287,7 +284,6 @@ export async function deleteForecastActual(id: number) {
 
     if (actual.forecastItemId) {
       await recalculateItemRemaining(tx, actual.forecastItemId);
-      await syncLatestActualRemark(tx, actual.forecastItemId);
     }
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
@@ -389,4 +385,9 @@ export async function copyPreviousMonthForecast(sourcePeriodId: number, targetPe
 export async function getSapRevenue(monthYear: string) {
   const { fetchSapRevenue } = await import("@/lib/cs-sap-db");
   return fetchSapRevenue(monthYear);
+}
+
+export async function getSapInvoices(monthYear: string) {
+  const { fetchSapInvoices } = await import("@/lib/cs-sap-db");
+  return fetchSapInvoices(monthYear);
 }
