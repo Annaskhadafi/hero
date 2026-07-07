@@ -117,6 +117,7 @@ const siteSchema = z.object({
   customerName: z.string().trim().min(1).max(150),
   contractNumber: z.string().trim().min(1).max(100),
   headEmployeeId: optionalPositiveIntField,
+  siteType: z.string().trim().max(50).optional().default("Site"),
   isActive: formBooleanField(true),
 });
 
@@ -415,6 +416,7 @@ export async function manageSiteAction(
     customerName,
     contractNumber,
     headEmployeeId,
+    siteType,
     isActive,
   } = parsed.data;
 
@@ -445,8 +447,8 @@ export async function manageSiteAction(
           customerName,
           contractNumber,
           headEmployeeId: headEmployeeId || null,
+          siteType: siteType || "Site",
           isActive,
-          createdAt: now(),
         })
         .returning({ id: sites.id });
 
@@ -497,6 +499,7 @@ export async function manageSiteAction(
           customerName,
           contractNumber,
           headEmployeeId: headEmployeeId || null,
+          siteType: siteType || "Site",
           isActive,
         })
         .where(eq(sites.id, id));

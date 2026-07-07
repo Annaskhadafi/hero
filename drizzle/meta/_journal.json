@@ -309,6 +309,13 @@
       "when": 1782961525038,
       "tag": "0043_create_asset_table",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1783100000000,
+      "tag": "0049_add_site_type_to_hero_sites",
+      "breakpoints": true
     }
   ]
 }

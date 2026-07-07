@@ -118,6 +118,7 @@ type SiteFormState = {
   customerName: string;
   contractNumber: string;
   headEmployeeId: string;
+  siteType: string;
   isActive: boolean;
 };
 
@@ -135,6 +136,7 @@ const EMPTY_SITE_FORM: SiteFormState = {
   customerName: "",
   contractNumber: "",
   headEmployeeId: "",
+  siteType: "Site",
   isActive: true,
 };
 
@@ -1589,6 +1591,7 @@ function SiteManagement({
         customerName: site.customerName,
         contractNumber: site.contractNumber,
         headEmployeeId: site.headEmployeeId?.toString() ?? "",
+        siteType: site.siteType || "Site",
         isActive: site.isActive,
       });
     } else {
@@ -1619,6 +1622,7 @@ function SiteManagement({
     form.append("customerName", formData.customerName);
     form.append("contractNumber", formData.contractNumber);
     form.append("headEmployeeId", formData.headEmployeeId);
+    form.append("siteType", formData.siteType);
     form.append("isActive", formData.isActive.toString());
 
     const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
@@ -1689,6 +1693,7 @@ function SiteManagement({
             <TableHeader>
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead>Nama Site</TableHead>
+                <TableHead>Jenis Site</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>No. Kontrak</TableHead>
@@ -1703,6 +1708,11 @@ function SiteManagement({
                 filteredSites.map((site) => (
                   <TableRow key={site.id}>
                     <TableCell className="font-medium">{site.name}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                        {site.siteType || 'Site'}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-[#64748b]">{site.location}</TableCell>
                     <TableCell>{site.customerName}</TableCell>
                     <TableCell>{site.contractNumber}</TableCell>
@@ -1768,6 +1778,23 @@ function SiteManagement({
             <div className="space-y-2">
               <Label htmlFor="site-name">Nama Site</Label>
               <Input id="site-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-type">Jenis Site</Label>
+              <Select
+                value={formData.siteType}
+                onValueChange={(value) => setFormData({ ...formData, siteType: value })}
+              >
+                <SelectTrigger id="site-type">
+                  <SelectValue placeholder="Pilih jenis site" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Site">Site</SelectItem>
+                  <SelectItem value="HO">HO</SelectItem>
+                  <SelectItem value="Branch">Branch</SelectItem>
+                  <SelectItem value="Warehouse">Warehouse</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="site-country">Negara</Label>
