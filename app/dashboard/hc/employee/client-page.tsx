@@ -23,12 +23,14 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2, Settings2 } from "lucide-react";
 import {
   createEmployee,
   updateEmployee,
   deleteEmployee,
+  bulkUpdateEmployees,
 } from "@/app/actions/employee";
 import { toast } from "sonner";
 import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
@@ -244,6 +246,52 @@ export function EmployeeClientPage({
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
   const [formData, setFormData] = useState<EmployeeFormData>(emptyFormData());
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Bulk edit state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkFormData, setBulkFormData] = useState({
+    workLocationId: "",
+    positionId: "",
+    expMinePermit: "",
+    lastMcuDate: "",
+  });
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(data.map((e) => e.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectRow = (id: number, checked: boolean) => {
+    const newSet = new Set(selectedIds);
+    if (checked) newSet.add(id);
+    else newSet.delete(id);
+    setSelectedIds(newSet);
+  };
+
+  const handleBulkUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await bulkUpdateEmployees(ids, bulkFormData);
+      
+      toast.success(`Berhasil memperbarui ${ids.length} karyawan.`);
+      setBulkEditOpen(false);
+      setSelectedIds(new Set());
+      
+      // Refresh page data
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) {
+      console.error(err);
+      toast.error("Terjadi kesalahan saat bulk update.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   /* ─── Computed values ──────────────────────────────────────────────── */
 
@@ -561,10 +609,24 @@ export function EmployeeClientPage({
             />
           </>
         }
+        actions={
+          selectedIds.size > 0 ? (
+            <Button size="sm" variant="secondary" onClick={() => setBulkEditOpen(true)}>
+              Bulk Edit ({selectedIds.size})
+            </Button>
+          ) : null
+        }
       >
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              <TableHead className="w-12 text-center">
+                <Checkbox 
+                  checked={data.length > 0 && selectedIds.size === data.length}
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead className="w-14 text-center">No</TableHead>
               <TableHead>NIK</TableHead>
               <TableHead>Nama</TableHead>
@@ -585,7 +647,7 @@ export function EmployeeClientPage({
             {data.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={13}
+                  colSpan={14}
                   className="py-12 text-center text-muted-foreground"
                 >
                   <Users className="mx-auto mb-3 size-10 opacity-20" />
@@ -609,6 +671,13 @@ export function EmployeeClientPage({
                     data-filter-gender={emp.genderCode ?? ""}
                     className={hcTableRowClassName}
                   >
+                    <TableCell className="text-center">
+                      <Checkbox 
+                        checked={selectedIds.has(emp.id)}
+                        onCheckedChange={(c) => handleSelectRow(emp.id, c === true)}
+                        aria-label="Select row"
+                      />
+                    </TableCell>
                     <TableCell className="text-center text-muted-foreground">
                       {index + 1}
                     </TableCell>
@@ -1120,6 +1189,73 @@ export function EmployeeClientPage({
             </div>
           </div>
         )}
+      </EnterpriseRecordDialog>
+
+      {/* Bulk Edit Dialog */}
+      <EnterpriseRecordDialog
+        open={bulkEditOpen}
+        onOpenChange={setBulkEditOpen}
+        title={`Bulk Edit Karyawan (${selectedIds.size} dipilih)`}
+        description="Pilih kolom yang ingin diubah. Kosongkan kolom yang tidak ingin diubah."
+        footer={
+          <EnterpriseActionButtons
+            onCancel={() => setBulkEditOpen(false)}
+            onSubmit={handleBulkUpdate}
+            isSubmitting={isSubmitting}
+            submitText="Simpan Perubahan"
+          />
+        }
+      >
+        <EnterpriseFormGrid>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Lokasi Kerja</label>
+            <select
+              value={bulkFormData.workLocationId}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, workLocationId: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">-- Tidak Diubah --</option>
+              {filterOptions.locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Job Title</label>
+            <select
+              value={bulkFormData.positionId}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, positionId: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">-- Tidak Diubah --</option>
+              {filterOptions.positions.map((pos) => (
+                <option key={pos.id} value={pos.id}>
+                  {pos.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Exp Mine Permit</label>
+            <input
+              type="date"
+              value={bulkFormData.expMinePermit}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, expMinePermit: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Terakhir MCU</label>
+            <input
+              type="date"
+              value={bulkFormData.lastMcuDate}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, lastMcuDate: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+        </EnterpriseFormGrid>
       </EnterpriseRecordDialog>
     </AdminPageShell>
   );

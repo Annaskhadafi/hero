@@ -6,7 +6,7 @@ import {
   employees, masterDepartments, masterSections, sites, masterJobTitles,
   employeeMcu
 } from "@/db/schema/hero";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { user } from "@/db/schema/auth";
 import { revalidatePath } from "next/cache";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
@@ -284,3 +284,34 @@ export async function deleteEmployee(id: number) {
 
 // Keep backward-compatible alias
 export const updateEmployeeContract = updateEmployee;
+
+export async function bulkUpdateEmployees(ids: number[], data: Partial<import("@/app/dashboard/hc/employee/client-page").EmployeeFormData>) {
+  if (ids.length === 0) return 0;
+  const setData: Record<string, any> = {};
+  if (data.workLocationId !== undefined && data.workLocationId !== "") setData.siteId = Number(data.workLocationId);
+  if (data.positionId !== undefined && data.positionId !== "") setData.positionId = Number(data.positionId);
+  if (data.expMinePermit !== undefined && data.expMinePermit !== "") setData.expMinePermit = data.expMinePermit;
+  
+  if (Object.keys(setData).length > 0) {
+    await db.update(employees).set(setData).where(inArray(employees.id, ids));
+  }
+
+  if (data.lastMcuDate !== undefined && data.lastMcuDate !== "") {
+    // For bulk MCU, it's safer to just insert a new MCU record for each selected employee
+    for (const id of ids) {
+      const latestMcu = await db.select().from(employeeMcu).where(eq(employeeMcu.employeeId, id)).orderBy(desc(employeeMcu.mcuDate)).limit(1);
+      if (latestMcu.length > 0) {
+        await db.update(employeeMcu).set({ mcuDate: data.lastMcuDate }).where(eq(employeeMcu.id, latestMcu[0].id));
+      } else {
+        await db.insert(employeeMcu).values({
+          employeeId: id,
+          mcuDate: data.lastMcuDate,
+          paketMcu: "",
+        });
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/hc/employee");
+  return ids.length;
+}
