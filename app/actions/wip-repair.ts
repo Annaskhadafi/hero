@@ -10,11 +10,11 @@ import { isVisibleWipRepairRecord, isVisibleWipRepairWorkOrderDetail } from "@/l
 
 const WIP_REPAIR_API_URL =
   process.env.WIP_REPAIR_API_URL ??
-  "https://ics.chitraparatama.co.id/product/get_api.php?function=wo_repair"
+  "https://ics.chitraparatama.com/product/get_api.php?function=wo_repair"
 
 const WIP_REPAIR_WORK_ORDER_DETAIL_API_URL =
   process.env.WIP_REPAIR_WORK_ORDER_DETAIL_API_URL ??
-  "https://ics.chitraparatama.co.id/product/get_api.php?function=repair_work_order_detail_material"
+  "https://ics.chitraparatama.com/product/get_api.php?function=repair_work_order_detail_material"
 
 async function fetchJson<T>(url: string): Promise<T | null> {
   const response = await fetch(url, {
@@ -22,7 +22,14 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   })
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status}`)
+    console.error(`Failed to fetch ${url}: ${response.status}`)
+    return null
+  }
+
+  const contentType = response.headers.get("content-type") || ""
+  if (!contentType.includes("application/json")) {
+    console.error(`Non-JSON response from ${url}: ${contentType}`)
+    return null
   }
 
   return (await response.json()) as T
