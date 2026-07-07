@@ -730,15 +730,19 @@ export function EmployeeClientPage({
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
                       {status.type === "EXPIRING" ? (
-                        <Badge className="bg-yellow-400 text-black hover:bg-yellow-500 whitespace-nowrap">
+                        <Badge className="bg-amber-500 text-white hover:bg-amber-600 whitespace-nowrap shadow-sm">
                           {formatDate(emp.contractEnd)}
                         </Badge>
                       ) : status.type === "COMPLETED" ? (
-                        <Badge className="bg-red-500 text-white hover:bg-red-600 whitespace-nowrap">
+                        <Badge className="bg-red-500 text-white hover:bg-red-600 whitespace-nowrap shadow-sm">
+                          {formatDate(emp.contractEnd)}
+                        </Badge>
+                      ) : status.type === "ACTIVE" ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 whitespace-nowrap">
                           {formatDate(emp.contractEnd)}
                         </Badge>
                       ) : (
-                        formatDate(emp.contractEnd)
+                        <span className="text-muted-foreground">{formatDate(emp.contractEnd)}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
