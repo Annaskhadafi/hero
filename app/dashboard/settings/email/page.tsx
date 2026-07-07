@@ -13,6 +13,7 @@ import {
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
+import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
 import { EmailTemplateSettingsPanel } from "@/components/email-template-settings-panel";
 import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
@@ -173,6 +174,10 @@ export default async function EmailSettingsPage() {
             <Users className="size-4" />
             Human Capital
           </TabsTrigger>
+          <TabsTrigger value="mine-permit">
+            <Users className="size-4" />
+            Mine Permit
+          </TabsTrigger>
           <TabsTrigger value="bell">
             <Bell className="size-4" />
             Bell
@@ -211,6 +216,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="hc">
           <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="mine-permit">
+          <MinePermitReminderSettingsPanel />
         </TabsContent>
 
         <TabsContent value="bell">

@@ -12,6 +12,7 @@ import {
   type EnterpriseScorecardItem,
   type TableRbacAccess,
 } from "@/components/ui/enterprise-table-kit";
+import { MinePermitReminderDialog } from "@/components/mine-permit-reminder-dialog";
 import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import {
   Table,
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2 } from "lucide-react";
+import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2, Settings2 } from "lucide-react";
 import {
   createEmployee,
   updateEmployee,
@@ -77,6 +78,7 @@ type FilterOptions = {
   departments: FilterOption[];
   sections: FilterOption[];
   locations: FilterOption[];
+  positions: FilterOption[];
 };
 
 type ContractStatus = {
@@ -381,7 +383,7 @@ export function EmployeeClientPage({
         genderCode: formData.genderCode || undefined,
         departmentId: formData.departmentId ? Number(formData.departmentId) : undefined,
         sectionId: formData.sectionId ? Number(formData.sectionId) : undefined,
-        siteId: formData.siteId ? Number(formData.siteId) : undefined,
+        siteId: formData.workLocationId ? Number(formData.workLocationId) : undefined,
         workLocationId: formData.workLocationId ? Number(formData.workLocationId) : undefined,
         positionId: formData.positionId ? Number(formData.positionId) : undefined,
         joinDate: formData.joinDate || undefined,
@@ -489,13 +491,20 @@ export function EmployeeClientPage({
       title="Data Karyawan"
       description="Kelola data karyawan, kontrak, dan informasi demografi secara terpusat."
       actions={
-        <Button
-          onClick={handleOpenAdd}
-          className={hcPrimaryActionClassName}
-        >
-          <Plus className="size-4" />
-          Tambah Karyawan
-        </Button>
+        <div className="flex items-center gap-2">
+          {access.canEdit && (
+            <MinePermitReminderDialog />
+          )}
+          {access.canCreate && (
+            <Button
+              onClick={handleOpenAdd}
+              className={hcPrimaryActionClassName}
+            >
+              <Plus className="size-4" />
+              Tambah Karyawan
+            </Button>
+          )}
+        </div>
       }
     >
       <HcWorkspaceBanner
@@ -871,13 +880,18 @@ export function EmployeeClientPage({
               <label className="text-sm font-medium text-foreground">
                 Posisi / Jabatan
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.positionId}
                 onChange={(e) => updateFormField("positionId", e.target.value)}
-                placeholder="ID Posisi (opsional)"
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">-- Pilih Posisi --</option>
+                {filterOptions.positions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Row 5: Join Date & Birth Date */}

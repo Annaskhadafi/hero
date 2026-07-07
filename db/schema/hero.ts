@@ -3309,6 +3309,15 @@ export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const minePermitReminderConfig = pgTable('hero_mine_permit_reminder_config', {
+  id: serial('id').primaryKey(),
+  additionalRecipients: text('additional_recipients').notNull().default(''),
+  excludedManagerIds: text('excluded_manager_ids').notNull().default('[]'),
+  reminderDays: integer('reminder_days').notNull().default(30),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const broadcastCategories = pgTable('hero_broadcast_categories', {
   id: serial('id').primaryKey(),
   name: text('name').notNull().unique(),

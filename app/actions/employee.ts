@@ -74,12 +74,13 @@ export async function getEmployeesForContract(filters?: {
 }
 
 export async function getEmployeeFilterOptions() {
-  const [departments, sections, locations] = await Promise.all([
+  const [departments, sections, locations, positions] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
+    db.select({ id: hrPositions.id, name: hrPositions.rankName }).from(hrPositions).where(eq(hrPositions.isActive, true)),
   ]);
-  return { departments, sections, locations };
+  return { departments, sections, locations, positions };
 }
 
 export async function getEmployeeById(id: number) {

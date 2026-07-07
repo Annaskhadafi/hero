@@ -19,6 +19,7 @@ export default async function EmployeePage() {
     departments: csDeptId ? filterOptions.departments.filter(d => d.id === csDeptId) : filterOptions.departments,
     sections: csDeptId ? filterOptions.sections.filter(s => s.departmentId === csDeptId) : filterOptions.sections,
     locations: filterOptions.locations,
+    positions: filterOptions.positions,
   };
 
   // TODO: Replace with real RBAC lookup once Phase 4 is complete
