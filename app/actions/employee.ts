@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
   hrPositions,
-  employees, masterDepartments, masterSections, sites, masterPositions,
+  employees, masterDepartments, masterSections, sites, masterJobTitles,
   employeeMcu
 } from "@/db/schema/hero";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -38,7 +38,7 @@ export async function getEmployeesForContract(filters?: {
       expMinePermit: employees.expMinePermit,
       accountStatus: employees.employmentStatus,
       genderCode: employees.gender,
-      jobTitle: sql<string | null>`coalesce(${masterPositions.name}, ${employees.jobTitle})`.as('job_title'),
+      jobTitle: sql<string | null>`coalesce(${masterJobTitles.name}, ${employees.jobTitle})`.as('job_title'),
       levelName: employees.levelName,
       departmentName: sql<string | null>`coalesce(${masterDepartments.name}, ${employees.department})`.as('department_name'),
       sectionName: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`.as('section_name'),
@@ -57,7 +57,7 @@ export async function getEmployeesForContract(filters?: {
       )`.as('last_mcu_date'),
     })
     .from(employees)
-    .leftJoin(masterPositions, eq(employees.positionId, masterPositions.id))
+    .leftJoin(masterJobTitles, eq(employees.positionId, masterJobTitles.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -78,7 +78,7 @@ export async function getEmployeeFilterOptions() {
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
-    db.select({ id: masterPositions.id, name: masterPositions.name }).from(masterPositions).where(eq(masterPositions.isActive, true)),
+    db.select({ id: masterJobTitles.id, name: masterJobTitles.name }).from(masterJobTitles).where(eq(masterJobTitles.isActive, true)),
   ]);
   return { departments, sections, locations, positions };
 }
