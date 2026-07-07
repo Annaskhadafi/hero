@@ -36,6 +36,7 @@ export async function getEmployeesForContract(filters?: {
       contractEnd: employees.contractDurationEnd,
       birthDate: employees.birthDate,
       expMinePermit: employees.expMinePermit,
+      manpower: employees.manpower,
       accountStatus: employees.employmentStatus,
       genderCode: employees.gender,
       jobTitle: sql<string | null>`coalesce(${masterJobTitles.name}, ${employees.jobTitle})`.as('job_title'),
@@ -106,6 +107,7 @@ export async function createEmployee(data: {
   birthDate?: string;
   expMinePermit?: string | null;
   accountStatus?: string;
+  manpower?: string;
   lastMcuDate?: string | null;
 }) {
   const setData = {
@@ -122,6 +124,7 @@ export async function createEmployee(data: {
     birthDate: data.birthDate,
     expMinePermit: data.expMinePermit,
     employmentStatus: data.accountStatus,
+    manpower: data.manpower || 'Lokal',
     isActive: true,
     role: 'Employee',
     department: '',
@@ -183,6 +186,7 @@ export async function updateEmployee(id: number, data: {
   birthDate?: string | null;
   expMinePermit?: string | null;
   accountStatus?: string;
+  manpower?: string;
 }) {
   const [before] = await db
     .select()
@@ -204,6 +208,7 @@ export async function updateEmployee(id: number, data: {
   if (data.birthDate !== undefined) setData.birthDate = data.birthDate;
   if (data.expMinePermit !== undefined) setData.expMinePermit = data.expMinePermit;
   if (data.accountStatus !== undefined) setData.employmentStatus = data.accountStatus;
+  if (data.manpower !== undefined) setData.manpower = data.manpower;
 
   if (data.lastMcuDate !== undefined) {
     if (data.lastMcuDate) {
@@ -291,6 +296,7 @@ export async function bulkUpdateEmployees(ids: number[], data: Partial<import("@
   if (data.workLocationId !== undefined && data.workLocationId !== "") setData.siteId = Number(data.workLocationId);
   if (data.positionId !== undefined && data.positionId !== "") setData.positionId = Number(data.positionId);
   if (data.expMinePermit !== undefined && data.expMinePermit !== "") setData.expMinePermit = data.expMinePermit;
+  if (data.manpower !== undefined && data.manpower !== "") setData.manpower = data.manpower;
   
   if (Object.keys(setData).length > 0) {
     await db.update(employees).set(setData).where(inArray(employees.id, ids));

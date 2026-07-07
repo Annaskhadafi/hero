@@ -90,6 +90,7 @@ export const employees = pgTable('hero_employees', {
   pointOfHire: text('point_of_hire').notNull().default(''),
   birthDate: date('birth_date'),
   expMinePermit: date('exp_mine_permit'),
+  manpower: text('manpower').notNull().default('Lokal'),
   gender: text('gender').notNull().default(''),
   maritalStatus: text('marital_status').notNull().default(''),
   religion: text('religion').notNull().default(''),

@@ -67,6 +67,7 @@ type Employee = {
   sectionId: number | null;
   workLocationId: number | null;
   positionId: number | null;
+  manpower: string | null;
   lastMcuDate: string | null;
 };
 
@@ -104,6 +105,7 @@ type EmployeeFormData = {
   birthDate: string;
   expMinePermit: string;
   lastMcuDate: string;
+  manpower: string;
 };
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
@@ -200,6 +202,7 @@ function emptyFormData(): EmployeeFormData {
     birthDate: "",
     expMinePermit: "",
     lastMcuDate: "",
+    manpower: "Lokal",
   };
 }
 
@@ -220,6 +223,7 @@ function employeeToFormData(emp: Employee): EmployeeFormData {
     birthDate: toInputDate(emp.birthDate),
     expMinePermit: toInputDate(emp.expMinePermit),
     lastMcuDate: toInputDate(emp.lastMcuDate),
+    manpower: emp.manpower || "Lokal",
   };
 }
 
@@ -255,6 +259,7 @@ export function EmployeeClientPage({
     positionId: "",
     expMinePermit: "",
     lastMcuDate: "",
+    manpower: "",
   });
 
   const handleSelectAll = (checked: boolean) => {
@@ -440,6 +445,7 @@ export function EmployeeClientPage({
         birthDate: formData.birthDate || undefined,
         expMinePermit: formData.expMinePermit || undefined,
         lastMcuDate: formData.lastMcuDate || undefined,
+        manpower: formData.manpower || "Lokal",
       };
 
       if (editingEmployee) {
@@ -463,6 +469,7 @@ export function EmployeeClientPage({
                   birthDate: payload.birthDate ?? null,
                   expMinePermit: payload.expMinePermit ?? null,
                   lastMcuDate: payload.lastMcuDate ?? null,
+                  manpower: payload.manpower ?? null,
                 }
               : d
           )
@@ -500,6 +507,7 @@ export function EmployeeClientPage({
             sectionId: formData.sectionId ? Number(formData.sectionId) : null,
             workLocationId: formData.workLocationId ? Number(formData.workLocationId) : null,
             positionId: formData.positionId ? Number(formData.positionId) : null,
+            manpower: formData.manpower || "Lokal",
           };
           setData((prev) => [newEmployee, ...prev]);
         }
@@ -630,6 +638,7 @@ export function EmployeeClientPage({
               <TableHead className="w-14 text-center">No</TableHead>
               <TableHead>NIK</TableHead>
               <TableHead>Nama</TableHead>
+              <TableHead>Manpower</TableHead>
               <TableHead>Departemen</TableHead>
               <TableHead>Section</TableHead>
               <TableHead>Job Title</TableHead>
@@ -695,6 +704,11 @@ export function EmployeeClientPage({
                           {emp.email}
                         </div>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${emp.manpower === 'Non Lokal' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}>
+                        {emp.manpower || 'Lokal'}
+                      </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {emp.departmentName ?? "-"}
@@ -893,6 +907,19 @@ export function EmployeeClientPage({
                 <option value="">-- Pilih --</option>
                 <option value="L">Laki-laki</option>
                 <option value="P">Perempuan</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Manpower
+              </label>
+              <select
+                value={formData.manpower}
+                onChange={(e) => updateFormField("manpower", e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="Lokal">Lokal</option>
+                <option value="Non Lokal">Non Lokal</option>
               </select>
             </div>
 
@@ -1233,6 +1260,18 @@ export function EmployeeClientPage({
                   {loc.name}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Manpower</label>
+            <select
+              value={bulkFormData.manpower}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, manpower: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">-- Tidak Diubah --</option>
+              <option value="Lokal">Lokal</option>
+              <option value="Non Lokal">Non Lokal</option>
             </select>
           </div>
           <div className="space-y-1.5">
