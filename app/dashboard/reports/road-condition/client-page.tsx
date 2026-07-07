@@ -1609,7 +1609,7 @@ export function RoadConditionAnalysisClient({
                 </tbody>
               </table>
 
-              <div className="min-h-0 overflow-hidden">
+              <div>
                 <table className="w-full border-collapse text-left text-[6px] sm:text-[7px] lg:text-[8px] text-slate-950">
                   <thead>
                     <tr className="bg-[#e2e8f0] text-center font-black">
@@ -1688,10 +1688,10 @@ export function RoadConditionAnalysisClient({
           return (
             <article
               key={draft.id}
-              className="road-condition-slide grid aspect-video grid-rows-[32%_38%_1fr] sm:grid-rows-[22%_42%_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
+              className="road-condition-slide grid aspect-video grid-rows-[auto_auto_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
             >
               <header
-                className="grid min-h-0 overflow-hidden gap-1.5 sm:gap-3 px-2 sm:px-5 py-1.5 sm:py-3 text-white md:grid-cols-[1fr_auto]"
+                className="grid gap-1.5 sm:gap-3 px-2 sm:px-5 py-1.5 sm:py-3 text-white md:grid-cols-[1fr_auto]"
                 style={{ background: CATEGORY_GRADIENTS[draft.categoryKey] }}
               >
                 <div className="min-w-0">
@@ -1701,11 +1701,11 @@ export function RoadConditionAnalysisClient({
                       Report Analysis Road Condition
                     </p>
                   </div>
-                  <h2 className="mt-0 sm:mt-1 truncate font-display text-base sm:text-2xl lg:text-3xl font-semibold leading-tight">
+                  <h2 className="mt-0 sm:mt-1 font-display text-base sm:text-2xl lg:text-3xl font-semibold leading-tight">
                     {category.reportLabel}
                   </h2>
                   <p className="text-[8px] sm:text-xs lg:text-sm font-black uppercase tracking-[0.14em] text-white/80">{pointLabel}</p>
-                  {analysis ? <p className="hidden sm:block mt-0.5 sm:mt-1 line-clamp-2 max-w-3xl text-[8px] sm:text-[9px] lg:text-xs font-semibold text-white/75">{analysis.summary}</p> : null}
+                  {analysis ? <p className="hidden sm:block mt-0.5 sm:mt-1 max-w-3xl text-[8px] sm:text-[9px] lg:text-xs font-semibold text-white/75">{analysis.summary}</p> : null}
                 </div>
                 <div className="hidden md:grid min-w-[180px] lg:min-w-[250px] gap-0.5 sm:gap-1 rounded-lg bg-white/15 p-1.5 sm:p-2 text-[8px] sm:text-[9px] lg:text-xs font-semibold ring-1 ring-white/20 backdrop-blur-sm">
                   <span>Site: {siteName || '-'}</span>
@@ -1725,9 +1725,9 @@ export function RoadConditionAnalysisClient({
                 </div>
               </header>
 
-              <section className="grid min-h-0 grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3">
+              <section className="grid grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3">
                 {reportPhotos.map((photo, photoIndex) => (
-                  <figure key={photoIndex} className="min-h-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200">
+                  <figure key={photoIndex} className="overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200">
                     {photo.imageUrl ? (
                       <img src={photo.imageUrl} alt={photo.alt} className="h-full w-full object-contain" />
                     ) : (
@@ -1739,8 +1739,8 @@ export function RoadConditionAnalysisClient({
                 ))}
               </section>
 
-              <section className="min-h-0 overflow-hidden px-2.5 sm:px-4 pb-4 sm:pb-7">
-                <div className="h-full min-h-0 overflow-hidden rounded-lg ring-1 ring-slate-200">
+              <section className="px-2.5 sm:px-4 pb-4 sm:pb-7">
+                <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
                 <table className="h-full w-full border-collapse text-left text-[8px] sm:text-[9px] lg:text-[10px]">
                   <thead>
                     <tr className="bg-slate-100 text-[6px] sm:text-[7px] lg:text-[8px] uppercase tracking-[0.12em] text-slate-600">
