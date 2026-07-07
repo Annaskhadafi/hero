@@ -839,7 +839,7 @@ export function SchedulingTimesheetWorkspace({
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null)
   const [swapTargetEmployeeId, setSwapTargetEmployeeId] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null)
-  const [isGenerated, setIsGenerated] = useState(false)
+
   const [overrides, setOverrides] = useState<Record<string, ScheduleCode>>({})
   const [leaveFrom, setLeaveFrom] = useState('')
   const [leaveTo, setLeaveTo] = useState('')
@@ -1167,7 +1167,6 @@ export function SchedulingTimesheetWorkspace({
         })
       )
     )
-    setIsGenerated(true)
     setScheduleSavedAt(new Date(savedPlan.updatedAt).toLocaleString('id-ID'))
     setSiteScheduleTypes((current) => ({
       ...current,
@@ -1179,7 +1178,6 @@ export function SchedulingTimesheetWorkspace({
   }, [fieldBreakPlans, period, savedPlan, siteId])
 
   const visibleEmployees = useMemo(() => {
-    if (!isGenerated && mode === 'schedule') return []
     if (siteId === 'all') return []
 
     const selectedSite = sites.find((item) => String(item.id) === siteId)
@@ -1197,7 +1195,7 @@ export function SchedulingTimesheetWorkspace({
     })
 
     return filtered
-  }, [employees, isGenerated, mode, siteId, sites])
+  }, [employees, mode, siteId, sites])
 
   const rosterSectionByEmployee = new Map(
     visibleEmployees.map((employee) => {
@@ -3401,7 +3399,7 @@ export function SchedulingTimesheetWorkspace({
                 { value: 'all', label: 'Pilih site dahulu' },
                 ...sites.map((item) => ({
                   value: String(item.id),
-                  label: extractSiteNameLocal(item.location || item.name) || item.name,
+                  label: item.name,
                 })),
               ]}
             />
@@ -3452,7 +3450,6 @@ export function SchedulingTimesheetWorkspace({
                 disabled={siteId === 'all' || isFinalized}
                 onClick={() => {
                   saveSiteConfig()
-                  setIsGenerated(true)
                 }}
               >
                 <RefreshCw className="mr-2 size-4" /> Generate Auto Scheduling
