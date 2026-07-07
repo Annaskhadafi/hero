@@ -434,6 +434,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                   <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('forecast')}>
                     <div className="flex items-center justify-end">Forecast <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
                   </TableHead>
+                  <TableHead className="text-right">O/S Prev Month</TableHead>
                   <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('actual')}>
                     <div className="flex items-center justify-end">Actual <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
                   </TableHead>
@@ -447,7 +448,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
               </TableHeader>
               <TableBody>
                 {sortedItems.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8">No waiting items.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-8">No waiting items.</TableCell></TableRow>
                 ) : (
                   sortedItems.map((wrapper: any, index: number) => (
                     <React.Fragment key={wrapper.item.id}>
@@ -468,6 +469,9 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(getForecastActual(wrapper).forecast)}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatCurrency(Number(wrapper.item.osInvoicePrevMonth || 0))}
                         </TableCell>
                         <TableCell className="text-right font-medium text-green-600">
                           {formatCurrency(getForecastActual(wrapper).actual)}
@@ -494,7 +498,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                       </TableRow>
                       {expandedItems.has(wrapper.item.id) && (
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={11} className="p-0 border-b">
+                          <TableCell colSpan={12} className="p-0 border-b">
                             <div className="p-4">
                               <h4 className="font-semibold mb-3 text-sm flex items-center gap-2">
                                 <Banknote className="w-4 h-4 text-primary" /> SAP Actuals Progress

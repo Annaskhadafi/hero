@@ -214,6 +214,7 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
   const totalRepair = items.reduce((sum, item) => sum + Number(item.repairForecast || 0), 0);
   const totalRetread = items.reduce((sum, item) => sum + Number(item.retreadForecast || 0), 0);
   const totalService = items.reduce((sum, item) => sum + Number(item.serviceForecast || 0), 0);
+  const totalOsPrevMonth = items.reduce((sum, item) => sum + Number(item.osInvoicePrevMonth || 0), 0);
   const grandTotalIdr = items.reduce((sum, item) => sum + Number(item.totalForecastIdr || 0), 0);
 
   return (
@@ -303,13 +304,13 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
       </div>
 
       {selectedPeriodId && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Forecast</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">O/S Prev Month</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{formatCurrency(grandTotalIdr)}</div>
+              <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalOsPrevMonth)}</div>
             </CardContent>
           </Card>
           <Card>
@@ -334,6 +335,14 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(totalService)}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Forecast</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{formatCurrency(grandTotalIdr)}</div>
             </CardContent>
           </Card>
         </div>

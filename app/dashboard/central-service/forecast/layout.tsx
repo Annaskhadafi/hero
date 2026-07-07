@@ -1,8 +1,7 @@
 import { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
-import { ShieldCheck, TrendingUp, Calendar, ListTodo } from "lucide-react";
+import { ShieldCheck, TrendingUp, Calendar, ListTodo, BarChart3 } from "lucide-react";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -10,6 +9,13 @@ export const metadata: Metadata = {
   title: "Forecast Revenue | Central Service",
   description: "Central Service Revenue Forecasting and Actuals Tracking",
 };
+
+const tabs = [
+  { href: "/dashboard/central-service/forecast", label: "Dashboard", icon: TrendingUp },
+  { href: "/dashboard/central-service/forecast/monthly", label: "Monthly Plan", icon: Calendar },
+  { href: "/dashboard/central-service/forecast/daily", label: "Daily Updates", icon: ListTodo },
+  { href: "/dashboard/central-service/forecast/report", label: "Daily Report", icon: BarChart3 },
+];
 
 export default function ForecastLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,24 +31,14 @@ export default function ForecastLayout({ children }: { children: React.ReactNode
 
       <div className="bg-card border rounded-md p-1 overflow-x-auto">
         <div className="flex space-x-1 min-w-max">
-          <Link href="/dashboard/central-service/forecast" className="flex-1">
-            <div className="px-4 py-2 hover:bg-accent rounded-sm text-sm font-medium flex items-center justify-center gap-2 cursor-pointer transition-colors">
-              <TrendingUp className="w-4 h-4" />
-              Dashboard
-            </div>
-          </Link>
-          <Link href="/dashboard/central-service/forecast/monthly" className="flex-1">
-            <div className="px-4 py-2 hover:bg-accent rounded-sm text-sm font-medium flex items-center justify-center gap-2 cursor-pointer transition-colors">
-              <Calendar className="w-4 h-4" />
-              Monthly Plan
-            </div>
-          </Link>
-          <Link href="/dashboard/central-service/forecast/daily" className="flex-1">
-            <div className="px-4 py-2 hover:bg-accent rounded-sm text-sm font-medium flex items-center justify-center gap-2 cursor-pointer transition-colors">
-              <ListTodo className="w-4 h-4" />
-              Daily Updates
-            </div>
-          </Link>
+          {tabs.map((tab) => (
+            <Link key={tab.href} href={tab.href} className="flex-1">
+              <div className="px-4 py-2 hover:bg-accent rounded-sm text-sm font-medium flex items-center justify-center gap-2 cursor-pointer transition-colors">
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
 

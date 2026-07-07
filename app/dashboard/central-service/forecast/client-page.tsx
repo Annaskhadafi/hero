@@ -79,7 +79,9 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
     });
 
     actualsInPeriod.forEach(actual => {
-      totalActuals += Number(actual.amountIdr);
+      if (actual.forecastItemId) {
+        totalActuals += Number(actual.amountIdr);
+      }
     });
 
     const achievement = totalForecast > 0 ? (totalActuals / totalForecast) * 100 : 0;
@@ -103,6 +105,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
     });
 
     actualsInPeriod.forEach(actual => {
+      if (!actual.forecastItemId) return;
       const idx = categories.indexOf(actual.category);
       if (idx !== -1) {
         data[idx].Actual += Number(actual.amountIdr);

@@ -272,6 +272,7 @@ export async function updateForecastActual(id: number, data: any) {
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
   revalidatePath("/dashboard/central-service/forecast/monthly");
+  revalidatePath("/dashboard/central-service/forecast");
 }
 
 export async function deleteForecastActual(id: number) {
@@ -291,6 +292,7 @@ export async function deleteForecastActual(id: number) {
   });
   revalidatePath("/dashboard/central-service/forecast/daily");
   revalidatePath("/dashboard/central-service/forecast/monthly");
+  revalidatePath("/dashboard/central-service/forecast");
 }
 
 export async function bulkImportForecastItems(
