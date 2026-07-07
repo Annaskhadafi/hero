@@ -88,6 +88,7 @@ export const employees = pgTable('hero_employees', {
   permanentDate: date('permanent_date'),
   pointOfHire: text('point_of_hire').notNull().default(''),
   birthDate: date('birth_date'),
+  expMinePermit: date('exp_mine_permit'),
   gender: text('gender').notNull().default(''),
   maritalStatus: text('marital_status').notNull().default(''),
   religion: text('religion').notNull().default(''),
@@ -522,6 +523,7 @@ export const approvals = pgTable('hero_approvals', {
   pointsOverride: integer('points_override'),
   rejectionReason: text('rejection_reason').notNull().default(''),
   pointsOverrideReason: text('points_override_reason').notNull().default(''),
+  signatureUrl: text('signature_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

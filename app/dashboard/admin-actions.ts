@@ -129,6 +129,7 @@ import {
   wellnessRecords,
   hcLeaveRequests,
   hcOffboardingRequests,
+  apdRequests,
 } from '@/db/schema/hero'
 import {
   indonesiaHolidays,
@@ -2309,6 +2310,7 @@ async function applyApprovalDecision(params: {
     .select({
       approvalId: approvals.id,
       submissionId: approvals.submissionId,
+      apdRequestId: approvals.apdRequestId,
       level: approvals.level,
       status: approvals.status,
       approverName: approvals.approverName,
@@ -2376,6 +2378,55 @@ async function applyApprovalDecision(params: {
       decision: params.decision,
       note: params.note,
     })
+  }
+
+  if (approval.activityId == null && approval.submissionId == null && approval.apdRequestId != null) {
+    const now = new Date()
+    const decisionStatus = params.decision === 'approved' ? 'approved' : params.decision === 'rejected' ? 'rejected' : 'needs_correction'
+    const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(approvals)
+        .set({
+          status: decisionStatus,
+          reviewedAt: now,
+          decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
+            kind: params.decision,
+            actor: approval.approverName,
+            message: trimmedNote || (params.decision === 'approved' ? 'APD disetujui.' : 'APD ditolak.'),
+            at: now.toISOString(),
+          }),
+        })
+        .where(eq(approvals.id, approval.approvalId))
+
+      if ((decisionStatus === 'approved' || decisionStatus === 'rejected') && approval.apdRequestId != null) {
+        await tx
+          .update(apdRequests)
+          .set({ status: decisionStatus, updatedAt: now })
+          .where(eq(apdRequests.id, approval.apdRequestId))
+      }
+
+      if (decisionStatus === 'approved' && approvalRoute?.steps && approval.apdRequestId != null) {
+        const nextStep = approvalRoute.steps.find(
+          (s: any) => s.stepOrder === (approval.level ?? 0) + 1
+        )
+        if (nextStep) {
+          await tx.insert(approvals).values({
+            apdRequestId: approval.apdRequestId,
+            level: nextStep.stepOrder,
+            approverName: nextStep.approverName,
+            approverEmployeeId: nextStep.approverEmployeeId,
+            approvalStepId: nextStep.approvalMatrixStepId,
+            resolutionSource: nextStep.resolutionSource,
+            status: 'pending' as const,
+            submittedAt: now,
+            routeSnapshot: approval.routeSnapshot,
+          })
+        }
+      }
+    })
+    return true
   }
 
   if (

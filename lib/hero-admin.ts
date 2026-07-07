@@ -712,8 +712,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Human Capital',
-    groupLabel: 'HR Operational',
+    section: 'Central Service',
+    groupLabel: 'Management',
     title: 'Employee Data',
     url: '/dashboard/hc/employee',
     iconName: 'users',

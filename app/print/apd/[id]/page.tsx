@@ -3,15 +3,24 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { fetchApdRequestById } from '@/lib/apd-data';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
+import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 
 export default async function PrintApdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await fetchApdRequestById(parseInt(id, 10));
   if (!data) return notFound();
 
+  // Convert S3 keys to presigned URLs for approver signatures
+  const approvalHistory = await Promise.all(
+    (data.approvalHistory ?? []).map(async (step) => ({
+      ...step,
+      signatureUrl: step.signatureUrl ? await getS3ObjectReadUrl(step.signatureUrl) : null,
+    }))
+  );
+
   // Get approval history steps
-  const firstApprover = data.approvalHistory?.[0]; // Usually Level 1 / Site Manager
-  const secondApprover = data.approvalHistory?.[1]; // Usually Section Head if any
+  const firstApprover = approvalHistory?.[0]; // Usually Level 1 / Site Manager
+  const secondApprover = approvalHistory?.[1]; // Usually Section Head if any
 
   return (
     <div className="bg-gray-100 min-h-screen py-8 print:py-0 print:bg-white flex justify-center overflow-x-auto">

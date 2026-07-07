@@ -3,9 +3,11 @@
 import { db } from "@/db";
 import {
   hrPositions,
-  employees, masterDepartments, masterSections, sites
+  employees, masterDepartments, masterSections, sites,
+  employeeMcu
 } from "@/db/schema/hero";
 import { eq, desc, and, sql } from "drizzle-orm";
+import { user } from "@/db/schema/auth";
 import { revalidatePath } from "next/cache";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 
@@ -33,6 +35,7 @@ export async function getEmployeesForContract(filters?: {
       contractStart: employees.contractDurationStart,
       contractEnd: employees.contractDurationEnd,
       birthDate: employees.birthDate,
+      expMinePermit: employees.expMinePermit,
       accountStatus: employees.employmentStatus,
       genderCode: employees.gender,
       jobTitle: sql<string | null>`coalesce(${hrPositions.rankName}, ${employees.jobTitle})`.as('job_title'),
@@ -45,6 +48,13 @@ export async function getEmployeesForContract(filters?: {
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       positionId: employees.positionId,
+      lastMcuDate: sql<string | null>`(
+        SELECT CAST(mcu_date AS text)
+        FROM hero_employee_mcu
+        WHERE employee_id = ${employees.id}
+        ORDER BY mcu_date DESC NULLS LAST
+        LIMIT 1
+      )`.as('last_mcu_date'),
     })
     .from(employees)
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
@@ -67,7 +77,7 @@ export async function getEmployeeFilterOptions() {
   const [departments, sections, locations] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
-    db.select({ id: sites.id, name: sites.location }).from(sites).where(eq(sites.isActive, true)),
+    db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
   ]);
   return { departments, sections, locations };
 }
@@ -93,24 +103,41 @@ export async function createEmployee(data: {
   contractStart?: string;
   contractEnd?: string;
   birthDate?: string;
+  expMinePermit?: string | null;
+  accountStatus?: string;
+  lastMcuDate?: string | null;
 }) {
-  const [created] = await db.insert(employees).values({
+  const setData = {
     employeeSn: data.employeeId,
     name: data.fullName,
-    email: data.email || '',
-    siteId: data.siteId || 1,
-    departmentId: data.departmentId || null,
-    sectionId: data.sectionId || null,
-    positionId: data.positionId || null,
-    joinDate: data.joinDate || null,
-    contractDurationStart: data.contractStart || null,
-    contractDurationEnd: data.contractEnd || null,
-    birthDate: data.birthDate || null,
-    employmentStatus: 'active',
+    email: data.email,
+    departmentId: data.departmentId,
+    sectionId: data.sectionId,
+    siteId: data.siteId,
+    positionId: data.positionId,
+    joinDate: data.joinDate,
+    contractDurationStart: data.contractStart,
+    contractDurationEnd: data.contractEnd,
+    birthDate: data.birthDate,
+    expMinePermit: data.expMinePermit,
+    employmentStatus: data.accountStatus,
     isActive: true,
     role: 'Employee',
     department: '',
-  }).returning();
+  };
+
+  const [created] = await db
+    .insert(employees)
+    .values(setData)
+    .returning();
+
+  if (data.lastMcuDate && created) {
+    await db.insert(employeeMcu).values({
+      employeeId: created.id,
+      mcuDate: data.lastMcuDate,
+      paketMcu: "", // Ensure it doesn't fail default logic
+    });
+  }
 
   const emailContent = buildHumanCapitalEmail({
     title: "Data employee HC baru",
@@ -153,6 +180,7 @@ export async function updateEmployee(id: number, data: {
   contractStart?: string | null;
   contractEnd?: string | null;
   birthDate?: string | null;
+  expMinePermit?: string | null;
   accountStatus?: string;
 }) {
   const [before] = await db
@@ -173,13 +201,43 @@ export async function updateEmployee(id: number, data: {
   if (data.contractStart !== undefined) setData.contractDurationStart = data.contractStart;
   if (data.contractEnd !== undefined) setData.contractDurationEnd = data.contractEnd;
   if (data.birthDate !== undefined) setData.birthDate = data.birthDate;
+  if (data.expMinePermit !== undefined) setData.expMinePermit = data.expMinePermit;
   if (data.accountStatus !== undefined) setData.employmentStatus = data.accountStatus;
+
+  if (data.lastMcuDate !== undefined) {
+    if (data.lastMcuDate) {
+      // Find latest MCU to update, or insert new
+      const latestMcu = await db.select().from(employeeMcu).where(eq(employeeMcu.employeeId, id)).orderBy(desc(employeeMcu.mcuDate)).limit(1);
+      if (latestMcu.length > 0) {
+        await db.update(employeeMcu).set({ mcuDate: data.lastMcuDate }).where(eq(employeeMcu.id, latestMcu[0].id));
+      } else {
+        await db.insert(employeeMcu).values({
+          employeeId: id,
+          mcuDate: data.lastMcuDate,
+          paketMcu: "",
+        });
+      }
+    } else {
+      // If cleared, maybe we do nothing or clear the latest? Usually deleting MCU records is handled in MCU module.
+      // We'll leave it as is if it's cleared.
+    }
+  }
 
   const [updated] = await db
     .update(employees)
     .set(setData)
     .where(eq(employees.id, id))
     .returning();
+
+  if (updated.authUserId && (data.fullName !== undefined || data.email !== undefined)) {
+    const userUpdate: Record<string, any> = {};
+    if (data.fullName !== undefined) userUpdate.name = data.fullName;
+    if (data.email !== undefined) userUpdate.email = data.email;
+    
+    if (Object.keys(userUpdate).length > 0) {
+      await db.update(user).set(userUpdate).where(eq(user.id, updated.authUserId));
+    }
+  }
 
   const emailContent = buildHumanCapitalEmail({
     title: "Update data employee HC",

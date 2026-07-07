@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp } from "lucide-react";
+import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2 } from "lucide-react";
 import {
   createEmployee,
   updateEmployee,
@@ -32,6 +32,13 @@ import {
 import { toast } from "sonner";
 import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -44,6 +51,7 @@ type Employee = {
   contractStart: string | null;
   contractEnd: string | null;
   birthDate: string | null;
+  expMinePermit: string | null;
   accountStatus: string;
   genderCode: string | null;
   jobTitle: string | null;
@@ -56,6 +64,7 @@ type Employee = {
   sectionId: number | null;
   workLocationId: number | null;
   positionId: number | null;
+  lastMcuDate: string | null;
 };
 
 type FilterOption = {
@@ -89,6 +98,8 @@ type EmployeeFormData = {
   contractStart: string;
   contractEnd: string;
   birthDate: string;
+  expMinePermit: string;
+  lastMcuDate: string;
 };
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
@@ -183,6 +194,8 @@ function emptyFormData(): EmployeeFormData {
     contractStart: "",
     contractEnd: "",
     birthDate: "",
+    expMinePermit: "",
+    lastMcuDate: "",
   };
 }
 
@@ -201,6 +214,8 @@ function employeeToFormData(emp: Employee): EmployeeFormData {
     contractStart: toInputDate(emp.contractStart),
     contractEnd: toInputDate(emp.contractEnd),
     birthDate: toInputDate(emp.birthDate),
+    expMinePermit: toInputDate(emp.expMinePermit),
+    lastMcuDate: toInputDate(emp.lastMcuDate),
   };
 }
 
@@ -373,6 +388,8 @@ export function EmployeeClientPage({
         contractStart: formData.contractStart || undefined,
         contractEnd: formData.contractEnd || undefined,
         birthDate: formData.birthDate || undefined,
+        expMinePermit: formData.expMinePermit || undefined,
+        lastMcuDate: formData.lastMcuDate || undefined,
       };
 
       if (editingEmployee) {
@@ -394,6 +411,8 @@ export function EmployeeClientPage({
                   contractStart: payload.contractStart ?? null,
                   contractEnd: payload.contractEnd ?? null,
                   birthDate: payload.birthDate ?? null,
+                  expMinePermit: payload.expMinePermit ?? null,
+                  lastMcuDate: payload.lastMcuDate ?? null,
                 }
               : d
           )
@@ -411,6 +430,8 @@ export function EmployeeClientPage({
             contractStart: created.contractDurationStart ?? null,
             contractEnd: created.contractDurationEnd ?? null,
             birthDate: created.birthDate ?? null,
+            expMinePermit: created.expMinePermit ?? null,
+            lastMcuDate: payload.lastMcuDate ?? null,
             accountStatus: created.employmentStatus ?? "active",
             genderCode: null,
             jobTitle: null,
@@ -499,27 +520,27 @@ export function EmployeeClientPage({
             <TableMultiFilter
               label="Departemen"
               filterKey="department"
-              options={filterOptions.departments.map((d) => ({
-                value: d.name,
-                label: d.name,
+              options={Array.from(new Set(filterOptions.departments.map((d) => d.name))).map((name) => ({
+                value: name,
+                label: name,
               }))}
               widthClassName="w-[180px]"
             />
             <TableMultiFilter
               label="Section"
               filterKey="section"
-              options={filterOptions.sections.map((s) => ({
-                value: s.name,
-                label: s.name,
+              options={Array.from(new Set(filterOptions.sections.map((s) => s.name))).map((name) => ({
+                value: name,
+                label: name,
               }))}
               widthClassName="w-[180px]"
             />
             <TableMultiFilter
               label="Lokasi"
               filterKey="location"
-              options={filterOptions.locations.map((l) => ({
-                value: l.name,
-                label: l.name,
+              options={Array.from(new Set(filterOptions.locations.map((l) => l.name))).map((name) => ({
+                value: name,
+                label: name,
               }))}
               widthClassName="w-[180px]"
             />
@@ -545,6 +566,8 @@ export function EmployeeClientPage({
               <TableHead className="text-center">Tgl Masuk</TableHead>
               <TableHead className="text-center">Kontrak Mulai</TableHead>
               <TableHead className="text-center">Kontrak Selesai</TableHead>
+              <TableHead className="text-center">Exp Mine Permit</TableHead>
+              <TableHead className="text-center">Terakhir MCU</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="text-center">Aksi</TableHead>
             </TableRow>
@@ -553,7 +576,7 @@ export function EmployeeClientPage({
             {data.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={12}
+                  colSpan={13}
                   className="py-12 text-center text-muted-foreground"
                 >
                   <Users className="mx-auto mb-3 size-10 opacity-20" />
@@ -616,6 +639,12 @@ export function EmployeeClientPage({
                     <TableCell className="text-center text-muted-foreground">
                       {formatDate(emp.contractEnd)}
                     </TableCell>
+                    <TableCell className="text-center text-muted-foreground">
+                      {formatDate(emp.expMinePermit)}
+                    </TableCell>
+                    <TableCell className="text-center text-muted-foreground">
+                      {formatDate(emp.lastMcuDate)}
+                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex flex-col items-center gap-1">
                         <Badge
@@ -645,28 +674,36 @@ export function EmployeeClientPage({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="denseIcon"
-                          onClick={() => router.push(`/dashboard/hc/employee/${emp.id}`)}
-                          title="Profil Produktivitas"
-                          className="hover:bg-violet-50 text-violet-600 hover:text-violet-700"
-                        >
-                          <TrendingUp className="size-4" />
-                        </Button>
-                        <EnterpriseActionButtons
-                          access={access}
-                          onView={() => handleOpenView(emp)}
-                          onEdit={() => handleOpenEdit(emp)}
-                          onDelete={() => handleOpenDelete(emp)}
-                          labels={{
-                            view: "Detail karyawan",
-                            edit: "Ubah data",
-                            delete: "Hapus karyawan",
-                          }}
-                        />
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="denseIcon">
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/dashboard/hc/employee/${emp.id}`)}
+                            >
+                              <TrendingUp className="mr-2 size-4 text-violet-600" />
+                              <span>Produktivitas</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleOpenView(emp)} disabled={!access.canView}>
+                              <Eye className="mr-2 size-4" />
+                              <span>Lihat Detail</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenEdit(emp)} disabled={!access.canEdit}>
+                              <Edit2 className="mr-2 size-4" />
+                              <span>Edit Karyawan</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleOpenDelete(emp)} disabled={!access.canDelete} className="text-destructive focus:text-destructive">
+                              <Trash2 className="mr-2 size-4" />
+                              <span>Hapus</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -890,6 +927,34 @@ export function EmployeeClientPage({
                 value={formData.contractEnd}
                 onChange={(e) =>
                   updateFormField("contractEnd", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            {/* Row 7: Exp Mine Permit */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Exp Mine Permit
+              </label>
+              <input
+                type="date"
+                value={formData.expMinePermit}
+                onChange={(e) =>
+                  updateFormField("expMinePermit", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            {/* Row 8: Terakhir MCU */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Terakhir MCU
+              </label>
+              <input
+                type="date"
+                value={formData.lastMcuDate || ""}
+                onChange={(e) =>
+                  updateFormField("lastMcuDate", e.target.value)
                 }
                 className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
