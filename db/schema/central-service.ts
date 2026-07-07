@@ -209,6 +209,9 @@ export const centralServiceForecastItems = pgTable(
     retreadForecast: numeric("retread_forecast").notNull().default("0"),
     serviceForecast: numeric("service_forecast").notNull().default("0"),
     totalForecastIdr: numeric("total_forecast_idr").notNull().default("0"),
+    repairRemark: text("repair_remark").notNull().default(""),
+    retreadRemark: text("retread_remark").notNull().default(""),
+    serviceRemark: text("service_remark").notNull().default(""),
     
     // Remaining Forecast (Total Forecast - Actuals)
     remainingRepair: numeric("remaining_repair").notNull().default("0"),

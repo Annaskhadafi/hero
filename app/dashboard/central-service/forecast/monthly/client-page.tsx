@@ -60,8 +60,11 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
     picSales: "",
     osInvoicePrevMonth: "0",
     repairForecast: "0",
+    repairRemark: "",
     retreadForecast: "0",
+    retreadRemark: "",
     serviceForecast: "0",
+    serviceRemark: "",
     isProductAccessories: false,
     accessoriesAmountIdr: "0",
     accessoriesAmountUsd: "0",
@@ -120,6 +123,17 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
       window.location.reload();
     } catch (e) {
       toast.error("Failed to lock period");
+    }
+  };
+
+  const handleUnlockPeriod = async () => {
+    if (!selectedPeriodId) return;
+    try {
+      await updateForecastPeriodStatus(Number(selectedPeriodId), "Draft");
+      toast.success("Period unlocked");
+      window.location.reload();
+    } catch (e) {
+      toast.error("Failed to unlock period");
     }
   };
 
@@ -227,17 +241,26 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
         </div>
         
         <div className="flex items-center gap-2">
-          {!isLocked && selectedPeriod && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={handleLockPeriod}>
-                <Lock className="w-4 h-4 mr-2" />
-                Lock Period
-              </Button>
-              <Button variant="destructive" onClick={handleDeletePeriod}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Period
-              </Button>
-            </div>
+          {selectedPeriod && (
+            <>
+              {isLocked ? (
+                <Button variant="outline" onClick={handleUnlockPeriod}>
+                  <Lock className="w-4 h-4 mr-2" />
+                  Unlock Period
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={handleLockPeriod}>
+                    <Lock className="w-4 h-4 mr-2" />
+                    Lock Period
+                  </Button>
+                  <Button variant="destructive" onClick={handleDeletePeriod}>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Period
+                  </Button>
+                </div>
+              )}
+            </>
           )}
           
           <Dialog open={isPeriodDialogOpen} onOpenChange={setIsPeriodDialogOpen}>
@@ -454,19 +477,17 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
                     </div>
                     <div className="space-y-2">
                       <Label>PIC Sales</Label>
-                      <Select 
-                        value={formData.picSales} 
-                        onValueChange={v => updateForm(index, "picSales", v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Sales PIC" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {salesEmployees.map(emp => (
-                            <SelectItem key={emp.id} value={emp.name}>{emp.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input
+                        list={`picSales-list-${index}`}
+                        value={formData.picSales}
+                        onChange={e => updateForm(index, "picSales", e.target.value)}
+                        placeholder="Type or select PIC Sales"
+                      />
+                      <datalist id={`picSales-list-${index}`}>
+                        {salesEmployees.map(emp => (
+                          <option key={emp.id} value={emp.name} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
 
@@ -488,6 +509,20 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
                         <div className="space-y-2">
                           <Label>Service (IDR)</Label>
                           <Input type="number" value={formData.serviceForecast} onChange={e => updateForm(index, "serviceForecast", e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label>Repair Remark</Label>
+                          <Input value={formData.repairRemark} onChange={e => updateForm(index, "repairRemark", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Retread Remark</Label>
+                          <Input value={formData.retreadRemark} onChange={e => updateForm(index, "retreadRemark", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Service Remark</Label>
+                          <Input value={formData.serviceRemark} onChange={e => updateForm(index, "serviceRemark", e.target.value)} />
                         </div>
                       </div>
                     </>

@@ -306,6 +306,9 @@ export async function bulkImportForecastItems(
     accessoriesAmountIdr: string;
     accessoriesAmountUsd: string;
     remark: string;
+    repairRemark?: string;
+    retreadRemark?: string;
+    serviceRemark?: string;
   }>
 ) {
   if (items.length === 0) return;
@@ -327,6 +330,9 @@ export async function bulkImportForecastItems(
       retreadForecast: retread.toString(),
       serviceForecast: service.toString(),
       totalForecastIdr: totalIdr.toString(),
+      repairRemark: item.repairRemark || "",
+      retreadRemark: item.retreadRemark || "",
+      serviceRemark: item.serviceRemark || "",
       accessoriesAmountIdr: (item.accessoriesAmountIdr || "0").toString(),
       accessoriesAmountUsd: (item.accessoriesAmountUsd || "0").toString(),
       remark: item.remark || "",

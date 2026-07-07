@@ -23,10 +23,15 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
   const [isFetchingGlobalRate, setIsFetchingGlobalRate] = useState(false);
   const [isFetchingActualRate, setIsFetchingActualRate] = useState(false);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
+  const [customerFilter, setCustomerFilter] = useState("");
 
   const filteredItems = React.useMemo(() => {
-    return initialItems.filter(wrapper => wrapper.period.id.toString() === selectedPeriodId);
-  }, [initialItems, selectedPeriodId]);
+    return initialItems.filter(wrapper => {
+      if (wrapper.period.id.toString() !== selectedPeriodId) return false;
+      if (customerFilter && !wrapper.item.customer.toLowerCase().includes(customerFilter.toLowerCase())) return false;
+      return true;
+    });
+  }, [initialItems, selectedPeriodId, customerFilter]);
 
   useEffect(() => {
     const saved = localStorage.getItem("daily_usd_rate");
@@ -57,16 +62,28 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
 
   const [statusForm, setStatusForm] = useState({ status: "", remark: "" });
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
-  const [editingActualId, setEditingActualId] = useState<number | null>(null);
-  
+
+  const CATEGORIES = ["Repair", "Service", "Retread"] as const;
+  type Category = (typeof CATEGORIES)[number];
+
   const [actualsForm, setActualsForm] = useState({
     updateDate: new Date().toISOString().split("T")[0],
-    amountIdr: "0",
-    amountUsd: "0",
     exchangeRate: "15000",
-    remark: "",
+    repairAmountIdr: "0",
+    repairAmountUsd: "0",
+    repairRemark: "",
+    serviceAmountIdr: "0",
+    serviceAmountUsd: "0",
+    serviceRemark: "",
+    retreadAmountIdr: "0",
+    retreadAmountUsd: "0",
+    retreadRemark: "",
     customer: "",
     periodId: "",
+  });
+
+  const [editingActualIds, setEditingActualIds] = useState<Record<string, number | null>>({
+    Repair: null, Service: null, Retread: null,
   });
 
   type SortField = 'customer' | 'forecast' | 'actual' | 'sisa';
@@ -104,18 +121,27 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     }
   };
 
-  const handleAmountIdrChange = (val: string) => {
+  const handleAmountIdrChange = (cat: Category, val: string) => {
+    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
+    const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
     const amountIdr = Number(val);
     const rate = Number(actualsForm.exchangeRate) || 15000;
     const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : "0";
-    setActualsForm({ ...actualsForm, amountIdr: val, amountUsd });
+    setActualsForm({ ...actualsForm, [idrKey]: val, [usdKey]: amountUsd });
   };
 
   const handleActualRateChange = (val: string) => {
-    const amountIdr = Number(actualsForm.amountIdr);
     const rate = Number(val) || 0;
-    const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : actualsForm.amountUsd;
-    setActualsForm({ ...actualsForm, exchangeRate: val, amountUsd });
+    const next: any = { ...actualsForm, exchangeRate: val };
+    if (rate) {
+      for (const cat of CATEGORIES) {
+        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
+        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
+        const idr = Number(actualsForm[idrKey]);
+        if (idr > 0) next[usdKey] = (idr / rate).toFixed(2);
+      }
+    }
+    setActualsForm(next);
   };
 
   const handleFetchActualRate = async () => {
@@ -143,6 +169,11 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     }
   };
 
+  const hasData = (cat: Category) => {
+    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
+    return Number(actualsForm[idrKey]) > 0;
+  };
+
   const handleSaveActuals = async () => {
     if (!actualsForm.updateDate) return;
     if (!selectedItem && (!actualsForm.customer || !actualsForm.periodId)) {
@@ -150,28 +181,52 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
       return;
     }
     try {
-      if (editingActualId) {
-        await updateForecastActual(editingActualId, {
-          ...actualsForm,
-          updateDate: new Date(actualsForm.updateDate),
-          category: "Service",
-          jobCode: "",
-          forecastItemId: selectedItem.item.id,
-          periodId: selectedItem.period.id
-        });
-        toast.success("Actuals updated and remaining recalculated");
-      } else {
-        await addForecastActual({
-          ...actualsForm,
-          updateDate: new Date(actualsForm.updateDate),
-          category: "Service",
-          jobCode: "",
-          forecastItemId: selectedItem ? selectedItem.item.id : null,
-          periodId: selectedItem ? selectedItem.period.id : Number(actualsForm.periodId),
-          customer: selectedItem ? selectedItem.item.customer : actualsForm.customer,
-        });
-        toast.success("Actuals saved and remaining recalculated");
+      const itemId = selectedItem ? selectedItem.item.id : null;
+      const periodId = selectedItem ? selectedItem.period.id : Number(actualsForm.periodId);
+      const cust = selectedItem ? selectedItem.item.customer : actualsForm.customer;
+      const basePayload = {
+        updateDate: new Date(actualsForm.updateDate),
+        jobCode: "",
+        invoiceNumber: "",
+        exchangeRate: actualsForm.exchangeRate,
+        createdById: undefined,
+      };
+
+      for (const cat of CATEGORIES) {
+        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
+        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
+        const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
+        const existingId = editingActualIds[cat];
+        const amtIdr = Number(actualsForm[idrKey]);
+
+        if (existingId && amtIdr === 0) {
+          await deleteForecastActual(existingId);
+        } else if (existingId && amtIdr > 0) {
+          await updateForecastActual(existingId, {
+            ...basePayload,
+            amountIdr: actualsForm[idrKey],
+            amountUsd: actualsForm[usdKey],
+            remark: actualsForm[remarkKey],
+            category: cat,
+            forecastItemId: itemId,
+            periodId,
+            customer: cust,
+          });
+        } else if (!existingId && amtIdr > 0) {
+          await addForecastActual({
+            ...basePayload,
+            amountIdr: actualsForm[idrKey],
+            amountUsd: actualsForm[usdKey],
+            remark: actualsForm[remarkKey],
+            category: cat,
+            forecastItemId: itemId,
+            periodId,
+            customer: cust,
+          });
+        }
       }
+
+      toast.success("Actuals saved and remaining recalculated");
       setIsActualsDialogOpen(false);
       window.location.reload();
     } catch (e: any) {
@@ -196,36 +251,29 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
     setIsStatusDialogOpen(true);
   };
 
-  const openActualsDialog = (item: any, actual?: any) => {
+  const openActualsDialog = (item: any) => {
     setSelectedItem(item);
-    if (actual) {
-      setEditingActualId(actual.id);
-      setActualsForm({
-        updateDate: new Date(actual.updateDate).toISOString().split("T")[0],
-          amountIdr: actual.amountIdr.toString(),
-          amountUsd: actual.amountUsd.toString(),
-          exchangeRate:
-            Number(actual.amountUsd) > 0
-              ? (Number(actual.amountIdr) / Number(actual.amountUsd)).toFixed(2)
-              : globalRate,
-          remark: actual.remark || "",
-          customer: item?.item.customer || actual.customer || "",
-          periodId: item?.period.id?.toString() || actual.periodId?.toString() || "",
-      });
-    } else {
-      setEditingActualId(null);
-      const defaultPeriodId = item?.period.id?.toString() || (periods.length > 0 ? periods[0].id.toString() : "");
-      setActualsForm({
-        updateDate: new Date().toISOString().split("T")[0],
-        amountIdr: "0",
-        amountUsd: "0",
-        exchangeRate: globalRate,
-        remark: "",
-        customer: "",
-        periodId: defaultPeriodId,
-      });
-      void handleFetchActualRate();
+    const existingActuals = item?.actuals || [];
+    const getActual = (cat: Category) => existingActuals.find((a: any) => a.category === cat);
+
+    const ids: Record<string, number | null> = {};
+    const form: any = {
+      updateDate: new Date().toISOString().split("T")[0],
+      exchangeRate: globalRate,
+      customer: "",
+      periodId: item?.period.id?.toString() || (periods.length > 0 ? periods[0].id.toString() : ""),
+    };
+    for (const cat of CATEGORIES) {
+      const a = getActual(cat);
+      ids[cat] = a?.id || null;
+      form[`${cat.toLowerCase()}AmountIdr`] = a?.amountIdr?.toString() || "0";
+      form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || "0";
+      form[`${cat.toLowerCase()}Remark`] = a?.remark || "";
     }
+
+    setEditingActualIds(ids);
+    setActualsForm(form);
+    void handleFetchActualRate();
     setIsActualsDialogOpen(true);
   };
 
@@ -236,20 +284,26 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
   filteredItems.forEach((wrapper: any) => {
     const isAcc = wrapper.item.isProductAccessories;
     const forecastIdr = Number(isAcc ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr);
-    const remainIdr = Number(isAcc ? wrapper.item.remainingAccessoriesIdr : wrapper.item.remainingTotalIdr);
     const actualIdr = wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0;
     
     totalForecast += forecastIdr;
-    totalRemaining += remainIdr;
+    totalRemaining += forecastIdr - actualIdr;
     totalActual += actualIdr;
   });
 
-  const getSortValue = (wrapper: any, field: SortField) => {
+  const getForecastActual = (wrapper: any) => {
     const isAcc = wrapper.item.isProductAccessories;
+    const forecast = Number(isAcc ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr);
+    const actual = wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0;
+    return { forecast, actual };
+  };
+
+  const getSortValue = (wrapper: any, field: SortField) => {
+    const { forecast, actual } = getForecastActual(wrapper);
     if (field === 'customer') return wrapper.item.customer.toLowerCase();
-    if (field === 'forecast') return Number(isAcc ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr);
-    if (field === 'sisa') return Number(isAcc ? wrapper.item.remainingAccessoriesIdr : wrapper.item.remainingTotalIdr);
-    if (field === 'actual') return wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0;
+    if (field === 'forecast') return forecast;
+    if (field === 'sisa') return forecast - actual;
+    if (field === 'actual') return actual;
     return 0;
   };
 
@@ -280,6 +334,12 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
               </SelectContent>
             </Select>
           </div>
+          <Input
+            placeholder="Filter Customer..."
+            value={customerFilter}
+            onChange={e => setCustomerFilter(e.target.value)}
+            className="w-[200px] h-9"
+          />
         </div>
         <div className="flex items-center gap-3 bg-muted/30 p-2 px-3 rounded-md border">
           <Label className="whitespace-nowrap text-xs">Kurs USD (View Only)</Label>
@@ -407,13 +467,13 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                           {wrapper.item.isProductAccessories ? "Accessories" : "Core Services"}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(Number(wrapper.item.isProductAccessories ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr))}
+                          {formatCurrency(getForecastActual(wrapper).forecast)}
                         </TableCell>
                         <TableCell className="text-right font-medium text-green-600">
-                          {formatCurrency(wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0)}
+                          {formatCurrency(getForecastActual(wrapper).actual)}
                         </TableCell>
                         <TableCell className="text-right font-bold text-orange-600">
-                          {formatCurrency(Number(wrapper.item.isProductAccessories ? wrapper.item.remainingAccessoriesIdr : wrapper.item.remainingTotalIdr))}
+                          {formatCurrency(getForecastActual(wrapper).forecast - getForecastActual(wrapper).actual)}
                         </TableCell>
                         <TableCell>
                           <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-md text-xs font-medium">
@@ -434,38 +494,92 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                       </TableRow>
                       {expandedItems.has(wrapper.item.id) && (
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={8} className="p-0 border-b">
-                            <div className="p-4 pl-14">
+                          <TableCell colSpan={11} className="p-0 border-b">
+                            <div className="p-4">
                               <h4 className="font-semibold mb-3 text-sm flex items-center gap-2">
                                 <Banknote className="w-4 h-4 text-primary" /> SAP Actuals Progress
                               </h4>
                               {wrapper.actuals && wrapper.actuals.length > 0 ? (
-                                <div className="border rounded-md bg-background">
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead className="text-right">Amount IDR</TableHead>
-                                        <TableHead className="text-right">Amount USD</TableHead>
-                                        <TableHead>Remark</TableHead>
-                                        <TableHead className="text-right">Actions</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {wrapper.actuals.map((act: any) => (
-                                        <TableRow key={act.id}>
-                                          <TableCell>{new Date(act.updateDate).toLocaleDateString("id-ID")}</TableCell>
-                                          <TableCell className="text-right font-medium text-green-600">{formatCurrency(Number(act.amountIdr))}</TableCell>
-                                          <TableCell className="text-right font-medium">${Number(act.amountUsd).toLocaleString("id-ID")}</TableCell>
-                                          <TableCell>{act.remark}</TableCell>
-                                          <TableCell className="text-right">
-                                            <Button variant="ghost" size="sm" onClick={() => openActualsDialog(wrapper, act)}>Edit</Button>
-                                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteActual(act.id)}>Delete</Button>
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
+                                <div className="space-y-2">
+                                  {(() => {
+                                    const byDate: Record<string, { items: any[], label: string, ts: number }> = {};
+                                    wrapper.actuals.forEach((a: any) => {
+                                      const d = new Date(a.updateDate);
+                                      const key = d.toISOString().split("T")[0];
+                                      if (!byDate[key]) byDate[key] = { items: [], label: d.toLocaleDateString("id-ID"), ts: d.getTime() };
+                                      byDate[key].items.push(a);
+                                    });
+                                    return Object.entries(byDate)
+                                      .sort(([, a], [, b]) => b.ts - a.ts)
+                                      .map(([, { items, label: dateLabel }]) => {
+                                      const getCat = (cat: string) => {
+                                        const c = items.filter((a: any) => a.category === cat);
+                                        const sumIdr = c.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
+                                        const sumUsd = c.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
+                                        const rmk = c.map((a: any) => a.remark).filter(Boolean).join(", ");
+                                        return { sumIdr, sumUsd, rmk, hasData: c.length > 0 };
+                                      };
+                                      const s = getCat("Service"), r = getCat("Repair"), rt = getCat("Retread");
+                                      const totalIdr = items.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
+                                      const totalUsd = items.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
+                                      return (
+                                        <div key={dateLabel} className="border rounded-md bg-background w-full">
+                                          <div className="px-4 py-1.5 bg-muted/20 border-b font-semibold text-xs text-muted-foreground">
+                                            {dateLabel}
+                                          </div>
+                                          <div className="w-full">
+                                            <div className="grid grid-cols-12 gap-0 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b bg-muted/5">
+                                              <div className="col-span-3 text-center py-2 border-r">Service</div>
+                                              <div className="col-span-3 text-center py-2 border-r">Repair</div>
+                                              <div className="col-span-3 text-center py-2 border-r">Retread</div>
+                                              <div className="col-span-3 text-center py-2">Total</div>
+                                            </div>
+                                            <div className="grid grid-cols-12 gap-0 text-xs divide-x">
+                                              <div className={`col-span-3 p-2 space-y-1 ${!s.hasData ? 'opacity-40' : ''}`}>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="text-green-600 font-medium">{s.hasData ? formatCurrency(s.sumIdr) : "—"}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-blue-600">${s.hasData ? s.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
+                                                </div>
+                                                <div className="text-muted-foreground truncate">{s.rmk || "—"}</div>
+                                              </div>
+                                              <div className={`col-span-3 p-2 space-y-1 ${!r.hasData ? 'opacity-40' : ''}`}>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="text-green-600 font-medium">{r.hasData ? formatCurrency(r.sumIdr) : "—"}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-blue-600">${r.hasData ? r.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
+                                                </div>
+                                                <div className="text-muted-foreground truncate">{r.rmk || "—"}</div>
+                                              </div>
+                                              <div className={`col-span-3 p-2 space-y-1 ${!rt.hasData ? 'opacity-40' : ''}`}>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="text-green-600 font-medium">{rt.hasData ? formatCurrency(rt.sumIdr) : "—"}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-blue-600">${rt.hasData ? rt.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
+                                                </div>
+                                                <div className="text-muted-foreground truncate">{rt.rmk || "—"}</div>
+                                              </div>
+                                              <div className="col-span-3 p-2 bg-primary/5 font-bold">
+                                                <div className="flex items-center gap-1 text-xs mb-1">
+                                                  <span className="text-green-600">{formatCurrency(totalIdr)}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-blue-600">${totalUsd.toLocaleString("en-US", {maximumFractionDigits: 2})}</span>
+                                                </div>
+                                                <div className="flex gap-1">
+                                                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => openActualsDialog(wrapper)}>Edit</Button>
+                                                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50" onClick={async () => {
+                                                    if (!confirm("Delete this date's actuals?")) return;
+                                                    for (const a of items) await deleteForecastActual(a.id);
+                                                    window.location.reload();
+                                                  }}>Delete</Button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    });
+                                  })()}
                                 </div>
                               ) : (
                                 <div className="text-sm text-muted-foreground italic py-2">No actuals recorded yet.</div>
@@ -520,12 +634,12 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
 
       {/* SAP Actuals Input Dialog */}
       <Dialog open={isActualsDialogOpen} onOpenChange={setIsActualsDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{editingActualId ? `Edit SAP Actual for ${selectedItem?.item.customer}` : (selectedItem ? `SAP Actual for ${selectedItem.item.customer}` : "Unplanned SAP Actual")}</DialogTitle>
+            <DialogTitle>{selectedItem ? `SAP Actual - ${selectedItem.item.customer}` : "Unplanned SAP Actual"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {!selectedItem && !editingActualId && (
+          <div className="flex-1 overflow-y-auto pr-2 space-y-4 py-4">
+            {!selectedItem && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Customer</Label>
@@ -533,9 +647,7 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                 </div>
                 <div className="space-y-2">
                   <Label>Period</Label>
-                  <Select value={actualsForm.periodId} onValueChange={val => {
-                    setActualsForm({...actualsForm, periodId: val});
-                  }}>
+                  <Select value={actualsForm.periodId} onValueChange={val => setActualsForm({...actualsForm, periodId: val})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select Period" />
                     </SelectTrigger>
@@ -569,22 +681,47 @@ export function DailyClientPage({ initialItems, periods }: { initialItems: any[]
                 USD tersimpan mengikuti kurs saat submit. Edit manual jika kurs SAP berbeda.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Amount IDR</Label>
-                <Input type="number" value={actualsForm.amountIdr} onChange={e => handleAmountIdrChange(e.target.value)} />
+
+            {CATEGORIES.map(cat => {
+              const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
+              const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
+              const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
+              return (
+                <div key={cat} className="border rounded-md p-3 bg-muted/10">
+                  <h4 className="font-semibold text-sm mb-2">{cat}</h4>
+                  <div className="grid grid-cols-2 gap-3 mb-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">IDR</Label>
+                      <Input type="number" value={actualsForm[idrKey]} onChange={e => handleAmountIdrChange(cat, e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">USD</Label>
+                      <Input type="number" value={actualsForm[usdKey]} onChange={e => setActualsForm({...actualsForm, [usdKey]: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Remark</Label>
+                    <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="border-t pt-3">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total Amount</span>
+                <span className="flex gap-4">
+                  <span className="text-primary">{formatCurrency(
+                    CATEGORIES.reduce((s, cat) => s + Number(actualsForm[`${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm]), 0)
+                  )}</span>
+                  <span className="text-blue-600">$
+                    {(CATEGORIES.reduce((s, cat) => s + Number(actualsForm[`${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm]), 0)).toLocaleString("en-US", {maximumFractionDigits: 2})}
+                  </span>
+                </span>
               </div>
-              <div className="space-y-2">
-                <Label>Amount USD</Label>
-                <Input type="number" value={actualsForm.amountUsd} onChange={e => setActualsForm({...actualsForm, amountUsd: e.target.value})} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Remark</Label>
-              <Input value={actualsForm.remark} onChange={e => setActualsForm({...actualsForm, remark: e.target.value})} />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t">
             <Button onClick={handleSaveActuals}>Save Actuals</Button>
           </DialogFooter>
         </DialogContent>
