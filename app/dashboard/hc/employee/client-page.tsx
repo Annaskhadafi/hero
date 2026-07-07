@@ -1198,15 +1198,28 @@ export function EmployeeClientPage({
         title={`Bulk Edit Karyawan (${selectedIds.size} dipilih)`}
         description="Pilih kolom yang ingin diubah. Kosongkan kolom yang tidak ingin diubah."
         footer={
-          <EnterpriseActionButtons
-            onCancel={() => setBulkEditOpen(false)}
-            onSubmit={handleBulkUpdate}
-            isSubmitting={isSubmitting}
-            submitText="Simpan Perubahan"
-          />
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBulkEditOpen(false)}
+              disabled={isSubmitting}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              form="bulk-edit-form"
+              className={hcPrimaryActionClassName}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+          </div>
         }
       >
-        <EnterpriseFormGrid>
+        <form id="bulk-edit-form" onSubmit={handleBulkUpdate}>
+          <EnterpriseFormGrid>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Lokasi Kerja</label>
             <select
@@ -1256,6 +1269,7 @@ export function EmployeeClientPage({
             />
           </div>
         </EnterpriseFormGrid>
+        </form>
       </EnterpriseRecordDialog>
     </AdminPageShell>
   );
