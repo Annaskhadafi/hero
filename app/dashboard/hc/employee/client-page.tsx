@@ -570,7 +570,7 @@ export function EmployeeClientPage({
               <TableHead>Nama</TableHead>
               <TableHead>Departemen</TableHead>
               <TableHead>Section</TableHead>
-              <TableHead>Jabatan</TableHead>
+              <TableHead>Job Title</TableHead>
               <TableHead>Lokasi</TableHead>
               <TableHead className="text-center">Tgl Masuk</TableHead>
               <TableHead className="text-center">Kontrak Mulai</TableHead>
@@ -637,7 +637,7 @@ export function EmployeeClientPage({
                       {emp.jobTitle ?? "-"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {emp.location ?? "-"}
+                      {emp.siteName ?? emp.location ?? "-"}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
                       {formatDate(emp.joinDate)}
@@ -646,7 +646,17 @@ export function EmployeeClientPage({
                       {formatDate(emp.contractStart)}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
-                      {formatDate(emp.contractEnd)}
+                      {status.type === "EXPIRING" ? (
+                        <Badge className="bg-yellow-400 text-black hover:bg-yellow-500 whitespace-nowrap">
+                          {formatDate(emp.contractEnd)}
+                        </Badge>
+                      ) : status.type === "COMPLETED" ? (
+                        <Badge className="bg-red-500 text-white hover:bg-red-600 whitespace-nowrap">
+                          {formatDate(emp.contractEnd)}
+                        </Badge>
+                      ) : (
+                        formatDate(emp.contractEnd)
+                      )}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
                       {formatDate(emp.expMinePermit)}
@@ -878,7 +888,7 @@ export function EmployeeClientPage({
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
-                Posisi / Jabatan
+                Job Title
               </label>
               <select
                 value={formData.positionId}
@@ -1014,7 +1024,7 @@ export function EmployeeClientPage({
                 value={viewingEmployee.departmentName}
               />
               <DetailRow label="Section" value={viewingEmployee.sectionName} />
-              <DetailRow label="Jabatan" value={viewingEmployee.jobTitle} />
+              <DetailRow label="Job Title" value={viewingEmployee.jobTitle} />
               <DetailRow label="Level" value={viewingEmployee.levelName} />
               <DetailRow label="Lokasi Kerja" value={viewingEmployee.location} />
               <DetailRow label="Site" value={viewingEmployee.siteName} />

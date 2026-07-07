@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
   hrPositions,
-  employees, masterDepartments, masterSections, sites,
+  employees, masterDepartments, masterSections, sites, masterPositions,
   employeeMcu
 } from "@/db/schema/hero";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -38,8 +38,8 @@ export async function getEmployeesForContract(filters?: {
       expMinePermit: employees.expMinePermit,
       accountStatus: employees.employmentStatus,
       genderCode: employees.gender,
-      jobTitle: sql<string | null>`coalesce(${hrPositions.rankName}, ${employees.jobTitle})`.as('job_title'),
-      levelName: sql<string | null>`coalesce(${hrPositions.levelName}, ${employees.levelName})`.as('level_name'),
+      jobTitle: sql<string | null>`coalesce(${masterPositions.name}, ${employees.jobTitle})`.as('job_title'),
+      levelName: employees.levelName,
       departmentName: sql<string | null>`coalesce(${masterDepartments.name}, ${employees.department})`.as('department_name'),
       sectionName: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`.as('section_name'),
       siteName: sites.name,
@@ -57,7 +57,7 @@ export async function getEmployeesForContract(filters?: {
       )`.as('last_mcu_date'),
     })
     .from(employees)
-    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(masterPositions, eq(employees.positionId, masterPositions.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -78,7 +78,7 @@ export async function getEmployeeFilterOptions() {
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
-    db.select({ id: hrPositions.id, name: hrPositions.rankName }).from(hrPositions).where(eq(hrPositions.isActive, true)),
+    db.select({ id: masterPositions.id, name: masterPositions.name }).from(masterPositions).where(eq(masterPositions.isActive, true)),
   ]);
   return { departments, sections, locations, positions };
 }
