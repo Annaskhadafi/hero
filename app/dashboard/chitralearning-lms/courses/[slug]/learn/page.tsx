@@ -173,6 +173,9 @@ export default async function LmsCoursePlayerPage({
     : ''
   const pdfViewerUrl = isPdfResource ? `${fileUrl}${fileUrl.includes('#') ? '&' : '#'}toolbar=0&navpanes=0&scrollbar=1` : ''
 
+  const isDocument = isPdfResource || isOfficeResource
+  const playerContainerClass = isDocument ? "w-full max-w-none lg:px-4" : "w-full max-w-5xl"
+
   return (
     <div data-lms-focus-mode className="flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] -mx-6 -my-6 bg-slate-50">
       <style>{`
@@ -202,8 +205,8 @@ export default async function LmsCoursePlayerPage({
         </div>
 
         {/* Player Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
-          <div className="w-full max-w-5xl">
+        <div className="flex-1 overflow-y-auto p-2 md:p-6 flex flex-col items-center">
+          <div className={playerContainerClass}>
             {activeLesson.lessonType === 'video' ? (
               <div className="w-full">
                 <ChitraLearningVideoPlayer 
@@ -244,14 +247,16 @@ export default async function LmsCoursePlayerPage({
                       {isPdfResource ? (
                         <iframe
                           src={pdfViewerUrl}
-                          className="h-[70vh] w-full rounded-xl border border-slate-200"
+                          allowFullScreen
+                          className="h-[82vh] w-full rounded-xl border border-slate-200"
                           title={activeLesson.title}
                         />
                       ) : officeViewerUrl ? (
                         <iframe
                           src={officeViewerUrl}
                           sandbox="allow-forms allow-scripts allow-same-origin"
-                          className="h-[70vh] w-full rounded-xl border border-slate-200"
+                          allowFullScreen
+                          className="h-[82vh] w-full rounded-xl border border-slate-200"
                           title={activeLesson.title}
                         />
                       ) : (
