@@ -21,6 +21,7 @@ export interface QuizQuestion {
   questionImageUrl?: string
   options: { id: string; text: string; imageUrl?: string }[]
   correctOptionId?: string // only sent if allowed
+  questionMetadata?: any
 }
 
 interface LmsQuizPlayerProps {
@@ -129,11 +130,28 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
     }
   }
 
-  const handleImageMatchingChange = (rowIdx: string, selectedLetter: string) => {
-    const arr = (answers[question.id] || ',,,').split(',')
+  const handleImageMatchingChange = (rowIdx: string, selectedLetter: string, totalRows: number) => {
+    let arr = (answers[question.id] || '').split(',')
+    if (arr.length < totalRows) {
+      arr = Array(totalRows).fill('').map((_, i) => arr[i] || '')
+    }
     arr[parseInt(rowIdx, 10)] = selectedLetter
     setAnswers(prev => ({ ...prev, [question.id]: arr.join(',') }))
   }
+
+  const matrixRowsToRender = useMemo(() => {
+    if (question.questionType !== 'image_matching') return [];
+    if (question.questionMetadata?.matrixRows) {
+      return question.questionMetadata.matrixRows as { text: string, answer: string }[];
+    }
+    return question.options.filter(opt => opt.text).map((opt, i) => ({
+      text: opt.text,
+      answer: String.fromCharCode(65 + i)
+    }));
+  }, [question])
+  
+  const matrixColsCount = Math.max(4, matrixRowsToRender.length);
+  const matrixCols = Array.from({ length: matrixColsCount }).map((_, i) => String.fromCharCode(65 + i));
 
   if (submitted) {
     return (
@@ -257,19 +275,23 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 font-medium min-w-[150px]">Keterangan</th>
-                    {['A', 'B', 'C', 'D'].map(letter => (
+                    {matrixCols.map(letter => (
                       <th key={letter} className="px-4 py-3 font-medium text-center w-16">{letter}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {question.options.filter(opt => opt.text).map((option, idx) => (
-                    <tr key={option.id} className="hover:bg-slate-50 transition-colors">
+                  {matrixRowsToRender.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-slate-900 font-medium">
-                        <QuizHtml html={option.text} className="[&>p]:m-0" />
+                        <QuizHtml html={row.text} className="[&>p]:m-0" />
                       </td>
-                      {['A', 'B', 'C', 'D'].map(letter => {
-                        const isChecked = (answers[question.id] || ',,,').split(',')[idx] === letter;
+                      {matrixCols.map(letter => {
+                        let currentAnswers = (answers[question.id] || '').split(',');
+                        if (currentAnswers.length < matrixRowsToRender.length) {
+                          currentAnswers = Array(matrixRowsToRender.length).fill('').map((_, i) => currentAnswers[i] || '');
+                        }
+                        const isChecked = currentAnswers[idx] === letter;
                         return (
                           <td key={letter} className="px-4 py-3 text-center align-middle border-l border-slate-100">
                             <label className="flex items-center justify-center cursor-pointer w-full h-full p-2">
@@ -278,7 +300,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
                                 name={`match-${question.id}-${idx}`}
                                 className="h-5 w-5 border-slate-300 text-primary focus:ring-primary cursor-pointer"
                                 checked={isChecked}
-                                onChange={() => handleImageMatchingChange(String(idx), letter)}
+                                onChange={() => handleImageMatchingChange(String(idx), letter, matrixRowsToRender.length)}
                               />
                             </label>
                           </td>

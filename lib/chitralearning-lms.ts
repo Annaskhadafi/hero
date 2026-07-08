@@ -19,19 +19,33 @@ import {
 import { getCurrentMenuPermission, getCurrentEmployeeAccessRole } from "@/lib/hero-access";
 
 export async function isLmsAdmin(session: any) {
-  // Check RBAC permission for LMS Builder
+  // [1] Check RBAC permission for LMS Builder (primary path)
   const perm = await getCurrentMenuPermission("chitralearning_lms_builder");
   if (perm?.canView || perm?.canEdit) {
     return true;
   }
 
-  // Fallback to dynamic role or session role
+  // [2] Fallback: check employee.accessRole from DB (most reliable)
   const dynamicRole = await getCurrentEmployeeAccessRole();
-  const rawRole = session?.user?.role || dynamicRole;
+
+  // [3] Also check session role as secondary fallback
+  const rawRole = dynamicRole || session?.user?.role;
 
   if (!rawRole) return false;
-  const role = rawRole.toLowerCase().replace(/\s+/g, "");
-  return ["admin", "superadmin", "hr_admin", "hr"].includes(role);
+
+  // Normalize: lowercase, remove spaces/underscores/hyphens for loose matching
+  const normalized = rawRole.toLowerCase().replace(/[\s_\-]+/g, "");
+
+  // Accept any variant of: admin, superadmin, hradmin, hr
+  // e.g. "Super Admin", "super_admin", "Super-Admin", "HR Admin", "hr_admin"
+  const ADMIN_NORMALIZED = ["admin", "superadmin", "hradmin", "hr"];
+  if (ADMIN_NORMALIZED.includes(normalized)) return true;
+
+  // Also accept if the role name simply contains "admin" or "super"
+  // This covers custom role names like "LMS Admin", "System Admin", etc.
+  if (normalized.includes("admin") || normalized.includes("super")) return true;
+
+  return false;
 }
 
 export const INTERNAL_LMS_FEATURES = [

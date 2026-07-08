@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
 import { eq } from "drizzle-orm";
+import QRCode from "qrcode";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 import { db } from "@/db";
 import {
@@ -13,7 +16,7 @@ import { getServerSession } from "@/lib/auth-session";
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ certificateId: string }> }
 ) {
   const session = await getServerSession();
@@ -60,13 +63,15 @@ export async function GET(
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  const [[course], [employee]] = await Promise.all([
+  const [[courseInfo], [employee]] = await Promise.all([
     db
       .select({
         title: chitraLearningCourses.title,
         category: chitraLearningCourses.category,
+        creatorName: employees.name,
       })
       .from(chitraLearningCourses)
+      .leftJoin(employees, eq(chitraLearningCourses.createdByEmployeeId, employees.id))
       .where(eq(chitraLearningCourses.id, certificate.courseId))
       .limit(1),
     db
@@ -81,75 +86,80 @@ export async function GET(
       .limit(1),
   ]);
 
-  if (!course || !employee) {
+  if (!courseInfo || !employee) {
     return NextResponse.json({ message: "Certificate data incomplete" }, { status: 404 });
   }
 
   const pdfDoc = await PDFDocument.create();
+  // Landscape A4
   const page = pdfDoc.addPage([842, 595]);
   const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
-  page.drawRectangle({
-    x: 28,
-    y: 28,
-    width: 786,
-    height: 539,
-    borderColor: rgb(0.1, 0.24, 0.34),
-    borderWidth: 2,
-    color: rgb(0.98, 0.99, 0.99),
-  });
-  page.drawRectangle({
-    x: 46,
-    y: 46,
-    width: 750,
-    height: 503,
-    borderColor: rgb(0.76, 0.85, 0.89),
-    borderWidth: 1,
-  });
+  // Load and draw background
+  try {
+    const bgImageBytes = readFileSync(resolve(process.cwd(), "public/CERTIFICATE-LMS-CLEAR.png"));
+    const bgImage = await pdfDoc.embedPng(bgImageBytes);
+    page.drawImage(bgImage, { x: 0, y: 0, width: 842, height: 595 });
+  } catch (err) {
+    console.warn("Failed to load background image:", err);
+  }
 
-  drawCentered(page, "CHITRALEARNING LMS", 508, 16, boldFont, rgb(0.1, 0.24, 0.34));
-  drawCentered(page, "CERTIFICATE OF COMPLETION", 454, 28, boldFont, rgb(0.06, 0.12, 0.16));
-  drawCentered(page, "This certificate is awarded to", 402, 13, regularFont, rgb(0.33, 0.4, 0.45));
-  drawCentered(page, employee.name, 358, 30, boldFont, rgb(0.04, 0.09, 0.13));
-  drawCentered(page, `${employee.employeeSn} | ${employee.department || "-"} | ${employee.section || "-"}`, 331, 11, regularFont, rgb(0.33, 0.4, 0.45));
-  drawCentered(page, "for successfully completing", 286, 13, regularFont, rgb(0.33, 0.4, 0.45));
-  drawCentered(page, course.title, 248, 24, boldFont, rgb(0.07, 0.18, 0.26));
-  drawCentered(page, `Category: ${course.category || "Internal"}`, 219, 11, regularFont, rgb(0.33, 0.4, 0.45));
+  const url = new URL(request.url);
+  const verifyUrl = `${url.origin}/dashboard/chitralearning-lms/certificates/${certificate.id}`; // simple verification link
+  const qrDataUrl = await QRCode.toDataURL(verifyUrl, { errorCorrectionLevel: 'M', margin: 1 });
+  const qrImageBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+  const qrImage = await pdfDoc.embedPng(qrImageBytes);
 
-  page.drawText(`Certificate No: ${certificate.certificateNumber}`, {
-    x: 76,
-    y: 126,
-    size: 11,
-    font: boldFont,
-    color: rgb(0.12, 0.18, 0.22),
-  });
-  page.drawText(`Issued: ${formatDate(certificate.issuedAt)}`, {
-    x: 76,
-    y: 104,
-    size: 10,
+  // Typography Settings
+  const primaryBlue = rgb(0.13, 0.45, 0.68); // ~ #2173ae
+  const darkGray = rgb(0.1, 0.1, 0.1);
+  const black = rgb(0, 0, 0);
+
+  // Layout dynamic texts based on the template
+
+  // Student Name
+  // Positioned around Y=260 (adjust based on where the line is in the image)
+  // Since the line is already in the image, we don't draw it. We just place the text above it.
+  const studentNameY = 250;
+  drawCentered(page, employee.name.toUpperCase(), studentNameY, 28, boldFont, black);
+
+  // Course Name
+  // Positioned below "FOR SUCCESFULLY COMPLETED TRAINING IN"
+  const courseNameY = 175;
+  drawCentered(page, courseInfo.title.toUpperCase(), courseNameY, 20, boldFont, black);
+  
+  // End Date
+  // Next to "ON"
+  const dateStr = formatDate(certificate.issuedAt);
+  // "ON" is probably around Y=110, X=290 or so. Let's place the date text precisely.
+  page.drawText(dateStr, {
+    x: 345, // roughly next to "ON "
+    y: 115,
+    size: 16,
     font: regularFont,
-    color: rgb(0.33, 0.4, 0.45),
+    color: darkGray,
   });
-  page.drawText("Internal training certificate generated from HERO.", {
-    x: 537,
-    y: 104,
-    size: 10,
+
+  // QR Code bottom left
+  page.drawImage(qrImage, {
+    x: 80,
+    y: 70,
+    width: 90,
+    height: 90,
+  });
+
+  // Instructor text
+  const instructorY = 50;
+  const instructorName = (courseInfo.creatorName || "Management").toUpperCase();
+  const instrWidth = regularFont.widthOfTextAtSize(instructorName, 12);
+  page.drawText(instructorName, {
+    x: 80 + 45 - (instrWidth / 2),
+    y: instructorY,
+    size: 12,
     font: regularFont,
-    color: rgb(0.33, 0.4, 0.45),
-  });
-  page.drawLine({
-    start: { x: 586, y: 143 },
-    end: { x: 744, y: 143 },
-    thickness: 1,
-    color: rgb(0.2, 0.28, 0.34),
-  });
-  page.drawText("Management", {
-    x: 629,
-    y: 122,
-    size: 11,
-    font: boldFont,
-    color: rgb(0.12, 0.18, 0.22),
+    color: black
   });
 
   const pdfBytes = await pdfDoc.save();
@@ -182,10 +192,10 @@ function drawCentered(
 }
 
 function formatDate(value: Date | string) {
-  return new Date(value).toLocaleDateString("id-ID", {
-    day: "2-digit",
+  return new Date(value).toLocaleDateString("en-US", {
+    day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "Asia/Makassar",
-  });
+  }).toUpperCase();
 }

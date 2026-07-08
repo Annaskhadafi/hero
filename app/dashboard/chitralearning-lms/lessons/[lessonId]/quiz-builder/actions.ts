@@ -31,6 +31,12 @@ export async function createQuizQuestion(courseId: number, lessonId: number, for
   const correctOption = textValue(formData, "correctOption", "A");
   const testPhase = textValue(formData, "testPhase", "posttest");
   const questionType = textValue(formData, "questionType", "single_choice");
+  const questionMetadataStr = textValue(formData, "questionMetadata");
+  
+  let questionMetadata = null;
+  if (questionMetadataStr) {
+    try { questionMetadata = JSON.parse(questionMetadataStr); } catch (e) {}
+  }
 
   const [created] = await db.insert(chitraLearningQuizQuestions).values({
     courseId,
@@ -48,6 +54,7 @@ export async function createQuizQuestion(courseId: number, lessonId: number, for
     correctOption,
     testPhase,
     questionType,
+    questionMetadata,
   }).returning();
 
   revalidatePath(`/dashboard/chitralearning-lms/lessons/${lessonId}/quiz-builder`);
@@ -72,6 +79,12 @@ export async function updateQuizQuestion(questionId: number, formData: FormData)
   const optionDImageUrl = textValue(formData, "optionDImageUrl");
   const correctOption = textValue(formData, "correctOption", "A");
   const questionType = textValue(formData, "questionType", "single_choice");
+  const questionMetadataStr = textValue(formData, "questionMetadata");
+  
+  let questionMetadata = null;
+  if (questionMetadataStr) {
+    try { questionMetadata = JSON.parse(questionMetadataStr); } catch (e) {}
+  }
 
   const [updated] = await db.update(chitraLearningQuizQuestions)
     .set({
@@ -87,6 +100,7 @@ export async function updateQuizQuestion(questionId: number, formData: FormData)
       optionDImageUrl,
       correctOption,
       questionType,
+      questionMetadata,
     })
     .where(eq(chitraLearningQuizQuestions.id, questionId))
     .returning();

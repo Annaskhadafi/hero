@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -163,7 +163,8 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const pretestWeight = numberValue(formData, "pretestWeight", 0);
   const posttestWeight = numberValue(formData, "posttestWeight", 100);
   const maxRetakesStr = textValue(formData, "maxRetakes");
-  const maxRetakes = maxRetakesStr !== undefined ? parseInt(maxRetakesStr, 10) : -1;
+  const parsedMaxRetakes = parseInt(maxRetakesStr, 10);
+  const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : -1;
 
   await db.update(chitraLearningCourses).set({
     status,
@@ -434,9 +435,15 @@ async function getCurrentEmployeeId() {
 async function getCurrentEmployee() {
   const session = await getServerSession();
 
-  if (!session?.user?.email) {
+  if (!session?.user?.email && !session?.user?.id) {
     throw new Error("Unauthorized");
   }
+
+  // Query by authUserId OR email to handle cases where the auth email
+  // differs from the employee email stored in hero_employees
+  const conditions = [];
+  if (session?.user?.id) conditions.push(eq(employees.authUserId, session.user.id));
+  if (session?.user?.email) conditions.push(eq(employees.email, session.user.email));
 
   const [employee] = await db
     .select({
@@ -446,7 +453,7 @@ async function getCurrentEmployee() {
       employeeSn: employees.employeeSn,
     })
     .from(employees)
-    .where(eq(employees.email, session.user.email))
+    .where(or(...conditions))
     .limit(1);
 
   return employee ?? null;

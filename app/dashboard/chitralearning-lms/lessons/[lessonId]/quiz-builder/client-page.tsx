@@ -46,6 +46,14 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
   const [optionDImageUrl, setOptionDImageUrl] = useState('')
   const [correctOption, setCorrectOption] = useState('A')
 
+  // Dynamic rows for matrix matching
+  const [matrixRows, setMatrixRows] = useState<{ text: string; answer: string }[]>([
+    { text: '', answer: 'A' },
+    { text: '', answer: 'B' },
+    { text: '', answer: 'C' },
+    { text: '', answer: 'D' },
+  ])
+
   // Helper for multiple choice checkboxes
   const handleMultipleChoiceToggle = (key: string) => {
     const current = correctOption.split(',').filter(Boolean)
@@ -97,8 +105,15 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
     setOptionA(''); setOptionAImageUrl('')
     setOptionB(''); setOptionBImageUrl('')
     setOptionC(''); setOptionCImageUrl('')
+    setOptionC(''); setOptionCImageUrl('')
     setOptionD(''); setOptionDImageUrl('')
     setCorrectOption('A')
+    setMatrixRows([
+      { text: '', answer: 'A' },
+      { text: '', answer: 'B' },
+      { text: '', answer: 'C' },
+      { text: '', answer: 'D' },
+    ])
     setDialogOpen(true)
   }
 
@@ -111,7 +126,30 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
     setOptionB(q.optionB); setOptionBImageUrl(q.optionBImageUrl || '')
     setOptionC(q.optionC); setOptionCImageUrl(q.optionCImageUrl || '')
     setOptionD(q.optionD); setOptionDImageUrl(q.optionDImageUrl || '')
+    setOptionD(q.optionD); setOptionDImageUrl(q.optionDImageUrl || '')
     setCorrectOption(q.correctOption)
+    
+    if (q.questionType === 'image_matching') {
+      if (q.questionMetadata?.matrixRows) {
+        setMatrixRows(q.questionMetadata.matrixRows)
+      } else {
+        const correctAnswers = (q.correctOption || '').split(',')
+        setMatrixRows([
+          { text: q.optionA || '', answer: correctAnswers[0] || 'A' },
+          { text: q.optionB || '', answer: correctAnswers[1] || 'B' },
+          { text: q.optionC || '', answer: correctAnswers[2] || 'C' },
+          { text: q.optionD || '', answer: correctAnswers[3] || 'D' },
+        ].filter(r => r.text !== ''))
+      }
+    } else {
+      setMatrixRows([
+        { text: '', answer: 'A' },
+        { text: '', answer: 'B' },
+        { text: '', answer: 'C' },
+        { text: '', answer: 'D' },
+      ])
+    }
+
     setDialogOpen(true)
   }
 
@@ -142,13 +180,21 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
       fd.append('optionA', optionA); fd.append('optionAImageUrl', optionAImageUrl)
       fd.append('optionB', optionB); fd.append('optionBImageUrl', optionBImageUrl)
       fd.append('optionC', optionC); fd.append('optionCImageUrl', optionCImageUrl)
+      fd.append('optionC', optionC); fd.append('optionCImageUrl', optionCImageUrl)
       fd.append('optionD', optionD); fd.append('optionDImageUrl', optionDImageUrl)
       
       let finalCorrectOption = correctOption
+      if (questionType === 'image_matching') {
+        fd.append('questionMetadata', JSON.stringify({ matrixRows }))
+        // satisfy db not-null constraints for legacy columns
+        fd.append('optionA', matrixRows[0]?.text || '-')
+        fd.append('optionB', matrixRows[1]?.text || '-')
+        fd.append('optionC', matrixRows[2]?.text || '-')
+        fd.append('optionD', matrixRows[3]?.text || '-')
+        finalCorrectOption = matrixRows.map(r => r.answer).join(',')
+      }
       if (questionType === 'true_false' && !['A', 'B'].includes(finalCorrectOption)) {
         finalCorrectOption = 'A'
-      } else if (questionType === 'image_matching') {
-        finalCorrectOption = correctOption
       }
       fd.append('correctOption', finalCorrectOption)
       fd.append('testPhase', lesson.lessonType === 'pretest' ? 'pretest' : 'posttest')
@@ -353,42 +399,66 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
               <div className="space-y-4 border-t pt-4">
                 <p className="text-sm font-medium">Buat Baris Konsep dan Kunci Huruf pada Gambar</p>
                 <div className="space-y-4">
-                  {[
-                    { label: 'Opsi Baris 1', val: optionA, setVal: setOptionA, key: 'A', idx: 0 },
-                    { label: 'Opsi Baris 2', val: optionB, setVal: setOptionB, key: 'B', idx: 1 },
-                    { label: 'Opsi Baris 3', val: optionC, setVal: setOptionC, key: 'C', idx: 2 },
-                    { label: 'Opsi Baris 4', val: optionD, setVal: setOptionD, key: 'D', idx: 3 },
-                  ].map(opt => (
-                    <div key={opt.key} className="flex flex-col sm:flex-row gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50 items-start sm:items-center">
+                  {matrixRows.map((row, idx) => (
+                    <div key={idx} className="flex flex-col sm:flex-row gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50 items-start sm:items-center relative">
                        <div className="flex-1 space-y-2 w-full">
-                         <Label>{opt.label}</Label>
+                         <Label>Opsi Baris {idx + 1}</Label>
                          <Input 
-                           value={opt.val} 
-                           onChange={e => opt.setVal(e.target.value)} 
-                           placeholder={`Teks untuk baris ke-${opt.idx + 1}`} 
+                           value={row.text} 
+                           onChange={e => {
+                             const newRows = [...matrixRows];
+                             newRows[idx].text = e.target.value;
+                             setMatrixRows(newRows);
+                           }} 
+                           placeholder={`Teks untuk baris ke-${idx + 1}`} 
                          />
                        </div>
                        <div className="w-full sm:w-48 space-y-2 shrink-0">
-                         <Label>Kunci Huruf (A/B/C/D)</Label>
+                         <Label>Kunci Huruf</Label>
                          <Select 
-                           value={(correctOption.split(',')[opt.idx] || '')} 
+                           value={row.answer} 
                            onValueChange={(val) => {
-                             const arr = (correctOption || ',,,').split(',');
-                             arr[opt.idx] = val;
-                             setCorrectOption(arr.join(','));
+                             const newRows = [...matrixRows];
+                             newRows[idx].answer = val;
+                             setMatrixRows(newRows);
                            }}
                          >
                            <SelectTrigger className="bg-white"><SelectValue placeholder="Pilih..." /></SelectTrigger>
                            <SelectContent>
-                             <SelectItem value="A">Huruf A</SelectItem>
-                             <SelectItem value="B">Huruf B</SelectItem>
-                             <SelectItem value="C">Huruf C</SelectItem>
-                             <SelectItem value="D">Huruf D</SelectItem>
+                             {Array.from({ length: Math.max(matrixRows.length, 4) }).map((_, i) => {
+                               const letter = String.fromCharCode(65 + i);
+                               return <SelectItem key={letter} value={letter}>Huruf {letter}</SelectItem>;
+                             })}
                            </SelectContent>
                          </Select>
                        </div>
+                       {matrixRows.length > 2 && (
+                         <Button
+                           type="button"
+                           variant="ghost"
+                           size="icon"
+                           className="absolute top-2 right-2 text-rose-500 hover:text-rose-600 hover:bg-rose-50 h-8 w-8"
+                           onClick={() => {
+                             const newRows = [...matrixRows];
+                             newRows.splice(idx, 1);
+                             setMatrixRows(newRows);
+                           }}
+                         >
+                           <Trash2 className="h-4 w-4" />
+                         </Button>
+                       )}
                     </div>
                   ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-dashed"
+                    onClick={() => {
+                      setMatrixRows([...matrixRows, { text: '', answer: String.fromCharCode(65 + matrixRows.length) }]);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" /> Tambah Baris
+                  </Button>
                 </div>
               </div>
             ) : (

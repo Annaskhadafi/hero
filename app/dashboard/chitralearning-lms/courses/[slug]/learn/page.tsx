@@ -146,6 +146,7 @@ export default async function LmsCoursePlayerPage({
     questionType: question.questionType || 'single_choice',
     question: replaceS3UrlsInHtml(question.questionText),
     questionImageUrl: resolveUploadUrl(question.questionImageUrl),
+    questionMetadata: question.questionMetadata,
     options: [
       { id: 'A', text: replaceS3UrlsInHtml(question.optionA), imageUrl: resolveUploadUrl(question.optionAImageUrl) },
       { id: 'B', text: replaceS3UrlsInHtml(question.optionB), imageUrl: resolveUploadUrl(question.optionBImageUrl) },

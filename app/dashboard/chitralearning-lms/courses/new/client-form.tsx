@@ -23,6 +23,7 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
   
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   async function handleUploadCover(e: React.ChangeEvent<HTMLInputElement>) {
@@ -48,6 +49,7 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
     if (!title.trim()) return
 
     setLoading(true)
+    setError(null)
     try {
       const formData = new FormData()
       formData.append('title', title)
@@ -65,8 +67,9 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
 
       const slug = await createCourse(formData)
       router.push(`/dashboard/chitralearning-lms/courses/${slug}/edit`)
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
+      setError(error?.message || 'Gagal membuat course. Silakan coba lagi.')
       setLoading(false)
     }
   }
@@ -78,6 +81,11 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
           <CardTitle>Buat Course Baru</CardTitle>
           <CardDescription>Lengkapi informasi dasar kursus Anda.</CardDescription>
         </CardHeader>
+        {error && (
+          <div className="mx-6 mb-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+            ⚠️ {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
             <div className="grid gap-2">
