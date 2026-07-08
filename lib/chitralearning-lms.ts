@@ -16,6 +16,23 @@ import {
   notificationDeliveries,
   notificationEvents,
 } from "@/db/schema/hero";
+import { getCurrentMenuPermission, getCurrentEmployeeAccessRole } from "@/lib/hero-access";
+
+export async function isLmsAdmin(session: any) {
+  // Check RBAC permission for LMS Builder
+  const perm = await getCurrentMenuPermission("chitralearning_lms_builder");
+  if (perm?.canView || perm?.canEdit) {
+    return true;
+  }
+
+  // Fallback to dynamic role or session role
+  const dynamicRole = await getCurrentEmployeeAccessRole();
+  const rawRole = session?.user?.role || dynamicRole;
+
+  if (!rawRole) return false;
+  const role = rawRole.toLowerCase().replace(/\s+/g, "");
+  return ["admin", "superadmin", "hr_admin", "hr"].includes(role);
+}
 
 export const INTERNAL_LMS_FEATURES = [
   {

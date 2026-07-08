@@ -9,6 +9,15 @@ import { randomUUID } from "crypto";
 const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+
+const OFFICE_MIME_TYPES = new Set([
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+const OFFICE_EXTENSIONS = new Set(["doc", "docx", "ppt", "pptx"]);
 
 async function requireUploadSession() {
   const session = await getServerSession();
@@ -25,14 +34,27 @@ export async function uploadFile(formData: FormData) {
 
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
-    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-      return { success: false, error: "File must be an image or PDF." };
+
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf";
+    const isVideo = file.type.startsWith("video/");
+    const fileExt = getCurhatFileExtension(file.name, file.type);
+    const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt);
+
+    if (!isImage && !isPdf && !isVideo && !isOffice) {
+      return { success: false, error: "File must be an image, PDF, Office document, or video." };
     }
-    if (file.type.startsWith("image/") && file.size > MAX_IMAGE_FILE_SIZE) {
+    if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
       return { success: false, error: "Photo size max 5MB." };
     }
-    if (file.type === "application/pdf" && file.size > 10 * 1024 * 1024) {
+    if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
       return { success: false, error: "PDF size max 10MB." };
+    }
+    if (isVideo && file.size > MAX_VIDEO_FILE_SIZE) {
+      return { success: false, error: "Video size max 100MB." };
+    }
+    if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
+      return { success: false, error: "Document size max 10MB." };
     }
     const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
 
@@ -49,7 +71,7 @@ export async function uploadFile(formData: FormData) {
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
-    const ext = getCurhatFileExtension(file.name, file.type);
+    const ext = fileExt;
     const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, "")) || "file";
     const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = join(uploadDir, uniqueName);

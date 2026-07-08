@@ -908,14 +908,28 @@ export const trainingRecords = pgTable('hero_training_records', {
   status: text('status').notNull(),
 })
 
+export const chitraLearningCategories = pgTable('hero_chitralearning_categories', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  color: text('color'),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
 export const chitraLearningCourses = pgTable('hero_chitralearning_courses', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),
   slug: text('slug').notNull().unique(),
   description: text('description').notNull().default(''),
+  categoryId: integer('category_id').references(() => chitraLearningCategories.id),
   category: text('category').notNull().default('Internal'),
+  level: text('level').notNull().default('beginner'),
+  objectives: jsonb('objectives').default('[]'),
   status: text('status').notNull().default('draft'),
   coverImageUrl: text('cover_image_url').notNull().default(''),
+  videoPreviewUrl: text('video_preview_url').notNull().default(''),
   passingScore: integer('passing_score').notNull().default(80),
   estimatedMinutes: integer('estimated_minutes').notNull().default(0),
   dueDays: integer('due_days').notNull().default(14),
@@ -932,6 +946,8 @@ export const chitraLearningLessons = pgTable('hero_chitralearning_lessons', {
   courseId: integer('course_id')
     .notNull()
     .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  sectionTitle: text('section_title').notNull().default(''),
+  sectionOrder: integer('section_order').notNull().default(0),
   lessonType: text('lesson_type').notNull().default('video'),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),

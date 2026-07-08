@@ -21,6 +21,7 @@ export default async function DailyReportPage() {
       periods={periods}
       dailyItems={dailyItems}
       initialSapRevenue={sapRevenue}
+      exchangeRate={firstPeriod?.exchangeRateIdrToUsd || "15000"}
     />
   );
 }

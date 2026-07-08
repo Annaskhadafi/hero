@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -9,6 +9,7 @@ import {
   chitraLearningAuditLogs,
   chitraLearningCampaignParticipants,
   chitraLearningCampaigns,
+  chitraLearningCategories,
   chitraLearningCertificates,
   chitraLearningCourseAccess,
   chitraLearningCourses,
@@ -22,6 +23,141 @@ import { getServerSession } from "@/lib/auth-session";
 import { runInternalLmsReminderTick, slugifyCourseTitle } from "@/lib/chitralearning-lms";
 
 const LMS_PATH = "/dashboard/chitralearning-lms";
+
+export async function createCourse(formData: FormData) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) {
+    throw new Error("Unauthorized");
+  }
+
+  const employee = await getCurrentEmployee();
+  if (!employee) throw new Error("Unauthorized");
+
+  const title = textValue(formData, "title");
+  const description = textValue(formData, "description");
+  const newCategoryName = textValue(formData, "newCategoryName");
+  
+  let categoryId = numberValue(formData, "categoryId") || null;
+  let categoryName = textValue(formData, "categoryName") || "Internal";
+
+  if (newCategoryName) {
+    const slug = slugifyCourseTitle(newCategoryName);
+    const [inserted] = await db.insert(chitraLearningCategories).values({
+      name: newCategoryName,
+      slug: slug,
+    }).returning({ id: chitraLearningCategories.id });
+    categoryId = inserted.id;
+    categoryName = newCategoryName;
+  } else if (categoryId) {
+    const [existingCategory] = await db.select({ id: chitraLearningCategories.id }).from(chitraLearningCategories).where(eq(chitraLearningCategories.id, categoryId)).limit(1);
+    if (!existingCategory) {
+      categoryId = null;
+    }
+  } else {
+    categoryId = null;
+  }
+  const level = textValue(formData, "level", "beginner");
+  const coverImageUrl = textValue(formData, "coverImageUrl");
+  const videoPreviewUrl = textValue(formData, "videoPreviewUrl");
+
+  const slugBase = slugifyCourseTitle(title);
+  let slug = slugBase;
+  let counter = 1;
+  while (true) {
+    const [existing] = await db.select({ id: chitraLearningCourses.id }).from(chitraLearningCourses).where(eq(chitraLearningCourses.slug, slug)).limit(1);
+    if (!existing) break;
+    slug = `${slugBase}-${counter++}`;
+  }
+
+  const [created] = await db.insert(chitraLearningCourses).values({
+    title,
+    slug,
+    description,
+    categoryId,
+    category: categoryName,
+    level,
+    coverImageUrl,
+    videoPreviewUrl,
+    status: "draft",
+    createdByEmployeeId: employee.id,
+  }).returning({ slug: chitraLearningCourses.slug });
+
+  revalidateLms();
+  return created.slug;
+}
+
+export async function updateCourseBaseInfo(courseId: number, formData: FormData) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const title = textValue(formData, "title");
+  const description = textValue(formData, "description");
+  const newCategoryName = textValue(formData, "newCategoryName");
+
+  let categoryId = numberValue(formData, "categoryId") || null;
+  let categoryName = textValue(formData, "categoryName") || "Internal";
+
+  if (newCategoryName) {
+    const slug = slugifyCourseTitle(newCategoryName);
+    const [inserted] = await db.insert(chitraLearningCategories).values({
+      name: newCategoryName,
+      slug: slug,
+    }).returning({ id: chitraLearningCategories.id });
+    categoryId = inserted.id;
+    categoryName = newCategoryName;
+  } else if (categoryId) {
+    const [existingCategory] = await db.select({ id: chitraLearningCategories.id }).from(chitraLearningCategories).where(eq(chitraLearningCategories.id, categoryId)).limit(1);
+    if (!existingCategory) {
+      categoryId = null;
+    }
+  } else {
+    categoryId = null;
+  }
+  const level = textValue(formData, "level", "beginner");
+  const coverImageUrl = textValue(formData, "coverImageUrl");
+  const videoPreviewUrl = textValue(formData, "videoPreviewUrl");
+
+  await db.update(chitraLearningCourses).set({
+    title,
+    description,
+    categoryId,
+    category: categoryName,
+    level,
+    coverImageUrl,
+    videoPreviewUrl,
+    updatedAt: new Date()
+  }).where(eq(chitraLearningCourses.id, courseId));
+
+  revalidateLms();
+  return { success: true };
+}
+
+export async function updateCourseSettings(courseId: number, formData: FormData) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const status = textValue(formData, "status", "draft");
+  const passingScore = numberValue(formData, "passingScore", 80);
+  const dueDays = numberValue(formData, "dueDays", 30);
+  const certificateEnabled = textValue(formData, "certificateEnabled") === "yes";
+
+  await db.update(chitraLearningCourses).set({
+    status,
+    passingScore,
+    dueDays,
+    certificateEnabled,
+    updatedAt: new Date()
+  }).where(eq(chitraLearningCourses.id, courseId));
+
+  revalidateLms();
+  return { success: true };
+}
 
 function textValue(formData: FormData, key: string, fallback = "") {
   const value = formData.get(key);
@@ -42,6 +178,135 @@ function dateValue(formData: FormData, key: string) {
 
 function normalizeValue(value: string | number | null | undefined) {
   return `${value ?? ""}`.trim().toLowerCase();
+}
+
+export async function createLesson(courseId: number, formData: FormData) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const title = textValue(formData, "title");
+  const description = textValue(formData, "description");
+  const sectionTitle = textValue(formData, "sectionTitle", "Materi Pembelajaran");
+  const lessonType = textValue(formData, "lessonType", "video");
+  const videoUrl = textValue(formData, "videoUrl");
+  const fileUrl = textValue(formData, "fileUrl");
+  const durationMinutes = numberValue(formData, "durationMinutes", 0);
+  const isRequired = formData.get("isRequired") === "true";
+
+  // Get max sortOrder for this course
+  const [maxOrder] = await db.select({ max: sql<number>`MAX(sort_order)` })
+    .from(chitraLearningLessons)
+    .where(eq(chitraLearningLessons.courseId, courseId));
+    
+  const nextOrder = (maxOrder?.max || 0) + 1;
+
+  const [created] = await db.insert(chitraLearningLessons).values({
+    courseId,
+    title,
+    description,
+    sectionTitle,
+    lessonType,
+    videoUrl,
+    fileUrl,
+    durationMinutes,
+    sortOrder: nextOrder,
+    isRequired,
+  }).returning();
+
+  revalidateLms();
+  revalidatePath(`/dashboard/chitralearning-lms/courses/${courseId}/edit`);
+  return created;
+}
+
+export async function updateLesson(lessonId: number, formData: FormData) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const title = textValue(formData, "title");
+  const description = textValue(formData, "description");
+  const sectionTitle = textValue(formData, "sectionTitle", "Materi Pembelajaran");
+  const lessonType = textValue(formData, "lessonType", "video");
+  const videoUrl = textValue(formData, "videoUrl");
+  const fileUrl = textValue(formData, "fileUrl");
+  const durationMinutes = numberValue(formData, "durationMinutes", 0);
+  const isRequired = formData.get("isRequired") === "true";
+
+  const [updated] = await db.update(chitraLearningLessons)
+    .set({
+      title,
+      description,
+      sectionTitle,
+      lessonType,
+      videoUrl,
+      fileUrl,
+      durationMinutes,
+      isRequired,
+      updatedAt: new Date(),
+    })
+    .where(eq(chitraLearningLessons.id, lessonId))
+    .returning();
+
+  revalidateLms();
+  return updated;
+}
+
+export async function deleteLesson(lessonId: number) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  await db.delete(chitraLearningLessons).where(eq(chitraLearningLessons.id, lessonId));
+  revalidateLms();
+  return { success: true };
+}
+
+export async function deleteQuizQuestion(questionId: number) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  await db.delete(chitraLearningQuizQuestions).where(eq(chitraLearningQuizQuestions.id, questionId));
+  revalidateLms();
+  return { success: true };
+}
+
+export async function reorderCurriculum(courseId: number, sections: any[]) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  // Format of sections is BuilderSection[]: { title: string, lessons: { id: string }[] }
+  let sectionOrder = 1;
+  let sortOrder = 1;
+
+  // Use a transaction to ensure all updates happen or none
+  await db.transaction(async (tx) => {
+    for (const section of sections) {
+      for (const lesson of section.lessons) {
+        if (!lesson.id.startsWith('new-')) {
+          await tx.update(chitraLearningLessons)
+            .set({
+              sectionTitle: section.title,
+              sectionOrder: sectionOrder,
+              sortOrder: sortOrder,
+            })
+            .where(eq(chitraLearningLessons.id, parseInt(lesson.id, 10)));
+          sortOrder++;
+        }
+      }
+      sectionOrder++;
+    }
+  });
+
+  revalidateLms();
+  return { success: true };
 }
 
 async function getCurrentEmployeeId() {
@@ -71,7 +336,7 @@ async function getCurrentEmployee() {
 }
 
 function revalidateLms() {
-  revalidatePath(LMS_PATH);
+  revalidatePath(LMS_PATH, "layout");
 }
 
 async function logInternalLmsAudit(input: {
@@ -114,6 +379,17 @@ async function getCourse(courseId: number) {
   return course ?? null;
 }
 
+async function getLessonProgress(courseId: number, lessonId: number) {
+  const lessons = await db
+    .select({ id: chitraLearningLessons.id })
+    .from(chitraLearningLessons)
+    .where(eq(chitraLearningLessons.courseId, courseId))
+    .orderBy(asc(chitraLearningLessons.sectionOrder), asc(chitraLearningLessons.sortOrder), asc(chitraLearningLessons.id));
+  const lessonIndex = lessons.findIndex((lesson) => lesson.id === lessonId);
+  if (lessonIndex < 0 || lessons.length === 0) return 0;
+  return clampScore(((lessonIndex + 1) / lessons.length) * 100);
+}
+
 async function getOrCreateEnrollment(
   courseId: number,
   employeeId: number,
@@ -154,6 +430,36 @@ async function getOrCreateEnrollment(
     .returning();
 
   return created;
+}
+
+export async function completeInternalLmsLessonAction(input: { courseId: number; lessonId: number }) {
+  const employee = await getCurrentEmployee();
+  if (!employee || !input.courseId || !input.lessonId) return null;
+
+  const enrollment = await getOrCreateEnrollment(input.courseId, employee.id);
+  const progress = Math.max(enrollment.progress, await getLessonProgress(input.courseId, input.lessonId));
+
+  await db
+    .update(chitraLearningEnrollments)
+    .set({
+      status: progress >= 100 ? "passed" : "in_progress",
+      progress,
+      lastLessonId: input.lessonId,
+      completedAt: progress >= 100 ? new Date() : enrollment.completedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(chitraLearningEnrollments.id, enrollment.id));
+
+  await logInternalLmsAudit({
+    actorEmployeeId: employee.id,
+    action: "lesson_completed",
+    courseId: input.courseId,
+    employeeId: employee.id,
+    afterValue: { lessonId: input.lessonId, progress },
+  });
+
+  revalidateLms();
+  return { progress };
 }
 
 function matchesCampaignTarget(
@@ -593,10 +899,12 @@ export async function saveInternalLmsVideoProgressAction(input: {
       updatedAt: new Date(),
     })
     .where(eq(chitraLearningEnrollments.id, enrollment.id));
+  revalidateLms();
 }
 
 export async function submitInternalLmsQuizAction(formData: FormData) {
   const courseId = numberValue(formData, "courseId");
+  const lessonId = numberValue(formData, "lessonId");
   const phase = textValue(formData, "testPhase", "posttest") === "pretest" ? "pretest" : "posttest";
   const employee = await getCurrentEmployee();
 
@@ -613,7 +921,15 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
   const questions = await db
     .select()
     .from(chitraLearningQuizQuestions)
-    .where(and(eq(chitraLearningQuizQuestions.courseId, courseId), eq(chitraLearningQuizQuestions.testPhase, phase)));
+    .where(
+      lessonId
+        ? and(
+            eq(chitraLearningQuizQuestions.courseId, courseId),
+            eq(chitraLearningQuizQuestions.lessonId, lessonId),
+            eq(chitraLearningQuizQuestions.testPhase, phase)
+          )
+        : and(eq(chitraLearningQuizQuestions.courseId, courseId), eq(chitraLearningQuizQuestions.testPhase, phase))
+    );
 
   const totalPoints = questions.reduce((sum, question) => sum + Math.max(1, question.points || 1), 0);
   const awardedPoints = questions.reduce((sum, question) => {
@@ -624,12 +940,14 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
   const score = totalPoints > 0 ? Math.round((awardedPoints / totalPoints) * 100) : 0;
 
   if (phase === "pretest") {
+    const progress = Math.max(enrollment.progress, await getLessonProgress(courseId, lessonId));
     await db
       .update(chitraLearningEnrollments)
       .set({
         pretestScore: score,
         pretestStatus: "completed",
-        progress: Math.max(enrollment.progress, 20),
+        progress,
+        lastLessonId: lessonId || enrollment.lastLessonId,
         updatedAt: new Date(),
       })
       .where(eq(chitraLearningEnrollments.id, enrollment.id));
@@ -643,6 +961,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         score,
         status: passed ? "passed" : "failed",
         progress: passed ? 100 : Math.max(enrollment.progress, 80),
+        lastLessonId: lessonId || enrollment.lastLessonId,
         completedAt: passed ? new Date() : null,
         updatedAt: new Date(),
       })
@@ -663,6 +982,22 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       })
       .where(eq(chitraLearningCampaignParticipants.enrollmentId, enrollment.id));
   }
+
+  await logInternalLmsAudit({
+    actorEmployeeId: employee.id,
+    action: "quiz_submitted",
+    courseId,
+    employeeId: employee.id,
+    afterValue: {
+      lessonId,
+      phase,
+      score,
+      answers: questions.map((question) => ({
+        questionId: question.id,
+        answer: textValue(formData, `answer_${question.id}`).toUpperCase(),
+      })),
+    },
+  });
 
   revalidateLms();
 }

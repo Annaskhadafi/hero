@@ -1,0 +1,78 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+function read(path) {
+  return readFileSync(path, "utf8");
+}
+
+test("LMS course covers use browser image loading and uploaded root files stay readable", () => {
+  const card = read("components/lms/lms-course-card.tsx");
+  const hero = read("components/lms/lms-course-hero.tsx");
+  const uploadRoute = read("app/api/uploads/[...path]/route.ts");
+  const detailPage = read("app/dashboard/chitralearning-lms/courses/[slug]/page.tsx");
+  const learnPage = read("app/dashboard/chitralearning-lms/courses/[slug]/learn/page.tsx");
+  const lmsLayout = read("app/dashboard/chitralearning-lms/layout.tsx");
+  const actions = read("app/dashboard/chitralearning-lms/actions.ts");
+  const quizPlayer = read("components/lms/lms-quiz-player.tsx");
+  const videoPlayer = read("components/chitralearning-video-player.tsx");
+  const playerSidebar = read("components/lms/lms-player-sidebar.tsx");
+  const completeButton = read("components/lms/lms-lesson-complete-button.tsx");
+  const uploadAction = read("app/actions/upload.ts");
+  const curriculumBuilder = read("components/lms/lms-curriculum-builder.tsx");
+
+  assert.doesNotMatch(card, /next\/image/);
+  assert.doesNotMatch(hero, /next\/image/);
+  assert.match(card, /<img[\s\S]+onError=\{\(\) => setCoverFailed\(true\)\}/);
+  assert.match(hero, /<img[\s\S]+onError=\{\(\) => setCoverFailed\(true\)\}/);
+  assert.match(card, /buttonVariants\(\{ size: "sm"/);
+  assert.match(uploadRoute, /if \(path\.length === 1\) return true;/);
+  assert.match(detailPage, /params: Promise<\{ slug: string \}>/);
+  assert.match(detailPage, /const \{ slug \} = await params/);
+  assert.doesNotMatch(detailPage, /params\.slug/);
+  assert.match(learnPage, /searchParams: Promise<\{ lessonId\?: string \}>/);
+  assert.doesNotMatch(learnPage, /params\.slug/);
+  assert.match(lmsLayout, /data-lms-shell/);
+  assert.match(learnPage, /data-lms-focus-mode/);
+  assert.match(learnPage, /\[data-lms-shell\]:has\(\[data-lms-focus-mode\]\) > aside/);
+  assert.match(learnPage, /chitraLearningQuizQuestions/);
+  assert.match(learnPage, /\['quiz', 'pretest', 'posttest'\]\.includes\(activeLessonType\)/);
+  assert.doesNotMatch(learnPage, /mockQuizQuestions/);
+  assert.match(actions, /const lessonId = numberValue\(formData, "lessonId"\)/);
+  assert.match(actions, /eq\(chitraLearningQuizQuestions\.lessonId, lessonId\)/);
+  assert.match(quizPlayer, /dangerouslySetInnerHTML=\{\{ __html: html \|\| '' \}\}/);
+  assert.match(quizPlayer, /questionImageUrl\?: string/);
+  assert.match(learnPage, /questionImageUrl: question\.questionImageUrl/);
+  assert.match(learnPage, /imageUrl: question\.optionAImageUrl/);
+  assert.match(quizPlayer, /Materi Selanjutnya/);
+  assert.match(quizPlayer, /Kembali ke Kursus/);
+  assert.match(quizPlayer, /\{courseHref && \(/);
+  assert.match(quizPlayer, /router\.push\(nextLessonHref\)/);
+  assert.match(quizPlayer, /setSubmitted\(false\)/);
+  assert.match(learnPage, /const isLocked = false/);
+  assert.match(learnPage, /const nextLessonHref = nextLesson \?/);
+  assert.match(videoPlayer, /controlsList="nodownload"/);
+  assert.match(videoPlayer, /onContextMenu=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(actions, /revalidatePath\(LMS_PATH, "layout"\)/);
+  assert.match(videoPlayer, /router\.refresh\(\)/);
+  assert.match(quizPlayer, /router\.refresh\(\)/);
+  assert.match(learnPage, /chitraLearningEnrollments/);
+  assert.match(learnPage, /progress: 10/);
+  assert.match(actions, /completeInternalLmsLessonAction/);
+  assert.match(actions, /action: "quiz_submitted"/);
+  assert.match(actions, /answers: questions\.map/);
+  assert.doesNotMatch(playerSidebar, /Progress Anda/);
+  assert.match(learnPage, /\['doc', 'docx', 'ppt', 'pptx'\]\.includes\(fileExtension\)/);
+  assert.match(learnPage, /view\.officeapps\.live\.com\/op\/embed\.aspx/);
+  assert.match(learnPage, /toolbar=0&navpanes=0&scrollbar=1/);
+  assert.match(learnPage, /sandbox="allow-forms allow-scripts allow-same-origin"/);
+  assert.doesNotMatch(learnPage, /href=\{activeLesson\.fileUrl\}/);
+  assert.match(curriculumBuilder, /accept="\.pdf,\.doc,\.docx,\.ppt,\.pptx"/);
+  assert.match(curriculumBuilder, /accept="\.zip,\.pdf,\.doc,\.docx,\.ppt,\.pptx"/);
+  assert.match(curriculumBuilder, /function DocumentMaterialPreview/);
+  assert.match(curriculumBuilder, /view\.officeapps\.live\.com\/op\/embed\.aspx/);
+  assert.match(curriculumBuilder, /<DocumentMaterialPreview fileUrl=\{fileUrl\} \/>/);
+  assert.match(uploadAction, /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/);
+  assert.match(uploadAction, /OFFICE_EXTENSIONS = new Set\(\["doc", "docx", "ppt", "pptx"\]\)/);
+  assert.match(completeButton, /Selesai & Materi Selanjutnya/);
+});

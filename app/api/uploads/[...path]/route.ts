@@ -37,6 +37,7 @@ function isValidPathSegment(segment: string) {
 
 function isAllowedUploadPath(path: string[]) {
   if (!path.every(isValidPathSegment)) return false;
+  if (path.length === 1) return true;
   return ALLOWED_UPLOAD_PREFIXES.has(path[0]);
 }
 
