@@ -295,6 +295,7 @@ function SortableSection({
 }
 
 export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestions = [], onChange }: LmsCurriculumBuilderProps) {
+  const [isMounted, setIsMounted] = useState(false)
   const [sections, setSections] = useState<BuilderSection[]>(initialSections)
   const [questions, setQuestions] = useState<BuilderQuestion[]>(initialQuestions)
   const [activeLessonId, setActiveLessonId] = useState<string | null>(() => initialSections.flatMap((section) => section.lessons)[0]?.id ?? null)
@@ -310,6 +311,10 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
   const [loading, setLoading] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [questionsLibraryOpen, setQuestionsLibraryOpen] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
   const router = useRouter()
 
   const flatLessons = useMemo(() => sections.flatMap((section) => section.lessons.map((lesson) => ({ ...lesson, sectionId: section.id, sectionTitle: section.title }))), [sections])
@@ -555,6 +560,14 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     } finally {
       setLoading(false)
     }
+  }
+
+  if (!isMounted) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-300" />
+      </div>
+    )
   }
 
   return (
@@ -853,7 +866,13 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
             {lessonType === 'video' && (
               <div className="grid gap-2">
                 <Label>URL Video</Label>
-                <Input type="url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://youtube.com/watch?v=..." />
+                <div className="flex gap-2">
+                  <Input type="url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} placeholder="https://youtube.com/watch?v=... atau upload" />
+                  <input id="new-lesson-video-upload" type="file" className="hidden" onChange={handleVideoUpload} accept="video/mp4,video/webm" />
+                  <Button type="button" variant="outline" onClick={() => document.getElementById('new-lesson-video-upload')?.click()} disabled={uploadingFile}>
+                    {uploadingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             )}
             {lessonType === 'article' && (

@@ -3,13 +3,36 @@
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ChevronDown, ChevronRight, Users } from 'lucide-react'
+import { ChevronDown, ChevronRight, Users, Trash2, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { deleteCourse } from '../actions'
 
 export function CourseListTable({ courses }: { courses: any[] }) {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null)
+  const [isDeleting, setIsDeleting] = useState<number | null>(null)
+  const router = useRouter()
 
   const toggleExpand = (courseId: number) => {
     setExpandedCourseId(current => current === courseId ? null : courseId)
+  }
+
+  const handleDelete = async (courseId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Apakah Anda yakin ingin menghapus kursus ini? Semua data terkait (materi, soal, pendaftaran) akan ikut terhapus secara permanen.')) {
+      return
+    }
+
+    setIsDeleting(courseId)
+    try {
+      await deleteCourse(courseId)
+      toast.success('Kursus berhasil dihapus')
+      router.refresh()
+    } catch (error) {
+      toast.error('Gagal menghapus kursus')
+    } finally {
+      setIsDeleting(null)
+    }
   }
 
   return (
@@ -52,9 +75,20 @@ export function CourseListTable({ courses }: { courses: any[] }) {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={course.action}>Edit</Link>
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={course.action}>Edit</Link>
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-rose-500 hover:text-rose-600 hover:bg-rose-50"
+                      onClick={(e) => handleDelete(course.id, e)}
+                      disabled={isDeleting === course.id}
+                    >
+                      {isDeleting === course.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </td>
               </tr>
               

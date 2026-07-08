@@ -30,6 +30,7 @@ export async function createQuizQuestion(courseId: number, lessonId: number, for
   const optionDImageUrl = textValue(formData, "optionDImageUrl");
   const correctOption = textValue(formData, "correctOption", "A");
   const testPhase = textValue(formData, "testPhase", "posttest");
+  const questionType = textValue(formData, "questionType", "single_choice");
 
   const [created] = await db.insert(chitraLearningQuizQuestions).values({
     courseId,
@@ -46,6 +47,7 @@ export async function createQuizQuestion(courseId: number, lessonId: number, for
     optionDImageUrl,
     correctOption,
     testPhase,
+    questionType,
   }).returning();
 
   revalidatePath(`/dashboard/chitralearning-lms/lessons/${lessonId}/quiz-builder`);
@@ -69,6 +71,7 @@ export async function updateQuizQuestion(questionId: number, formData: FormData)
   const optionD = textValue(formData, "optionD");
   const optionDImageUrl = textValue(formData, "optionDImageUrl");
   const correctOption = textValue(formData, "correctOption", "A");
+  const questionType = textValue(formData, "questionType", "single_choice");
 
   const [updated] = await db.update(chitraLearningQuizQuestions)
     .set({
@@ -83,6 +86,7 @@ export async function updateQuizQuestion(questionId: number, formData: FormData)
       optionD,
       optionDImageUrl,
       correctOption,
+      questionType,
     })
     .where(eq(chitraLearningQuizQuestions.id, questionId))
     .returning();

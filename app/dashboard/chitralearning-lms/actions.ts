@@ -20,6 +20,7 @@ import {
   employees,
   trainingRecords,
 } from "@/db/schema/hero";
+import { sendLmsNotification } from "@/lib/chitralearning-lms/notifications";
 import { getServerSession } from "@/lib/auth-session";
 import { runInternalLmsReminderTick, slugifyCourseTitle } from "@/lib/chitralearning-lms";
 
@@ -137,6 +138,17 @@ export async function updateCourseBaseInfo(courseId: number, formData: FormData)
   return { success: true };
 }
 
+export async function deleteCourse(courseId: number) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  await db.delete(chitraLearningCourses).where(eq(chitraLearningCourses.id, courseId));
+  revalidateLms();
+  return { success: true };
+}
+
 export async function updateCourseSettings(courseId: number, formData: FormData) {
   const session = await getServerSession();
   const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
@@ -150,6 +162,8 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const gradingType = textValue(formData, "gradingType", "posttest_only");
   const pretestWeight = numberValue(formData, "pretestWeight", 0);
   const posttestWeight = numberValue(formData, "posttestWeight", 100);
+  const maxRetakesStr = textValue(formData, "maxRetakes");
+  const maxRetakes = maxRetakesStr !== undefined ? parseInt(maxRetakesStr, 10) : -1;
 
   await db.update(chitraLearningCourses).set({
     status,
@@ -159,7 +173,8 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
     gradingType,
     pretestWeight,
     posttestWeight,
-    updatedAt: new Date()
+    maxRetakes,
+    updatedAt: new Date(),
   }).where(eq(chitraLearningCourses.id, courseId));
 
   revalidateLms();
@@ -946,6 +961,15 @@ export async function startInternalLmsCourseAction(formData: FormData) {
       startedAt: new Date(),
       dueAt: dueDate(course.dueDays),
     });
+
+    // Send notification
+    if (employee.email) {
+      void sendLmsNotification({
+        to: employee.email,
+        subject: `Pendaftaran Kursus: ${course.title}`,
+        message: `Halo ${employee.name}, Anda telah didaftarkan dan memulai kursus "${course.title}". Selamat belajar!`
+      });
+    }
   }
 
   revalidateLms();
@@ -1019,6 +1043,24 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
     throw new Error("Course tidak ditemukan");
   }
 
+  if (course.maxRetakes !== undefined && course.maxRetakes >= 0) {
+    const { sql } = await import('drizzle-orm')
+    const { chitraLearningAuditLogs } = await import('@/db/schema/hero')
+    const auditRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(chitraLearningAuditLogs)
+      .where(and(
+         eq(chitraLearningAuditLogs.employeeId, employee.id),
+         eq(chitraLearningAuditLogs.courseId, course.id),
+         eq(chitraLearningAuditLogs.action, 'quiz_submitted'),
+         sql`CAST(after_value->>'lessonId' AS INTEGER) = ${lessonId || 0}`
+      ))
+    const attemptCount = Number(auditRows[0].count)
+    if (attemptCount > course.maxRetakes) {
+      throw new Error("Anda telah mencapai batas maksimal percobaan tes.")
+    }
+  }
+
   const enrollment = await getOrCreateEnrollment(courseId, employee.id);
   const questions = await db
     .select()
@@ -1035,9 +1077,22 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
   const totalPoints = questions.reduce((sum, question) => sum + Math.max(1, question.points || 1), 0);
   const awardedPoints = questions.reduce((sum, question) => {
-    const answer = textValue(formData, `answer_${question.id}`).toUpperCase();
-    const correct = question.correctOption.toUpperCase();
-    return sum + (answer && answer === correct ? Math.max(1, question.points || 1) : 0);
+    const answer = textValue(formData, `answer_${question.id}`);
+    const correct = question.correctOption;
+    const type = question.questionType || 'single_choice';
+    let isCorrect = false;
+
+    if (type === 'multiple_choice') {
+      const answerSorted = answer.split(',').filter(Boolean).sort().join(',').toUpperCase();
+      const correctSorted = correct.split(',').filter(Boolean).sort().join(',').toUpperCase();
+      isCorrect = answerSorted === correctSorted && answerSorted.length > 0;
+    } else if (type === 'fill_in_the_gap') {
+      isCorrect = answer.trim().toUpperCase() === correct.trim().toUpperCase() && answer.trim().length > 0;
+    } else {
+      isCorrect = answer.toUpperCase() === correct.toUpperCase() && answer.trim().length > 0;
+    }
+
+    return sum + (isCorrect ? Math.max(1, question.points || 1) : 0);
   }, 0);
   const score = totalPoints > 0 ? Math.round((awardedPoints / totalPoints) * 100) : 0;
 
@@ -1083,6 +1138,16 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       })
       .where(eq(chitraLearningEnrollments.id, enrollment.id));
 
+    // Award Gamification Points (100 pts) if passing for the first time
+    if (passed && !enrollment.isPassed) {
+      await db
+        .update(employees)
+        .set({
+          totalPoints: (employee.totalPoints || 0) + 100
+        })
+        .where(eq(employees.id, employee.id));
+    }
+
     if (passed && course.certificateEnabled) {
       await issueCertificateForEmployee(courseId, employee.id, enrollment.id, employee.id, "auto_issued_after_posttest");
     }
@@ -1116,6 +1181,12 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
   });
 
   revalidateLms();
+
+  return {
+    success: true,
+    score,
+    passed: phase === "pretest" ? (course.gradingType === 'weighted' ? (score * (course.pretestWeight || 0) / 100) + ((enrollment.posttestScore || 0) * (course.posttestWeight || 100) / 100) >= course.passingScore : (enrollment.posttestScore || 0) >= course.passingScore) : (course.gradingType === 'weighted' ? ((enrollment.pretestScore || 0) * (course.pretestWeight || 0) / 100) + (score * (course.posttestWeight || 100) / 100) >= course.passingScore : score >= course.passingScore)
+  };
 }
 
 export async function submitInternalLmsAssignmentResponseAction(formData: FormData) {

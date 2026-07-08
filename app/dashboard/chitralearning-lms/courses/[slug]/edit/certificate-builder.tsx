@@ -5,7 +5,7 @@ import * as fabric from 'fabric'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Save, Type, Image as ImageIcon } from 'lucide-react'
+import { Loader2, Save, Type, Image as ImageIcon, QrCode } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
 import { toast } from 'sonner'
 import { updateCertificateTemplateAction } from '../../../actions'
@@ -26,7 +26,9 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
       setCanvas(initCanvas)
 
       if (initialTemplate?.canvasData && Object.keys(initialTemplate.canvasData).length > 0) {
-        initCanvas.loadFromJSON(initialTemplate.canvasData).then(() => {
+        let jsonData = JSON.stringify(initialTemplate.canvasData)
+        jsonData = jsonData.replace(/https?:\/\/[^"'\s\\]+\/(upload|attendance-photos|profile-photos|curhat)\/([^"'\s\\]+)/g, '/api/uploads/$1/$2')
+        initCanvas.loadFromJSON(JSON.parse(jsonData)).then(() => {
           initCanvas.renderAll()
         })
       }
@@ -39,12 +41,28 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
 
   useEffect(() => {
     if (canvas && bgUrl) {
-      fabric.FabricImage.fromURL(bgUrl, { crossOrigin: 'anonymous' }).then((img) => {
+      // Proxy the URL to avoid CORS issues from direct S3 links
+      const getProxiedUrl = (url: string) => {
+        if (!url || url.startsWith('/')) return url;
+        const match = url.match(/(?:upload|attendance-photos|profile-photos|curhat)\/.+/);
+        return match ? `/api/uploads/${match[0]}` : url;
+      };
+      
+      const proxyUrl = getProxiedUrl(bgUrl);
+      
+      fabric.FabricImage.fromURL(proxyUrl, { crossOrigin: 'anonymous' }).then((img) => {
         if (!img) return;
+        img.set({
+          scaleX: canvas.width! / img.width!,
+          scaleY: canvas.height! / img.height!,
+          originX: 'left',
+          originY: 'top'
+        });
         canvas.backgroundImage = img;
-        img.scaleX = canvas.width! / img.width!;
-        img.scaleY = canvas.height! / img.height!;
         canvas.renderAll()
+      }).catch((err) => {
+        console.error("Fabric load error:", err);
+        toast.error("Gagal memuat gambar ke kanvas");
       })
     }
   }, [canvas, bgUrl])
@@ -58,6 +76,9 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
       const res = await uploadFile(formData)
       if (res.success) {
         setBgUrl(res.url)
+        toast.success('Background berhasil diupload')
+      } else {
+        toast.error(res.error || 'Gagal upload background')
       }
     } catch (err) {
       toast.error('Gagal upload background')
@@ -79,6 +100,43 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
     canvas.setActiveObject(textObj)
     canvas.renderAll()
   }
+
+  function addQRCodePlaceholder() {
+    if (!canvas) return
+    const rect = new fabric.Rect({
+      left: canvas.width! - 150,
+      top: canvas.height! - 150,
+      width: 100,
+      height: 100,
+      fill: 'transparent',
+      stroke: '#000000',
+      strokeWidth: 2,
+      strokeDashArray: [5, 5],
+      name: 'qrcode_placeholder'
+    })
+    
+    // Add text label inside the rect to make it obvious
+    const text = new fabric.Text('QR Code', {
+      left: rect.left + 50,
+      top: rect.top + 50,
+      fontSize: 16,
+      fontFamily: 'Arial',
+      fill: '#666',
+      originX: 'center',
+      originY: 'center',
+    })
+    
+    const group = new fabric.Group([rect, text], {
+      name: 'qrcode_placeholder',
+      left: canvas.width! - 150,
+      top: canvas.height! - 150,
+    })
+
+    canvas.add(group)
+    canvas.setActiveObject(group)
+    canvas.renderAll()
+  }
+  
   
   function deleteSelected() {
     if (!canvas) return
@@ -140,6 +198,10 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
           <Button type="button" variant="outline" onClick={() => addVariableText('{{certificateNumber}}')}>
             <Type className="h-4 w-4 mr-2" />
             No. Sertifikat
+          </Button>
+          <Button type="button" variant="outline" onClick={addQRCodePlaceholder}>
+            <QrCode className="h-4 w-4 mr-2" />
+            QR Code
           </Button>
         </div>
       </div>

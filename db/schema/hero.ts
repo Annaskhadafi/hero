@@ -937,6 +937,7 @@ export const chitraLearningCourses = pgTable('hero_chitralearning_courses', {
   gradingType: text('grading_type').notNull().default('posttest_only'),
   pretestWeight: integer('pretest_weight').notNull().default(0),
   posttestWeight: integer('posttest_weight').notNull().default(100),
+  maxRetakes: integer('max_retakes').notNull().default(-1),
   createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
     onDelete: 'set null',
   }),
@@ -971,6 +972,8 @@ export const chitraLearningQuizQuestions = pgTable('hero_chitralearning_quiz_que
     .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
   lessonId: integer('lesson_id').references(() => chitraLearningLessons.id, { onDelete: 'set null' }),
   testPhase: text('test_phase').notNull().default('posttest'),
+  questionType: text('question_type').notNull().default('single_choice'),
+  questionMetadata: jsonb('question_metadata'),
   questionText: text('question_text').notNull(),
   questionImageUrl: text('question_image_url').notNull().default(''),
   optionA: text('option_a').notNull(),
@@ -1046,6 +1049,32 @@ export const chitraLearningEnrollments = pgTable(
     ),
   })
 )
+
+export const chitraLearningPaths = pgTable('hero_chitralearning_paths', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  status: text('status').notNull().default('draft'), // draft, published, archived
+  coverImageUrl: text('cover_image_url'),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const chitraLearningPathCourses = pgTable('hero_chitralearning_path_courses', {
+  id: serial('id').primaryKey(),
+  pathId: integer('path_id')
+    .notNull()
+    .references(() => chitraLearningPaths.id, { onDelete: 'cascade' }),
+  courseId: integer('course_id')
+    .notNull()
+    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
 
 export const chitraLearningCertificateTemplates = pgTable('hero_chitralearning_certificate_templates', {
   id: serial('id').primaryKey(),

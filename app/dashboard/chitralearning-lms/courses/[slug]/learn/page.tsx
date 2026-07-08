@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
-import { chitraLearningCourses, chitraLearningEnrollments, chitraLearningLessons, chitraLearningQuizQuestions, employees } from '@/db/schema/hero'
-import { and, eq, asc } from 'drizzle-orm'
+import { chitraLearningCourses, chitraLearningEnrollments, chitraLearningLessons, chitraLearningQuizQuestions, employees, chitraLearningAuditLogs } from '@/db/schema/hero'
+import { and, eq, asc, sql } from 'drizzle-orm'
 import { LmsPlayerSidebar } from '@/components/lms/lms-player-sidebar'
 import { ChitraLearningVideoPlayer } from '@/components/chitralearning-video-player'
 import { LmsQuizPlayer, type QuizQuestion } from '@/components/lms/lms-quiz-player'
@@ -74,16 +74,11 @@ export default async function LmsCoursePlayerPage({
       .where(and(eq(chitraLearningEnrollments.courseId, course.id), eq(chitraLearningEnrollments.employeeId, currentEmployee.id)))
       .limit(1)
 
-    if (!existingEnrollment) {
-      await db.insert(chitraLearningEnrollments).values({
-        courseId: course.id,
-        employeeId: currentEmployee.id,
-        status: 'in_progress',
-        progress: 10,
-        startedAt: new Date(),
-        dueAt: new Date(Date.now() + (course.dueDays || 14) * 24 * 60 * 60 * 1000),
-      })
-    } else if (existingEnrollment.status !== 'passed') {
+    if (!existingEnrollment || existingEnrollment.approvalStatus !== 'approved') {
+      redirect(`/dashboard/chitralearning-lms/courses/${course.slug}`)
+    }
+
+    if (existingEnrollment.status !== 'passed') {
       await db
         .update(chitraLearningEnrollments)
         .set({
@@ -148,6 +143,7 @@ export default async function LmsCoursePlayerPage({
 
   const quizQuestions: QuizQuestion[] = quizRows.map((question) => ({
     id: question.id,
+    questionType: question.questionType || 'single_choice',
     question: replaceS3UrlsInHtml(question.questionText),
     questionImageUrl: resolveUploadUrl(question.questionImageUrl),
     options: [
@@ -157,6 +153,20 @@ export default async function LmsCoursePlayerPage({
       { id: 'D', text: replaceS3UrlsInHtml(question.optionD), imageUrl: resolveUploadUrl(question.optionDImageUrl) },
     ].filter((option) => option.text),
   }))
+  
+  let attemptCount = 0;
+  if (['quiz', 'pretest', 'posttest'].includes(activeLessonType)) {
+    const auditRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(chitraLearningAuditLogs)
+      .where(and(
+         eq(chitraLearningAuditLogs.employeeId, currentEmployee.id),
+         eq(chitraLearningAuditLogs.courseId, course.id),
+         eq(chitraLearningAuditLogs.action, 'quiz_submitted'),
+         sql`CAST(after_value->>'lessonId' AS INTEGER) = ${activeLesson.id}`
+      ))
+    attemptCount = Number(auditRows[0].count)
+  }
   const nextLessonHref = nextLesson ? `/dashboard/chitralearning-lms/courses/${course.slug}/learn?lessonId=${nextLesson.id}` : null
   const rawFileUrl = activeLesson.fileUrl || ''
   const filePath = rawFileUrl.toLowerCase().split('?')[0]
@@ -233,6 +243,9 @@ export default async function LmsCoursePlayerPage({
                   questions={quizQuestions}
                   nextLessonHref={nextLessonHref}
                   courseHref={`/dashboard/chitralearning-lms/courses/${course.slug}`}
+                  randomizeOptions={(activeLesson as any).quizSettings?.randomizeOptions}
+                  attemptCount={attemptCount}
+                  maxRetakes={course.maxRetakes ?? -1}
                 />
               </div>
             ) : (

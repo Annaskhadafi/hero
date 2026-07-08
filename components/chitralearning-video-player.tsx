@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import { resolveClientUploadUrl } from "@/lib/client-url";
 import { completeInternalLmsLessonAction, saveInternalLmsVideoProgressAction } from "@/app/dashboard/chitralearning-lms/actions";
 
 type ChitraLearningVideoPlayerProps = {
@@ -23,6 +23,7 @@ export function ChitraLearningVideoPlayer({
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSavedSecondRef = useRef(Math.max(0, Math.floor(initialSeconds ?? 0)));
+  const maxWatchedSecondRef = useRef(Math.max(0, Math.floor(initialSeconds ?? 0)));
   const savingRef = useRef(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -77,7 +78,7 @@ export function ChitraLearningVideoPlayer({
       ) : (
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={resolveClientUploadUrl(videoUrl)}
           controls
           controlsList="nodownload"
           disablePictureInPicture
@@ -90,8 +91,19 @@ export function ChitraLearningVideoPlayer({
               event.currentTarget.currentTime = Math.min(resumeAt, Math.max(0, event.currentTarget.duration - 2));
             }
           }}
+          onSeeking={(event) => {
+            const video = event.currentTarget;
+            if (video.currentTime > maxWatchedSecondRef.current + 2) {
+              video.currentTime = maxWatchedSecondRef.current;
+            }
+          }}
           onTimeUpdate={(event) => {
-            const currentSecond = Math.floor(event.currentTarget.currentTime || 0);
+            const video = event.currentTarget;
+            if (!video.seeking && video.currentTime > maxWatchedSecondRef.current) {
+              maxWatchedSecondRef.current = video.currentTime;
+            }
+            
+            const currentSecond = Math.floor(video.currentTime || 0);
             if (currentSecond - lastSavedSecondRef.current >= 15) {
               void persistProgress(currentSecond);
             }

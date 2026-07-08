@@ -61,17 +61,11 @@ export default async function LmsCourseDetailPage({ params }: { params: Promise<
     .limit(1)
   
   const currentEmployee = currentEmployeeRows[0] || null
-  const learnerCourses = buildInternalLmsLearnerCourses(workspaceData, currentEmployee)
+  const enrollmentRecord = workspaceData.enrollments.find(e => e.courseId === course.id && e.employeeId === currentEmployee?.id)
+  const certificateRecord = workspaceData.certificates.find(c => c.courseId === course.id && c.employeeId === currentEmployee?.id)
   
-  const inProgressCourses = learnerCourses.filter(c => c.enrollment && !c.certificate && c.enrollment.progress < 100)
-  const completedCourses = learnerCourses.filter(c => c.certificate || (c.enrollment && c.enrollment.progress >= 100))
-  
-  const inProgress = inProgressCourses.find(c => c.id === course.id)
-  const completed = completedCourses.find(c => c.id === course.id)
-  
-  const isEnrolled = !!(inProgress || completed)
-  const progress = completed ? 100 : (inProgress?.enrollment?.progress || 0)
-  const enrollmentRecord = inProgress?.enrollment || completed?.enrollment
+  const isEnrolled = !!enrollmentRecord
+  const progress = certificateRecord ? 100 : (enrollmentRecord?.progress || 0)
 
   // Group lessons by section
   const sectionsMap = new Map<string, CurriculumSection>()

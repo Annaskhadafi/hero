@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { LmsDashboardWidgets } from '@/components/lms/lms-dashboard-widgets'
+import { LmsDashboardCharts } from '@/components/lms/lms-dashboard-charts'
 import { LmsCourseCard } from '@/components/lms/lms-course-card'
 import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/lib/chitralearning-lms'
 import { db } from '@/db'
@@ -47,6 +48,21 @@ export default async function LmsDashboardPage() {
   // Example dummy value for avg completion rate
   const avgCompletionRate = 85
 
+  // Generate chart data based on workspace data
+  const enrollmentStats = workspaceData.courses.map(course => {
+    const courseEnrollments = workspaceData.enrollments.filter(e => e.courseId === course.id)
+    return {
+      name: course.title,
+      total: courseEnrollments.length
+    }
+  }).slice(0, 5) // top 5
+
+  const completionStats = [
+    { name: 'Selesai', value: workspaceData.enrollments.filter(e => e.progress >= 100).length },
+    { name: 'Sedang Berjalan', value: workspaceData.enrollments.filter(e => e.progress > 0 && e.progress < 100).length },
+    { name: 'Belum Dimulai', value: workspaceData.enrollments.filter(e => e.progress === 0).length }
+  ]
+
   return (
     <div className="space-y-8 pb-12">
       {/* Header Section */}
@@ -60,12 +76,18 @@ export default async function LmsDashboardPage() {
       </div>
 
       {isAdmin && (
-        <LmsDashboardWidgets
-          totalCourses={totalCourses}
-          totalEnrollments={totalEnrollments}
-          avgCompletionRate={avgCompletionRate}
-          activeCampaigns={activeCampaigns}
-        />
+        <>
+          <LmsDashboardWidgets
+            totalCourses={totalCourses}
+            totalEnrollments={totalEnrollments}
+            avgCompletionRate={avgCompletionRate}
+            activeCampaigns={activeCampaigns}
+          />
+          <LmsDashboardCharts 
+            enrollmentStats={enrollmentStats} 
+            completionStats={completionStats} 
+          />
+        </>
       )}
 
       {/* Continue Learning Section */}

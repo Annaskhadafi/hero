@@ -12,6 +12,8 @@ import {
   Megaphone,
   Award,
   BarChart,
+  Trophy,
+  Map,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +42,12 @@ const LEARNER_ITEMS = [
     href: '/dashboard/chitralearning-lms/certificates',
     icon: GraduationCap,
     color: 'amber',
+  },
+  {
+    title: 'Leaderboard',
+    href: '/dashboard/chitralearning-lms/leaderboard',
+    icon: Trophy,
+    color: 'orange',
   },
 ]
 
@@ -73,6 +81,12 @@ const ADMIN_ITEMS = [
     href: '/dashboard/chitralearning-lms/certificates/builder',
     icon: Award,
     color: 'amber',
+  },
+  {
+    title: 'Learning Paths',
+    href: '/dashboard/chitralearning-lms/paths',
+    icon: Map,
+    color: 'emerald',
   },
 ]
 

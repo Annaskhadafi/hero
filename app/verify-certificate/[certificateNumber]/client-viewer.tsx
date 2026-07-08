@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import * as fabric from 'fabric'
+import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Download } from 'lucide-react'
 
@@ -20,7 +21,9 @@ export function CertificateViewer({ template, variables }: { template: any, vari
       setCanvas(initCanvas)
 
       if (template?.canvasData && Object.keys(template.canvasData).length > 0) {
-        initCanvas.loadFromJSON(template.canvasData).then(() => {
+        let jsonData = JSON.stringify(template.canvasData)
+        jsonData = jsonData.replace(/https?:\/\/[^"'\s\\]+\/(upload|attendance-photos|profile-photos|curhat)\/([^"'\s\\]+)/g, '/api/uploads/$1/$2')
+        initCanvas.loadFromJSON(JSON.parse(jsonData)).then(() => {
           // Replace variables
           const objects = initCanvas.getObjects()
           objects.forEach(obj => {
@@ -37,6 +40,32 @@ export function CertificateViewer({ template, variables }: { template: any, vari
               textObj.set({ text })
             }
           })
+          
+          // Render QR Code
+          const qrcodePlaceholder = objects.find(obj => obj.name === 'qrcode_placeholder')
+          if (qrcodePlaceholder && variables.certificateNumber) {
+            const verificationUrl = `${window.location.origin}/verify-certificate/${variables.certificateNumber}`
+            QRCode.toDataURL(verificationUrl, { margin: 1, scale: 4 }).then(dataUrl => {
+              fabric.FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' }).then(img => {
+                if (img) {
+                  img.set({
+                    left: qrcodePlaceholder.left,
+                    top: qrcodePlaceholder.top,
+                  })
+                  // Scale to fit the placeholder size (which is 100x100)
+                  const scaleX = (qrcodePlaceholder.width || 100) / img.width!
+                  const scaleY = (qrcodePlaceholder.height || 100) / img.height!
+                  img.scaleX = scaleX
+                  img.scaleY = scaleY
+                  
+                  initCanvas.remove(qrcodePlaceholder)
+                  initCanvas.add(img)
+                  initCanvas.renderAll()
+                }
+              })
+            })
+          }
+
           initCanvas.renderAll()
         })
       }
@@ -49,12 +78,26 @@ export function CertificateViewer({ template, variables }: { template: any, vari
 
   useEffect(() => {
     if (canvas && template.backgroundImageUrl) {
-      fabric.FabricImage.fromURL(template.backgroundImageUrl, { crossOrigin: 'anonymous' }).then((img) => {
+      const getProxiedUrl = (url: string) => {
+        if (!url || url.startsWith('/')) return url;
+        const match = url.match(/(?:upload|attendance-photos|profile-photos|curhat)\/.+/);
+        return match ? `/api/uploads/${match[0]}` : url;
+      };
+      
+      const proxyUrl = getProxiedUrl(template.backgroundImageUrl);
+      
+      fabric.FabricImage.fromURL(proxyUrl, { crossOrigin: 'anonymous' }).then((img) => {
         if (!img) return;
+        img.set({
+          scaleX: canvas.width! / img.width!,
+          scaleY: canvas.height! / img.height!,
+          originX: 'left',
+          originY: 'top'
+        });
         canvas.backgroundImage = img;
-        img.scaleX = canvas.width! / img.width!;
-        img.scaleY = canvas.height! / img.height!;
         canvas.renderAll()
+      }).catch(err => {
+        console.error("Fabric load error:", err);
       })
     }
   }, [canvas, template])

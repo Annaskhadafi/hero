@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Timer } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { resolveClientUploadUrl } from '@/lib/client-url'
 
 interface LmsCourseHeroProps {
   title: string
@@ -109,7 +110,7 @@ export function LmsCourseHero({
       {hasCover && (
         <div className="absolute inset-0 z-0">
           <img
-            src={coverImageUrl}
+            src={resolveClientUploadUrl(coverImageUrl)}
             alt={title}
             className="h-full w-full object-cover opacity-40 mix-blend-overlay"
             onError={() => setCoverFailed(true)}

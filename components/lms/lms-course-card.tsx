@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Clock, BookOpen } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { resolveClientUploadUrl } from '@/lib/client-url'
 import { Progress } from '@/components/ui/progress'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -48,7 +49,7 @@ export function LmsCourseCard({ course, enrollment, href }: LmsCourseCardProps) 
       <Link href={href} className="relative block h-40 w-full overflow-hidden bg-slate-100">
         {hasCover ? (
           <img
-            src={course.coverImageUrl}
+            src={resolveClientUploadUrl(course.coverImageUrl)}
             alt={course.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={() => setCoverFailed(true)}

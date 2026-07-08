@@ -168,6 +168,7 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
   const [gradingType, setGradingType] = useState(course.gradingType || 'posttest_only')
   const [pretestWeight, setPretestWeight] = useState(course.pretestWeight?.toString() || '0')
   const [posttestWeight, setPosttestWeight] = useState(course.posttestWeight?.toString() || '100')
+  const [maxRetakes, setMaxRetakes] = useState(course.maxRetakes?.toString() || '-1')
   
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -185,6 +186,7 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
       formData.append('gradingType', gradingType)
       formData.append('pretestWeight', pretestWeight)
       formData.append('posttestWeight', posttestWeight)
+      formData.append('maxRetakes', maxRetakes)
 
       await updateCourseSettings(course.id, formData)
       toast.success('Pengaturan berhasil diperbarui.')
@@ -269,6 +271,11 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
               </div>
             </>
           )}
+          <div className="space-y-2">
+            <Label>Batas Pengulangan (Retake)</Label>
+            <Input type="number" value={maxRetakes} onChange={e => setMaxRetakes(e.target.value)} min="-1" />
+            <p className="text-xs text-slate-500 mt-1">-1 = Tidak Terbatas, 0 = Tidak boleh mengulang</p>
+          </div>
         </div>
       </div>
       

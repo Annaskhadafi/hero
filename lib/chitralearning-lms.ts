@@ -215,6 +215,10 @@ export function buildInternalLmsLearnerCourses(
     .filter((course) => {
       if (previewCourseId === course.id) return true;
       if (campaignCourseIds.has(course.id) && course.status !== "archived") return true;
+      
+      const hasEnrollment = workspace.enrollments.some(e => e.courseId === course.id && e.employeeId === employee.id);
+      if (hasEnrollment) return true;
+      
       return course.status === "published" && canAccessCourse(course.id, employee, workspace.accessRules);
     })
     .map((course) => {
