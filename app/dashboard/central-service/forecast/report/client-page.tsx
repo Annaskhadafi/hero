@@ -109,6 +109,7 @@ type CategoryRow = {
   actualUsd: number;
   remarkMonthly: string;
   remarkDaily: string;
+  sectionDaily: string;
   status: string;
   color: string;
 };
@@ -265,6 +266,7 @@ export function ReportClientPage({
             actualUsd: 0,
             remarkMonthly: item.remark || "",
             remarkDaily: "",
+            sectionDaily: "",
             status: item.status,
             color: CAT_COLORS.Accessories,
           });
@@ -284,6 +286,7 @@ export function ReportClientPage({
             actualUsd: 0,
             remarkMonthly: "",
             remarkDaily: "",
+            sectionDaily: "",
             status: item.status,
             color: "bg-amber-100 text-amber-700",
           });
@@ -297,6 +300,7 @@ export function ReportClientPage({
             actualUsd: 0,
             remarkMonthly: item.repairRemark || "",
             remarkDaily: "",
+            sectionDaily: "",
             status: item.status,
             color: CAT_COLORS.Repair,
           });
@@ -310,6 +314,7 @@ export function ReportClientPage({
             actualUsd: 0,
             remarkMonthly: item.serviceRemark || "",
             remarkDaily: "",
+            sectionDaily: "",
             status: item.status,
             color: CAT_COLORS.Service,
           });
@@ -323,6 +328,7 @@ export function ReportClientPage({
             actualUsd: 0,
             remarkMonthly: item.retreadRemark || "",
             remarkDaily: "",
+            sectionDaily: "",
             status: item.status,
             color: CAT_COLORS.Retread,
           });
@@ -335,11 +341,12 @@ export function ReportClientPage({
       w.actuals?.forEach((a: any) => {
         const existing = categories.find((c) => c.category === a.category);
         if (existing) {
-          existing.actualIdr = Number(a.amountIdr);
-          existing.actualUsd = Number(a.amountUsd);
+          existing.actualIdr += Number(a.amountIdr);
+          existing.actualUsd += Number(a.amountUsd);
           // Only set remarkDaily from the first (latest) actual per category
           if (!seenDailyRemark.has(a.category)) {
             existing.remarkDaily = a.remark || existing.remarkDaily;
+            existing.sectionDaily = a.jobCode || existing.sectionDaily;
             existing.status = a.itemStatus || existing.status;
             seenDailyRemark.add(a.category);
           }
@@ -355,6 +362,7 @@ export function ReportClientPage({
             actualUsd: Number(a.amountUsd),
             remarkMonthly: "",
             remarkDaily: a.remark || "",
+            sectionDaily: a.jobCode || "",
             status: a.itemStatus || "-",
             color: CAT_COLORS[a.category] || "bg-gray-100 text-gray-700",
           });
@@ -397,6 +405,11 @@ export function ReportClientPage({
 
   const totalRowIdr = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr + c.actualIdr, 0), 0);
   const totalRowUsd = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastUsd + c.actualUsd, 0), 0);
+  const getRemainingAmount = (cat: CategoryRow) => Math.max(0, cat.forecastIdr - cat.actualIdr);
+  const getRemarkDaily = (cat: CategoryRow) =>
+    cat.category === "Outstanding" && cat.sectionDaily
+      ? [cat.sectionDaily, cat.remarkDaily].filter(Boolean).join(" / ")
+      : cat.remarkDaily;
 
   return (
     <div className="space-y-6">
@@ -546,20 +559,21 @@ export function ReportClientPage({
                     </div>
                   </th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">PIC</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Monthly</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Forecast IDR</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Forecast USD</th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Category</th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Daily</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount</th>
                   <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
-                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount IDR</th>
-                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount USD</th>
-                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Monthly</th>
+                  <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Sisa Amount</th>
                   <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {groupedData.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-8 text-muted-foreground">
+                    <td colSpan={12} className="text-center py-8 text-muted-foreground">
                       No data for this period
                     </td>
                   </tr>
@@ -587,21 +601,9 @@ export function ReportClientPage({
                           <td className={`text-xs align-top italic px-2 py-1.5 ${groupCellBorder}`}>
                             {isFirst ? group.pic : ""}
                           </td>
-                          {/* Category */}
-                          <td className="text-xs border border-black/10 px-2 py-1.5">
-                            {cat.category}
-                          </td>
-                          {/* Remark (daily - latest) */}
-                          <td className="text-xs border border-black/10 text-center break-words whitespace-normal px-2 py-1.5">
-                            {cat.remarkDaily || ""}
-                          </td>
-                          {/* Amount */}
-                          <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">
-                            {cat.forecastIdr > 0 ? fmtNum(cat.forecastIdr) : ""}
-                          </td>
-                          {/* Status per category */}
-                          <td className="text-xs text-center border border-black/10 px-2 py-1.5">
-                            {cat.status || ""}
+                          {/* Remark monthly (group) */}
+                          <td className={`text-xs align-top text-center break-words whitespace-normal px-2 py-1.5 ${groupCellBorder}`}>
+                            {isFirst ? groupRemarkMonthly : ""}
                           </td>
                           {/* Amount IDR (group) */}
                           <td className={`text-xs text-right align-top tabular-nums font-semibold px-2 py-1.5 ${groupCellBorder}`}>
@@ -611,9 +613,24 @@ export function ReportClientPage({
                           <td className={`text-xs text-right align-top tabular-nums font-semibold px-2 py-1.5 ${groupCellBorder}`}>
                             {isFirst && group.totalAmountUsd > 0 ? fmtNumUsd(Math.round(group.totalAmountUsd)) : ""}
                           </td>
-                          {/* Remark monthly (group) */}
-                          <td className={`text-xs align-top text-center break-words whitespace-normal px-2 py-1.5 ${groupCellBorder}`}>
-                            {isFirst ? groupRemarkMonthly : ""}
+                          {/* Category */}
+                          <td className="text-xs border border-black/10 px-2 py-1.5">
+                            {cat.category}
+                          </td>
+                          {/* Remark (daily - latest) */}
+                          <td className="text-xs border border-black/10 text-center break-words whitespace-normal px-2 py-1.5">
+                            {getRemarkDaily(cat)}
+                          </td>
+                          {/* Amount */}
+                          <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">
+                            {cat.forecastIdr > 0 ? fmtNum(cat.forecastIdr) : ""}
+                          </td>
+                          {/* Status per category */}
+                          <td className="text-xs text-center border border-black/10 px-2 py-1.5">
+                            {cat.status || ""}
+                          </td>
+                          <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">
+                            {cat.forecastIdr > 0 ? fmtNum(getRemainingAmount(cat)) : ""}
                           </td>
                           {/* Status (group) */}
                           <td className={`text-xs text-center align-top px-2 py-1.5 ${groupCellBorder}`}>
@@ -626,12 +643,15 @@ export function ReportClientPage({
                 )}
                 {groupedData.length > 0 && (
                   <tr className="bg-yellow-100 font-bold border-t-2">
-                    <td colSpan={5} className="text-xs text-right border border-black/10 px-2 py-1.5">TOTAL</td>
-                    <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0), 0))}</td>
-                    <td className="border border-black/10 px-2 py-1.5" />
+                    <td colSpan={4} className="text-xs text-right border border-black/10 px-2 py-1.5">TOTAL</td>
                     <td className="text-xs text-right border border-black/10 tabular-nums font-bold px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.totalAmountIdr, 0))}</td>
                     <td className="text-xs text-right border border-black/10 tabular-nums font-bold px-2 py-1.5">{fmtNumUsd(Math.round(groupedData.reduce((s, g) => s + g.totalAmountUsd, 0)))}</td>
-                    <td colSpan={2} className="border border-black/10 px-2 py-1.5" />
+                    <td className="border border-black/10 px-2 py-1.5" />
+                    <td className="border border-black/10 px-2 py-1.5" />
+                    <td className="text-xs text-right border border-black/10 tabular-nums px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0), 0))}</td>
+                    <td className="border border-black/10 px-2 py-1.5" />
+                    <td className="text-xs text-right border border-black/10 tabular-nums font-bold px-2 py-1.5">{fmtNum(groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0), 0))}</td>
+                    <td className="border border-black/10 px-2 py-1.5" />
                   </tr>
                 )}
               </tbody>

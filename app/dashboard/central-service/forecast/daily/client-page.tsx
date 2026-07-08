@@ -79,12 +79,17 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
   const [statusForm, setStatusForm] = useState({ status: "", remark: "" });
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
-  const CATEGORIES = ["Repair", "Service", "Retread"] as const;
+  const CATEGORIES = ["Outstanding", "Repair", "Service", "Retread"] as const;
   type Category = (typeof CATEGORIES)[number];
 
   const [actualsForm, setActualsForm] = useState({
     updateDate: new Date().toISOString().split("T")[0],
     exchangeRate: "15000",
+    outstandingAmountIdr: "0",
+    outstandingAmountUsd: "0",
+    outstandingRemark: "",
+    outstandingStatus: "-",
+    outstandingSection: "-",
     repairAmountIdr: "0",
     repairAmountUsd: "0",
     repairRemark: "",
@@ -102,7 +107,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
   });
 
   const [editingActualIds, setEditingActualIds] = useState<Record<string, number | null>>({
-    Repair: null, Service: null, Retread: null,
+    Outstanding: null, Repair: null, Service: null, Retread: null,
   });
 
   type SortField = 'customer' | 'forecast' | 'actual' | 'sisa';
@@ -216,14 +221,21 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
         const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
         const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
         const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
+        const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm;
         const existingId = editingActualIds[cat];
         const amtIdr = Number(actualsForm[idrKey]);
+        const hasPayload =
+          amtIdr > 0 ||
+          String(actualsForm[remarkKey] || "").trim().length > 0 ||
+          String(actualsForm[statusKey] || "-") !== "-" ||
+          String(actualsForm[sectionKey] || "-") !== "-";
 
-        if (existingId && amtIdr === 0) {
+        if (existingId && !hasPayload) {
           await deleteForecastActual(existingId);
-        } else if (existingId && amtIdr > 0) {
+        } else if (existingId && hasPayload) {
           await updateForecastActual(existingId, {
             ...basePayload,
+            jobCode: cat === "Outstanding" ? actualsForm[sectionKey] : "",
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
@@ -233,9 +245,10 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
             periodId,
             customer: cust,
           });
-        } else if (!existingId && amtIdr > 0) {
+        } else if (!existingId && hasPayload) {
           await addForecastActual({
             ...basePayload,
+            jobCode: cat === "Outstanding" ? actualsForm[sectionKey] : "",
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
@@ -292,6 +305,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
       form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || "0";
       form[`${cat.toLowerCase()}Remark`] = a?.remark || "";
       form[`${cat.toLowerCase()}Status`] = a?.itemStatus || "-";
+      if (cat === "Outstanding") form.outstandingSection = a?.jobCode || "-";
     }
 
     setEditingActualIds(ids);
@@ -608,9 +622,10 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                                         const sumIdr = c.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
                                         const sumUsd = c.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
                                         const rmk = c.map((a: any) => a.remark).filter(Boolean).join(", ");
-                                        return { sumIdr, sumUsd, rmk, hasData: c.length > 0 };
+                                        const section = c.map((a: any) => a.jobCode).find(Boolean) || "—";
+                                        return { sumIdr, sumUsd, rmk, section, hasData: c.length > 0 };
                                       };
-                                      const s = getCat("Service"), r = getCat("Repair"), rt = getCat("Retread");
+                                      const os = getCat("Outstanding"), s = getCat("Service"), r = getCat("Repair"), rt = getCat("Retread");
                                       const totalIdr = items.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
                                       const totalUsd = items.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
                                       return (
@@ -619,14 +634,25 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                                             {dateLabel}
                                           </div>
                                           <div className="w-full">
-                                            <div className="grid grid-cols-12 gap-0 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b bg-muted/5">
-                                              <div className="col-span-3 text-center py-2 border-r">Service</div>
-                                              <div className="col-span-3 text-center py-2 border-r">Repair</div>
-                                              <div className="col-span-3 text-center py-2 border-r">Retread</div>
-                                              <div className="col-span-3 text-center py-2">Total</div>
+                                            <div className="grid grid-cols-5 gap-0 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b bg-muted/5">
+                                              <div className="text-center py-2 border-r">Outstanding</div>
+                                              <div className="text-center py-2 border-r">Service</div>
+                                              <div className="text-center py-2 border-r">Repair</div>
+                                              <div className="text-center py-2 border-r">Retread</div>
+                                              <div className="text-center py-2">Total</div>
                                             </div>
-                                            <div className="grid grid-cols-12 gap-0 text-xs divide-x">
-                                              <div className={`col-span-3 p-2 space-y-1 ${!s.hasData ? 'opacity-40' : ''}`}>
+                                            <div className="grid grid-cols-5 gap-0 text-xs divide-x">
+                                              <div className={`p-2 space-y-1 ${!os.hasData ? 'opacity-40' : ''}`}>
+                                                <div className="flex items-center gap-1">
+                                                  <span className="text-green-600 font-medium">{os.hasData ? formatCurrency(os.sumIdr) : "—"}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-blue-600">${os.hasData ? os.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
+                                                  <span className="text-muted-foreground">|</span>
+                                                  <span className="text-primary">{os.hasData ? os.section : "—"}</span>
+                                                </div>
+                                                <div className="text-muted-foreground truncate">{os.rmk || "—"}</div>
+                                              </div>
+                                              <div className={`p-2 space-y-1 ${!s.hasData ? 'opacity-40' : ''}`}>
                                                 <div className="flex items-center gap-1">
                                                   <span className="text-green-600 font-medium">{s.hasData ? formatCurrency(s.sumIdr) : "—"}</span>
                                                   <span className="text-muted-foreground">|</span>
@@ -634,7 +660,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                                                 </div>
                                                 <div className="text-muted-foreground truncate">{s.rmk || "—"}</div>
                                               </div>
-                                              <div className={`col-span-3 p-2 space-y-1 ${!r.hasData ? 'opacity-40' : ''}`}>
+                                              <div className={`p-2 space-y-1 ${!r.hasData ? 'opacity-40' : ''}`}>
                                                 <div className="flex items-center gap-1">
                                                   <span className="text-green-600 font-medium">{r.hasData ? formatCurrency(r.sumIdr) : "—"}</span>
                                                   <span className="text-muted-foreground">|</span>
@@ -642,7 +668,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                                                 </div>
                                                 <div className="text-muted-foreground truncate">{r.rmk || "—"}</div>
                                               </div>
-                                              <div className={`col-span-3 p-2 space-y-1 ${!rt.hasData ? 'opacity-40' : ''}`}>
+                                              <div className={`p-2 space-y-1 ${!rt.hasData ? 'opacity-40' : ''}`}>
                                                 <div className="flex items-center gap-1">
                                                   <span className="text-green-600 font-medium">{rt.hasData ? formatCurrency(rt.sumIdr) : "—"}</span>
                                                   <span className="text-muted-foreground">|</span>
@@ -650,7 +676,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                                                 </div>
                                                 <div className="text-muted-foreground truncate">{rt.rmk || "—"}</div>
                                               </div>
-                                              <div className="col-span-3 p-2 bg-primary/5 font-bold">
+                                              <div className="p-2 bg-primary/5 font-bold">
                                                 <div className="flex items-center gap-1 text-xs mb-1">
                                                   <span className="text-green-600">{formatCurrency(totalIdr)}</span>
                                                   <span className="text-muted-foreground">|</span>
@@ -887,6 +913,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
               const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
               const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
               const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
+              const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm;
               return (
                 <div key={cat} className="border rounded-md p-3 bg-muted/10">
                   <h4 className="font-semibold text-sm mb-2">{cat}</h4>
@@ -900,7 +927,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                       <Input type="number" value={actualsForm[usdKey]} onChange={e => setActualsForm({...actualsForm, [usdKey]: e.target.value})} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className={`grid gap-3 ${cat === "Outstanding" ? "grid-cols-3" : "grid-cols-2"}`}>
                     <div className="space-y-1">
                       <Label className="text-xs">Remark</Label>
                       <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
@@ -920,6 +947,22 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         </SelectContent>
                       </Select>
                     </div>
+                    {cat === "Outstanding" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Section</Label>
+                        <Select value={actualsForm[sectionKey]} onValueChange={v => setActualsForm({...actualsForm, [sectionKey]: v})}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="-">-</SelectItem>
+                            <SelectItem value="Repair">Repair</SelectItem>
+                            <SelectItem value="Retread">Retread</SelectItem>
+                            <SelectItem value="Service">Service</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
