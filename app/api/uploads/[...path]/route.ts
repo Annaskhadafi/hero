@@ -45,11 +45,6 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const session = await getServerSession();
-  if (!session?.user?.email) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
   const { path } = await params;
 
   if (!path || path.length === 0) {
@@ -58,6 +53,15 @@ export async function GET(
 
   if (!isAllowedUploadPath(path)) {
     return NextResponse.json({ message: "Invalid path" }, { status: 400 });
+  }
+
+  // Strict session check only for sensitive directories
+  const isSensitive = path[0] !== "upload";
+  if (isSensitive) {
+    const session = await getServerSession();
+    if (!session?.user?.email) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const relativePath = path.join("/");
