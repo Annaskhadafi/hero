@@ -535,7 +535,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
               </TableHeader>
               <TableBody>
                 {sortedItems.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-8">No waiting items.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-8">No pending items.</TableCell></TableRow>
                 ) : (
                   sortedItems.map((wrapper: any, index: number) => (
                     <React.Fragment key={wrapper.item.id}>
@@ -568,7 +568,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         </TableCell>
                         <TableCell>
                           <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-md text-xs font-medium">
-                            {wrapper.item.status}
+                            {wrapper.item.status === "Waiting" ? "Pending" : wrapper.item.status}
                           </span>
                         </TableCell>
                         <TableCell>{wrapper.item.remark}</TableCell>
@@ -810,8 +810,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                   <SelectValue placeholder="Select Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Waiting">Waiting</SelectItem>
-                  <SelectItem value="Invoiced">Invoiced</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Complete">Complete</SelectItem>
+                  <SelectItem value="Carry Over">Carry Over</SelectItem>
                   <SelectItem value="Cancel">Cancel</SelectItem>
                 </SelectContent>
               </Select>
@@ -912,8 +913,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="-">-</SelectItem>
-                          <SelectItem value="Waiting">Waiting</SelectItem>
-                          <SelectItem value="Invoice">Invoice</SelectItem>
+                          <SelectItem value="Pending">Pending</SelectItem>
+                          <SelectItem value="Complete">Complete</SelectItem>
+                          <SelectItem value="Carry Over">Carry Over</SelectItem>
                           <SelectItem value="Cancel">Cancel</SelectItem>
                         </SelectContent>
                       </Select>

@@ -10,6 +10,8 @@ import {
   Hammer,
   Settings,
   Megaphone,
+  Award,
+  BarChart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -55,10 +57,22 @@ const ADMIN_ITEMS = [
     color: 'cyan',
   },
   {
+    title: 'Reports',
+    href: '/dashboard/chitralearning-lms/reports',
+    icon: BarChart,
+    color: 'indigo',
+  },
+  {
     title: 'Campaigns',
     href: '/dashboard/chitralearning-lms/campaigns',
     icon: Megaphone,
     color: 'orange',
+  },
+  {
+    title: 'Certificate Builder',
+    href: '/dashboard/chitralearning-lms/certificates/builder',
+    icon: Award,
+    color: 'amber',
   },
 ]
 
@@ -69,6 +83,7 @@ const COLOR_MAP: Record<string, { icon: string; active: string; ring: string }> 
   amber:   { icon: 'text-amber-500',   active: 'bg-amber-500 shadow-amber-500/25',   ring: 'ring-amber-500/20' },
   rose:    { icon: 'text-rose-500',    active: 'bg-rose-500 shadow-rose-500/25',    ring: 'ring-rose-500/20' },
   cyan:    { icon: 'text-cyan-500',    active: 'bg-cyan-500 shadow-cyan-500/25',    ring: 'ring-cyan-500/20' },
+  indigo:  { icon: 'text-indigo-500',  active: 'bg-indigo-500 shadow-indigo-500/25',  ring: 'ring-indigo-500/20' },
   orange:  { icon: 'text-orange-500',  active: 'bg-orange-500 shadow-orange-500/25',  ring: 'ring-orange-500/20' },
 }
 

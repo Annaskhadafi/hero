@@ -308,9 +308,11 @@ export default async function LmsCourseDetailPage({ params }: { params: Promise<
         {/* Sidebar */}
         <aside className="w-full lg:w-[320px] xl:w-[360px] shrink-0">
           <LmsEnrollmentSidebar 
+            courseId={course.id}
             courseSlug={course.slug}
             isAdmin={isAdmin}
             isEnrolled={isEnrolled}
+            approvalStatus={enrollmentRecord?.approvalStatus}
             progress={progress}
             estimatedMinutes={course.estimatedMinutes > 0 ? course.estimatedMinutes : totalDuration}
             lessonCount={totalLessons}

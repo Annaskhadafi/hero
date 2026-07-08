@@ -84,7 +84,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
   const kpi = useMemo(() => {
     let totalForecast = 0;
     let totalActuals = 0;
-    let totalWaiting = 0;
+    let totalPending = 0;
 
     itemsInPeriod.forEach(item => {
       if (!item.isProductAccessories) {
@@ -93,8 +93,8 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
         totalForecast += Number(item.accessoriesAmountIdr);
       }
 
-      if (item.status === "Waiting") {
-        totalWaiting += 1;
+      if (item.status === "Pending") {
+        totalPending += 1;
       }
     });
 
@@ -106,7 +106,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
 
     const achievement = totalForecast > 0 ? (totalActuals / totalForecast) * 100 : 0;
 
-    return { totalForecast, totalActuals, totalWaiting, achievement };
+    return { totalForecast, totalActuals, totalPending, achievement };
   }, [itemsInPeriod, actualsInPeriod]);
 
   // Bar Chart Data (in USD)
@@ -142,7 +142,7 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
   }, [categoryData]);
 
   const outstandingItems = itemsInPeriod
-    .filter(i => i.status === "Waiting")
+    .filter(i => i.status === "Pending")
     .sort((a, b) => {
       const aVal = a.isProductAccessories ? Number(a.accessoriesAmountIdr) : Number(a.totalForecastIdr);
       const bVal = b.isProductAccessories ? Number(b.accessoriesAmountIdr) : Number(b.totalForecastIdr);
@@ -276,8 +276,8 @@ export function DashboardClientPage({ periods, allItems, allActuals }: { periods
 
       <Card>
         <CardHeader>
-          <CardTitle>Top Outstanding (Waiting) Items</CardTitle>
-          <CardDescription>Largest forecasted revenue items still waiting for invoice</CardDescription>
+          <CardTitle>Top Outstanding (Pending) Items</CardTitle>
+          <CardDescription>Largest forecasted revenue items still pending</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">

@@ -10,6 +10,7 @@ import {
   chitraLearningCampaignParticipants,
   chitraLearningCampaigns,
   chitraLearningCategories,
+  chitraLearningCertificateTemplates,
   chitraLearningCertificates,
   chitraLearningCourseAccess,
   chitraLearningCourses,
@@ -146,12 +147,18 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const passingScore = numberValue(formData, "passingScore", 80);
   const dueDays = numberValue(formData, "dueDays", 30);
   const certificateEnabled = textValue(formData, "certificateEnabled") === "yes";
+  const gradingType = textValue(formData, "gradingType", "posttest_only");
+  const pretestWeight = numberValue(formData, "pretestWeight", 0);
+  const posttestWeight = numberValue(formData, "posttestWeight", 100);
 
   await db.update(chitraLearningCourses).set({
     status,
     passingScore,
     dueDays,
     certificateEnabled,
+    gradingType,
+    pretestWeight,
+    posttestWeight,
     updatedAt: new Date()
   }).where(eq(chitraLearningCourses.id, courseId));
 
@@ -194,6 +201,16 @@ export async function createLesson(courseId: number, formData: FormData) {
   const fileUrl = textValue(formData, "fileUrl");
   const durationMinutes = numberValue(formData, "durationMinutes", 0);
   const isRequired = formData.get("isRequired") === "true";
+  
+  let quizSettings = null;
+  const quizSettingsStr = formData.get("quizSettings");
+  if (typeof quizSettingsStr === "string" && quizSettingsStr) {
+    try {
+      quizSettings = JSON.parse(quizSettingsStr);
+    } catch (e) {
+      // ignore
+    }
+  }
 
   // Get max sortOrder for this course
   const [maxOrder] = await db.select({ max: sql<number>`MAX(sort_order)` })
@@ -211,6 +228,7 @@ export async function createLesson(courseId: number, formData: FormData) {
     videoUrl,
     fileUrl,
     durationMinutes,
+    quizSettings,
     sortOrder: nextOrder,
     isRequired,
   }).returning();
@@ -234,6 +252,16 @@ export async function updateLesson(lessonId: number, formData: FormData) {
   const fileUrl = textValue(formData, "fileUrl");
   const durationMinutes = numberValue(formData, "durationMinutes", 0);
   const isRequired = formData.get("isRequired") === "true";
+  
+  let quizSettings = null;
+  const quizSettingsStr = formData.get("quizSettings");
+  if (typeof quizSettingsStr === "string" && quizSettingsStr) {
+    try {
+      quizSettings = JSON.parse(quizSettingsStr);
+    } catch (e) {
+      // ignore
+    }
+  }
 
   const [updated] = await db.update(chitraLearningLessons)
     .set({
@@ -244,6 +272,7 @@ export async function updateLesson(lessonId: number, formData: FormData) {
       videoUrl,
       fileUrl,
       durationMinutes,
+      quizSettings,
       isRequired,
       updatedAt: new Date(),
     })
@@ -306,6 +335,79 @@ export async function reorderCurriculum(courseId: number, sections: any[]) {
   });
 
   revalidateLms();
+  return { success: true };
+}
+
+export async function getInternalLmsAllQuestionsAction() {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  // Fetch all questions with their course and lesson context
+  const questions = await db
+    .select({
+      id: chitraLearningQuizQuestions.id,
+      questionText: chitraLearningQuizQuestions.questionText,
+      courseTitle: chitraLearningCourses.title,
+      lessonTitle: chitraLearningLessons.title,
+      testPhase: chitraLearningQuizQuestions.testPhase,
+    })
+    .from(chitraLearningQuizQuestions)
+    .leftJoin(chitraLearningCourses, eq(chitraLearningQuizQuestions.courseId, chitraLearningCourses.id))
+    .leftJoin(chitraLearningLessons, eq(chitraLearningQuizQuestions.lessonId, chitraLearningLessons.id))
+    .orderBy(desc(chitraLearningQuizQuestions.createdAt));
+
+  return questions;
+}
+
+export async function copyInternalLmsQuestionsAction(sourceQuestionIds: number[], targetCourseId: number, targetLessonId: number) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  if (!sourceQuestionIds.length) return { success: true };
+
+  // Fetch source questions
+  const sourceQuestions = await db
+    .select()
+    .from(chitraLearningQuizQuestions)
+    .where(sql`${chitraLearningQuizQuestions.id} IN (${sql.join(sourceQuestionIds, sql`, `)})`);
+
+  if (!sourceQuestions.length) return { success: false, message: "No questions found" };
+
+  // Determine max sort order in target lesson
+  const [maxOrder] = await db.select({ max: sql<number>`MAX(sort_order)` })
+    .from(chitraLearningQuizQuestions)
+    .where(eq(chitraLearningQuizQuestions.lessonId, targetLessonId));
+    
+  let nextOrder = (maxOrder?.max || 0) + 1;
+
+  // Insert copies
+  const newQuestions = sourceQuestions.map(q => ({
+    courseId: targetCourseId,
+    lessonId: targetLessonId,
+    testPhase: q.testPhase,
+    questionText: q.questionText,
+    questionImageUrl: q.questionImageUrl,
+    optionA: q.optionA,
+    optionAImageUrl: q.optionAImageUrl,
+    optionB: q.optionB,
+    optionBImageUrl: q.optionBImageUrl,
+    optionC: q.optionC,
+    optionCImageUrl: q.optionCImageUrl,
+    optionD: q.optionD,
+    optionDImageUrl: q.optionDImageUrl,
+    correctOption: q.correctOption,
+    points: q.points,
+    sortOrder: nextOrder++,
+  }));
+
+  await db.insert(chitraLearningQuizQuestions).values(newQuestions);
+
+  revalidateLms();
+  revalidatePath(`/dashboard/chitralearning-lms/courses/${targetCourseId}/edit`);
   return { success: true };
 }
 
@@ -941,24 +1043,38 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
   if (phase === "pretest") {
     const progress = Math.max(enrollment.progress, await getLessonProgress(courseId, lessonId));
+    
+    const finalScore = course.gradingType === 'weighted' 
+        ? Math.round((score * (course.pretestWeight || 0) / 100) + ((enrollment.posttestScore || 0) * (course.posttestWeight || 100) / 100))
+        : (enrollment.posttestScore || 0);
+    const passed = finalScore >= course.passingScore;
+
     await db
       .update(chitraLearningEnrollments)
       .set({
         pretestScore: score,
         pretestStatus: "completed",
         progress,
+        finalScore,
+        isPassed: passed,
         lastLessonId: lessonId || enrollment.lastLessonId,
         updatedAt: new Date(),
       })
       .where(eq(chitraLearningEnrollments.id, enrollment.id));
   } else {
-    const passed = score >= course.passingScore;
+    const finalScore = course.gradingType === 'weighted'
+        ? Math.round(((enrollment.pretestScore || 0) * (course.pretestWeight || 0) / 100) + (score * (course.posttestWeight || 100) / 100))
+        : score;
+    const passed = finalScore >= course.passingScore;
+
     await db
       .update(chitraLearningEnrollments)
       .set({
         posttestScore: score,
         posttestStatus: passed ? "passed" : "failed",
-        score,
+        score: finalScore,
+        finalScore,
+        isPassed: passed,
         status: passed ? "passed" : "failed",
         progress: passed ? 100 : Math.max(enrollment.progress, 80),
         lastLessonId: lessonId || enrollment.lastLessonId,
@@ -1333,6 +1449,121 @@ export async function runInternalLmsReminderAction(formData: FormData) {
       role: textValue(formData, "role"),
     },
   });
+
+  revalidateLms();
+}
+
+export async function requestInternalLmsEnrollmentAction(formData: FormData) {
+  const courseId = numberValue(formData, "courseId");
+  const employee = await getCurrentEmployee();
+
+  if (!courseId || !employee) {
+    throw new Error("Course dan karyawan wajib ada");
+  }
+
+  const course = await getCourse(courseId);
+  if (!course || course.status === "archived") {
+    throw new Error("Course tidak tersedia");
+  }
+
+  const [existing] = await db
+    .select()
+    .from(chitraLearningEnrollments)
+    .where(and(eq(chitraLearningEnrollments.courseId, courseId), eq(chitraLearningEnrollments.employeeId, employee.id)))
+    .limit(1);
+
+  if (existing) {
+    throw new Error("Anda sudah terdaftar atau request sudah pending");
+  }
+
+  await db.insert(chitraLearningEnrollments).values({
+    courseId,
+    employeeId: employee.id,
+    enrollmentType: "self",
+    approvalStatus: "pending",
+    status: "assigned",
+    progress: 0,
+    dueAt: dueDate(course.dueDays),
+  });
+
+  revalidateLms();
+}
+
+export async function approveInternalLmsEnrollmentAction(formData: FormData) {
+  const enrollmentId = numberValue(formData, "enrollmentId");
+  const isApproved = textValue(formData, "status") === "approved";
+  const rejectionReason = textValue(formData, "rejectionReason") || "";
+  const actorEmployeeId = await getCurrentEmployeeId();
+
+  if (!enrollmentId) throw new Error("Enrollment ID wajib");
+
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) {
+    throw new Error("Akses ditolak");
+  }
+
+  await db
+    .update(chitraLearningEnrollments)
+    .set({
+      approvalStatus: isApproved ? "approved" : "rejected",
+      approvedByEmployeeId: actorEmployeeId,
+      approvedAt: new Date(),
+      rejectionReason: isApproved ? null : rejectionReason,
+      updatedAt: new Date(),
+    })
+    .where(eq(chitraLearningEnrollments.id, enrollmentId));
+
+  revalidateLms();
+}
+
+export async function updateCourseAccessRules(courseId: number, rules: { accessType: string, accessValue: string, description: string, isActive: boolean }[]) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  await db.delete(chitraLearningCourseAccess).where(eq(chitraLearningCourseAccess.courseId, courseId));
+  
+  if (rules.length > 0) {
+    await db.insert(chitraLearningCourseAccess).values(rules.map(r => ({
+      courseId,
+      accessType: r.accessType,
+      accessValue: r.accessValue,
+      description: r.description,
+      isActive: r.isActive
+    })));
+  }
+
+  revalidateLms();
+}
+
+export async function updateCertificateTemplateAction(courseId: number, backgroundImageUrl: string, canvasData: any) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const [existing] = await db
+    .select({ id: chitraLearningCertificateTemplates.id })
+    .from(chitraLearningCertificateTemplates)
+    .where(eq(chitraLearningCertificateTemplates.courseId, courseId))
+    .limit(1);
+
+  if (existing) {
+    await db.update(chitraLearningCertificateTemplates).set({
+      backgroundImageUrl,
+      canvasData,
+      updatedAt: new Date()
+    }).where(eq(chitraLearningCertificateTemplates.id, existing.id));
+  } else {
+    await db.insert(chitraLearningCertificateTemplates).values({
+      courseId,
+      backgroundImageUrl,
+      canvasData
+    });
+  }
 
   revalidateLms();
 }

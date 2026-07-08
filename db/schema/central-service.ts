@@ -227,7 +227,7 @@ export const centralServiceForecastItems = pgTable(
     remainingAccessoriesUsd: numeric("remaining_accessories_usd").notNull().default("0"),
     
     // Workflow tracking
-    status: text("status").notNull().default("Waiting"), // 'Waiting', 'Invoiced', 'Cancel'
+    status: text("status").notNull().default("Pending"), // 'Pending', 'Complete', 'Carry Over', 'Cancel'
     remark: text("remark").notNull().default(""),
     
     createdAt: timestamp("created_at").notNull().defaultNow(),

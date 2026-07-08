@@ -5,12 +5,16 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Clock, BookOpen, Award, CheckCircle2, Share2, PenSquare, Timer, Play, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
+import { requestInternalLmsEnrollmentAction } from '@/app/dashboard/chitralearning-lms/actions'
+import { toast } from 'sonner'
 
 interface LmsEnrollmentSidebarProps {
+  courseId: number
   courseSlug: string
   isAdmin: boolean
   isEnrolled: boolean
+  approvalStatus?: string | null
   progress: number
   estimatedMinutes: number
   lessonCount: number
@@ -108,9 +112,11 @@ function CountdownTimer({ enrollmentDate, dueDays }: { enrollmentDate: string | 
 }
 
 export function LmsEnrollmentSidebar({
+  courseId,
   courseSlug,
   isAdmin,
   isEnrolled,
+  approvalStatus,
   progress,
   estimatedMinutes,
   lessonCount,
@@ -120,6 +126,20 @@ export function LmsEnrollmentSidebar({
   enrollmentDate,
 }: LmsEnrollmentSidebarProps) {
   const isCompleted = progress >= 100
+  const [isPending, startTransition] = useTransition()
+
+  const handleEnroll = () => {
+    startTransition(async () => {
+      try {
+        const formData = new FormData()
+        formData.append("courseId", courseId.toString())
+        await requestInternalLmsEnrollmentAction(formData)
+        toast.success("Permintaan pendaftaran berhasil dikirim. Menunggu persetujuan admin.")
+      } catch (error: any) {
+        toast.error(error.message || "Gagal mendaftar kursus")
+      }
+    })
+  }
 
   return (
     <div className="sticky top-6 flex flex-col gap-4">
@@ -129,7 +149,7 @@ export function LmsEnrollmentSidebar({
           
           {/* Action Button */}
           <div className="mb-6">
-            {isEnrolled ? (
+            {isEnrolled && approvalStatus === 'approved' ? (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm font-medium">
@@ -155,12 +175,30 @@ export function LmsEnrollmentSidebar({
                   </Link>
                 </Button>
               </div>
+            ) : approvalStatus === 'pending' ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+                <Clock className="h-6 w-6 text-yellow-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-yellow-800">Menunggu Persetujuan</p>
+                <p className="text-xs text-yellow-700 mt-1">Permintaan pendaftaran Anda sedang direview oleh admin/trainer.</p>
+              </div>
+            ) : approvalStatus === 'rejected' ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                <CheckCircle2 className="h-6 w-6 text-red-600 mx-auto mb-2" />
+                <p className="text-sm font-medium text-red-800">Pendaftaran Ditolak</p>
+                <p className="text-xs text-red-700 mt-1">Maaf, Anda tidak dapat mengakses kursus ini.</p>
+              </div>
             ) : (
-              <Button asChild className="w-full h-12 text-base font-semibold shadow-sm">
-                <Link href={`/dashboard/chitralearning-lms/courses/${courseSlug}/learn`}>
-                  <Play className="mr-2 h-5 w-5" />
-                  Mulai Kursus Sekarang
-                </Link>
+              <Button 
+                onClick={handleEnroll} 
+                disabled={isPending}
+                className="w-full h-12 text-base font-semibold shadow-sm"
+              >
+                {isPending ? "Memproses..." : (
+                  <>
+                    <Play className="mr-2 h-5 w-5" />
+                    Daftar Kursus
+                  </>
+                )}
               </Button>
             )}
           </div>

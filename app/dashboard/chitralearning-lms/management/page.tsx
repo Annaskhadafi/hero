@@ -1,11 +1,15 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
-import { chitraLearningCourses } from '@/db/schema/hero'
+import { chitraLearningCourses, chitraLearningEnrollments, employees } from '@/db/schema/hero'
+import { eq, desc } from 'drizzle-orm'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EnrollmentApprovalClient } from './enrollment-approval-client'
+import { CourseListTable } from './course-list-table'
 
 export const metadata = {
   title: 'Manajemen Kursus | ChitraLearning LMS',
@@ -26,7 +30,7 @@ export default async function LmsManagementPage() {
   const courses = await db
     .select()
     .from(chitraLearningCourses)
-    .orderBy(chitraLearningCourses.id)
+    .orderBy(desc(chitraLearningCourses.createdAt))
 
   const formattedCourses = courses.map(c => ({
     id: c.id,
@@ -37,6 +41,43 @@ export default async function LmsManagementPage() {
     lessons: 0, // Mock count
     action: `/dashboard/chitralearning-lms/courses/${c.slug}/edit`
   }))
+
+  const approvedEnrollmentsRows = await db
+    .select({
+      id: chitraLearningEnrollments.id,
+      courseId: chitraLearningEnrollments.courseId,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      department: employees.department,
+      joinedAt: chitraLearningEnrollments.createdAt,
+      completedAt: chitraLearningEnrollments.completedAt,
+      progress: chitraLearningEnrollments.progress,
+      finalScore: chitraLearningEnrollments.finalScore,
+    })
+    .from(chitraLearningEnrollments)
+    .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .where(eq(chitraLearningEnrollments.approvalStatus, 'approved'))
+    .orderBy(desc(chitraLearningEnrollments.createdAt))
+
+  const coursesWithEnrollments = formattedCourses.map(course => ({
+    ...course,
+    enrollments: approvedEnrollmentsRows.filter(e => e.courseId === course.id)
+  }))
+
+  const pendingRows = await db
+    .select({
+      id: chitraLearningEnrollments.id,
+      courseTitle: chitraLearningCourses.title,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      department: employees.department,
+      requestedAt: chitraLearningEnrollments.createdAt,
+    })
+    .from(chitraLearningEnrollments)
+    .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+    .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .where(eq(chitraLearningEnrollments.approvalStatus, 'pending'))
+    .orderBy(desc(chitraLearningEnrollments.createdAt))
 
   return (
     <div className="space-y-6">
@@ -52,49 +93,27 @@ export default async function LmsManagementPage() {
         </Button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-medium">
-            <tr>
-              <th className="px-6 py-4">Judul Kursus</th>
-              <th className="px-6 py-4">Kategori</th>
-              <th className="px-6 py-4">Level</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {formattedCourses.map(course => (
-              <tr key={course.id} className="hover:bg-slate-50/50">
-                <td className="px-6 py-4 font-medium text-slate-900">{course.title}</td>
-                <td className="px-6 py-4 text-slate-600">{course.category}</td>
-                <td className="px-6 py-4 text-slate-600 capitalize">{course.level}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                    course.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
-                    course.status === 'draft' ? 'bg-amber-100 text-amber-700' :
-                    'bg-slate-100 text-slate-700'
-                  }`}>
-                    {course.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={course.action}>Edit</Link>
-                  </Button>
-                </td>
-              </tr>
-            ))}
-            {formattedCourses.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                  Belum ada kursus.
-                </td>
-              </tr>
+      <Tabs defaultValue="courses" className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="courses">Daftar Kursus</TabsTrigger>
+          <TabsTrigger value="pending">
+            Permintaan Pendaftaran
+            {pendingRows.length > 0 && (
+              <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-medium text-white">
+                {pendingRows.length}
+              </span>
             )}
-          </tbody>
-        </table>
-      </div>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="courses">
+          <CourseListTable courses={coursesWithEnrollments} />
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <EnrollmentApprovalClient pendingEnrollments={pendingRows} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

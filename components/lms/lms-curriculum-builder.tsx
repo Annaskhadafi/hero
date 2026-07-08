@@ -49,6 +49,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { QuestionsLibraryDialog } from './questions-library-dialog'
 
 export type LessonType = 'video' | 'article' | 'quiz' | 'pretest' | 'posttest'
 
@@ -60,6 +61,7 @@ export interface BuilderLesson {
   videoUrl?: string
   fileUrl?: string
   durationMinutes?: number
+  quizSettings?: any
 }
 
 export interface BuilderSection {
@@ -304,8 +306,10 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
   const [videoUrl, setVideoUrl] = useState('')
   const [fileUrl, setFileUrl] = useState('')
   const [durationMinutes, setDurationMinutes] = useState('0')
+  const [quizSettings, setQuizSettings] = useState<any>({})
   const [loading, setLoading] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [questionsLibraryOpen, setQuestionsLibraryOpen] = useState(false)
   const router = useRouter()
 
   const flatLessons = useMemo(() => sections.flatMap((section) => section.lessons.map((lesson) => ({ ...lesson, sectionId: section.id, sectionTitle: section.title }))), [sections])
@@ -323,6 +327,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     setVideoUrl(activeLesson.videoUrl ?? '')
     setFileUrl(activeLesson.fileUrl ?? '')
     setDurationMinutes(String(activeLesson.durationMinutes ?? 0))
+    setQuizSettings(activeLesson.quizSettings ?? {})
   }, [activeLesson?.id])
 
   const sensors = useSensors(
@@ -389,6 +394,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     setVideoUrl('')
     setFileUrl('')
     setDurationMinutes('0')
+    setQuizSettings({})
     setDialogOpen(true)
   }
 
@@ -400,6 +406,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     setVideoUrl('')
     setFileUrl('')
     setDurationMinutes('0')
+    setQuizSettings({})
     setDialogOpen(true)
   }
 
@@ -486,6 +493,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     formData.append('videoUrl', videoUrl)
     formData.append('fileUrl', fileUrl)
     formData.append('durationMinutes', durationMinutes)
+    formData.append('quizSettings', JSON.stringify(quizSettings))
     formData.append('isRequired', 'true')
     return formData
   }
@@ -506,6 +514,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
         videoUrl: created.videoUrl,
         fileUrl: created.fileUrl,
         durationMinutes: created.durationMinutes,
+        quizSettings: created.quizSettings,
       }
       setAndEmit(sections.map((item) => item.id === section.id ? { ...item, lessons: [...item.lessons, lesson] } : item))
       setActiveLessonId(lesson.id)
@@ -536,6 +545,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
           videoUrl: updated?.videoUrl ?? videoUrl,
           fileUrl: updated?.fileUrl ?? fileUrl,
           durationMinutes: updated?.durationMinutes ?? (Number(durationMinutes) || 0),
+          quizSettings: updated?.quizSettings ?? quizSettings,
         } : lesson),
       })))
       toast.success('Materi tersimpan')
@@ -598,11 +608,9 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                 </div>
                 <Input value={title} onChange={(event) => setTitle(event.target.value)} className="h-10 flex-1 text-base" required />
                 {isQuizType(lessonType) && (
-                  <Button type="button" variant="outline" asChild className="h-10 shrink-0 border-blue-500 text-blue-700">
-                    <Link href={`/dashboard/chitralearning-lms/lessons/${activeLesson.id}/quiz-builder`}>
-                      <ListChecks className="mr-2 h-4 w-4" />
-                      Questions library
-                    </Link>
+                  <Button type="button" variant="outline" onClick={() => setQuestionsLibraryOpen(true)} className="h-10 shrink-0 border-blue-500 text-blue-700">
+                    <ListChecks className="mr-2 h-4 w-4" />
+                    Questions library
                   </Button>
                 )}
                 <Button type="submit" disabled={loading || uploadingFile} className="h-10 shrink-0 bg-blue-600 text-white hover:bg-blue-700">
@@ -771,9 +779,19 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
-                      {['Randomize questions', 'Randomize answers', 'Show correct answer', 'Quiz Attempt History', 'Retake After Pass', 'Limited attempts to retake quizzes'].map((label) => (
-                        <label key={label} className="flex items-center gap-3 text-sm text-slate-700">
-                          <Switch disabled />
+                      {[
+                        { key: 'randomizeQuestions', label: 'Randomize questions' },
+                        { key: 'randomizeAnswers', label: 'Randomize answers' },
+                        { key: 'showCorrectAnswer', label: 'Show correct answer' },
+                        { key: 'attemptHistory', label: 'Quiz Attempt History' },
+                        { key: 'retakeAfterPass', label: 'Retake After Pass' },
+                        { key: 'limitAttempts', label: 'Limited attempts to retake quizzes' }
+                      ].map(({ key, label }) => (
+                        <label key={key} className="flex items-center gap-3 text-sm text-slate-700 cursor-pointer">
+                          <Switch 
+                            checked={!!quizSettings?.[key]} 
+                            onCheckedChange={(checked) => setQuizSettings({ ...quizSettings, [key]: checked })} 
+                          />
                           {label}
                         </label>
                       ))}
@@ -865,6 +883,19 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
           </form>
         </DialogContent>
       </Dialog>
+
+      {activeLesson && (
+        <QuestionsLibraryDialog 
+          open={questionsLibraryOpen} 
+          onOpenChange={setQuestionsLibraryOpen}
+          courseId={courseId}
+          lessonId={parseInt(activeLesson.id, 10)}
+          onSuccess={() => {
+            // refresh data
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   createForecastPeriod, 
   getForecastItems, 
@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Save, Lock, Trash2, Edit, X, Search } from "lucide-react";
+import { Plus, Save, Lock, Trash2, Edit, X, Search, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { bulkImportForecastItems } from "@/app/actions/central-service-forecast";
 import { ImportExportButtons } from "./import-export-buttons";
@@ -154,7 +154,7 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
     try {
       if (editingItem) {
         const formData = formsData[0];
-        const totalIdr = Number(formData.repairForecast) + Number(formData.retreadForecast) + Number(formData.serviceForecast);
+        const totalIdr = Number(formData.osInvoicePrevMonth) + Number(formData.repairForecast) + Number(formData.retreadForecast) + Number(formData.serviceForecast);
         const dataToSave = {
           ...formData,
           periodId: Number(selectedPeriodId),
@@ -216,7 +216,7 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
   const totalRetread = items.reduce((sum, item) => sum + Number(item.retreadForecast || 0), 0);
   const totalService = items.reduce((sum, item) => sum + Number(item.serviceForecast || 0), 0);
   const totalOsPrevMonth = items.reduce((sum, item) => sum + Number(item.osInvoicePrevMonth || 0), 0);
-  const grandTotalIdr = items.reduce((sum, item) => sum + Number(item.totalForecastIdr || 0), 0);
+  const grandTotalIdr = totalOsPrevMonth + totalRepair + totalRetread + totalService;
 
   const filteredItems = items.filter(item => {
     if (!filterQuery) return true;
@@ -227,6 +227,35 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
       item.remark?.toLowerCase().includes(q)
     );
   });
+
+  const coreItems = filteredItems.filter(i => !i.isProductAccessories);
+  const groupedByCustomer = coreItems.reduce<Record<string, any[]>>((acc, item) => {
+    const key = item.customer || "Unknown";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  const allCustomers = Object.keys(groupedByCustomer);
+  const [expandAll, setExpandAll] = useState(false);
+  const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set(allCustomers));
+
+  useEffect(() => {
+    if (expandAll) {
+      setCollapsedCustomers(new Set());
+    } else {
+      setCollapsedCustomers(new Set(allCustomers));
+    }
+  }, [selectedPeriodId, expandAll, allCustomers.join(",")]);
+
+  const toggleCustomer = (customer: string) => {
+    setCollapsedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(customer)) next.delete(customer);
+      else next.add(customer);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -369,14 +398,20 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Core Services Forecast (IDR)</CardTitle>
+          {coreItems.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setExpandAll(prev => !prev)}>
+              {expandAll ? <><ChevronDown className="w-4 h-4 mr-1" /> Collapse All</> : <><ChevronRight className="w-4 h-4 mr-1" /> Expand All</>}
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]"></TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>PIC Sales</TableHead>
                   <TableHead className="text-right">O/S Prev Month</TableHead>
@@ -384,36 +419,61 @@ export function MonthlyClientPage({ initialPeriods, salesEmployees = [] }: { ini
                   <TableHead className="text-right">Retread</TableHead>
                   <TableHead className="text-right">Service</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Remark</TableHead>
+                  <TableHead>Remark Monthly</TableHead>
                   {!isLocked && <TableHead className="w-[100px]"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8">Loading...</TableCell></TableRow>
-                ) : filteredItems.filter(i => !i.isProductAccessories).length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8">No core service items.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8">Loading...</TableCell></TableRow>
+                ) : coreItems.length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="text-center py-8">No core service items.</TableCell></TableRow>
                 ) : (
-                  filteredItems.filter(i => !i.isProductAccessories).map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.customer}</TableCell>
-                      <TableCell>{item.picSales}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(Number(item.osInvoicePrevMonth))}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(Number(item.repairForecast))}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(Number(item.retreadForecast))}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(Number(item.serviceForecast))}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(Number(item.totalForecastIdr))}</TableCell>
-                      <TableCell>{item.remark}</TableCell>
-                      {!isLocked && (
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(item)}><Edit className="w-4 h-4" /></Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteItem(item.id)} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))
+                  Object.entries(groupedByCustomer).map(([customer, custItems]) => {
+                    const isCollapsed = collapsedCustomers.has(customer);
+                    const custTotal = custItems.reduce((s, i) => s + Number(i.osInvoicePrevMonth) + Number(i.repairForecast) + Number(i.retreadForecast) + Number(i.serviceForecast), 0);
+                    return (
+                      <React.Fragment key={customer}>
+                        <TableRow className="bg-muted/30 cursor-pointer hover:bg-muted/50" onClick={() => toggleCustomer(customer)}>
+                          <TableCell className="py-2 px-2">
+                            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </TableCell>
+                          <TableCell className="font-bold py-2">{customer}</TableCell>
+                          <TableCell className="py-2">{[...new Set(custItems.map(i => i.picSales).filter(Boolean))].join(", ")}</TableCell>
+                          <TableCell className="text-right py-2">{formatCurrency(custItems.reduce((s, i) => s + Number(i.osInvoicePrevMonth || 0), 0))}</TableCell>
+                          <TableCell className="text-right py-2">{formatCurrency(custItems.reduce((s, i) => s + Number(i.repairForecast || 0), 0))}</TableCell>
+                          <TableCell className="text-right py-2">{formatCurrency(custItems.reduce((s, i) => s + Number(i.retreadForecast || 0), 0))}</TableCell>
+                          <TableCell className="text-right py-2">{formatCurrency(custItems.reduce((s, i) => s + Number(i.serviceForecast || 0), 0))}</TableCell>
+                          <TableCell className="text-right font-bold py-2">{formatCurrency(custTotal)}</TableCell>
+                          <TableCell className="py-2 text-xs">
+                            {[...new Set(custItems.map(i => i.remark).filter(Boolean))].join(", ") || "-"}
+                          </TableCell>
+                          {!isLocked && <TableCell className="py-2"></TableCell>}
+                        </TableRow>
+                        {!isCollapsed && custItems.map(item => (
+                          <TableRow key={item.id} className="bg-white">
+                            <TableCell></TableCell>
+                            <TableCell className="pl-8 text-muted-foreground">{item.picSales}</TableCell>
+                            <TableCell></TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground whitespace-normal break-words">{item.remark || ""}</TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground whitespace-normal break-words">{item.repairRemark || ""}</TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground whitespace-normal break-words">{item.retreadRemark || ""}</TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground whitespace-normal break-words">{item.serviceRemark || ""}</TableCell>
+                            <TableCell className="text-right text-[10px] text-muted-foreground whitespace-normal break-words">{item.remark || ""}</TableCell>
+                            <TableCell className="text-xs">{item.remark || "-"}</TableCell>
+                            {!isLocked && (
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(item); }}><Edit className="w-4 h-4" /></Button>
+                                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                                </div>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

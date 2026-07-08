@@ -934,6 +934,9 @@ export const chitraLearningCourses = pgTable('hero_chitralearning_courses', {
   estimatedMinutes: integer('estimated_minutes').notNull().default(0),
   dueDays: integer('due_days').notNull().default(14),
   certificateEnabled: boolean('certificate_enabled').notNull().default(true),
+  gradingType: text('grading_type').notNull().default('posttest_only'),
+  pretestWeight: integer('pretest_weight').notNull().default(0),
+  posttestWeight: integer('posttest_weight').notNull().default(100),
   createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
     onDelete: 'set null',
   }),
@@ -956,6 +959,7 @@ export const chitraLearningLessons = pgTable('hero_chitralearning_lessons', {
   durationMinutes: integer('duration_minutes').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(1),
   isRequired: boolean('is_required').notNull().default(true),
+  quizSettings: jsonb('quiz_settings'), // Stores { randomizeQuestions, randomizeAnswers, showCorrectAnswer, retakeAfterPass, limitAttempts, timeUnit }
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -1009,6 +1013,13 @@ export const chitraLearningEnrollments = pgTable(
     assignedByEmployeeId: integer('assigned_by_employee_id').references(() => employees.id, {
       onDelete: 'set null',
     }),
+    enrollmentType: text('enrollment_type').notNull().default('self'),
+    approvalStatus: text('approval_status').notNull().default('approved'),
+    approvedByEmployeeId: integer('approved_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at'),
+    rejectionReason: text('rejection_reason'),
     status: text('status').notNull().default('assigned'),
     progress: integer('progress').notNull().default(0),
     score: integer('score'),
@@ -1016,6 +1027,8 @@ export const chitraLearningEnrollments = pgTable(
     pretestStatus: text('pretest_status').notNull().default('not_started'),
     posttestScore: integer('posttest_score'),
     posttestStatus: text('posttest_status').notNull().default('not_started'),
+    finalScore: integer('final_score'),
+    isPassed: boolean('is_passed').notNull().default(false),
     dueAt: timestamp('due_at'),
     lastLessonId: integer('last_lesson_id').references(() => chitraLearningLessons.id, {
       onDelete: 'set null',
@@ -1033,6 +1046,19 @@ export const chitraLearningEnrollments = pgTable(
     ),
   })
 )
+
+export const chitraLearningCertificateTemplates = pgTable('hero_chitralearning_certificate_templates', {
+  id: serial('id').primaryKey(),
+  courseId: integer('course_id')
+    .notNull()
+    .unique()
+    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+  backgroundImageUrl: text('background_image_url').notNull().default(''),
+  canvasData: jsonb('canvas_data').default('{}'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
 
 export const chitraLearningCertificates = pgTable(
   'hero_chitralearning_certificates',
@@ -1054,6 +1080,8 @@ export const chitraLearningCertificates = pgTable(
     status: text('status').notNull().default('issued'),
     issuedAt: timestamp('issued_at').notNull().defaultNow(),
     expiresAt: timestamp('expires_at'),
+    fileUrl: text('file_url'),
+    qrCodeUrl: text('qr_code_url'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({

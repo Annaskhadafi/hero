@@ -124,6 +124,7 @@ type CustomerGroup = {
 };
 
 const CAT_COLORS: Record<string, string> = {
+  Outstanding: "bg-amber-100 text-amber-700",
   Repair: "bg-amber-100 text-amber-700",
   Service: "bg-blue-100 text-blue-700",
   Retread: "bg-emerald-100 text-emerald-700",
@@ -201,9 +202,11 @@ export function ReportClientPage({
     let serviceFc = 0, serviceAct = 0;
     let repairFc = 0, repairAct = 0;
     let retreadFc = 0, retreadAct = 0;
+    let osFc = 0;
 
     filtered.forEach((w: any) => {
       const item = w.item;
+      osFc += Number(item.osInvoicePrevMonth || 0);
       serviceFc += Number(item.serviceForecast || 0);
       repairFc += Number(item.repairForecast || 0);
       retreadFc += Number(item.retreadForecast || 0);
@@ -216,11 +219,12 @@ export function ReportClientPage({
       });
     });
 
-    return { serviceFc, serviceAct, repairFc, repairAct, retreadFc, retreadAct };
+    return { serviceFc, serviceAct, repairFc, repairAct, retreadFc, retreadAct, osFc };
   }, [filtered]);
 
   const categoryData = useMemo(() => {
     return [
+      { name: "Outstanding", Forecast: totals.osFc / rate, Actual: 0 },
       { name: "Repair", Forecast: totals.repairFc / rate, Actual: totals.repairAct / rate },
       { name: "Retread", Forecast: totals.retreadFc / rate, Actual: totals.retreadAct / rate },
       { name: "Service", Forecast: totals.serviceFc / rate, Actual: totals.serviceAct / rate },
@@ -229,6 +233,7 @@ export function ReportClientPage({
 
   const pieData = useMemo(() => {
     return [
+      { name: "Outstanding", value: totals.osFc / rate },
       { name: "Repair", value: totals.repairFc / rate },
       { name: "Retread", value: totals.retreadFc / rate },
       { name: "Service", value: totals.serviceFc / rate },
@@ -265,10 +270,24 @@ export function ReportClientPage({
           });
         }
       } else {
+        const os = Number(item.osInvoicePrevMonth || 0);
         const repair = Number(item.repairForecast || 0);
         const service = Number(item.serviceForecast || 0);
         const retread = Number(item.retreadForecast || 0);
 
+        if (os > 0) {
+          categories.push({
+            category: "Outstanding",
+            forecastIdr: os,
+            actualIdr: 0,
+            forecastUsd: 0,
+            actualUsd: 0,
+            remarkMonthly: "",
+            remarkDaily: "",
+            status: item.status,
+            color: "bg-amber-100 text-amber-700",
+          });
+        }
         if (repair > 0) {
           categories.push({
             category: "Repair",
@@ -417,7 +436,15 @@ export function ReportClientPage({
       </div>
 
       <div ref={reportRef} className="p-10 bg-white">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <CategoryScoreCard
+          label="Outstanding Prev Month"
+          forecast={totals.osFc}
+          forecastUsd={totals.osFc / rate}
+          actual={0}
+          colorClass="bg-amber-500"
+          textClass="text-amber-700"
+        />
         <CategoryScoreCard
           label="Forecast Service"
           forecast={totals.serviceFc}
@@ -494,7 +521,7 @@ export function ReportClientPage({
           <div className="flex items-center justify-between">
             <div className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
-              Waiting Document {periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || ""}
+              Pending Document {periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || ""}
             </div>
             <div className="text-right text-xs">
               <span className="text-white/70 font-bold">TOTAL: </span>
@@ -520,12 +547,12 @@ export function ReportClientPage({
                   </th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">PIC</th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Category</th>
-                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Daily</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount</th>
                   <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount IDR</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount USD</th>
-                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark</th>
+                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Monthly</th>
                   <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
                 </tr>
               </thead>

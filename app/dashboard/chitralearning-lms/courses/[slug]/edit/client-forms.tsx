@@ -2,15 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { updateCourseBaseInfo, updateCourseSettings } from '../../../actions'
+import { updateCourseBaseInfo, updateCourseSettings, updateCourseAccessRules } from '../../../actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2, Save } from 'lucide-react'
+import { Loader2, Save, Plus, Trash2 } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
 import { toast } from 'sonner'
+import { MultiSelectSearch } from '@/components/ui/multi-select-search'
 
 export function EditCourseInfoForm({ course, categories }: { course: any, categories: any[] }) {
   const [title, setTitle] = useState(course.title || '')
@@ -164,6 +165,9 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
   const [passingScore, setPassingScore] = useState(course.passingScore?.toString() || '80')
   const [dueDays, setDueDays] = useState(course.dueDays?.toString() || '30')
   const [certificateEnabled, setCertificateEnabled] = useState(course.certificateEnabled ? 'yes' : 'no')
+  const [gradingType, setGradingType] = useState(course.gradingType || 'posttest_only')
+  const [pretestWeight, setPretestWeight] = useState(course.pretestWeight?.toString() || '0')
+  const [posttestWeight, setPosttestWeight] = useState(course.posttestWeight?.toString() || '100')
   
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -178,6 +182,9 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
       formData.append('passingScore', passingScore)
       formData.append('dueDays', dueDays)
       formData.append('certificateEnabled', certificateEnabled)
+      formData.append('gradingType', gradingType)
+      formData.append('pretestWeight', pretestWeight)
+      formData.append('posttestWeight', posttestWeight)
 
       await updateCourseSettings(course.id, formData)
       toast.success('Pengaturan berhasil diperbarui.')
@@ -230,10 +237,150 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
           </Select>
         </div>
       </div>
-      <div className="flex justify-end pt-4">
+      
+      <div className="pt-4 border-t border-slate-100">
+        <h3 className="font-medium text-slate-900 mb-4">Formulasi Penilaian Akhir</h3>
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Tipe Penilaian</Label>
+            <Select value={gradingType} onValueChange={setGradingType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="posttest_only">Hanya Post-test</SelectItem>
+                <SelectItem value="weighted">Pre-test & Post-test (Bobot)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {gradingType === 'weighted' && (
+            <>
+              <div className="space-y-2">
+                <Label>Bobot Pre-test (%)</Label>
+                <Input type="number" value={pretestWeight} onChange={e => {
+                  setPretestWeight(e.target.value)
+                  setPosttestWeight((100 - Number(e.target.value)).toString())
+                }} min="0" max="100" />
+              </div>
+              <div className="space-y-2">
+                <Label>Bobot Post-test (%)</Label>
+                <Input type="number" value={posttestWeight} readOnly className="bg-slate-50 text-slate-500" />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      
+      <div className="flex justify-end pt-4 border-t border-slate-100">
         <Button type="submit" disabled={loading}>
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           Simpan Pengaturan
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+export function EditCourseAccessForm({ courseId, initialRules, departments = [], sections = [] }: { courseId: number, initialRules: any[], departments?: string[], sections?: string[] }) {
+  const [rules, setRules] = useState(initialRules.length > 0 ? initialRules : [{ accessType: 'all', accessValue: '*', description: 'Semua Karyawan', isActive: true }])
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  function addRule() {
+    setRules([...rules, { accessType: 'department', accessValue: '', description: '', isActive: true }])
+  }
+
+  function removeRule(index: number) {
+    setRules(rules.filter((_, i) => i !== index))
+  }
+
+  function updateRule(index: number, field: string, value: any) {
+    const newRules = [...rules]
+    newRules[index] = { ...newRules[index], [field]: value }
+    setRules(newRules)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await updateCourseAccessRules(courseId, rules)
+      toast.success('Aturan akses berhasil diperbarui.')
+      router.refresh()
+    } catch (error) {
+      console.error(error)
+      toast.error('Gagal menyimpan aturan akses.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-4">
+        {rules.map((rule, i) => (
+          <div key={i} className="flex gap-4 items-start bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <div className="flex-1 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Tipe Akses</Label>
+                  <Select value={rule.accessType} onValueChange={(v) => updateRule(i, 'accessType', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua (Public)</SelectItem>
+                      <SelectItem value="department">Departemen</SelectItem>
+                      <SelectItem value="section">Bagian (Section)</SelectItem>
+                      <SelectItem value="role">Role / Jabatan</SelectItem>
+                      <SelectItem value="site">Lokasi Kerja (Site)</SelectItem>
+                      <SelectItem value="employee">Karyawan (ID/SN)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {rule.accessType !== 'all' && (
+                  <div className="space-y-2">
+                    <Label>Nilai (Target)</Label>
+                    {rule.accessType === 'department' ? (
+                      <MultiSelectSearch
+                        label="Departemen"
+                        values={rule.accessValue ? rule.accessValue.split(',').map((v: string) => v.trim()).filter(Boolean) : []}
+                        onValuesChange={(vals) => updateRule(i, 'accessValue', vals.join(','))}
+                        options={departments.map(d => ({ value: d, label: d }))}
+                        placeholder="Pilih departemen..."
+                      />
+                    ) : rule.accessType === 'section' ? (
+                      <MultiSelectSearch
+                        label="Bagian"
+                        values={rule.accessValue ? rule.accessValue.split(',').map((v: string) => v.trim()).filter(Boolean) : []}
+                        onValuesChange={(vals) => updateRule(i, 'accessValue', vals.join(','))}
+                        options={sections.map(s => ({ value: s, label: s }))}
+                        placeholder="Pilih bagian..."
+                      />
+                    ) : (
+                      <Input value={rule.accessValue} onChange={(e) => updateRule(i, 'accessValue', e.target.value)} required placeholder={rule.accessType === 'employee' ? 'Contoh: 10293 atau J1234' : 'Contoh: IT'} />
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Deskripsi</Label>
+                <Input value={rule.description} onChange={(e) => updateRule(i, 'description', e.target.value)} placeholder="Contoh: Khusus tim IT" />
+              </div>
+            </div>
+            <Button type="button" variant="ghost" onClick={() => removeRule(i)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        
+        <Button type="button" variant="outline" onClick={addRule} className="w-full border-dashed">
+          <Plus className="mr-2 h-4 w-4" /> Tambah Aturan Akses
+        </Button>
+      </div>
+
+      <div className="flex justify-end pt-4 border-t border-slate-100">
+        <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Menyimpan...</> : <><Save className="mr-2 h-4 w-4" /> Simpan Akses</>}
         </Button>
       </div>
     </form>

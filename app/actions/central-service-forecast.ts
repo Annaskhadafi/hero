@@ -316,7 +316,8 @@ export async function bulkImportForecastItems(
     const repair = Number(item.repairForecast || 0);
     const retread = Number(item.retreadForecast || 0);
     const service = Number(item.serviceForecast || 0);
-    const totalIdr = repair + retread + service;
+    const os = Number(item.osInvoicePrevMonth || 0);
+    const totalIdr = os + repair + retread + service;
 
     return {
       periodId,
