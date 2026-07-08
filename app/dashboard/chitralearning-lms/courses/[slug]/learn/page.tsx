@@ -244,7 +244,6 @@ export default async function LmsCoursePlayerPage({
                       {isPdfResource ? (
                         <iframe
                           src={pdfViewerUrl}
-                          sandbox="allow-forms allow-scripts allow-same-origin"
                           className="h-[70vh] w-full rounded-xl border border-slate-200"
                           title={activeLesson.title}
                         />
