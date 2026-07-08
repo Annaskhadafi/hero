@@ -38,7 +38,18 @@ function decodeObjectKey(pathname: string) {
 
 function getObjectKeyFromUrl(objectUrl: string) {
   try {
-    const normalizedObjectUrl = ensureLeadingProtocol(objectUrl.trim());
+    const trimmed = objectUrl.trim();
+    const cleanPath = trimmed.replace(/^\/+/, "");
+    if (
+      cleanPath.startsWith("upload/") ||
+      cleanPath.startsWith("attendance-photos/") ||
+      cleanPath.startsWith("profile-photos/") ||
+      cleanPath.startsWith("curhat/")
+    ) {
+      return cleanPath;
+    }
+
+    const normalizedObjectUrl = ensureLeadingProtocol(trimmed);
     const targetUrl = new URL(normalizedObjectUrl);
     const bucketName = serverEnv.s3BucketName;
     const objectPath = decodeObjectKey(targetUrl.pathname);
@@ -321,3 +332,34 @@ export function isS3UploadConfigured() {
       serverEnv.s3SecretAccessKey,
   );
 }
+
+export function resolveUploadUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  const trimmed = url.trim();
+  if (
+    trimmed.startsWith("/api/uploads/") ||
+    trimmed.startsWith("http://localhost") ||
+    trimmed.startsWith("/uploads/")
+  ) {
+    return trimmed;
+  }
+
+  const key = getObjectKeyFromUrl(trimmed);
+  if (key) {
+    return `/api/uploads/${key}`;
+  }
+
+  return trimmed;
+}
+
+export function replaceS3UrlsInHtml(html: string | null | undefined): string {
+  if (!html) return "";
+
+  // Match any S3 upload/attendance-photos/profile-photos/curhat URLs inside HTML text
+  const s3UrlPattern = /https?:\/\/[^\s"'<>]+?\/(upload|attendance-photos|profile-photos|curhat)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)(?:\?[^\s"'<>]+)?/g;
+
+  return html.replace(s3UrlPattern, (match, prefix, fileName) => {
+    return `/api/uploads/${prefix}/${fileName}`;
+  });
+}
+

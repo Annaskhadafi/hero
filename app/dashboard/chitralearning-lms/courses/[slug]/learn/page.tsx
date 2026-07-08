@@ -12,6 +12,7 @@ import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/l
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { resolveUploadUrl, replaceS3UrlsInHtml, getS3ObjectReadUrl } from '@/lib/s3-storage'
 
 export const metadata = {
   title: 'Learn | ChitraLearning LMS',
@@ -147,21 +148,26 @@ export default async function LmsCoursePlayerPage({
 
   const quizQuestions: QuizQuestion[] = quizRows.map((question) => ({
     id: question.id,
-    question: question.questionText,
-    questionImageUrl: question.questionImageUrl,
+    question: replaceS3UrlsInHtml(question.questionText),
+    questionImageUrl: resolveUploadUrl(question.questionImageUrl),
     options: [
-      { id: 'A', text: question.optionA, imageUrl: question.optionAImageUrl },
-      { id: 'B', text: question.optionB, imageUrl: question.optionBImageUrl },
-      { id: 'C', text: question.optionC, imageUrl: question.optionCImageUrl },
-      { id: 'D', text: question.optionD, imageUrl: question.optionDImageUrl },
+      { id: 'A', text: replaceS3UrlsInHtml(question.optionA), imageUrl: resolveUploadUrl(question.optionAImageUrl) },
+      { id: 'B', text: replaceS3UrlsInHtml(question.optionB), imageUrl: resolveUploadUrl(question.optionBImageUrl) },
+      { id: 'C', text: replaceS3UrlsInHtml(question.optionC), imageUrl: resolveUploadUrl(question.optionCImageUrl) },
+      { id: 'D', text: replaceS3UrlsInHtml(question.optionD), imageUrl: resolveUploadUrl(question.optionDImageUrl) },
     ].filter((option) => option.text),
   }))
   const nextLessonHref = nextLesson ? `/dashboard/chitralearning-lms/courses/${course.slug}/learn?lessonId=${nextLesson.id}` : null
-  const fileUrl = activeLesson.fileUrl || ''
-  const filePath = fileUrl.toLowerCase().split('?')[0]
+  const rawFileUrl = activeLesson.fileUrl || ''
+  const filePath = rawFileUrl.toLowerCase().split('?')[0]
   const fileExtension = filePath.match(/\.([a-z0-9]+)$/)?.[1] || ''
   const isPdfResource = fileExtension === 'pdf'
   const isOfficeResource = ['doc', 'docx', 'ppt', 'pptx'].includes(fileExtension)
+  
+  const fileUrl = isOfficeResource 
+    ? (await getS3ObjectReadUrl(rawFileUrl)) || '' 
+    : resolveUploadUrl(rawFileUrl)
+
   const officeViewerUrl = isOfficeResource && /^https?:\/\//i.test(fileUrl)
     ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
     : ''
@@ -269,6 +275,7 @@ export default async function LmsCoursePlayerPage({
       <div className="hidden lg:block w-[320px] xl:w-[360px] shrink-0 border-l border-slate-200 bg-white">
         <LmsPlayerSidebar 
           courseTitle={course.title}
+          courseSlug={course.slug}
           sections={curriculumSections}
         />
       </div>

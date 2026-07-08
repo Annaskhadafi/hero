@@ -5,11 +5,12 @@ import { LmsCurriculumAccordion, type CurriculumSection } from '@/components/lms
 
 interface LmsPlayerSidebarProps {
   courseTitle: string
+  courseSlug?: string
   sections: CurriculumSection[]
   className?: string
 }
 
-export function LmsPlayerSidebar({ courseTitle, sections, className }: LmsPlayerSidebarProps) {
+export function LmsPlayerSidebar({ courseTitle, courseSlug, sections, className }: LmsPlayerSidebarProps) {
   return (
     <div className={`flex flex-col h-full bg-white border-l border-slate-100 ${className}`}>
       {/* Header */}
@@ -22,7 +23,7 @@ export function LmsPlayerSidebar({ courseTitle, sections, className }: LmsPlayer
       {/* Curriculum */}
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <LmsCurriculumAccordion sections={sections} defaultExpanded={true} />
+          <LmsCurriculumAccordion sections={sections} defaultExpanded={true} courseSlug={courseSlug} />
         </div>
       </ScrollArea>
     </div>
