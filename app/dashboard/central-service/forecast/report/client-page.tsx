@@ -122,6 +122,7 @@ type CustomerGroup = {
   categories: CategoryRow[];
   totalAmountIdr: number;
   totalAmountUsd: number;
+  forecastStatus: string;
 };
 
 const CAT_COLORS: Record<string, string> = {
@@ -150,7 +151,7 @@ export function ReportClientPage({
 }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || "");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortField, setSortField] = useState<"customer" | "actual">("customer");
+  const [sortField, setSortField] = useState<"picSales" | "customer" | "actual">("picSales");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sapRevenue, setSapRevenue] = useState(initialSapRevenue);
   const [isLoadingSap, setIsLoadingSap] = useState(false);
@@ -267,7 +268,7 @@ export function ReportClientPage({
             remarkMonthly: item.remark || "",
             remarkDaily: "",
             sectionDaily: "",
-            status: item.status,
+            status: "-",
             color: CAT_COLORS.Accessories,
           });
         }
@@ -287,7 +288,7 @@ export function ReportClientPage({
             remarkMonthly: "",
             remarkDaily: "",
             sectionDaily: "",
-            status: item.status,
+            status: "-",
             color: "bg-amber-100 text-amber-700",
           });
         }
@@ -301,7 +302,7 @@ export function ReportClientPage({
             remarkMonthly: item.repairRemark || "",
             remarkDaily: "",
             sectionDaily: "",
-            status: item.status,
+            status: "-",
             color: CAT_COLORS.Repair,
           });
         }
@@ -315,7 +316,7 @@ export function ReportClientPage({
             remarkMonthly: item.serviceRemark || "",
             remarkDaily: "",
             sectionDaily: "",
-            status: item.status,
+            status: "-",
             color: CAT_COLORS.Service,
           });
         }
@@ -329,7 +330,7 @@ export function ReportClientPage({
             remarkMonthly: item.retreadRemark || "",
             remarkDaily: "",
             sectionDaily: "",
-            status: item.status,
+            status: "-",
             color: CAT_COLORS.Retread,
           });
         }
@@ -382,14 +383,25 @@ export function ReportClientPage({
         categories,
         totalAmountIdr,
         totalAmountUsd,
+        forecastStatus: item.status || "",
       });
     });
 
     let groups = Array.from(map.values());
 
     groups.sort((a, b) => {
-      const valA = sortField === "customer" ? a.customer.toLowerCase() : a.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
-      const valB = sortField === "customer" ? b.customer.toLowerCase() : b.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
+      let valA: string | number;
+      let valB: string | number;
+      if (sortField === "picSales") {
+        valA = (a.pic || "").toLowerCase();
+        valB = (b.pic || "").toLowerCase();
+      } else if (sortField === "customer") {
+        valA = a.customer.toLowerCase();
+        valB = b.customer.toLowerCase();
+      } else {
+        valA = a.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
+        valB = b.categories.reduce((s, c) => s + c.forecastIdr + c.actualIdr, 0);
+      }
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
@@ -398,13 +410,13 @@ export function ReportClientPage({
     return groups;
   }, [filtered, sortField, sortOrder]);
 
-  const toggleSort = (field: "customer" | "actual") => {
+  const toggleSort = (field: "picSales" | "customer" | "actual") => {
     if (sortField === field) setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     else { setSortField(field); setSortOrder("asc"); }
   };
 
   const totalRowIdr = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr + c.actualIdr, 0), 0);
-  const totalRowUsd = groupedData.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastUsd + c.actualUsd, 0), 0);
+  const totalRowUsd = totalRowIdr / rate;
   const getRemainingAmount = (cat: CategoryRow) => Math.max(0, cat.forecastIdr - cat.actualIdr);
   const getRemarkDaily = (cat: CategoryRow) =>
     cat.category === "Outstanding" && cat.sectionDaily
@@ -536,12 +548,6 @@ export function ReportClientPage({
               <BarChart3 className="w-4 h-4" />
               Pending Document {periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || ""}
             </div>
-            <div className="text-right text-xs">
-              <span className="text-white/70 font-bold">TOTAL: </span>
-              <span className="font-black">{fmtIdr(totalRowIdr)}</span>
-              <span className="text-white/70"> | </span>
-              <span className="font-black">{fmtUsd(totalRowUsd)}</span>
-            </div>
           </div>
         </div>
         <div className="p-0">
@@ -558,16 +564,23 @@ export function ReportClientPage({
                       Customer <ArrowUpDown className="w-3 h-3" />
                     </div>
                   </th>
-                  <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">PIC</th>
+                  <th
+                    className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2 cursor-pointer hover:bg-yellow-500"
+                    onClick={() => toggleSort("picSales")}
+                  >
+                    <div className="flex items-center gap-1">
+                      PIC <ArrowUpDown className="w-3 h-3" />
+                    </div>
+                  </th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Monthly</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Forecast IDR</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Forecast USD</th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Category</th>
                   <th className="text-black font-bold text-xs text-left border border-black/20 px-2 py-2">Remark Daily</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Amount</th>
-                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
+                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status Doc</th>
                   <th className="text-black font-bold text-xs text-right border border-black/20 px-2 py-2">Sisa Amount</th>
-                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status</th>
+                  <th className="text-black font-bold text-xs text-center border border-black/20 px-2 py-2">Status Forecast</th>
                 </tr>
               </thead>
               <tbody>
@@ -580,7 +593,7 @@ export function ReportClientPage({
                 ) : (
                   groupedData.map((group, gi) => {
                     const groupRemarkMonthly = group.categories[0]?.remarkMonthly || "";
-                    const groupStatus = group.categories[0]?.status || "";
+                    const groupStatus = group.forecastStatus;
                     const catLen = group.categories.length;
                     return group.categories.map((cat, ci) => {
                       const isFirst = ci === 0;

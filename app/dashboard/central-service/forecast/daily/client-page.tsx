@@ -110,9 +110,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
     Outstanding: null, Repair: null, Service: null, Retread: null,
   });
 
-  type SortField = 'customer' | 'forecast' | 'actual' | 'sisa';
+  type SortField = 'picSales' | 'customer' | 'forecast' | 'actual' | 'sisa';
   type SortOrder = 'asc' | 'desc';
-  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortField, setSortField] = useState<SortField | null>('picSales');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   const handleSort = (field: SortField) => {
@@ -337,6 +337,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
 
   const getSortValue = (wrapper: any, field: SortField) => {
     const { forecast, actual } = getForecastActual(wrapper);
+    if (field === 'picSales') return (wrapper.item.picSales || '').toLowerCase();
     if (field === 'customer') return wrapper.item.customer.toLowerCase();
     if (field === 'forecast') return forecast;
     if (field === 'sisa') return forecast - actual;
@@ -531,6 +532,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                   <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('customer')}>
                     <div className="flex items-center">Customer <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
                   </TableHead>
+                  <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('picSales')}>
+                    <div className="flex items-center">Sales <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
+                  </TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('forecast')}>
                     <div className="flex items-center justify-end">Forecast <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
@@ -542,14 +546,14 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                   <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('sisa')}>
                     <div className="flex items-center justify-end">Sisa <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
                   </TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Status Forecast</TableHead>
                   <TableHead>Remark</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedItems.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-8">No pending items.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="text-center py-8">No pending items.</TableCell></TableRow>
                 ) : (
                   sortedItems.map((wrapper: any, index: number) => (
                     <React.Fragment key={wrapper.item.id}>
@@ -563,7 +567,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         <TableCell className="font-medium">{wrapper.period.monthYear}</TableCell>
                         <TableCell>
                           <div className="font-bold">{wrapper.item.customer}</div>
-                          <div className="text-xs text-muted-foreground">{wrapper.item.picSales}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{wrapper.item.picSales}</div>
                         </TableCell>
                         <TableCell>
                           {wrapper.item.isProductAccessories ? "Accessories" : "Core Services"}
@@ -589,7 +595,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button size="sm" variant="outline" onClick={() => openStatusDialog(wrapper)}>
-                              <RefreshCw className="w-4 h-4 mr-1" /> Status
+                              <RefreshCw className="w-4 h-4 mr-1" /> Status Forecast
                             </Button>
                             <Button size="sm" onClick={() => openActualsDialog(wrapper)}>
                               <FileText className="w-4 h-4 mr-1" /> SAP Actual
@@ -599,7 +605,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                       </TableRow>
                       {expandedItems.has(wrapper.item.id) && (
                         <TableRow className="bg-muted/30">
-                          <TableCell colSpan={12} className="p-0 border-b">
+                          <TableCell colSpan={13} className="p-0 border-b">
                             <div className="p-4">
                               <h4 className="font-semibold mb-3 text-sm flex items-center gap-2">
                                 <Banknote className="w-4 h-4 text-primary" /> SAP Actuals Progress
@@ -826,14 +832,14 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Update Status for {selectedItem?.item.customer}</DialogTitle>
+            <DialogTitle>Update Status Forecast for {selectedItem?.item.customer}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>Status Forecast</Label>
               <Select value={statusForm.status} onValueChange={val => setStatusForm({...statusForm, status: val})}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Status" />
+                  <SelectValue placeholder="Select Status Forecast" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Pending">Pending</SelectItem>
@@ -933,7 +939,7 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                       <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Status</Label>
+                      <Label className="text-xs">Status Doc</Label>
                       <Select value={actualsForm[statusKey]} onValueChange={v => setActualsForm({...actualsForm, [statusKey]: v})}>
                         <SelectTrigger className="h-9">
                           <SelectValue />
