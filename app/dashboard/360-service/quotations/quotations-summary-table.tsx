@@ -22,6 +22,7 @@ import {
 import { QuotationPreviewDialog } from './quotation-preview-dialog'
 import { QuotationStatusSelect } from './quotation-status-select'
 import { QuotationPoEdit } from './quotation-po-edit'
+import { QuotationPoUpload } from './quotation-po-upload'
 
 type QuotationSummaryRow = {
   id: number
@@ -33,6 +34,7 @@ type QuotationSummaryRow = {
   site: string
   period: string
   status: string
+  poFileUrl: string
 }
 
 function formatCurrency(value: number) {
@@ -489,7 +491,10 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
               <TableCell>{formatDate(row.quotationDate)}</TableCell>
               <TableCell>{row.customerName || '-'}</TableCell>
               <TableCell>
-                <QuotationPoEdit quotationId={row.id} value={row.poNumber} />
+                <div className="flex items-center gap-1">
+                  <QuotationPoEdit quotationId={row.id} value={row.poNumber} />
+                  <QuotationPoUpload quotationId={row.id} poFileUrl={row.poFileUrl} />
+                </div>
               </TableCell>
               <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
               <TableCell>{row.site || '-'}</TableCell>

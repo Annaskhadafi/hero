@@ -606,3 +606,12 @@ export async function updateQuotationPoNumber(id: number, poNumber: string) {
   await db.update(service360Quotations).set({ poNumber, updatedAt: new Date() }).where(eq(service360Quotations.id, id))
   revalidatePath('/dashboard/360-service/quotations')
 }
+
+export async function uploadQuotationPoFile(id: number, fileUrl: string) {
+  await db.update(service360Quotations).set({ 
+    poFileUrl: fileUrl, 
+    status: 'PO Release',
+    updatedAt: new Date() 
+  }).where(eq(service360Quotations.id, id))
+  revalidatePath('/dashboard/360-service/quotations')
+}

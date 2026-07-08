@@ -15,6 +15,7 @@ export default async function QuotationsPage() {
     site: quotation.projectName ?? '',
     period: quotation.poPeriod ?? '',
     status: quotation.status,
+    poFileUrl: quotation.poFileUrl ?? '',
   }))
 
   return (

@@ -60,6 +60,7 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   fromSignatureUrl: text("from_signature_url"),
   subject: text("subject"),
   poNumber: text("po_number"),
+  poFileUrl: text("po_file_url"),
   projectName: text("project_name"),
   poPeriod: text("po_period"),
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).notNull().default("0"), // e.g. 11.00 for 11%

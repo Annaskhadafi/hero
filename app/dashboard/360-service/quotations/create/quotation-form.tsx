@@ -159,6 +159,25 @@ const parseMonthPeriod = (periodStr: string) => {
   return { start, end, extras };
 };
 
+const buildMonthPeriod = (
+  startDate?: string,
+  endDate?: string,
+  extraDateRanges?: { start: string; end: string }[]
+): string | null => {
+  const parts: string[] = [];
+  if (startDate && endDate) {
+    parts.push(`${startDate} - ${endDate}`);
+  }
+  if (extraDateRanges && extraDateRanges.length > 0) {
+    extraDateRanges.forEach(range => {
+      if (range.start && range.end) {
+        parts.push(`${range.start} - ${range.end}`);
+      }
+    });
+  }
+  return parts.length > 0 ? parts.join(" & ") : null;
+};
+
 const parsePoPeriod = (periodStr?: string | null) => {
   if (!periodStr) return { start: "", end: "" };
   const [startText, endText] = periodStr.split(" - ");
@@ -221,8 +240,8 @@ const router = useRouter()
         price: Number(i.quotationItem.price) || 0,
         isBackup: i.quotationItem.isBackup || false,
         backupMonthPeriod: i.quotationItem.backupMonthPeriod || "",
-        backupStartDate: parsedBackup.start,
-        backupEndDate: parsedBackup.end,
+        backupStartDate: i.quotationItem.backupStartDate || parsedBackup.start,
+        backupEndDate: i.quotationItem.backupEndDate || parsedBackup.end,
         backupLevel: i.quotationItem.backupLevel || "",
         backupDescription: i.quotationItem.backupDescription || "",
         backupPrice: Number(i.quotationItem.backupPrice) || 0,
@@ -504,7 +523,7 @@ const router = useRouter()
         items: data.items.map(item => ({
           ...item,
           subtotal: getRowSubtotal(item),
-          monthPeriod: (item.startDate && item.endDate) ? `${item.startDate} - ${item.endDate}` : null,
+          monthPeriod: buildMonthPeriod(item.startDate, item.endDate, item.extraDateRanges),
           backupMonthPeriod: (item.backupStartDate && item.backupEndDate) ? `${item.backupStartDate} - ${item.backupEndDate}` : null
         }))
       };
