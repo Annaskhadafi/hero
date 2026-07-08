@@ -6,7 +6,7 @@ function read(file: string) {
 }
 
 describe('user management CRUD source of truth', () => {
-  it('renders User Management from HR employee source', () => {
+  it('renders User Management from employee source', () => {
     const source = read('lib/hero-admin.ts')
     const start = source.indexOf('export async function getSecurityUsersData')
     const section = source.slice(
@@ -14,10 +14,11 @@ describe('user management CRUD source of truth', () => {
       source.indexOf('export async function getSecurityRolesData', start)
     )
 
-    expect(section).toContain('.from(hrEmployees)')
+    expect(section).toContain('.from(employees)')
+    expect(section).not.toContain('.from(hrEmployees)')
   })
 
-  it('writes create and import mutations to HR employees', () => {
+  it('writes create and import mutations to employees', () => {
     const source = read('app/dashboard/admin-actions.ts')
     const importStart = source.indexOf('export async function importSecurityUsersAction')
     const importEnd = source.indexOf('export async function manageSecurityUserAction', importStart)
@@ -26,14 +27,15 @@ describe('user management CRUD source of truth', () => {
     const createEnd = source.indexOf('if (!payload.employeeId)', createStart)
     const createSection = source.slice(createStart, createEnd)
 
-    expect(importSection).toContain('.from(hrEmployees)')
-    expect(importSection).toContain('.update(hrEmployees)')
-    expect(importSection).toContain('.insert(hrEmployees)')
-    expect(createSection).toContain('.insert(hrEmployees)')
-    expect(createSection).toContain('currentDefaultLegacySite')
+    expect(importSection).toContain('.from(employees)')
+    expect(importSection).toContain('.update(employees)')
+    expect(importSection).toContain('.insert(employees)')
+    expect(importSection).not.toContain('hrEmployees')
+    expect(createSection).toContain('.insert(employees)')
+    expect(createSection).toContain('currentDefaultSite')
   })
 
-  it('writes update, status, delete, and bulk mutations to HR employees', () => {
+  it('writes update, status, delete, and bulk mutations to employees', () => {
     const source = read('app/dashboard/admin-actions.ts')
     const manageStart = source.indexOf('export async function manageSecurityUserAction')
     const manageEnd = source.indexOf('// ─── Security Role Management', manageStart)
@@ -42,11 +44,12 @@ describe('user management CRUD source of truth', () => {
     const bulkEnd = source.indexOf('// ─── Face Registration Management', bulkStart)
     const bulkSection = source.slice(bulkStart, bulkEnd)
 
-    expect(manageSection).toContain('.from(hrEmployees)')
-    expect(manageSection).toContain('.update(hrEmployees)')
-    expect(manageSection).toContain('.delete(hrEmployees)')
-    expect(bulkSection).toContain('.update(hrEmployees)')
-    expect(bulkSection).toContain('.delete(hrEmployees)')
+    expect(manageSection).toContain('.from(employees)')
+    expect(manageSection).toContain('.update(employees)')
+    expect(manageSection).toContain('.delete(employees)')
+    expect(manageSection).not.toContain('hrEmployees')
+    expect(bulkSection).toContain('.update(employees)')
+    expect(bulkSection).toContain('.delete(employees)')
   })
 
   it('row dialog uses tabs and no browser alert', () => {
@@ -66,5 +69,27 @@ describe('user management CRUD source of truth', () => {
     expect(source).toContain("action: 'change-role'")
     expect(source).toContain('roleOptions.map')
     expect(source).toContain("formData.append('roleId'")
+  })
+
+  it('profile edit exposes editable email and persists it to employee auth records', () => {
+    const rowActions = read('components/security-user-row-actions.tsx')
+    const actions = read('app/dashboard/admin-actions.ts')
+    const formStart = rowActions.indexOf('name="intent" value="update-profile"')
+    const formEnd = rowActions.indexOf('ProfileSubmitButton', formStart)
+    const formSection = rowActions.slice(formStart, formEnd)
+    const updateStart = actions.indexOf("payload.intent === 'update-profile'")
+    const updateEnd = actions.indexOf("payload.intent === 'ban-user'", updateStart)
+    const updateSection = actions.slice(updateStart, updateEnd)
+
+    expect(formSection).toContain('<Input')
+    expect(formSection).toContain('name="email"')
+    expect(formSection).toContain('type="email"')
+    expect(formSection).not.toContain('type="hidden" name="email"')
+    expect(updateSection).toContain('isValidEmailFormat(email)')
+    expect(updateSection).toContain("message: 'Email is already used by another user.'")
+    expect(updateSection).toContain('emailEmployeeOwner')
+    expect(updateSection).toContain('emailAuthOwner')
+    expect(updateSection).toContain('email,')
+    expect(updateSection).toContain('updateCredentialEmailAccountId')
   })
 })

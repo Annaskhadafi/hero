@@ -3092,6 +3092,33 @@ async function upsertCredentialAccount({
   }
 }
 
+async function updateCredentialEmailAccountId({
+  authUserId,
+  previousEmail,
+  email,
+  now,
+}: {
+  authUserId: string
+  previousEmail: string | null
+  email: string
+  now: Date
+}) {
+  const normalizedEmail = normalizeAuthEmail(email)
+  const previousAccountId = previousEmail ? normalizeAuthEmail(previousEmail) : ''
+  const accountIds = Array.from(new Set([previousAccountId, authUserId].filter(Boolean)))
+
+  await db
+    .update(account)
+    .set({ accountId: normalizedEmail, updatedAt: now })
+    .where(
+      and(
+        eq(account.providerId, 'credential'),
+        eq(account.userId, authUserId),
+        inArray(account.accountId, accountIds)
+      )
+    )
+}
+
 // ─── Bulk Provisioning Types & Helpers ───────────────────────────────────────
 
 export interface BulkProvisionResult {
@@ -4670,6 +4697,31 @@ export async function manageSecurityUserAction(
         ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
         : []
 
+      if (!email || !isValidEmailFormat(email)) {
+        return { status: 'error', message: 'Email format is invalid.' }
+      }
+
+      const [[emailEmployeeOwner], [emailAuthOwner]] = await Promise.all([
+        db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(and(eq(employees.email, email), ne(employees.id, employee.id)))
+          .limit(1),
+        db
+          .select({ id: user.id })
+          .from(user)
+          .where(
+            employee.authUserId
+              ? and(eq(user.email, email), ne(user.id, employee.authUserId))
+              : eq(user.email, email)
+          )
+          .limit(1),
+      ])
+
+      if (emailEmployeeOwner || emailAuthOwner) {
+        return { status: 'error', message: 'Email is already used by another user.' }
+      }
+
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
         section,
@@ -4731,15 +4783,23 @@ export async function manageSecurityUserAction(
         .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
+        const now = new Date()
         await db
           .update(user)
           .set({
             name: payload.fullName || employee.name,
             email,
             image: profileImage || null,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(user.id, employee.authUserId))
+
+        await updateCredentialEmailAccountId({
+          authUserId: employee.authUserId,
+          previousEmail: employee.email,
+          email,
+          now,
+        })
       }
 
       const actorEmail = await getCurrentActorEmail()

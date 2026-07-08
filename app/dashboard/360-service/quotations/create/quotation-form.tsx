@@ -226,10 +226,20 @@ const router = useRouter()
       items: initialData?.items?.map((i: any, idx: number) => {
         const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
         const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
+        let inferredCategory = i.item?.category;
+        if (!inferredCategory) {
+          const desc = (i.quotationItem.customDescription || "").toLowerCase();
+          if (desc.includes("labour cost") || i.quotationItem.isBackup) inferredCategory = "Labour Cost";
+          else if (desc.includes("rental & tools")) inferredCategory = "Rental & Tools";
+          else if (desc.includes("rental")) inferredCategory = "Rental";
+          else if (desc.includes("tools")) inferredCategory = "Tools";
+          else inferredCategory = "General";
+        }
+        
         return {
         id: idx,
         itemId: i.quotationItem.itemId,
-        category: i.item?.category || (i.quotationItem.isBackup ? "Labour Cost" : "General"),
+        category: inferredCategory,
         monthPeriod: i.quotationItem.monthPeriod || "",
         startDate: parsedPrimary.start, 
         endDate: parsedPrimary.end,
@@ -350,7 +360,10 @@ const router = useRouter()
   }
 
   const PRORATE_CATEGORIES = ["Labour Cost", "Rental & Tools", "Rental", "Tools"];
-  const isProrateEligible = (cat: string) => PRORATE_CATEGORIES.includes(cat) || cat === "";
+  const isProrateEligible = (cat: string) => {
+    if (!cat) return true;
+    return PRORATE_CATEGORIES.map(c => c.toLowerCase()).includes(cat.toLowerCase().trim());
+  };
 
   const getPrimaryProrate = (item: SelectedItem) => {
     if (isProrateEligible(item.category)) {

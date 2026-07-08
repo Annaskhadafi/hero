@@ -324,7 +324,6 @@ export function SecurityUserRowActions({
                   </div>
                   <input type="hidden" name="intent" value="update-profile" />
                   <input type="hidden" name="employeeId" value={user.id} />
-                  <input type="hidden" name="email" value={user.email} />
                   <input type="hidden" name="phoneNumber" value={user.phoneNumber} />
                   <input type="hidden" name="directManagerId" value={user.directManagerId ?? 'none'} />
                   <input type="hidden" name="domicile" value={user.domicile} />
@@ -344,6 +343,16 @@ export function SecurityUserRowActions({
                     <label className="grid min-w-0 gap-2">
                       <span className="text-muted-foreground text-xs font-medium">SN</span>
                       <Input name="employeeSn" defaultValue={user.employeeSn} />
+                    </label>
+                    <label className="grid min-w-0 gap-2 md:col-span-2">
+                      <span className="text-muted-foreground text-xs font-medium">Email</span>
+                      <Input
+                        name="email"
+                        type="email"
+                        defaultValue={user.email}
+                        placeholder="name@company.com"
+                        required
+                      />
                     </label>
 
                     <div className="grid min-w-0 gap-2">

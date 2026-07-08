@@ -9,6 +9,14 @@ import { uploadQuotationPoFile } from "@/app/actions/service360"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
+const resolveClientUrl = (url: string) => {
+  if (!url) return "";
+  if (url.startsWith("/api/uploads/")) return url;
+  const match = url.match(/(?:^|\/)((?:attendance-photos|profile-photos|upload)\/.+)$/);
+  if (match) return `/api/uploads/${match[1]}`;
+  return url;
+};
+
 export function QuotationPoUpload({ quotationId, poFileUrl }: { quotationId: number; poFileUrl: string }) {
   const [isPending, startTransition] = useTransition()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -85,14 +93,14 @@ export function QuotationPoUpload({ quotationId, poFileUrl }: { quotationId: num
             <div className="w-full h-full rounded-lg overflow-hidden border bg-muted/30">
               {isPdf ? (
                 <iframe
-                  src={currentUrl}
+                  src={resolveClientUrl(currentUrl)}
                   className="w-full h-[75vh]"
                   title="PO Document"
                 />
               ) : (
                 <div className="flex items-center justify-center h-[75vh] p-4">
                   <img
-                    src={currentUrl}
+                    src={resolveClientUrl(currentUrl)}
                     alt="PO Document"
                     className="max-w-full max-h-full object-contain rounded"
                   />

@@ -33,15 +33,25 @@ describe('user management password reset', () => {
     expect(changePasswordSection).toContain('upsertCredentialAccount')
   })
 
-  it('upsertCredentialAccount finds credential by userId or normalized email or legacy authUserId', () => {
+  it('upsertCredentialAccount finds credential by userId or target accountId', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
       'utf8'
     )
     expect(source).toContain("eq(account.providerId, 'credential')")
     expect(source).toContain('eq(account.userId, authUserId)')
-    expect(source).toContain('eq(account.accountId, normalizedEmail)')
-    expect(source).toContain('eq(account.accountId, authUserId)')
+    expect(source).toContain('eq(account.accountId, accountId)')
+  })
+
+  it('email profile changes sync credential accountId from previous email or legacy authUserId', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
+      'utf8'
+    )
+    expect(source).toContain('updateCredentialEmailAccountId')
+    expect(source).toContain('const previousAccountId = previousEmail ? normalizeAuthEmail(previousEmail) :')
+    expect(source).toContain('new Set([previousAccountId, authUserId].filter(Boolean))')
+    expect(source).toContain('inArray(account.accountId, accountIds)')
   })
 
   it('reset password form uses intent change-password and field newPassword', () => {
