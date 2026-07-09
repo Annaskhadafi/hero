@@ -104,6 +104,10 @@ export async function ensureSchedulingTimesheetTables() {
         on_site_date date,
         day_count integer,
         field_break_date date,
+        field_break_end_date date,
+        source text not null default 'manual',
+        is_locked boolean not null default false,
+        notes text not null default '',
         saved_by_user_id text references "user"(id) on delete set null,
         created_at timestamp not null default now(),
         updated_at timestamp not null default now()
@@ -118,9 +122,58 @@ export async function ensureSchedulingTimesheetTables() {
     await tx.execute(sql`
       alter table hero_timesheet_field_break_plans alter column field_break_date drop not null;
     `);
+    await tx.execute(sql`alter table hero_timesheet_field_break_plans add column if not exists field_break_end_date date;`);
+    await tx.execute(sql`alter table hero_timesheet_field_break_plans add column if not exists source text not null default 'manual';`);
+    await tx.execute(sql`alter table hero_timesheet_field_break_plans add column if not exists is_locked boolean not null default false;`);
+    await tx.execute(sql`alter table hero_timesheet_field_break_plans add column if not exists notes text not null default '';`);
     await tx.execute(sql`
       create unique index if not exists hero_timesheet_field_break_plans_employee_period_uidx
       on hero_timesheet_field_break_plans(site_id, period, employee_id);
+    `);
+    await tx.execute(sql`
+      create table if not exists hero_timesheet_payroll_snapshots (
+        id serial primary key,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        period text not null,
+        status text not null default 'draft',
+        employee_count integer not null default 0,
+        total_msa integer not null default 0,
+        total_meals integer not null default 0,
+        total_tlk integer not null default 0,
+        total_overtime_hours numeric(10,2) not null default 0,
+        metadata jsonb not null default '{}'::jsonb,
+        saved_by_user_id text references "user"(id) on delete set null,
+        generated_at timestamp not null default now(),
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`
+      create unique index if not exists hero_timesheet_payroll_snapshots_site_period_uidx
+      on hero_timesheet_payroll_snapshots(site_id, period);
+    `);
+    await tx.execute(sql`
+      create table if not exists hero_timesheet_payroll_snapshot_items (
+        id serial primary key,
+        snapshot_id integer not null references hero_timesheet_payroll_snapshots(id) on delete cascade,
+        employee_id integer not null references hero_employees(id) on delete cascade,
+        day integer not null,
+        schedule_code text not null default '',
+        attendance_status text not null default 'empty',
+        clock_in text not null default '',
+        clock_out text not null default '',
+        msa_amount integer not null default 0,
+        meals_amount integer not null default 0,
+        tlk_amount integer not null default 0,
+        overtime_hours numeric(8,2) not null default 0,
+        source text not null default 'attendance',
+        notes text not null default '',
+        created_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`
+      create unique index if not exists hero_timesheet_payroll_snapshot_items_snapshot_employee_day_uidx
+      on hero_timesheet_payroll_snapshot_items(snapshot_id, employee_id, day);
     `);
     await tx.execute(sql`
       create table if not exists hero_timesheet_attendance_real_overrides (

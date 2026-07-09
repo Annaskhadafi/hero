@@ -303,11 +303,60 @@ export const timesheetFieldBreakPlans = pgTable("hero_timesheet_field_break_plan
   onSiteDate: date("on_site_date"),
   dayCount: integer("day_count"),
   fieldBreakDate: date("field_break_date"),
+  fieldBreakEndDate: date("field_break_end_date"),
+  source: text("source").notNull().default("manual"),
+  isLocked: boolean("is_locked").notNull().default(false),
+  notes: text("notes").notNull().default(""),
   savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   employeePeriodUnique: uniqueIndex("hero_timesheet_field_break_plans_employee_period_uidx").on(table.siteId, table.period, table.employeeId),
+}));
+
+export const timesheetPayrollSnapshots = pgTable("hero_timesheet_payroll_snapshots", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  status: text("status").notNull().default("draft"),
+  employeeCount: integer("employee_count").notNull().default(0),
+  totalMsa: integer("total_msa").notNull().default(0),
+  totalMeals: integer("total_meals").notNull().default(0),
+  totalTlk: integer("total_tlk").notNull().default(0),
+  totalOvertimeHours: decimal("total_overtime_hours", { precision: 10, scale: 2 }).notNull().default("0"),
+  metadata: jsonb("metadata").notNull().default({}),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sitePeriodUnique: uniqueIndex("hero_timesheet_payroll_snapshots_site_period_uidx").on(table.siteId, table.period),
+}));
+
+export const timesheetPayrollSnapshotItems = pgTable("hero_timesheet_payroll_snapshot_items", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id")
+    .notNull()
+    .references(() => timesheetPayrollSnapshots.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  day: integer("day").notNull(),
+  scheduleCode: text("schedule_code").notNull().default(""),
+  attendanceStatus: text("attendance_status").notNull().default("empty"),
+  clockIn: text("clock_in").notNull().default(""),
+  clockOut: text("clock_out").notNull().default(""),
+  msaAmount: integer("msa_amount").notNull().default(0),
+  mealsAmount: integer("meals_amount").notNull().default(0),
+  tlkAmount: integer("tlk_amount").notNull().default(0),
+  overtimeHours: decimal("overtime_hours", { precision: 8, scale: 2 }).notNull().default("0"),
+  source: text("source").notNull().default("attendance"),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  snapshotEmployeeDayUnique: uniqueIndex("hero_timesheet_payroll_snapshot_items_snapshot_employee_day_uidx").on(table.snapshotId, table.employeeId, table.day),
 }));
 
 export const timesheetAttendanceEmployeeAliases = pgTable("hero_timesheet_attendance_employee_aliases", {

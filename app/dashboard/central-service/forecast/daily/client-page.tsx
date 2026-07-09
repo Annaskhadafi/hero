@@ -1,241 +1,310 @@
-"use client";
+'use client'
 
-import React, { useState, useEffect, useMemo } from "react";
-import { getRealtimeExchangeRate, updateForecastItemStatus, addForecastActual, updateForecastActual, deleteForecastActual } from "@/app/actions/central-service-forecast";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "sonner";
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  getRealtimeExchangeRate,
+  updateForecastItemStatus,
+  addForecastActual,
+  updateForecastActual,
+  deleteForecastActual,
+} from '@/app/actions/central-service-forecast'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 const formatCurrency = (val: number) => {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(val);
-};
-import { Calendar, FileText, Banknote, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown, TrendingUp, Wallet, Trophy, Target, Download, TableProperties } from "lucide-react";
-import { getSapInvoices } from "@/app/actions/central-service-forecast";
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(val)
+}
+import {
+  Calendar,
+  FileText,
+  Banknote,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpDown,
+  TrendingUp,
+  Wallet,
+  Trophy,
+  Target,
+  Download,
+  TableProperties,
+} from 'lucide-react'
+import { getSapInvoices } from '@/app/actions/central-service-forecast'
 
-export function DailyClientPage({ initialItems, periods, initialSapInvoices }: { initialItems: any[], periods: any[], initialSapInvoices: any[] }) {
-  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
-  const [isActualsDialogOpen, setIsActualsDialogOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [globalRate, setGlobalRate] = useState<string>("15000");
-  const [isFetchingGlobalRate, setIsFetchingGlobalRate] = useState(false);
-  const [isFetchingActualRate, setIsFetchingActualRate] = useState(false);
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(periods.length > 0 ? periods[0].id.toString() : "");
-  const [customerFilter, setCustomerFilter] = useState("");
-  const [activeTab, setActiveTab] = useState<"forecast" | "sap">("forecast");
-  const [sapInvoices, setSapInvoices] = useState(initialSapInvoices);
-  const [isLoadingSap, setIsLoadingSap] = useState(false);
-  const [sapSearch, setSapSearch] = useState("");
-  const [sapCustomerFilter, setSapCustomerFilter] = useState("");
-  const [sapSalesmanFilter, setSapSalesmanFilter] = useState("");
+const getForecastAmountIdr = (item: any) => {
+  if (item.isProductAccessories) return Number(item.accessoriesAmountIdr || 0)
+  return (
+    Number(item.osInvoicePrevMonth || 0) +
+    Number(item.repairForecast || 0) +
+    Number(item.retreadForecast || 0) +
+    Number(item.serviceForecast || 0)
+  )
+}
+
+export function DailyClientPage({
+  initialItems,
+  periods,
+  initialSapInvoices,
+}: {
+  initialItems: any[]
+  periods: any[]
+  initialSapInvoices: any[]
+}) {
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false)
+  const [isActualsDialogOpen, setIsActualsDialogOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<any>(null)
+  const [globalRate, setGlobalRate] = useState<string>('15000')
+  const [isFetchingGlobalRate, setIsFetchingGlobalRate] = useState(false)
+  const [isFetchingActualRate, setIsFetchingActualRate] = useState(false)
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
+    periods.length > 0 ? periods[0].id.toString() : ''
+  )
+  const [customerFilter, setCustomerFilter] = useState('')
+  const [activeTab, setActiveTab] = useState<'forecast' | 'sap'>('forecast')
+  const [sapInvoices, setSapInvoices] = useState(initialSapInvoices)
+  const [isLoadingSap, setIsLoadingSap] = useState(false)
+  const [sapSearch, setSapSearch] = useState('')
+  const [sapCustomerFilter, setSapCustomerFilter] = useState('')
+  const [sapSalesmanFilter, setSapSalesmanFilter] = useState('')
 
   const filteredItems = React.useMemo(() => {
-    return initialItems.filter(wrapper => {
-      if (wrapper.period.id.toString() !== selectedPeriodId) return false;
-      if (customerFilter && !wrapper.item.customer.toLowerCase().includes(customerFilter.toLowerCase())) return false;
-      return true;
-    });
-  }, [initialItems, selectedPeriodId, customerFilter]);
+    return initialItems.filter((wrapper) => {
+      if (wrapper.period.id.toString() !== selectedPeriodId) return false
+      if (
+        customerFilter &&
+        !wrapper.item.customer.toLowerCase().includes(customerFilter.toLowerCase())
+      )
+        return false
+      return true
+    })
+  }, [initialItems, selectedPeriodId, customerFilter])
 
   useEffect(() => {
-    const saved = localStorage.getItem("daily_usd_rate");
-    if (saved) setGlobalRate(saved);
-  }, []);
+    const saved = localStorage.getItem('daily_usd_rate')
+    if (saved) setGlobalRate(saved)
+  }, [])
 
   useEffect(() => {
-    const period = periods.find((p) => p.id.toString() === selectedPeriodId);
-    if (!period) return;
-    setIsLoadingSap(true);
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId)
+    if (!period) return
+    setIsLoadingSap(true)
     getSapInvoices(period.monthYear)
       .then(setSapInvoices)
-      .finally(() => setIsLoadingSap(false));
-  }, [selectedPeriodId, periods]);
+      .finally(() => setIsLoadingSap(false))
+  }, [selectedPeriodId, periods])
 
   const handleFetchGlobalRate = async () => {
-    setIsFetchingGlobalRate(true);
+    setIsFetchingGlobalRate(true)
     try {
-      const result = await getRealtimeExchangeRate();
+      const result = await getRealtimeExchangeRate()
       if (result.success && result.rate) {
-        setGlobalRate(result.rate.toString());
-        toast.success("Realtime rate fetched: " + result.rate);
+        setGlobalRate(result.rate.toString())
+        toast.success('Realtime rate fetched: ' + result.rate)
       } else {
-        toast.error(result.error || "Failed to fetch API");
+        toast.error(result.error || 'Failed to fetch API')
       }
     } catch (_error) {
-      toast.error("Failed to fetch API");
+      toast.error('Failed to fetch API')
     } finally {
-      setIsFetchingGlobalRate(false);
+      setIsFetchingGlobalRate(false)
     }
-  };
+  }
 
   const handleSaveGlobalRate = () => {
-    localStorage.setItem("daily_usd_rate", globalRate);
-    toast.success("Rate saved locally");
-  };
+    localStorage.setItem('daily_usd_rate', globalRate)
+    toast.success('Rate saved locally')
+  }
 
-  const [statusForm, setStatusForm] = useState({ status: "", remark: "" });
-  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const [statusForm, setStatusForm] = useState({ status: '', remark: '' })
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
 
-  const CATEGORIES = ["Outstanding", "Repair", "Service", "Retread"] as const;
-  type Category = (typeof CATEGORIES)[number];
+  const CATEGORIES = ['Outstanding', 'Repair', 'Service', 'Retread'] as const
+  type Category = (typeof CATEGORIES)[number]
 
   const [actualsForm, setActualsForm] = useState({
-    updateDate: new Date().toISOString().split("T")[0],
-    exchangeRate: "15000",
-    outstandingAmountIdr: "0",
-    outstandingAmountUsd: "0",
-    outstandingRemark: "",
-    outstandingStatus: "-",
-    outstandingSection: "-",
-    repairAmountIdr: "0",
-    repairAmountUsd: "0",
-    repairRemark: "",
-    repairStatus: "-",
-    serviceAmountIdr: "0",
-    serviceAmountUsd: "0",
-    serviceRemark: "",
-    serviceStatus: "-",
-    retreadAmountIdr: "0",
-    retreadAmountUsd: "0",
-    retreadRemark: "",
-    retreadStatus: "-",
-    customer: "",
-    periodId: "",
-  });
+    updateDate: new Date().toISOString().split('T')[0],
+    exchangeRate: '15000',
+    outstandingAmountIdr: '0',
+    outstandingAmountUsd: '0',
+    outstandingRemark: '',
+    outstandingStatus: '-',
+    outstandingSection: '-',
+    repairAmountIdr: '0',
+    repairAmountUsd: '0',
+    repairRemark: '',
+    repairStatus: '-',
+    serviceAmountIdr: '0',
+    serviceAmountUsd: '0',
+    serviceRemark: '',
+    serviceStatus: '-',
+    retreadAmountIdr: '0',
+    retreadAmountUsd: '0',
+    retreadRemark: '',
+    retreadStatus: '-',
+    customer: '',
+    periodId: '',
+  })
 
   const [editingActualIds, setEditingActualIds] = useState<Record<string, number | null>>({
-    Outstanding: null, Repair: null, Service: null, Retread: null,
-  });
+    Outstanding: null,
+    Repair: null,
+    Service: null,
+    Retread: null,
+  })
 
-  type SortField = 'picSales' | 'customer' | 'forecast' | 'actual' | 'sisa';
-  type SortOrder = 'asc' | 'desc';
-  const [sortField, setSortField] = useState<SortField | null>('picSales');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  type SortField = 'picSales' | 'customer' | 'forecast' | 'actual' | 'sisa'
+  type SortOrder = 'asc' | 'desc'
+  const [sortField, setSortField] = useState<SortField | null>('picSales')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
-      setSortField(field);
-      setSortOrder('asc');
+      setSortField(field)
+      setSortOrder('asc')
     }
-  };
+  }
 
   const toggleExpand = (id: number) => {
-    const next = new Set(expandedItems);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpandedItems(next);
-  };
-
-
+    const next = new Set(expandedItems)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setExpandedItems(next)
+  }
 
   const handleUpdateStatus = async () => {
-    if (!selectedItem || !statusForm.status) return;
+    if (!selectedItem || !statusForm.status) return
     try {
-      await updateForecastItemStatus(selectedItem.item.id, statusForm.status, statusForm.remark);
-      toast.success("Status updated");
-      setIsStatusDialogOpen(false);
-      window.location.reload();
+      await updateForecastItemStatus(selectedItem.item.id, statusForm.status, statusForm.remark)
+      toast.success('Status updated')
+      setIsStatusDialogOpen(false)
+      window.location.reload()
     } catch (e) {
-      toast.error("Failed to update status");
+      toast.error('Failed to update status')
     }
-  };
+  }
 
   const handleAmountIdrChange = (cat: Category, val: string) => {
-    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
-    const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
-    const amountIdr = Number(val);
-    const rate = Number(actualsForm.exchangeRate) || 15000;
-    const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : "0";
-    setActualsForm({ ...actualsForm, [idrKey]: val, [usdKey]: amountUsd });
-  };
+    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm
+    const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm
+    const amountIdr = Number(val)
+    const rate = Number(actualsForm.exchangeRate) || 15000
+    const amountUsd = rate && amountIdr > 0 ? (amountIdr / rate).toFixed(2) : '0'
+    setActualsForm({ ...actualsForm, [idrKey]: val, [usdKey]: amountUsd })
+  }
 
   const handleActualRateChange = (val: string) => {
-    const rate = Number(val) || 0;
-    const next: any = { ...actualsForm, exchangeRate: val };
+    const rate = Number(val) || 0
+    const next: any = { ...actualsForm, exchangeRate: val }
     if (rate) {
       for (const cat of CATEGORIES) {
-        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
-        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
-        const idr = Number(actualsForm[idrKey]);
-        if (idr > 0) next[usdKey] = (idr / rate).toFixed(2);
+        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm
+        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm
+        const idr = Number(actualsForm[idrKey])
+        if (idr > 0) next[usdKey] = (idr / rate).toFixed(2)
       }
     }
-    setActualsForm(next);
-  };
+    setActualsForm(next)
+  }
 
   const handleFetchActualRate = async () => {
-    setIsFetchingActualRate(true);
+    setIsFetchingActualRate(true)
     try {
-      const result = await getRealtimeExchangeRate();
+      const result = await getRealtimeExchangeRate()
       if (result.success && result.rate) {
-        const rate = result.rate.toString();
+        const rate = result.rate.toString()
         setActualsForm((prev) => {
-          const amountIdr = Number(prev.amountIdr);
+          const amountIdr = Number(prev.amountIdr)
           return {
             ...prev,
             exchangeRate: rate,
             amountUsd: amountIdr > 0 ? (amountIdr / Number(rate)).toFixed(2) : prev.amountUsd,
-          };
-        });
-        toast.success("Kurs API terbaru: " + result.rate);
+          }
+        })
+        toast.success('Kurs API terbaru: ' + result.rate)
       } else {
-        toast.error(result.error || "Failed to fetch API");
+        toast.error(result.error || 'Failed to fetch API')
       }
     } catch (_error) {
-      toast.error("Failed to fetch API");
+      toast.error('Failed to fetch API')
     } finally {
-      setIsFetchingActualRate(false);
+      setIsFetchingActualRate(false)
     }
-  };
+  }
 
   const hasData = (cat: Category) => {
-    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
-    return Number(actualsForm[idrKey]) > 0;
-  };
+    const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm
+    return Number(actualsForm[idrKey]) > 0
+  }
 
   const handleSaveActuals = async () => {
-    if (!actualsForm.updateDate) return;
+    if (!actualsForm.updateDate) return
     if (!selectedItem && (!actualsForm.customer || !actualsForm.periodId)) {
-      toast.error("Customer dan period wajib diisi");
-      return;
+      toast.error('Customer dan period wajib diisi')
+      return
     }
     try {
-      const itemId = selectedItem ? selectedItem.item.id : null;
-      const periodId = selectedItem ? selectedItem.period.id : Number(actualsForm.periodId);
-      const cust = selectedItem ? selectedItem.item.customer : actualsForm.customer;
+      const itemId = selectedItem ? selectedItem.item.id : null
+      const periodId = selectedItem ? selectedItem.period.id : Number(actualsForm.periodId)
+      const cust = selectedItem ? selectedItem.item.customer : actualsForm.customer
       const basePayload = {
         updateDate: new Date(actualsForm.updateDate),
-        jobCode: "",
-        invoiceNumber: "",
+        jobCode: '',
+        invoiceNumber: '',
         exchangeRate: actualsForm.exchangeRate,
         createdById: undefined,
-      };
+      }
 
       for (const cat of CATEGORIES) {
-        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
-        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
-        const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
-        const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
-        const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm;
-        const existingId = editingActualIds[cat];
-        const amtIdr = Number(actualsForm[idrKey]);
+        const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm
+        const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm
+        const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm
+        const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm
+        const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm
+        const existingId = editingActualIds[cat]
+        const amtIdr = Number(actualsForm[idrKey])
         const hasPayload =
           amtIdr > 0 ||
-          String(actualsForm[remarkKey] || "").trim().length > 0 ||
-          String(actualsForm[statusKey] || "-") !== "-" ||
-          String(actualsForm[sectionKey] || "-") !== "-";
+          String(actualsForm[remarkKey] || '').trim().length > 0 ||
+          String(actualsForm[statusKey] || '-') !== '-' ||
+          String(actualsForm[sectionKey] || '-') !== '-'
 
         if (existingId && !hasPayload) {
-          await deleteForecastActual(existingId);
+          await deleteForecastActual(existingId)
         } else if (existingId && hasPayload) {
           await updateForecastActual(existingId, {
             ...basePayload,
-            jobCode: cat === "Outstanding" ? actualsForm[sectionKey] : "",
+            jobCode: cat === 'Outstanding' ? actualsForm[sectionKey] : '',
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
@@ -244,11 +313,11 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
             forecastItemId: itemId,
             periodId,
             customer: cust,
-          });
+          })
         } else if (!existingId && hasPayload) {
           await addForecastActual({
             ...basePayload,
-            jobCode: cat === "Outstanding" ? actualsForm[sectionKey] : "",
+            jobCode: cat === 'Outstanding' ? actualsForm[sectionKey] : '',
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
@@ -257,154 +326,207 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
             forecastItemId: itemId,
             periodId,
             customer: cust,
-          });
+          })
         }
       }
 
-      toast.success("Actuals saved and remaining recalculated");
-      setIsActualsDialogOpen(false);
-      window.location.reload();
+      toast.success('Actuals saved and remaining recalculated')
+      setIsActualsDialogOpen(false)
+      window.location.reload()
     } catch (e: any) {
-      toast.error(e.message || "Failed to save actuals");
+      toast.error(e.message || 'Failed to save actuals')
     }
-  };
+  }
 
   const handleDeleteActual = async (actualId: number) => {
-    if (!confirm("Are you sure you want to delete this SAP Actual?")) return;
+    if (!confirm('Are you sure you want to delete this SAP Actual?')) return
     try {
-      await deleteForecastActual(actualId);
-      toast.success("Actual deleted and remaining recalculated");
-      window.location.reload();
+      await deleteForecastActual(actualId)
+      toast.success('Actual deleted and remaining recalculated')
+      window.location.reload()
     } catch (e) {
-      toast.error("Failed to delete actual");
+      toast.error('Failed to delete actual')
     }
-  };
+  }
 
   const openStatusDialog = (item: any) => {
-    setSelectedItem(item);
-    setStatusForm({ status: item.item.status, remark: item.item.remark || "" });
-    setIsStatusDialogOpen(true);
-  };
+    setSelectedItem(item)
+    setStatusForm({ status: item.item.status, remark: item.item.remark || '' })
+    setIsStatusDialogOpen(true)
+  }
 
-  const openActualsDialog = (item: any) => {
-    setSelectedItem(item);
-    const existingActuals = item?.actuals || [];
-    const getActual = (cat: Category) => existingActuals.find((a: any) => a.category === cat);
+  const openActualsDialog = (item: any, editDateKey?: string) => {
+    setSelectedItem(item)
+    const existingActuals = editDateKey
+      ? (item?.actuals || []).filter((a: any) => {
+          const dateKey = new Date(a.updateDate).toISOString().split('T')[0]
+          return dateKey === editDateKey
+        })
+      : []
+    const getActual = (cat: Category) => existingActuals.find((a: any) => a.category === cat)
 
-    const ids: Record<string, number | null> = {};
+    const ids: Record<string, number | null> = {}
     const form: any = {
-      updateDate: new Date().toISOString().split("T")[0],
+      updateDate: editDateKey || new Date().toISOString().split('T')[0],
       exchangeRate: globalRate,
-      customer: "",
-      periodId: item?.period.id?.toString() || (periods.length > 0 ? periods[0].id.toString() : ""),
-    };
+      customer: '',
+      periodId: item?.period.id?.toString() || (periods.length > 0 ? periods[0].id.toString() : ''),
+    }
     for (const cat of CATEGORIES) {
-      const a = getActual(cat);
-      ids[cat] = a?.id || null;
-      form[`${cat.toLowerCase()}AmountIdr`] = a?.amountIdr?.toString() || "0";
-      form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || "0";
-      form[`${cat.toLowerCase()}Remark`] = a?.remark || "";
-      form[`${cat.toLowerCase()}Status`] = a?.itemStatus || "-";
-      if (cat === "Outstanding") form.outstandingSection = a?.jobCode || "-";
+      const a = getActual(cat)
+      ids[cat] = a?.id || null
+      form[`${cat.toLowerCase()}AmountIdr`] = a?.amountIdr?.toString() || '0'
+      form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || '0'
+      form[`${cat.toLowerCase()}Remark`] = a?.remark || ''
+      form[`${cat.toLowerCase()}Status`] = a?.itemStatus || '-'
+      if (cat === 'Outstanding') form.outstandingSection = a?.jobCode || '-'
     }
 
-    setEditingActualIds(ids);
-    setActualsForm(form);
-    void handleFetchActualRate();
-    setIsActualsDialogOpen(true);
-  };
+    setEditingActualIds(ids)
+    setActualsForm(form)
+    void handleFetchActualRate()
+    setIsActualsDialogOpen(true)
+  }
 
-  let totalForecast = 0;
-  let totalActual = 0;
-  let totalRemaining = 0;
+  let totalForecast = 0
+  let totalActual = 0
+  let totalRemaining = 0
 
   filteredItems.forEach((wrapper: any) => {
-    const isAcc = wrapper.item.isProductAccessories;
-    const forecastIdr = Number(isAcc ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr);
-    const actualIdr = wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0;
-    
-    totalForecast += forecastIdr;
-    totalRemaining += forecastIdr - actualIdr;
-    totalActual += actualIdr;
-  });
+    const forecastIdr = getForecastAmountIdr(wrapper.item)
+    const actualIdr = wrapper.actuals
+      ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0)
+      : 0
+
+    totalForecast += forecastIdr
+    totalRemaining += forecastIdr - actualIdr
+    totalActual += actualIdr
+  })
 
   const getForecastActual = (wrapper: any) => {
-    const isAcc = wrapper.item.isProductAccessories;
-    const forecast = Number(isAcc ? wrapper.item.accessoriesAmountIdr : wrapper.item.totalForecastIdr);
-    const actual = wrapper.actuals ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0) : 0;
-    return { forecast, actual };
-  };
+    const forecast = getForecastAmountIdr(wrapper.item)
+    const actual = wrapper.actuals
+      ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0)
+      : 0
+    return { forecast, actual }
+  }
 
   const getSortValue = (wrapper: any, field: SortField) => {
-    const { forecast, actual } = getForecastActual(wrapper);
-    if (field === 'picSales') return (wrapper.item.picSales || '').toLowerCase();
-    if (field === 'customer') return wrapper.item.customer.toLowerCase();
-    if (field === 'forecast') return forecast;
-    if (field === 'sisa') return forecast - actual;
-    if (field === 'actual') return actual;
-    return 0;
-  };
+    const { forecast, actual } = getForecastActual(wrapper)
+    if (field === 'picSales') return (wrapper.item.picSales || '').toLowerCase()
+    if (field === 'customer') return wrapper.item.customer.toLowerCase()
+    if (field === 'forecast') return forecast
+    if (field === 'sisa') return forecast - actual
+    if (field === 'actual') return actual
+    return 0
+  }
 
   const sortedItems = [...filteredItems].sort((a, b) => {
-    if (!sortField) return 0;
-    const valA = getSortValue(a, sortField);
-    const valB = getSortValue(b, sortField);
-    
-    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-    return 0;
-  });
+    if (!sortField) return 0
+    const valA = getSortValue(a, sortField)
+    const valB = getSortValue(b, sortField)
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+    return 0
+  })
 
   // SAP Invoice computed values
   const sapCustomerOptions = useMemo(() => {
-    const names = Array.from(new Set(sapInvoices.map((r: any) => r.customerName).filter(Boolean)));
-    return names.sort();
-  }, [sapInvoices]);
+    const names = Array.from(new Set(sapInvoices.map((r: any) => r.customerName).filter(Boolean)))
+    return names.sort()
+  }, [sapInvoices])
 
   const sapSalesmanOptions = useMemo(() => {
-    const names = Array.from(new Set(sapInvoices.map((r: any) => r.salesman).filter(Boolean)));
-    return names.sort();
-  }, [sapInvoices]);
+    const names = Array.from(new Set(sapInvoices.map((r: any) => r.salesman).filter(Boolean)))
+    return names.sort()
+  }, [sapInvoices])
 
   const sapFiltered = useMemo(() => {
     return sapInvoices.filter((r: any) => {
       if (sapSearch) {
-        const q = sapSearch.toLowerCase();
-        if (!r.billingNo?.toLowerCase().includes(q) && !r.materialNo?.toLowerCase().includes(q) && !r.customerName?.toLowerCase().includes(q)) return false;
+        const q = sapSearch.toLowerCase()
+        if (
+          !r.billingNo?.toLowerCase().includes(q) &&
+          !r.materialNo?.toLowerCase().includes(q) &&
+          !r.customerName?.toLowerCase().includes(q)
+        )
+          return false
       }
-      if (sapCustomerFilter && sapCustomerFilter !== "__all__" && r.customerName !== sapCustomerFilter) return false;
-      if (sapSalesmanFilter && sapSalesmanFilter !== "__all__" && r.salesman !== sapSalesmanFilter) return false;
-      return true;
-    });
-  }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter]);
+      if (
+        sapCustomerFilter &&
+        sapCustomerFilter !== '__all__' &&
+        r.customerName !== sapCustomerFilter
+      )
+        return false
+      if (sapSalesmanFilter && sapSalesmanFilter !== '__all__' && r.salesman !== sapSalesmanFilter)
+        return false
+      return true
+    })
+  }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter])
 
   const sapTotalUsd = useMemo(() => {
-    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0);
-  }, [sapFiltered]);
+    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
+  }, [sapFiltered])
 
   const handleExportSapExcel = () => {
-    const headers = ["No", "Billing Date", "Billing No", "Customer", "Customer Name", "Material No", "Material Desc", "Qty", "UOM", "Revenue IDR", "Revenue USD", "Rev Type", "Salesman", "PO No"];
+    const headers = [
+      'No',
+      'Billing Date',
+      'Billing No',
+      'Customer',
+      'Customer Name',
+      'Material No',
+      'Material Desc',
+      'Qty',
+      'UOM',
+      'Revenue IDR',
+      'Revenue USD',
+      'Rev Type',
+      'Salesman',
+      'PO No',
+    ]
     const rows = sapFiltered.map((r: any, i: number) => [
-      i + 1, r.billingDate, r.billingNo, r.customer, r.customerName,
-      r.materialNo, r.materialDesc, r.qty, r.uom,
-      r.revenueIdr, r.revenueUsd, r.revType, r.salesman, r.poNo
-    ]);
-    const csv = [headers, ...rows].map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.download = `sap-invoices-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || "export"}.csv`;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+      i + 1,
+      r.billingDate,
+      r.billingNo,
+      r.customer,
+      r.customerName,
+      r.materialNo,
+      r.materialDesc,
+      r.qty,
+      r.uom,
+      r.revenueIdr,
+      r.revenueUsd,
+      r.revType,
+      r.salesman,
+      r.poNo,
+    ])
+    const csv = [headers, ...rows]
+      .map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.download = `sap-invoices-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || 'export'}.csv`
+    link.href = url
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
-  const fmtIdr = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
-  const fmtUsd = (v: number) => "$" + new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  const fmtIdr = (v: number) =>
+    new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0,
+    }).format(v)
+  const fmtUsd = (v: number) =>
+    '$' +
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-bold">Daily Update</h2>
           <div className="w-[180px]">
@@ -413,8 +535,10 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                 <SelectValue placeholder="Select Period" />
               </SelectTrigger>
               <SelectContent>
-                {periods.map(p => (
-                  <SelectItem key={p.id} value={p.id.toString()}>{p.monthYear}</SelectItem>
+                {periods.map((p) => (
+                  <SelectItem key={p.id} value={p.id.toString()}>
+                    {p.monthYear}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -422,65 +546,95 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
           <Input
             placeholder="Filter Customer..."
             value={customerFilter}
-            onChange={e => setCustomerFilter(e.target.value)}
-            className="w-[200px] h-9"
+            onChange={(e) => setCustomerFilter(e.target.value)}
+            className="h-9 w-[200px]"
           />
         </div>
-        <div className="flex items-center gap-3 bg-muted/30 p-2 px-3 rounded-md border">
-          <Label className="whitespace-nowrap text-xs">Kurs USD (View Only)</Label>
-          <Input 
-            type="number" 
-            className="w-24 h-8 text-xs bg-background" 
-            value={globalRate} 
-            onChange={(e) => setGlobalRate(e.target.value)} 
+        <div className="bg-muted/30 flex items-center gap-3 rounded-md border p-2 px-3">
+          <Label className="text-xs whitespace-nowrap">Kurs USD (View Only)</Label>
+          <Input
+            type="number"
+            className="bg-background h-8 w-24 text-xs"
+            value={globalRate}
+            onChange={(e) => setGlobalRate(e.target.value)}
           />
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleFetchGlobalRate} disabled={isFetchingGlobalRate}>
-            <RefreshCw className="w-3 h-3 mr-1"/> {isFetchingGlobalRate ? "Fetching" : "Fetch"}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleFetchGlobalRate}
+            disabled={isFetchingGlobalRate}
+          >
+            <RefreshCw className="mr-1 h-3 w-3" /> {isFetchingGlobalRate ? 'Fetching' : 'Fetch'}
           </Button>
-          <Button variant="default" size="sm" className="h-8 text-xs" onClick={handleSaveGlobalRate}>
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleSaveGlobalRate}
+          >
             Save
           </Button>
-          <div className="w-px h-6 bg-border mx-2"></div>
-          <Button onClick={() => openActualsDialog(null)} variant="secondary" size="sm" className="h-8">
-            <Banknote className="w-4 h-4 mr-2" />
+          <div className="bg-border mx-2 h-6 w-px"></div>
+          <Button
+            onClick={() => openActualsDialog(null)}
+            variant="secondary"
+            size="sm"
+            className="h-8"
+          >
+            <Banknote className="mr-2 h-4 w-4" />
             Unplanned SAP Actual
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Forecast</CardTitle>
-            <TrendingUp className="h-6 w-6 text-muted-foreground" />
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Total Forecast
+            </CardTitle>
+            <TrendingUp className="text-muted-foreground h-6 w-6" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
               <span>{formatCurrency(totalForecast)}</span>
-              <span className="text-muted-foreground font-light text-xl">|</span>
-              <span className="text-blue-600">${(totalForecast / (Number(globalRate) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+              <span className="text-muted-foreground text-xl font-light">|</span>
+              <span className="text-blue-600">
+                $
+                {(totalForecast / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+                  maximumFractionDigits: 2,
+                })}
+              </span>
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Actual (SAP)</CardTitle>
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Total Actual (SAP)
+            </CardTitle>
             <Banknote className="h-6 w-6 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
                 <span className="text-green-600">{formatCurrency(totalActual)}</span>
-                <span className="text-muted-foreground font-light text-xl">|</span>
-                <span className="text-emerald-600">${(totalActual / (Number(globalRate) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+                <span className="text-muted-foreground text-xl font-light">|</span>
+                <span className="text-emerald-600">
+                  $
+                  {(totalActual / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
               </div>
               {totalForecast > 0 && (
                 <div className="flex flex-col items-end">
-                  <div className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider font-semibold flex items-center gap-1">
-                    <Trophy className="w-3 h-3 text-blue-500" />
+                  <div className="text-muted-foreground mb-1 flex items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
+                    <Trophy className="h-3 w-3 text-blue-500" />
                     Achiev.
                   </div>
-                  <div className="px-2 py-1 bg-blue-100 text-blue-700 font-bold rounded-md text-sm border border-blue-200">
+                  <div className="rounded-md border border-blue-200 bg-blue-100 px-2 py-1 text-sm font-bold text-blue-700">
                     {((totalActual / totalForecast) * 100).toFixed(2)}%
                   </div>
                 </div>
@@ -490,342 +644,598 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Sisa (Remaining)</CardTitle>
+            <CardTitle className="text-muted-foreground text-sm font-medium">
+              Total Sisa (Remaining)
+            </CardTitle>
             <Wallet className="h-6 w-6 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
               <span className="text-orange-600">{formatCurrency(totalRemaining)}</span>
-              <span className="text-muted-foreground font-light text-xl">|</span>
-              <span className="text-amber-600">${(totalRemaining / (Number(globalRate) || 15000)).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+              <span className="text-muted-foreground text-xl font-light">|</span>
+              <span className="text-amber-600">
+                $
+                {(totalRemaining / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+                  maximumFractionDigits: 2,
+                })}
+              </span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="flex gap-1 bg-muted/30 p-1 rounded-md border w-fit">
+      <div className="bg-muted/30 flex w-fit gap-1 rounded-md border p-1">
         <button
-          className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors ${activeTab === "forecast" ? "bg-background shadow-sm" : "hover:bg-muted/50"}`}
-          onClick={() => setActiveTab("forecast")}
+          className={`rounded-sm px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'forecast' ? 'bg-background shadow-sm' : 'hover:bg-muted/50'}`}
+          onClick={() => setActiveTab('forecast')}
         >
           Forecast & Actuals
         </button>
         <button
-          className={`px-4 py-2 rounded-sm text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "sap" ? "bg-background shadow-sm" : "hover:bg-muted/50"}`}
-          onClick={() => setActiveTab("sap")}
+          className={`flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'sap' ? 'bg-background shadow-sm' : 'hover:bg-muted/50'}`}
+          onClick={() => setActiveTab('sap')}
         >
-          <TableProperties className="w-4 h-4" />
+          <TableProperties className="h-4 w-4" />
           Detail Invoice Central Service SAP
         </button>
       </div>
 
-      {activeTab === "forecast" ? (
-      <Card>
-        <CardContent className="p-0">
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px]"></TableHead>
-                  <TableHead className="w-[40px]">No.</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('customer')}>
-                    <div className="flex items-center">Customer <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('picSales')}>
-                    <div className="flex items-center">Sales <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
-                  </TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('forecast')}>
-                    <div className="flex items-center justify-end">Forecast <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
-                  </TableHead>
-                  <TableHead className="text-right">O/S Prev Month</TableHead>
-                  <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('actual')}>
-                    <div className="flex items-center justify-end">Actual <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
-                  </TableHead>
-                  <TableHead className="text-right cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('sisa')}>
-                    <div className="flex items-center justify-end">Sisa <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground" /></div>
-                  </TableHead>
-                  <TableHead>Status Forecast</TableHead>
-                  <TableHead>Remark</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedItems.length === 0 ? (
-                  <TableRow><TableCell colSpan={13} className="text-center py-8">No pending items.</TableCell></TableRow>
-                ) : (
-                  sortedItems.map((wrapper: any, index: number) => (
-                    <React.Fragment key={wrapper.item.id}>
-                      <TableRow>
-                        <TableCell>
-                          <Button variant="ghost" size="sm" className="p-0 h-6 w-6" onClick={() => toggleExpand(wrapper.item.id)}>
-                            {expandedItems.has(wrapper.item.id) ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4" />}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                        <TableCell className="font-medium">{wrapper.period.monthYear}</TableCell>
-                        <TableCell>
-                          <div className="font-bold">{wrapper.item.customer}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">{wrapper.item.picSales}</div>
-                        </TableCell>
-                        <TableCell>
-                          {wrapper.item.isProductAccessories ? "Accessories" : "Core Services"}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(getForecastActual(wrapper).forecast)}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatCurrency(Number(wrapper.item.osInvoicePrevMonth || 0))}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-green-600">
-                          {formatCurrency(getForecastActual(wrapper).actual)}
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-orange-600">
-                          {formatCurrency(getForecastActual(wrapper).forecast - getForecastActual(wrapper).actual)}
-                        </TableCell>
-                        <TableCell>
-                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-md text-xs font-medium">
-                            {wrapper.item.status === "Waiting" ? "Pending" : wrapper.item.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>{wrapper.item.remark}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openStatusDialog(wrapper)}>
-                              <RefreshCw className="w-4 h-4 mr-1" /> Status Forecast
-                            </Button>
-                            <Button size="sm" onClick={() => openActualsDialog(wrapper)}>
-                              <FileText className="w-4 h-4 mr-1" /> SAP Actual
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      {expandedItems.has(wrapper.item.id) && (
-                        <TableRow className="bg-muted/30">
-                          <TableCell colSpan={13} className="p-0 border-b">
-                            <div className="p-4">
-                              <h4 className="font-semibold mb-3 text-sm flex items-center gap-2">
-                                <Banknote className="w-4 h-4 text-primary" /> SAP Actuals Progress
-                              </h4>
-                              {wrapper.actuals && wrapper.actuals.length > 0 ? (
-                                <div className="space-y-2">
-                                  {(() => {
-                                    const byDate: Record<string, { items: any[], label: string, ts: number }> = {};
-                                    wrapper.actuals.forEach((a: any) => {
-                                      const d = new Date(a.updateDate);
-                                      const key = d.toISOString().split("T")[0];
-                                      if (!byDate[key]) byDate[key] = { items: [], label: d.toLocaleDateString("id-ID"), ts: d.getTime() };
-                                      byDate[key].items.push(a);
-                                    });
-                                    return Object.entries(byDate)
-                                      .sort(([, a], [, b]) => b.ts - a.ts)
-                                      .map(([, { items, label: dateLabel }]) => {
-                                      const getCat = (cat: string) => {
-                                        const c = items.filter((a: any) => a.category === cat);
-                                        const sumIdr = c.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
-                                        const sumUsd = c.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
-                                        const rmk = c.map((a: any) => a.remark).filter(Boolean).join(", ");
-                                        const section = c.map((a: any) => a.jobCode).find(Boolean) || "—";
-                                        return { sumIdr, sumUsd, rmk, section, hasData: c.length > 0 };
-                                      };
-                                      const os = getCat("Outstanding"), s = getCat("Service"), r = getCat("Repair"), rt = getCat("Retread");
-                                      const totalIdr = items.reduce((s: number, a: any) => s + Number(a.amountIdr), 0);
-                                      const totalUsd = items.reduce((s: number, a: any) => s + Number(a.amountUsd), 0);
-                                      return (
-                                        <div key={dateLabel} className="border rounded-md bg-background w-full">
-                                          <div className="px-4 py-1.5 bg-muted/20 border-b font-semibold text-xs text-muted-foreground">
-                                            {dateLabel}
-                                          </div>
-                                          <div className="w-full">
-                                            <div className="grid grid-cols-5 gap-0 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-b bg-muted/5">
-                                              <div className="text-center py-2 border-r">Outstanding</div>
-                                              <div className="text-center py-2 border-r">Service</div>
-                                              <div className="text-center py-2 border-r">Repair</div>
-                                              <div className="text-center py-2 border-r">Retread</div>
-                                              <div className="text-center py-2">Total</div>
-                                            </div>
-                                            <div className="grid grid-cols-5 gap-0 text-xs divide-x">
-                                              <div className={`p-2 space-y-1 ${!os.hasData ? 'opacity-40' : ''}`}>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="text-green-600 font-medium">{os.hasData ? formatCurrency(os.sumIdr) : "—"}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-blue-600">${os.hasData ? os.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-primary">{os.hasData ? os.section : "—"}</span>
-                                                </div>
-                                                <div className="text-muted-foreground truncate">{os.rmk || "—"}</div>
-                                              </div>
-                                              <div className={`p-2 space-y-1 ${!s.hasData ? 'opacity-40' : ''}`}>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="text-green-600 font-medium">{s.hasData ? formatCurrency(s.sumIdr) : "—"}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-blue-600">${s.hasData ? s.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
-                                                </div>
-                                                <div className="text-muted-foreground truncate">{s.rmk || "—"}</div>
-                                              </div>
-                                              <div className={`p-2 space-y-1 ${!r.hasData ? 'opacity-40' : ''}`}>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="text-green-600 font-medium">{r.hasData ? formatCurrency(r.sumIdr) : "—"}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-blue-600">${r.hasData ? r.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
-                                                </div>
-                                                <div className="text-muted-foreground truncate">{r.rmk || "—"}</div>
-                                              </div>
-                                              <div className={`p-2 space-y-1 ${!rt.hasData ? 'opacity-40' : ''}`}>
-                                                <div className="flex items-center gap-1">
-                                                  <span className="text-green-600 font-medium">{rt.hasData ? formatCurrency(rt.sumIdr) : "—"}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-blue-600">${rt.hasData ? rt.sumUsd.toLocaleString("en-US", {maximumFractionDigits: 2}) : "—"}</span>
-                                                </div>
-                                                <div className="text-muted-foreground truncate">{rt.rmk || "—"}</div>
-                                              </div>
-                                              <div className="p-2 bg-primary/5 font-bold">
-                                                <div className="flex items-center gap-1 text-xs mb-1">
-                                                  <span className="text-green-600">{formatCurrency(totalIdr)}</span>
-                                                  <span className="text-muted-foreground">|</span>
-                                                  <span className="text-blue-600">${totalUsd.toLocaleString("en-US", {maximumFractionDigits: 2})}</span>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => openActualsDialog(wrapper)}>Edit</Button>
-                                                  <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50" onClick={async () => {
-                                                    if (!confirm("Delete this date's actuals?")) return;
-                                                    for (const a of items) await deleteForecastActual(a.id);
-                                                    window.location.reload();
-                                                  }}>Delete</Button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    });
-                                  })()}
-                                </div>
+      {activeTab === 'forecast' ? (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40px]"></TableHead>
+                    <TableHead className="w-[40px]">No.</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead
+                      className="hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => handleSort('customer')}
+                    >
+                      <div className="flex items-center">
+                        Customer <ArrowUpDown className="text-muted-foreground ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => handleSort('picSales')}
+                    >
+                      <div className="flex items-center">
+                        Sales <ArrowUpDown className="text-muted-foreground ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead
+                      className="hover:bg-muted/50 cursor-pointer text-right transition-colors"
+                      onClick={() => handleSort('forecast')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Forecast <ArrowUpDown className="text-muted-foreground ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right">O/S Prev Month</TableHead>
+                    <TableHead
+                      className="hover:bg-muted/50 cursor-pointer text-right transition-colors"
+                      onClick={() => handleSort('actual')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Actual <ArrowUpDown className="text-muted-foreground ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="hover:bg-muted/50 cursor-pointer text-right transition-colors"
+                      onClick={() => handleSort('sisa')}
+                    >
+                      <div className="flex items-center justify-end">
+                        Sisa <ArrowUpDown className="text-muted-foreground ml-2 h-4 w-4" />
+                      </div>
+                    </TableHead>
+                    <TableHead>Status Forecast</TableHead>
+                    <TableHead>Remark</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={13} className="py-8 text-center">
+                        No pending items.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedItems.map((wrapper: any, index: number) => (
+                      <React.Fragment key={wrapper.item.id}>
+                        <TableRow>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => toggleExpand(wrapper.item.id)}
+                            >
+                              {expandedItems.has(wrapper.item.id) ? (
+                                <ChevronUp className="h-4 w-4" />
                               ) : (
-                                <div className="text-sm text-muted-foreground italic py-2">No actuals recorded yet.</div>
+                                <ChevronDown className="h-4 w-4" />
                               )}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                          <TableCell className="font-medium">{wrapper.period.monthYear}</TableCell>
+                          <TableCell>
+                            <div className="font-bold">{wrapper.item.customer}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">{wrapper.item.picSales}</div>
+                          </TableCell>
+                          <TableCell>
+                            {wrapper.item.isProductAccessories ? 'Accessories' : 'Core Services'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(getForecastActual(wrapper).forecast)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-right">
+                            {formatCurrency(Number(wrapper.item.osInvoicePrevMonth || 0))}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-green-600">
+                            {formatCurrency(getForecastActual(wrapper).actual)}
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-orange-600">
+                            {formatCurrency(
+                              getForecastActual(wrapper).forecast -
+                                getForecastActual(wrapper).actual
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span className="rounded-md bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                              {wrapper.item.status === 'Waiting' ? 'Pending' : wrapper.item.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>{wrapper.item.remark}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openStatusDialog(wrapper)}
+                              >
+                                <RefreshCw className="mr-1 h-4 w-4" /> Status Forecast
+                              </Button>
+                              <Button size="sm" onClick={() => openActualsDialog(wrapper)}>
+                                <FileText className="mr-1 h-4 w-4" /> SAP Actual
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      )}
-                    </React.Fragment>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                        {expandedItems.has(wrapper.item.id) && (
+                          <TableRow className="bg-muted/30">
+                            <TableCell colSpan={13} className="border-b p-0">
+                              <div className="p-4">
+                                <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                                  <Banknote className="text-primary h-4 w-4" /> SAP Actuals Progress
+                                </h4>
+                                {wrapper.actuals && wrapper.actuals.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {(() => {
+                                      const byDate: Record<
+                                        string,
+                                        { items: any[]; label: string; ts: number }
+                                      > = {}
+                                      wrapper.actuals.forEach((a: any) => {
+                                        const d = new Date(a.updateDate)
+                                        const key = d.toISOString().split('T')[0]
+                                        if (!byDate[key])
+                                          byDate[key] = {
+                                            items: [],
+                                            label: d.toLocaleDateString('id-ID'),
+                                            ts: d.getTime(),
+                                          }
+                                        byDate[key].items.push(a)
+                                      })
+                                      return Object.entries(byDate)
+                                        .sort(([, a], [, b]) => b.ts - a.ts)
+                                        .map(([dateKey, { items, label: dateLabel }]) => {
+                                          const getCat = (cat: string) => {
+                                            const c = items.filter((a: any) => a.category === cat)
+                                            const sumIdr = c.reduce(
+                                              (s: number, a: any) => s + Number(a.amountIdr),
+                                              0
+                                            )
+                                            const sumUsd = c.reduce(
+                                              (s: number, a: any) => s + Number(a.amountUsd),
+                                              0
+                                            )
+                                            const rmk = c
+                                              .map((a: any) => a.remark)
+                                              .filter(Boolean)
+                                              .join(', ')
+                                            const section =
+                                              c.map((a: any) => a.jobCode).find(Boolean) || '—'
+                                            const status =
+                                              c
+                                                .map((a: any) => a.itemStatus)
+                                                .find((value: string) => value && value !== '-') ||
+                                              '—'
+                                            return {
+                                              sumIdr,
+                                              sumUsd,
+                                              rmk,
+                                              section,
+                                              status,
+                                              hasData: c.length > 0,
+                                            }
+                                          }
+                                          const os = getCat('Outstanding'),
+                                            s = getCat('Service'),
+                                            r = getCat('Repair'),
+                                            rt = getCat('Retread')
+                                          const totalIdr = items.reduce(
+                                            (s: number, a: any) => s + Number(a.amountIdr),
+                                            0
+                                          )
+                                          const totalUsd = items.reduce(
+                                            (s: number, a: any) => s + Number(a.amountUsd),
+                                            0
+                                          )
+                                          const renderActualMeta = (entry: {
+                                            hasData: boolean
+                                            section: string
+                                            status: string
+                                          }) =>
+                                            entry.hasData ? (
+                                              <div className="flex flex-wrap gap-1 pt-1">
+                                                <Badge
+                                                  variant="secondary"
+                                                  className="px-1.5 py-0 text-[10px]"
+                                                >
+                                                  {entry.section}
+                                                </Badge>
+                                                <Badge
+                                                  variant="outline"
+                                                  className="px-1.5 py-0 text-[10px]"
+                                                >
+                                                  {entry.status}
+                                                </Badge>
+                                              </div>
+                                            ) : null
+                                          return (
+                                            <div
+                                              key={dateLabel}
+                                              className="bg-background w-full rounded-md border"
+                                            >
+                                              <div className="bg-muted/20 text-muted-foreground border-b px-4 py-1.5 text-xs font-semibold">
+                                                {dateLabel}
+                                              </div>
+                                              <div className="w-full">
+                                                <div className="text-muted-foreground bg-muted/5 grid grid-cols-5 gap-0 border-b text-[11px] font-semibold tracking-wider uppercase">
+                                                  <div className="border-r py-2 text-center">
+                                                    Outstanding
+                                                  </div>
+                                                  <div className="border-r py-2 text-center">
+                                                    Service
+                                                  </div>
+                                                  <div className="border-r py-2 text-center">
+                                                    Repair
+                                                  </div>
+                                                  <div className="border-r py-2 text-center">
+                                                    Retread
+                                                  </div>
+                                                  <div className="py-2 text-center">Total</div>
+                                                </div>
+                                                <div className="grid grid-cols-5 gap-0 divide-x text-xs">
+                                                  <div
+                                                    className={`space-y-1 p-2 ${!os.hasData ? 'opacity-40' : ''}`}
+                                                  >
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="font-medium text-green-600">
+                                                        {os.hasData
+                                                          ? formatCurrency(os.sumIdr)
+                                                          : '—'}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-blue-600">
+                                                        $
+                                                        {os.hasData
+                                                          ? os.sumUsd.toLocaleString('en-US', {
+                                                              maximumFractionDigits: 2,
+                                                            })
+                                                          : '—'}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-primary">
+                                                        {os.hasData ? os.section : '—'}
+                                                      </span>
+                                                    </div>
+                                                    <div className="text-muted-foreground truncate">
+                                                      {os.rmk || '—'}
+                                                    </div>
+                                                    {renderActualMeta(os)}
+                                                  </div>
+                                                  <div
+                                                    className={`space-y-1 p-2 ${!s.hasData ? 'opacity-40' : ''}`}
+                                                  >
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="font-medium text-green-600">
+                                                        {s.hasData ? formatCurrency(s.sumIdr) : '—'}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-blue-600">
+                                                        $
+                                                        {s.hasData
+                                                          ? s.sumUsd.toLocaleString('en-US', {
+                                                              maximumFractionDigits: 2,
+                                                            })
+                                                          : '—'}
+                                                      </span>
+                                                    </div>
+                                                    <div className="text-muted-foreground truncate">
+                                                      {s.rmk || '—'}
+                                                    </div>
+                                                    {renderActualMeta(s)}
+                                                  </div>
+                                                  <div
+                                                    className={`space-y-1 p-2 ${!r.hasData ? 'opacity-40' : ''}`}
+                                                  >
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="font-medium text-green-600">
+                                                        {r.hasData ? formatCurrency(r.sumIdr) : '—'}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-blue-600">
+                                                        $
+                                                        {r.hasData
+                                                          ? r.sumUsd.toLocaleString('en-US', {
+                                                              maximumFractionDigits: 2,
+                                                            })
+                                                          : '—'}
+                                                      </span>
+                                                    </div>
+                                                    <div className="text-muted-foreground truncate">
+                                                      {r.rmk || '—'}
+                                                    </div>
+                                                    {renderActualMeta(r)}
+                                                  </div>
+                                                  <div
+                                                    className={`space-y-1 p-2 ${!rt.hasData ? 'opacity-40' : ''}`}
+                                                  >
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="font-medium text-green-600">
+                                                        {rt.hasData
+                                                          ? formatCurrency(rt.sumIdr)
+                                                          : '—'}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-blue-600">
+                                                        $
+                                                        {rt.hasData
+                                                          ? rt.sumUsd.toLocaleString('en-US', {
+                                                              maximumFractionDigits: 2,
+                                                            })
+                                                          : '—'}
+                                                      </span>
+                                                    </div>
+                                                    <div className="text-muted-foreground truncate">
+                                                      {rt.rmk || '—'}
+                                                    </div>
+                                                    {renderActualMeta(rt)}
+                                                  </div>
+                                                  <div className="bg-primary/5 p-2 font-bold">
+                                                    <div className="mb-1 flex items-center gap-1 text-xs">
+                                                      <span className="text-green-600">
+                                                        {formatCurrency(totalIdr)}
+                                                      </span>
+                                                      <span className="text-muted-foreground">
+                                                        |
+                                                      </span>
+                                                      <span className="text-blue-600">
+                                                        $
+                                                        {totalUsd.toLocaleString('en-US', {
+                                                          maximumFractionDigits: 2,
+                                                        })}
+                                                      </span>
+                                                    </div>
+                                                    <div className="flex gap-1">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-[11px]"
+                                                        onClick={() =>
+                                                          openActualsDialog(wrapper, dateKey)
+                                                        }
+                                                      >
+                                                        Edit
+                                                      </Button>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700"
+                                                        onClick={async () => {
+                                                          if (
+                                                            !confirm("Delete this date's actuals?")
+                                                          )
+                                                            return
+                                                          for (const a of items)
+                                                            await deleteForecastActual(a.id)
+                                                          window.location.reload()
+                                                        }}
+                                                      >
+                                                        Delete
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )
+                                        })
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <div className="text-muted-foreground py-2 text-sm italic">
+                                    No actuals recorded yet.
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
-      <Card>
-        <CardContent className="p-0">
-          <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-sm">DATA VALIDASI SALES REVENUE SAP</h3>
-              <p className="text-xs text-muted-foreground">
-                {sapFiltered.length} records | Rev Type: Repair, Service, Retread Job
-              </p>
+        <Card>
+          <CardContent className="p-0">
+            <div className="bg-muted/20 flex items-center justify-between border-b p-4">
+              <div>
+                <h3 className="text-sm font-semibold">DATA VALIDASI SALES REVENUE SAP</h3>
+                <p className="text-muted-foreground text-xs">
+                  {sapFiltered.length} records | Rev Type: Repair, Service, Retread Job
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">Total Revenue USD:</span>
+                <span className="text-sm font-bold">{fmtUsd(sapTotalUsd)}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Total Revenue USD:</span>
-              <span className="font-bold text-sm">{fmtUsd(sapTotalUsd)}</span>
+            <div className="flex flex-wrap items-center gap-3 border-b p-4">
+              <Input
+                placeholder="Search billing no, material..."
+                className="h-8 w-[200px] text-xs"
+                value={sapSearch}
+                onChange={(e) => setSapSearch(e.target.value)}
+              />
+              <Select value={sapCustomerFilter} onValueChange={setSapCustomerFilter}>
+                <SelectTrigger className="h-8 w-[200px] text-xs">
+                  <SelectValue placeholder="Filter: Customer Name" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Customers</SelectItem>
+                  {sapCustomerOptions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sapSalesmanFilter} onValueChange={setSapSalesmanFilter}>
+                <SelectTrigger className="h-8 w-[200px] text-xs">
+                  <SelectValue placeholder="Filter: Salesman" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Salesmen</SelectItem>
+                  {sapSalesmanOptions.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleExportSapExcel}
+              >
+                <Download className="mr-1 h-3 w-3" />
+                Export Excel
+              </Button>
             </div>
-          </div>
-          <div className="p-4 flex flex-wrap gap-3 items-center border-b">
-            <Input
-              placeholder="Search billing no, material..."
-              className="w-[200px] h-8 text-xs"
-              value={sapSearch}
-              onChange={(e) => setSapSearch(e.target.value)}
-            />
-            <Select value={sapCustomerFilter} onValueChange={setSapCustomerFilter}>
-              <SelectTrigger className="w-[200px] h-8 text-xs">
-                <SelectValue placeholder="Filter: Customer Name" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Customers</SelectItem>
-                {sapCustomerOptions.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={sapSalesmanFilter} onValueChange={setSapSalesmanFilter}>
-              <SelectTrigger className="w-[200px] h-8 text-xs">
-                <SelectValue placeholder="Filter: Salesman" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All Salesmen</SelectItem>
-                {sapSalesmanOptions.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleExportSapExcel}>
-              <Download className="w-3 h-3 mr-1" />
-              Export Excel
-            </Button>
-          </div>
-          <div className="overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-blue-600 hover:bg-blue-600">
-                  <TableHead className="text-white font-bold text-xs w-[30px]">No</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Billing Date</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Billing No</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Customer</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Customer Name</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Material No</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Material Desc</TableHead>
-                  <TableHead className="text-white font-bold text-xs text-right">Qty</TableHead>
-                  <TableHead className="text-white font-bold text-xs">UOM</TableHead>
-                  <TableHead className="text-white font-bold text-xs text-right">Revenue IDR</TableHead>
-                  <TableHead className="text-white font-bold text-xs text-right">Revenue USD</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Rev Type</TableHead>
-                  <TableHead className="text-white font-bold text-xs">Salesman</TableHead>
-                  <TableHead className="text-white font-bold text-xs">PO No</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sapFiltered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
-                      {isLoadingSap ? "Loading SAP data..." : "No SAP invoice data for this period"}
-                    </TableCell>
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-blue-600 hover:bg-blue-600">
+                    <TableHead className="w-[30px] text-xs font-bold text-white">No</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Billing Date</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Billing No</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Customer</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Customer Name</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Material No</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Material Desc</TableHead>
+                    <TableHead className="text-right text-xs font-bold text-white">Qty</TableHead>
+                    <TableHead className="text-xs font-bold text-white">UOM</TableHead>
+                    <TableHead className="text-right text-xs font-bold text-white">
+                      Revenue IDR
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-bold text-white">
+                      Revenue USD
+                    </TableHead>
+                    <TableHead className="text-xs font-bold text-white">Rev Type</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Salesman</TableHead>
+                    <TableHead className="text-xs font-bold text-white">PO No</TableHead>
                   </TableRow>
-                ) : (
-                  sapFiltered.map((row, i) => (
-                    <TableRow key={i} className={i % 2 === 0 ? "bg-white" : "bg-blue-50/40"}>
-                      <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="text-xs">{row.billingDate}</TableCell>
-                      <TableCell className="text-xs font-medium">{row.billingNo}</TableCell>
-                      <TableCell className="text-xs">{row.customer}</TableCell>
-                      <TableCell className="text-xs font-medium">{row.customerName}</TableCell>
-                      <TableCell className="text-xs">{row.materialNo}</TableCell>
-                      <TableCell className="text-xs max-w-[200px] truncate" title={row.materialDesc}>{row.materialDesc}</TableCell>
-                      <TableCell className="text-xs text-right">{row.qty}</TableCell>
-                      <TableCell className="text-xs">{row.uom}</TableCell>
-                      <TableCell className="text-xs text-right font-bold text-green-700">{fmtIdr(row.revenueIdr)}</TableCell>
-                      <TableCell className="text-xs text-right font-bold">{fmtUsd(row.revenueUsd)}</TableCell>
-                      <TableCell className="text-xs">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          row.revType.toLowerCase().includes("repair") ? "bg-amber-100 text-amber-700" :
-                          row.revType.toLowerCase().includes("service") ? "bg-blue-100 text-blue-700" :
-                          "bg-emerald-100 text-emerald-700"
-                        }`}>{row.revType}</span>
+                </TableHeader>
+                <TableBody>
+                  {sapFiltered.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={14} className="text-muted-foreground py-8 text-center">
+                        {isLoadingSap
+                          ? 'Loading SAP data...'
+                          : 'No SAP invoice data for this period'}
                       </TableCell>
-                      <TableCell className="text-xs">{row.salesman}</TableCell>
-                      <TableCell className="text-xs">{row.poNo}</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                  ) : (
+                    sapFiltered.map((row, i) => (
+                      <TableRow key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-50/40'}>
+                        <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                        <TableCell className="text-xs">{row.billingDate}</TableCell>
+                        <TableCell className="text-xs font-medium">{row.billingNo}</TableCell>
+                        <TableCell className="text-xs">{row.customer}</TableCell>
+                        <TableCell className="text-xs font-medium">{row.customerName}</TableCell>
+                        <TableCell className="text-xs">{row.materialNo}</TableCell>
+                        <TableCell
+                          className="max-w-[200px] truncate text-xs"
+                          title={row.materialDesc}
+                        >
+                          {row.materialDesc}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">{row.qty}</TableCell>
+                        <TableCell className="text-xs">{row.uom}</TableCell>
+                        <TableCell className="text-right text-xs font-bold text-green-700">
+                          {fmtIdr(row.revenueIdr)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs font-bold">
+                          {fmtUsd(row.revenueUsd)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                              row.revType.toLowerCase().includes('repair')
+                                ? 'bg-amber-100 text-amber-700'
+                                : row.revType.toLowerCase().includes('service')
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                            }`}
+                          >
+                            {row.revType}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs">{row.salesman}</TableCell>
+                        <TableCell className="text-xs">{row.poNo}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Status Update Dialog */}
@@ -837,7 +1247,10 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Status Forecast</Label>
-              <Select value={statusForm.status} onValueChange={val => setStatusForm({...statusForm, status: val})}>
+              <Select
+                value={statusForm.status}
+                onValueChange={(val) => setStatusForm({ ...statusForm, status: val })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select Status Forecast" />
                 </SelectTrigger>
@@ -851,9 +1264,9 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
             </div>
             <div className="space-y-2">
               <Label>Remark</Label>
-              <Input 
-                value={statusForm.remark} 
-                onChange={e => setStatusForm({...statusForm, remark: e.target.value})} 
+              <Input
+                value={statusForm.remark}
+                onChange={(e) => setStatusForm({ ...statusForm, remark: e.target.value })}
                 placeholder="e.g. Waiting PO, Done PO"
               />
             </div>
@@ -866,26 +1279,36 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
 
       {/* SAP Actuals Input Dialog */}
       <Dialog open={isActualsDialogOpen} onOpenChange={setIsActualsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+        <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>{selectedItem ? `SAP Actual - ${selectedItem.item.customer}` : "Unplanned SAP Actual"}</DialogTitle>
+            <DialogTitle>
+              {selectedItem ? `SAP Actual - ${selectedItem.item.customer}` : 'Unplanned SAP Actual'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto pr-2 space-y-4 py-4">
+          <div className="flex-1 space-y-4 overflow-y-auto py-4 pr-2">
             {!selectedItem && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Customer</Label>
-                  <Input value={actualsForm.customer} onChange={e => setActualsForm({...actualsForm, customer: e.target.value})} />
+                  <Input
+                    value={actualsForm.customer}
+                    onChange={(e) => setActualsForm({ ...actualsForm, customer: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Period</Label>
-                  <Select value={actualsForm.periodId} onValueChange={val => setActualsForm({...actualsForm, periodId: val})}>
+                  <Select
+                    value={actualsForm.periodId}
+                    onValueChange={(val) => setActualsForm({ ...actualsForm, periodId: val })}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select Period" />
                     </SelectTrigger>
                     <SelectContent>
-                      {periods.map(p => (
-                        <SelectItem key={p.id} value={p.id.toString()}>{p.monthYear}</SelectItem>
+                      {periods.map((p) => (
+                        <SelectItem key={p.id} value={p.id.toString()}>
+                          {p.monthYear}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -894,7 +1317,11 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
             )}
             <div className="space-y-2">
               <Label>Date</Label>
-              <Input type="date" value={actualsForm.updateDate} onChange={e => setActualsForm({...actualsForm, updateDate: e.target.value})} />
+              <Input
+                type="date"
+                value={actualsForm.updateDate}
+                onChange={(e) => setActualsForm({ ...actualsForm, updateDate: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Kurs USD API / Manual</Label>
@@ -902,45 +1329,70 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                 <Input
                   type="number"
                   value={actualsForm.exchangeRate}
-                  onChange={e => handleActualRateChange(e.target.value)}
+                  onChange={(e) => handleActualRateChange(e.target.value)}
                 />
-                <Button type="button" variant="outline" onClick={handleFetchActualRate} disabled={isFetchingActualRate}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleFetchActualRate}
+                  disabled={isFetchingActualRate}
+                >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  {isFetchingActualRate ? "Fetching" : "API"}
+                  {isFetchingActualRate ? 'Fetching' : 'API'}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 USD tersimpan mengikuti kurs saat submit. Edit manual jika kurs SAP berbeda.
               </p>
             </div>
 
-            {CATEGORIES.map(cat => {
-              const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm;
-              const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm;
-              const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm;
-              const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm;
-              const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm;
+            {CATEGORIES.map((cat) => {
+              const idrKey = `${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm
+              const usdKey = `${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm
+              const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm
+              const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm
+              const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm
               return (
-                <div key={cat} className="border rounded-md p-3 bg-muted/10">
-                  <h4 className="font-semibold text-sm mb-2">{cat}</h4>
-                  <div className="grid grid-cols-2 gap-3 mb-2">
+                <div key={cat} className="bg-muted/10 rounded-md border p-3">
+                  <h4 className="mb-2 text-sm font-semibold">{cat}</h4>
+                  <div className="mb-2 grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-xs">IDR</Label>
-                      <Input type="number" value={actualsForm[idrKey]} onChange={e => handleAmountIdrChange(cat, e.target.value)} />
+                      <Input
+                        type="number"
+                        value={actualsForm[idrKey]}
+                        onChange={(e) => handleAmountIdrChange(cat, e.target.value)}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">USD</Label>
-                      <Input type="number" value={actualsForm[usdKey]} onChange={e => setActualsForm({...actualsForm, [usdKey]: e.target.value})} />
+                      <Input
+                        type="number"
+                        value={actualsForm[usdKey]}
+                        onChange={(e) =>
+                          setActualsForm({ ...actualsForm, [usdKey]: e.target.value })
+                        }
+                      />
                     </div>
                   </div>
-                  <div className={`grid gap-3 ${cat === "Outstanding" ? "grid-cols-3" : "grid-cols-2"}`}>
+                  <div
+                    className={`grid gap-3 ${cat === 'Outstanding' ? 'grid-cols-3' : 'grid-cols-2'}`}
+                  >
                     <div className="space-y-1">
                       <Label className="text-xs">Remark</Label>
-                      <Input value={actualsForm[remarkKey]} onChange={e => setActualsForm({...actualsForm, [remarkKey]: e.target.value})} />
+                      <Input
+                        value={actualsForm[remarkKey]}
+                        onChange={(e) =>
+                          setActualsForm({ ...actualsForm, [remarkKey]: e.target.value })
+                        }
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Status Doc</Label>
-                      <Select value={actualsForm[statusKey]} onValueChange={v => setActualsForm({...actualsForm, [statusKey]: v})}>
+                      <Select
+                        value={actualsForm[statusKey]}
+                        onValueChange={(v) => setActualsForm({ ...actualsForm, [statusKey]: v })}
+                      >
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
@@ -953,10 +1405,13 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                         </SelectContent>
                       </Select>
                     </div>
-                    {cat === "Outstanding" && (
+                    {cat === 'Outstanding' && (
                       <div className="space-y-1">
                         <Label className="text-xs">Section</Label>
-                        <Select value={actualsForm[sectionKey]} onValueChange={v => setActualsForm({...actualsForm, [sectionKey]: v})}>
+                        <Select
+                          value={actualsForm[sectionKey]}
+                          onValueChange={(v) => setActualsForm({ ...actualsForm, [sectionKey]: v })}
+                        >
                           <SelectTrigger className="h-9">
                             <SelectValue />
                           </SelectTrigger>
@@ -971,29 +1426,45 @@ export function DailyClientPage({ initialItems, periods, initialSapInvoices }: {
                     )}
                   </div>
                 </div>
-              );
+              )
             })}
 
             <div className="border-t pt-3">
-              <div className="flex justify-between font-bold text-lg">
+              <div className="flex justify-between text-lg font-bold">
                 <span>Total Amount</span>
                 <span className="flex gap-4">
-                  <span className="text-primary">{formatCurrency(
-                    CATEGORIES.reduce((s, cat) => s + Number(actualsForm[`${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm]), 0)
-                  )}</span>
-                  <span className="text-blue-600">$
-                    {(CATEGORIES.reduce((s, cat) => s + Number(actualsForm[`${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm]), 0)).toLocaleString("en-US", {maximumFractionDigits: 2})}
+                  <span className="text-primary">
+                    {formatCurrency(
+                      CATEGORIES.reduce(
+                        (s, cat) =>
+                          s +
+                          Number(
+                            actualsForm[`${cat.toLowerCase()}AmountIdr` as keyof typeof actualsForm]
+                          ),
+                        0
+                      )
+                    )}
+                  </span>
+                  <span className="text-blue-600">
+                    $
+                    {CATEGORIES.reduce(
+                      (s, cat) =>
+                        s +
+                        Number(
+                          actualsForm[`${cat.toLowerCase()}AmountUsd` as keyof typeof actualsForm]
+                        ),
+                      0
+                    ).toLocaleString('en-US', { maximumFractionDigits: 2 })}
                   </span>
                 </span>
               </div>
             </div>
           </div>
-          <DialogFooter className="pt-4 border-t">
+          <DialogFooter className="border-t pt-4">
             <Button onClick={handleSaveActuals}>Save Actuals</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
-  );
+  )
 }

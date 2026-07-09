@@ -5814,6 +5814,10 @@ export async function getSchedulingTimesheetOptions() {
       onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
       dayCount: plan.dayCount ?? null,
       fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
+      fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
+      source: plan.source ?? 'manual',
+      isLocked: Boolean(plan.isLocked),
+      notes: plan.notes ?? '',
       updatedAt: plan.updatedAt.toISOString(),
     })),
     attendanceRecords: attendanceRows.map((record) => ({
@@ -6007,6 +6011,10 @@ function serializeFieldBreakPlan(plan: typeof timesheetFieldBreakPlans.$inferSel
     onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
     dayCount: plan.dayCount ?? null,
     fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
+    fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
+    source: plan.source ?? 'manual',
+    isLocked: Boolean(plan.isLocked),
+    notes: plan.notes ?? '',
     updatedAt: plan.updatedAt.toISOString(),
   }
 }

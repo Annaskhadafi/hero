@@ -139,6 +139,8 @@ import {
   timesheetAttendanceImportTemplates,
   timesheetAttendanceRealOverrides,
   timesheetFieldBreakPlans,
+  timesheetPayrollSnapshotItems,
+  timesheetPayrollSnapshots,
   timesheetSchedulingConfigs,
   timesheetSchedulingPlans,
   timesheetSchedulingStatuses,
@@ -449,6 +451,7 @@ const saveTimesheetFieldBreakPlansSchema = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/),
   plans: z.array(
     z.object({
+      period: z.string().regex(/^\d{4}-\d{2}$/).optional(),
       employeeId: z.number().int().positive(),
       employeeName: z.string().min(1).max(200),
       sectionName: z.string().max(160),
@@ -462,6 +465,14 @@ const saveTimesheetFieldBreakPlansSchema = z.object({
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
         .nullable(),
+      fieldBreakEndDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable()
+        .optional(),
+      source: z.enum(['auto', 'manual']).default('manual'),
+      isLocked: z.boolean().default(false),
+      notes: z.string().max(500).default(''),
     })
   ),
 })
@@ -479,11 +490,12 @@ export async function saveTimesheetFieldBreakPlansAction(
 
   await db.transaction(async (tx) => {
     for (const plan of payload.plans) {
+      const planPeriod = plan.period ?? payload.period
       await tx
         .insert(timesheetFieldBreakPlans)
         .values({
           siteId: payload.siteId,
-          period: payload.period,
+          period: planPeriod,
           employeeId: plan.employeeId,
           employeeName: plan.employeeName,
           sectionName: plan.sectionName,
@@ -491,6 +503,10 @@ export async function saveTimesheetFieldBreakPlansAction(
           onSiteDate: plan.onSiteDate,
           dayCount: plan.dayCount,
           fieldBreakDate: plan.fieldBreakDate,
+          fieldBreakEndDate: plan.fieldBreakEndDate ?? null,
+          source: plan.source,
+          isLocked: plan.isLocked,
+          notes: plan.notes,
           savedByUserId,
           updatedAt: now,
         })
@@ -507,6 +523,10 @@ export async function saveTimesheetFieldBreakPlansAction(
             onSiteDate: plan.onSiteDate,
             dayCount: plan.dayCount,
             fieldBreakDate: plan.fieldBreakDate,
+            fieldBreakEndDate: plan.fieldBreakEndDate ?? null,
+            source: plan.source,
+            isLocked: plan.isLocked,
+            notes: plan.notes,
             savedByUserId,
             updatedAt: now,
           },
@@ -539,6 +559,136 @@ export async function saveTimesheetFieldBreakPlansAction(
   revalidatePath('/dashboard/scheduling-timesheet')
 
   return { ok: true }
+}
+
+const saveTimesheetPayrollSnapshotSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  employeeCount: z.number().int().min(0),
+  totalMsa: z.number().int().min(0),
+  totalMeals: z.number().int().min(0),
+  totalTlk: z.number().int().min(0),
+  totalOvertimeHours: z.number().min(0),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  items: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      day: z.number().int().min(1).max(31),
+      scheduleCode: z.string().max(40),
+      attendanceStatus: z.string().max(40),
+      clockIn: z.string().max(8).default(''),
+      clockOut: z.string().max(8).default(''),
+      msaAmount: z.number().int().min(0).default(0),
+      mealsAmount: z.number().int().min(0).default(0),
+      tlkAmount: z.number().int().min(0).default(0),
+      overtimeHours: z.number().min(0).default(0),
+      source: z.string().max(40).default('attendance'),
+      notes: z.string().max(500).default(''),
+    })
+  ),
+})
+
+export async function saveTimesheetPayrollSnapshotAction(
+  input: z.infer<typeof saveTimesheetPayrollSnapshotSchema>
+) {
+  const payload = saveTimesheetPayrollSnapshotSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+
+  const [snapshot] = await db
+    .insert(timesheetPayrollSnapshots)
+    .values({
+      siteId: payload.siteId,
+      period: payload.period,
+      status: 'draft',
+      employeeCount: payload.employeeCount,
+      totalMsa: payload.totalMsa,
+      totalMeals: payload.totalMeals,
+      totalTlk: payload.totalTlk,
+      totalOvertimeHours: String(payload.totalOvertimeHours),
+      metadata: payload.metadata,
+      savedByUserId,
+      generatedAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [timesheetPayrollSnapshots.siteId, timesheetPayrollSnapshots.period],
+      set: {
+        status: 'draft',
+        employeeCount: payload.employeeCount,
+        totalMsa: payload.totalMsa,
+        totalMeals: payload.totalMeals,
+        totalTlk: payload.totalTlk,
+        totalOvertimeHours: String(payload.totalOvertimeHours),
+        metadata: payload.metadata,
+        savedByUserId,
+        generatedAt: now,
+        updatedAt: now,
+      },
+    })
+    .returning({ id: timesheetPayrollSnapshots.id })
+
+  if (!snapshot) throw new Error('Payroll snapshot failed to save.')
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(timesheetPayrollSnapshotItems)
+      .where(eq(timesheetPayrollSnapshotItems.snapshotId, snapshot.id))
+
+    if (payload.items.length) {
+      await tx.insert(timesheetPayrollSnapshotItems).values(
+        payload.items.map((item) => ({
+          snapshotId: snapshot.id,
+          employeeId: item.employeeId,
+          day: item.day,
+          scheduleCode: item.scheduleCode,
+          attendanceStatus: item.attendanceStatus,
+          clockIn: item.clockIn,
+          clockOut: item.clockOut,
+          msaAmount: item.msaAmount,
+          mealsAmount: item.mealsAmount,
+          tlkAmount: item.tlkAmount,
+          overtimeHours: String(item.overtimeHours),
+          source: item.source,
+          notes: item.notes,
+        }))
+      )
+    }
+
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        importStatus: 'ready_for_payroll',
+        lastGeneratedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: {
+          importStatus: 'ready_for_payroll',
+          lastGeneratedAt: now,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
+  })
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.payroll_snapshot_saved',
+    entityType: 'timesheet_payroll_snapshot',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Saved payroll snapshot (${payload.items.length} daily rows).`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true, snapshotId: snapshot.id }
 }
 
 const attendanceRealStatusSchema = z.enum(['present', 'empty', 'sick', 'leave', 'absent', 'off'])

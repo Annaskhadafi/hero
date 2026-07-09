@@ -1,0 +1,178 @@
+export type FieldBreakEmployee = {
+  employeeId: number
+  employeeName: string
+  sectionName: string
+  rosterSection: string
+}
+
+export type FieldBreakExistingPlan = {
+  employeeId: number
+  period: string
+  onSiteDate?: string | null
+  fieldBreakDate?: string | null
+  fieldBreakEndDate?: string | null
+  source?: string | null
+  isLocked?: boolean | null
+  notes?: string | null
+}
+
+export type GeneratedFieldBreakPlan = {
+  employeeId: number
+  employeeName: string
+  sectionName: string
+  rosterSection: string
+  period: string
+  onSiteDate: string
+  dayCount: number
+  fieldBreakDate: string
+  fieldBreakEndDate: string
+  source: 'auto' | 'manual'
+  isLocked: boolean
+  notes: string
+}
+
+export function getFieldBreakCapacity(employeeCount: number) {
+  return Math.max(1, Math.floor(employeeCount / 6))
+}
+
+export function addMonths(value: string, months: number) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  const day = date.getDate()
+  date.setMonth(date.getMonth() + months)
+  if (date.getDate() !== day) date.setDate(0)
+  return date.toISOString().slice(0, 10)
+}
+
+export function addDaysIso(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+export function monthPeriods(startPeriod: string, count: number) {
+  const [year, month] = startPeriod.split('-').map(Number)
+  if (!year || !month) return []
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(year, month - 1 + index, 1)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  })
+}
+
+export function isDateRangeOverlapping(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
+) {
+  return startA <= endB && startB <= endA
+}
+
+export function validateFieldBreakCapacity(plans: GeneratedFieldBreakPlan[], employeeCount?: number) {
+  const capacity = getFieldBreakCapacity(employeeCount ?? new Set(plans.map((plan) => plan.employeeId)).size)
+  const violations: Array<{ date: string; count: number; capacity: number }> = []
+  const counts = new Map<string, number>()
+
+  for (const plan of plans) {
+    let date = plan.fieldBreakDate
+    while (date && date <= plan.fieldBreakEndDate) {
+      counts.set(date, (counts.get(date) ?? 0) + 1)
+      date = addDaysIso(date, 1)
+    }
+  }
+
+  for (const [date, count] of Array.from(counts.entries())) {
+    if (count > capacity) violations.push({ date, count, capacity })
+  }
+
+  return violations
+}
+
+export function generateFieldBreakYearPlans(input: {
+  employees: FieldBreakEmployee[]
+  startPeriod: string
+  workMonths?: number
+  breakDays?: number
+  existingPlans?: FieldBreakExistingPlan[]
+}) {
+  const workMonths = input.workMonths ?? 3
+  const breakDays = input.breakDays ?? 14
+  const periods = monthPeriods(input.startPeriod, 12)
+  const firstDay = `${input.startPeriod}-01`
+  const employees = [...input.employees].sort((a, b) =>
+    a.employeeName.localeCompare(b.employeeName)
+  )
+  const capacity = getFieldBreakCapacity(employees.length)
+  const existingByEmployeePeriod = new Map(
+    (input.existingPlans ?? []).map((plan) => [`${plan.employeeId}:${plan.period}`, plan])
+  )
+  const generated: GeneratedFieldBreakPlan[] = []
+  const activeBreaks: Array<{ start: string; end: string }> = []
+
+  employees.forEach((employee, employeeIndex) => {
+    const cycleIndex = Math.floor(employeeIndex / capacity)
+    const onSiteDate = addMonths(firstDay, cycleIndex * workMonths)
+    const fieldBreakDate = addMonths(onSiteDate, workMonths)
+    const fieldBreakEndDate = addDaysIso(fieldBreakDate, breakDays - 1)
+
+    // ponytail: linear collision shift is enough for yearly site rosters; replace with interval scheduler if customer adds many hard constraints.
+    let shiftedStart = fieldBreakDate
+    let shiftedEnd = fieldBreakEndDate
+    while (
+      activeBreaks.filter((item) =>
+        isDateRangeOverlapping(shiftedStart, shiftedEnd, item.start, item.end)
+      ).length >= capacity
+    ) {
+      shiftedStart = addDaysIso(shiftedStart, breakDays)
+      shiftedEnd = addDaysIso(shiftedEnd, breakDays)
+    }
+    activeBreaks.push({ start: shiftedStart, end: shiftedEnd })
+
+    for (const period of periods) {
+      const existing = existingByEmployeePeriod.get(`${employee.employeeId}:${period}`)
+      if (existing?.isLocked) {
+        generated.push({
+          employeeId: employee.employeeId,
+          employeeName: employee.employeeName,
+          sectionName: employee.sectionName,
+          rosterSection: employee.rosterSection,
+          period,
+          onSiteDate: existing.onSiteDate ?? onSiteDate,
+          dayCount: daysBetween(existing.onSiteDate, existing.fieldBreakDate) ?? workMonths * 30,
+          fieldBreakDate: existing.fieldBreakDate ?? shiftedStart,
+          fieldBreakEndDate: existing.fieldBreakEndDate ?? shiftedEnd,
+          source: 'manual',
+          isLocked: true,
+          notes: existing.notes ?? '',
+        })
+        continue
+      }
+
+      generated.push({
+        employeeId: employee.employeeId,
+        employeeName: employee.employeeName,
+        sectionName: employee.sectionName,
+        rosterSection: employee.rosterSection,
+        period,
+        onSiteDate: existing?.onSiteDate ?? onSiteDate,
+        dayCount: daysBetween(existing?.onSiteDate ?? onSiteDate, existing?.fieldBreakDate ?? shiftedStart) ?? workMonths * 30,
+        fieldBreakDate: existing?.fieldBreakDate ?? shiftedStart,
+        fieldBreakEndDate: existing?.fieldBreakEndDate ?? shiftedEnd,
+        source: existing?.source === 'manual' ? 'manual' : 'auto',
+        isLocked: false,
+        notes: existing?.notes ?? '',
+      })
+    }
+  })
+
+  return { plans: generated, capacity }
+}
+
+function daysBetween(from?: string | null, to?: string | null) {
+  if (!from || !to) return null
+  const start = new Date(`${from}T00:00:00`).getTime()
+  const end = new Date(`${to}T00:00:00`).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
+  return Math.max(1, Math.round((end - start) / 86400000))
+}

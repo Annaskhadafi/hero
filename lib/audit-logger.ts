@@ -34,6 +34,7 @@ export type AuditAction =
   | 'timesheet.config_saved'
   | 'timesheet.schedule_saved'
   | 'timesheet.field_break_saved'
+  | 'timesheet.payroll_snapshot_saved'
   | 'timesheet.attendance_saved'
   | 'timesheet.attendance_cleared'
   | 'timesheet.import_previewed'
