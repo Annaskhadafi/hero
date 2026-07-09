@@ -63,6 +63,18 @@ const formatShort = (val: number) => {
   return '$' + val.toFixed(0)
 }
 
+const normalizeStatusDoc = (status?: string | null) => {
+  if (status === 'Complete') return 'Invoice'
+  if (status === 'Pending') return 'Waiting PO'
+  return status || '-'
+}
+
+const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
+  const normalized = normalizeStatusDoc(status)
+  const po = (poNumber || '').trim()
+  return normalized === 'PO Release' && po ? `${normalized} / ${po}` : normalized
+}
+
 const renderBarLabel = (props: any) => {
   const { x, y, width, value } = props
   if (!value || value === 0) return null
@@ -150,6 +162,7 @@ type CategoryRow = {
   remarkDaily: string
   sectionDaily: string
   status: string
+  poNumber: string
   color: string
 }
 
@@ -284,6 +297,16 @@ export function ReportClientPage({
     ].filter((c) => c.value > 0)
   }, [totals, rate])
 
+  const totalScore = useMemo(
+    () => ({
+      forecast:
+        totals.osFc + totals.serviceFc + totals.repairFc + totals.retreadFc,
+      actual: totals.serviceAct + totals.repairAct + totals.retreadAct,
+      actualUsd: sapRevenue.service.usd + sapRevenue.repair.usd + sapRevenue.retread.usd,
+    }),
+    [totals, sapRevenue]
+  )
+
   const groupedData = useMemo(() => {
     const map = new Map<string, CustomerGroup>()
 
@@ -311,6 +334,7 @@ export function ReportClientPage({
             remarkDaily: '',
             sectionDaily: '',
             status: '-',
+            poNumber: '',
             color: CAT_COLORS.Accessories,
           })
         }
@@ -331,6 +355,7 @@ export function ReportClientPage({
             remarkDaily: '',
             sectionDaily: '',
             status: '-',
+            poNumber: '',
             color: 'bg-amber-100 text-amber-700',
           })
         }
@@ -345,6 +370,7 @@ export function ReportClientPage({
             remarkDaily: '',
             sectionDaily: '',
             status: '-',
+            poNumber: '',
             color: CAT_COLORS.Repair,
           })
         }
@@ -359,6 +385,7 @@ export function ReportClientPage({
             remarkDaily: '',
             sectionDaily: '',
             status: '-',
+            poNumber: '',
             color: CAT_COLORS.Service,
           })
         }
@@ -373,6 +400,7 @@ export function ReportClientPage({
             remarkDaily: '',
             sectionDaily: '',
             status: '-',
+            poNumber: '',
             color: CAT_COLORS.Retread,
           })
         }
@@ -390,7 +418,8 @@ export function ReportClientPage({
           if (!seenDailyRemark.has(a.category)) {
             existing.remarkDaily = a.remark || existing.remarkDaily
             existing.sectionDaily = a.jobCode || existing.sectionDaily
-            existing.status = a.itemStatus || existing.status
+            existing.status = normalizeStatusDoc(a.itemStatus || existing.status)
+            existing.poNumber = a.invoiceNumber || existing.poNumber
             seenDailyRemark.add(a.category)
           }
         } else {
@@ -406,7 +435,8 @@ export function ReportClientPage({
             remarkMonthly: '',
             remarkDaily: a.remark || '',
             sectionDaily: a.jobCode || '',
-            status: a.itemStatus || '-',
+            status: normalizeStatusDoc(a.itemStatus || '-'),
+            poNumber: a.invoiceNumber || '',
             color: CAT_COLORS[a.category] || 'bg-gray-100 text-gray-700',
           })
         }
@@ -510,12 +540,14 @@ export function ReportClientPage({
       </div>
 
       <div ref={reportRef} className="bg-white p-10">
+        <h3 className="mb-4 text-sm font-black tracking-wider text-primary uppercase">Revenue SAP</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <CategoryScoreCard
-            label="Outstanding Prev Month"
-            forecast={totals.osFc}
-            forecastUsd={totals.osFc / rate}
-            actual={0}
+            label="Total"
+            forecast={totalScore.forecast}
+            forecastUsd={totalScore.forecast / rate}
+            actual={totalScore.actual}
+            actualUsd={totalScore.actualUsd}
             colorClass="bg-amber-500"
             textClass="text-amber-700"
           />
@@ -546,6 +578,12 @@ export function ReportClientPage({
             colorClass="bg-emerald-500"
             textClass="text-emerald-700"
           />
+        </div>
+
+        <div className="mt-8 border-t border-primary/15 pt-5">
+          <h3 className="text-sm font-black tracking-wider text-primary uppercase">
+            Document Completed
+          </h3>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -763,7 +801,7 @@ export function ReportClientPage({
                             </td>
                             {/* Status per category */}
                             <td className="border border-black/10 px-2 py-1.5 text-center text-xs">
-                              {cat.status || ''}
+                              {formatStatusDoc(cat.status, cat.poNumber)}
                             </td>
                             <td className="border border-black/10 px-2 py-1.5 text-right text-xs tabular-nums">
                               {cat.forecastIdr > 0 ? fmtNum(getRemainingAmount(cat)) : ''}

@@ -150,6 +150,18 @@ export function DailyClientPage({
   const CATEGORIES = ['Outstanding', 'Repair', 'Service', 'Retread'] as const
   type Category = (typeof CATEGORIES)[number]
 
+  const normalizeStatusDoc = (status?: string | null) => {
+    if (status === 'Complete') return 'Invoice'
+    if (status === 'Pending') return 'Waiting PO'
+    return status || '-'
+  }
+
+  const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
+    const normalized = normalizeStatusDoc(status)
+    const po = (poNumber || '').trim()
+    return normalized === 'PO Release' && po ? `${normalized} / ${po}` : normalized
+  }
+
   const [actualsForm, setActualsForm] = useState({
     updateDate: new Date().toISOString().split('T')[0],
     exchangeRate: '15000',
@@ -158,18 +170,22 @@ export function DailyClientPage({
     outstandingRemark: '',
     outstandingStatus: '-',
     outstandingSection: '-',
+    outstandingPoNumber: '',
     repairAmountIdr: '0',
     repairAmountUsd: '0',
     repairRemark: '',
     repairStatus: '-',
+    repairPoNumber: '',
     serviceAmountIdr: '0',
     serviceAmountUsd: '0',
     serviceRemark: '',
     serviceStatus: '-',
+    servicePoNumber: '',
     retreadAmountIdr: '0',
     retreadAmountUsd: '0',
     retreadRemark: '',
     retreadStatus: '-',
+    retreadPoNumber: '',
     customer: '',
     periodId: '',
   })
@@ -291,13 +307,17 @@ export function DailyClientPage({
         const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm
         const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm
         const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm
+        const poKey = `${cat.toLowerCase()}PoNumber` as keyof typeof actualsForm
         const existingId = editingActualIds[cat]
         const amtIdr = Number(actualsForm[idrKey])
+        const itemStatus = normalizeStatusDoc(String(actualsForm[statusKey] || '-'))
+        const poNumber = itemStatus === 'PO Release' ? String(actualsForm[poKey] || '').trim() : ''
         const hasPayload =
           amtIdr > 0 ||
           String(actualsForm[remarkKey] || '').trim().length > 0 ||
-          String(actualsForm[statusKey] || '-') !== '-' ||
-          String(actualsForm[sectionKey] || '-') !== '-'
+          itemStatus !== '-' ||
+          String(actualsForm[sectionKey] || '-') !== '-' ||
+          poNumber.length > 0
 
         if (existingId && !hasPayload) {
           await deleteForecastActual(existingId)
@@ -305,10 +325,11 @@ export function DailyClientPage({
           await updateForecastActual(existingId, {
             ...basePayload,
             jobCode: cat === 'Outstanding' ? actualsForm[sectionKey] : '',
+            invoiceNumber: poNumber,
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
-            itemStatus: actualsForm[statusKey],
+            itemStatus,
             category: cat,
             forecastItemId: itemId,
             periodId,
@@ -318,10 +339,11 @@ export function DailyClientPage({
           await addForecastActual({
             ...basePayload,
             jobCode: cat === 'Outstanding' ? actualsForm[sectionKey] : '',
+            invoiceNumber: poNumber,
             amountIdr: actualsForm[idrKey],
             amountUsd: actualsForm[usdKey],
             remark: actualsForm[remarkKey],
-            itemStatus: actualsForm[statusKey],
+            itemStatus,
             category: cat,
             forecastItemId: itemId,
             periodId,
@@ -378,7 +400,8 @@ export function DailyClientPage({
       form[`${cat.toLowerCase()}AmountIdr`] = a?.amountIdr?.toString() || '0'
       form[`${cat.toLowerCase()}AmountUsd`] = a?.amountUsd?.toString() || '0'
       form[`${cat.toLowerCase()}Remark`] = a?.remark || ''
-      form[`${cat.toLowerCase()}Status`] = a?.itemStatus || '-'
+      form[`${cat.toLowerCase()}Status`] = normalizeStatusDoc(a?.itemStatus || '-')
+      form[`${cat.toLowerCase()}PoNumber`] = a?.invoiceNumber || ''
       if (cat === 'Outstanding') form.outstandingSection = a?.jobCode || '-'
     }
 
@@ -467,6 +490,10 @@ export function DailyClientPage({
 
   const sapTotalUsd = useMemo(() => {
     return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
+  }, [sapFiltered])
+
+  const sapTotalIdr = useMemo(() => {
+    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0)
   }, [sapFiltered])
 
   const handleExportSapExcel = () => {
@@ -588,7 +615,7 @@ export function DailyClientPage({
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-muted-foreground text-sm font-medium">
@@ -612,7 +639,7 @@ export function DailyClientPage({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Actual (SAP)
+              Document Completed
             </CardTitle>
             <Banknote className="h-6 w-6 text-green-600" />
           </CardHeader>
@@ -639,6 +666,19 @@ export function DailyClientPage({
                   </div>
                 </div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-muted-foreground text-sm font-medium">Revenue SAP</CardTitle>
+            <TableProperties className="h-6 w-6 text-sky-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
+              <span className="text-sky-700">{formatCurrency(sapTotalIdr)}</span>
+              <span className="text-muted-foreground text-xl font-light">|</span>
+              <span className="text-blue-600">{fmtUsd(sapTotalUsd)}</span>
             </div>
           </CardContent>
         </Card>
@@ -858,12 +898,15 @@ export function DailyClientPage({
                                                 .map((a: any) => a.itemStatus)
                                                 .find((value: string) => value && value !== '-') ||
                                               '—'
+                                            const poNumber =
+                                              c.map((a: any) => a.invoiceNumber).find(Boolean) || ''
                                             return {
                                               sumIdr,
                                               sumUsd,
                                               rmk,
                                               section,
                                               status,
+                                              poNumber,
                                               hasData: c.length > 0,
                                             }
                                           }
@@ -883,6 +926,7 @@ export function DailyClientPage({
                                             hasData: boolean
                                             section: string
                                             status: string
+                                            poNumber: string
                                           }) =>
                                             entry.hasData ? (
                                               <div className="flex flex-wrap gap-1 pt-1">
@@ -896,7 +940,7 @@ export function DailyClientPage({
                                                   variant="outline"
                                                   className="px-1.5 py-0 text-[10px]"
                                                 >
-                                                  {entry.status}
+                                                  {formatStatusDoc(entry.status, entry.poNumber)}
                                                 </Badge>
                                               </div>
                                             ) : null
@@ -1352,6 +1396,8 @@ export function DailyClientPage({
               const remarkKey = `${cat.toLowerCase()}Remark` as keyof typeof actualsForm
               const statusKey = `${cat.toLowerCase()}Status` as keyof typeof actualsForm
               const sectionKey = `${cat.toLowerCase()}Section` as keyof typeof actualsForm
+              const poKey = `${cat.toLowerCase()}PoNumber` as keyof typeof actualsForm
+              const selectedStatus = normalizeStatusDoc(String(actualsForm[statusKey] || '-'))
               return (
                 <div key={cat} className="bg-muted/10 rounded-md border p-3">
                   <h4 className="mb-2 text-sm font-semibold">{cat}</h4>
@@ -1390,18 +1436,23 @@ export function DailyClientPage({
                     <div className="space-y-1">
                       <Label className="text-xs">Status Doc</Label>
                       <Select
-                        value={actualsForm[statusKey]}
-                        onValueChange={(v) => setActualsForm({ ...actualsForm, [statusKey]: v })}
+                        value={selectedStatus}
+                        onValueChange={(v) =>
+                          setActualsForm({
+                            ...actualsForm,
+                            [statusKey]: v,
+                            [poKey]: v === 'PO Release' ? actualsForm[poKey] : '',
+                          })
+                        }
                       >
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="PO Release">PO Release</SelectItem>
+                          <SelectItem value="Waiting PO">Waiting PO</SelectItem>
+                          <SelectItem value="Invoice">Invoice</SelectItem>
                           <SelectItem value="-">-</SelectItem>
-                          <SelectItem value="Pending">Pending</SelectItem>
-                          <SelectItem value="Complete">Complete</SelectItem>
-                          <SelectItem value="Carry Over">Carry Over</SelectItem>
-                          <SelectItem value="Cancel">Cancel</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1425,6 +1476,18 @@ export function DailyClientPage({
                       </div>
                     )}
                   </div>
+                  {selectedStatus === 'PO Release' && (
+                    <div className="mt-3 space-y-1">
+                      <Label className="text-xs">No PO</Label>
+                      <Input
+                        value={actualsForm[poKey]}
+                        onChange={(e) =>
+                          setActualsForm({ ...actualsForm, [poKey]: e.target.value })
+                        }
+                        placeholder="No PO"
+                      />
+                    </div>
+                  )}
                 </div>
               )
             })}
