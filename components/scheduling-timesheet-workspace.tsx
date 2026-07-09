@@ -37,6 +37,7 @@ import {
   applyAttendanceImportPreviewAction,
   clearAttendanceRealOverridesAction,
   createAttendanceImportPreviewAction,
+  deleteSchedulingTimesheetPlanAction,
   discardAttendanceImportPreviewAction,
   finalizeSchedulingPeriodAction,
   getAttendanceImportHistoryAction,
@@ -864,6 +865,14 @@ export function SchedulingTimesheetWorkspace({
     day: number
   } | null>(null)
   const [rosterDialogOpen, setRosterDialogOpen] = useState(false)
+  const [siteConfigDialogOpen, setSiteConfigDialogOpen] = useState(false)
+  const [openScheduleHistorySiteId, setOpenScheduleHistorySiteId] = useState<number | null>(null)
+  const [deletedSchedulePlanKeys, setDeletedSchedulePlanKeys] = useState<string[]>([])
+  const [deleteScheduleHistoryTarget, setDeleteScheduleHistoryTarget] = useState<{
+    siteId: number
+    period: string
+    siteName: string
+  } | null>(null)
   const [swapTargetEmployeeId, setSwapTargetEmployeeId] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null)
 
@@ -886,10 +895,16 @@ export function SchedulingTimesheetWorkspace({
   const [scheduleSavedAt, setScheduleSavedAt] = useState<string | null>(null)
   const [fieldBreakSiteId, setFieldBreakSiteId] = useState(String(sites[0]?.id ?? ''))
   const [fieldBreakDialogOpen, setFieldBreakDialogOpen] = useState(false)
+  const [openFieldBreakHistorySiteId, setOpenFieldBreakHistorySiteId] = useState<number | null>(
+    null
+  )
   const [fieldBreakDrafts, setFieldBreakDrafts] = useState<Record<number, FieldBreakDraft>>({})
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition()
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({})
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({})
+  const [setupVariableTab, setSetupVariableTab] = useState<'roster' | 'allowance' | 'overtime'>(
+    'roster'
+  )
   const [allowanceVariables, setAllowanceVariables] =
     useState<AllowanceVariable[]>(defaultAllowanceVariables)
   const [overtimeVariables, setOvertimeVariables] =
@@ -953,6 +968,7 @@ export function SchedulingTimesheetWorkspace({
     unmatchedNames?: string[]
   } | null>(null)
   const [isSavingSchedule, startSavingSchedule] = useTransition()
+  const [isDeletingScheduleHistory, startDeletingScheduleHistory] = useTransition()
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false)
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false)
   const [finalizeReason, setFinalizeReason] = useState('')
@@ -1000,7 +1016,10 @@ export function SchedulingTimesheetWorkspace({
     allowanceVariables[0] ??
     defaultAllowanceVariables[0]
   const savedPlan = savedPlans.find(
-    (plan) => String(plan.siteId) === siteId && plan.period === period
+    (plan) =>
+      !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+      String(plan.siteId) === siteId &&
+      plan.period === period
   )
   const currentStatus =
     schedulingStatuses.find(
@@ -1208,10 +1227,13 @@ export function SchedulingTimesheetWorkspace({
     }))
   }, [fieldBreakPlans, period, savedPlan, siteId])
 
+  const selectedSite = useMemo(
+    () => sites.find((item) => String(item.id) === siteId),
+    [siteId, sites]
+  )
+
   const visibleEmployees = useMemo(() => {
     if (siteId === 'all') return []
-
-    const selectedSite = sites.find((item) => String(item.id) === siteId)
     if (!selectedSite) return []
 
     // Extract from selected site name
@@ -1226,7 +1248,7 @@ export function SchedulingTimesheetWorkspace({
     })
 
     return filtered
-  }, [employees, mode, siteId, sites])
+  }, [employees, mode, selectedSite, siteId])
 
   const rosterSectionByEmployee = new Map(
     visibleEmployees.map((employee) => {
@@ -1697,7 +1719,10 @@ export function SchedulingTimesheetWorkspace({
         String(employee.siteId) === String(siteItem.id) || employee.locationName === siteKey
     )
     const siteRosterPlan = savedPlans.find(
-      (plan) => plan.siteId === siteItem.id && plan.period === period
+      (plan) =>
+        !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+        plan.siteId === siteItem.id &&
+        plan.period === period
     )
     const siteFieldBreakRows = fieldBreakPlans.filter(
       (plan) => plan.siteId === siteItem.id && plan.period === period
@@ -1713,10 +1738,32 @@ export function SchedulingTimesheetWorkspace({
       fieldBreakCount: siteFieldBreakRows.length,
       fieldBreakLockedCount: siteFieldBreakRows.filter((plan) => plan.isLocked).length,
       hasConfig: Boolean(siteConfigRow),
-      scheduleType: siteConfigRow?.scheduleType ?? 'office',
-      rosterType: siteConfigRow?.rosterType ?? '5:2',
+      scheduleType: (siteConfigRow?.scheduleType ?? 'office') as SiteScheduleType,
+      rosterType: (siteConfigRow?.rosterType ?? '5:2') as SiteRosterType,
     }
   })
+  const scheduleHistoryRows = savedPlans
+    .filter((plan) => !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`))
+    .map((plan) => {
+      const historySite = sites.find((siteItem) => siteItem.id === plan.siteId)
+      const siteConfigRow = schedulingConfigs.find((config) => config.siteId === plan.siteId)
+
+      return {
+        siteId: plan.siteId,
+        siteName: historySite?.name ?? `Site ${plan.siteId}`,
+        period: plan.period,
+        employeeCount: plan.fixedSchedule.length || plan.draftSchedule.length,
+        scheduleType: siteConfigRow?.scheduleType ?? plan.siteScheduleType,
+        rosterType: siteConfigRow?.rosterType ?? '5:2',
+        updatedAt: plan.updatedAt,
+        configured: Boolean(plan.fixedSchedule.length),
+      }
+    })
+    .sort((left, right) => {
+      const periodCompare = right.period.localeCompare(left.period)
+      if (periodCompare) return periodCompare
+      return left.siteName.localeCompare(right.siteName)
+    })
   const servicemanKimperCoverage = days.map((day, index) => {
     const serviceRows = rows.filter(
       (row) =>
@@ -1756,6 +1803,57 @@ export function SchedulingTimesheetWorkspace({
 
     setPermanentOverrides((currentOverrides) => ({ ...currentOverrides, [key]: next }))
     setSelectedPermanentCell({ employeeId, day })
+  }
+
+  function openScheduleHistory(siteIdValue: number, periodValue: string) {
+    const nextSiteId = String(siteIdValue)
+    const config = schedulingConfigs.find((item) => item.siteId === siteIdValue)
+
+    setSiteId(nextSiteId)
+    setPeriod(periodValue)
+    if (config) {
+      setSiteConfigs((current) => ({
+        ...current,
+        [nextSiteId]: {
+          ...(current[nextSiteId] ?? defaultSiteConfig),
+          scheduleType: config.scheduleType as SiteScheduleType,
+          rosterType: config.rosterType as SiteRosterType,
+        },
+      }))
+      setRoster(config.rosterType)
+      setSiteScheduleTypes((current) => ({
+        ...current,
+        [nextSiteId]: config.scheduleType as SiteScheduleType,
+      }))
+    }
+    setSelectedCell(null)
+    setSelectedPermanentCell(null)
+    setRosterDialogOpen(true)
+  }
+
+  function deleteScheduleHistory() {
+    if (!deleteScheduleHistoryTarget) return
+
+    const target = deleteScheduleHistoryTarget
+    startDeletingScheduleHistory(async () => {
+      try {
+        const result = await deleteSchedulingTimesheetPlanAction({
+          siteId: target.siteId,
+          period: target.period,
+        })
+        if (!result.ok) {
+          toast.error('Gagal hapus history roster.')
+          return
+        }
+        setDeletedSchedulePlanKeys((current) => [...current, `${target.siteId}:${target.period}`])
+        setDeleteScheduleHistoryTarget(null)
+        toast.success('History roster dihapus.')
+      } catch (error) {
+        toast.error('Gagal hapus history roster', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
   }
 
   function saveScheduleToPermanent() {
@@ -3691,125 +3789,126 @@ export function SchedulingTimesheetWorkspace({
           </span>
         </div>
       ) : null}
-      <Card className="surface-module-card rounded-[1rem] border-0 p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <span className="bg-surface-container-low text-primary grid size-9 place-items-center rounded-xl">
-              <CalendarDays className="size-4" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="font-display text-foreground text-base font-semibold">
-                {mode === 'overview' && 'Ringkasan Site'}
-                {mode === 'setup' && 'Konfigurasi Site'}
-                {mode === 'schedule' && 'Parameter Jadwal'}
-                {mode === 'attendance' && 'Sync Log'}
-                {mode === 'field-break' && 'Field Break'}
-                {mode === 'payroll' && 'MSA + Overtime'}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                Pilih site dan periode untuk melihat data.
-              </p>
+      {mode !== 'setup' && mode !== 'schedule' && mode !== 'field-break' ? (
+        <Card className="surface-module-card rounded-[1rem] border-0 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="bg-surface-container-low text-primary grid size-9 place-items-center rounded-xl">
+                <CalendarDays className="size-4" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  {mode === 'overview' && 'Ringkasan Site'}
+                  {mode === 'schedule' && 'Parameter Jadwal'}
+                  {mode === 'attendance' && 'Sync Log'}
+                  {mode === 'field-break' && 'Field Break'}
+                  {mode === 'payroll' && 'MSA + Overtime'}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Pilih site dan periode untuk melihat data.
+                </p>
+              </div>
             </div>
-          </div>
-          {currentStatus ? (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
-                Schedule: {currentStatus.scheduleStatus || 'none'}
-              </span>
-              <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
-                Attendance: {currentStatus.attendanceStatus || 'none'}
-              </span>
-              {currentStatus.finalizedAt ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">
-                  <Lock className="size-3" /> Finalized
+            {currentStatus ? (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
+                  Schedule: {currentStatus.scheduleStatus || 'none'}
                 </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_160px_auto] lg:items-end">
-          <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-              Site
-            </Label>
-            <NativeSelect
-              value={siteId}
-              onValueChange={setSiteId}
-              options={[
-                { value: 'all', label: 'Pilih site dahulu' },
-                ...sites.map((item) => ({
-                  value: String(item.id),
-                  label: item.name,
-                })),
-              ]}
-            />
+                <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
+                  Attendance: {currentStatus.attendanceStatus || 'none'}
+                </span>
+                {currentStatus.finalizedAt ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">
+                    <Lock className="size-3" /> Finalized
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-              Periode
-            </Label>
-            <Input
-              type="month"
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-              className="h-10"
-            />
-          </div>
-          {mode !== 'field-break' ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_160px_auto] lg:items-end">
             <div className="space-y-1.5">
               <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                Tipe Site
+                Site
               </Label>
               <NativeSelect
-                value={siteConfig.scheduleType}
-                onValueChange={(value) =>
-                  updateSiteConfig('scheduleType', value as SiteScheduleType)
-                }
+                value={siteId}
+                onValueChange={setSiteId}
                 options={[
-                  { value: 'office', label: 'Office / Non Shift' },
-                  { value: 'shift', label: 'Shift DS / NS' },
-                  { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
+                  { value: 'all', label: 'Pilih site dahulu' },
+                  ...sites.map((item) => ({
+                    value: String(item.id),
+                    label: item.name,
+                  })),
                 ]}
               />
             </div>
-          ) : null}
-          {mode !== 'field-break' ? (
             <div className="space-y-1.5">
               <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                Roster
+                Periode
               </Label>
-              <NativeSelect
-                value={siteConfig.rosterType}
-                onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
-                options={[
-                  { value: '5:2', label: 'Roster 5 : 2' },
-                  { value: '6:1', label: 'Roster 6 : 1' },
-                  { value: 'vale', label: 'Vale Sorowako' },
-                ]}
+              <Input
+                type="month"
+                value={period}
+                onChange={(event) => setPeriod(event.target.value)}
+                className="h-10"
               />
             </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2 pt-2 lg:pt-0">
-            {isFinalized ? (
-              <Button
-                variant="outline"
-                disabled={isSavingSchedule}
-                onClick={() => setReopenDialogOpen(true)}
-              >
-                Reopen
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                disabled={siteId === 'all' || isSavingSchedule}
-                onClick={() => setFinalizeDialogOpen(true)}
-              >
-                Finalize
-              </Button>
-            )}
+            {mode !== 'field-break' ? (
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Tipe Site
+                </Label>
+                <NativeSelect
+                  value={siteConfig.scheduleType}
+                  onValueChange={(value) =>
+                    updateSiteConfig('scheduleType', value as SiteScheduleType)
+                  }
+                  options={[
+                    { value: 'office', label: 'Office / Non Shift' },
+                    { value: 'shift', label: 'Shift DS / NS' },
+                    { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
+                  ]}
+                />
+              </div>
+            ) : null}
+            {mode !== 'field-break' ? (
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Roster
+                </Label>
+                <NativeSelect
+                  value={siteConfig.rosterType}
+                  onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
+                  options={[
+                    { value: '5:2', label: 'Roster 5 : 2' },
+                    { value: '6:1', label: 'Roster 6 : 1' },
+                    { value: 'vale', label: 'Vale Sorowako' },
+                  ]}
+                />
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2 pt-2 lg:pt-0">
+              {isFinalized ? (
+                <Button
+                  variant="outline"
+                  disabled={isSavingSchedule}
+                  onClick={() => setReopenDialogOpen(true)}
+                >
+                  Reopen
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  disabled={siteId === 'all' || isSavingSchedule}
+                  onClick={() => setFinalizeDialogOpen(true)}
+                >
+                  Finalize
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
 
       {mode === 'schedule' ? (
         <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
@@ -3831,45 +3930,175 @@ export function SchedulingTimesheetWorkspace({
                   <th className="px-4 py-3 font-medium">Roster</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Updated</th>
-                  <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    <Settings2 className="ml-auto size-4" aria-label="Aksi" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {siteSettingRows.map((row) => (
-                  <tr
-                    key={`roster-setting-${row.site.id}`}
-                    className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
-                  >
-                    <td className="px-4 py-3 font-semibold">{row.site.name}</td>
-                    <td className="px-4 py-3">{row.employeeCount}</td>
-                    <td className="px-4 py-3">{row.scheduleType}</td>
-                    <td className="px-4 py-3">{row.rosterType}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={row.rosterConfigured ? 'default' : 'secondary'}>
-                        {row.rosterConfigured ? 'Sudah setting' : 'Belum setting'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.rosterUpdatedAt
-                        ? new Date(row.rosterUpdatedAt).toLocaleString('id-ID')
-                        : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSiteId(String(row.site.id))
-                          setSelectedCell(null)
-                          setSelectedPermanentCell(null)
-                          setRosterDialogOpen(true)
-                        }}
-                      >
-                        {row.rosterConfigured ? 'Atur' : 'Tambah Setting'}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {siteSettingRows.map((row) => {
+                  const rowHistory = scheduleHistoryRows.filter(
+                    (history) => history.siteId === row.site.id
+                  )
+                  const isHistoryOpen = openScheduleHistorySiteId === row.site.id
+
+                  return (
+                    <React.Fragment key={`roster-setting-${row.site.id}`}>
+                      <tr className="border-border/30 hover:bg-surface-container-low/40 border-t transition">
+                        <td className="px-4 py-3 font-semibold">{row.site.name}</td>
+                        <td className="px-4 py-3">{row.employeeCount}</td>
+                        <td className="px-4 py-3">{row.scheduleType}</td>
+                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={row.rosterConfigured ? 'default' : 'secondary'}>
+                            {row.rosterConfigured ? 'Sudah setting' : 'Belum setting'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.rosterUpdatedAt
+                            ? new Date(row.rosterUpdatedAt).toLocaleString('id-ID')
+                            : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title={`History roster ${row.site.name}`}
+                              aria-label={`History roster ${row.site.name}`}
+                              onClick={() =>
+                                setOpenScheduleHistorySiteId(isHistoryOpen ? null : row.site.id)
+                              }
+                            >
+                              <History className="size-4" />
+                              <span className="sr-only">History</span>
+                              <span className="text-[11px] font-semibold">{rowHistory.length}</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title={`${row.rosterConfigured ? 'Atur' : 'Tambah'} setting roster ${row.site.name}`}
+                              aria-label={`${row.rosterConfigured ? 'Atur' : 'Tambah'} setting roster ${row.site.name}`}
+                              onClick={() => {
+                                const nextSiteId = String(row.site.id)
+                                setSiteId(nextSiteId)
+                                setSiteConfigs((current) => ({
+                                  ...current,
+                                  [nextSiteId]: {
+                                    ...(current[nextSiteId] ?? defaultSiteConfig),
+                                    scheduleType: row.scheduleType as SiteScheduleType,
+                                    rosterType: row.rosterType as SiteRosterType,
+                                  },
+                                }))
+                                setRoster(row.rosterType)
+                                setSiteScheduleTypes((current) => ({
+                                  ...current,
+                                  [nextSiteId]: row.scheduleType as SiteScheduleType,
+                                }))
+                                setSelectedCell(null)
+                                setSelectedPermanentCell(null)
+                                setRosterDialogOpen(true)
+                              }}
+                            >
+                              <Settings2 className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isHistoryOpen ? (
+                        <tr className="border-border/30 bg-surface-container-low/40 border-t">
+                          <td colSpan={7} className="p-0">
+                            <div className="px-4 py-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-display text-foreground text-sm font-semibold">
+                                    History Roster Bulanan - {row.site.name}
+                                  </p>
+                                  <p className="text-muted-foreground text-xs">
+                                    Semua roster tersimpan untuk site ini.
+                                  </p>
+                                </div>
+                                <Badge variant="outline">{rowHistory.length} history</Badge>
+                              </div>
+                              <div className="overflow-auto rounded-xl bg-white">
+                                <table className="w-full min-w-[820px] text-sm">
+                                  <thead>
+                                    <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                                      <th className="px-4 py-3 font-medium">Periode</th>
+                                      <th className="px-4 py-3 font-medium">Karyawan</th>
+                                      <th className="px-4 py-3 font-medium">Tipe</th>
+                                      <th className="px-4 py-3 font-medium">Roster</th>
+                                      <th className="px-4 py-3 font-medium">Updated</th>
+                                      <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rowHistory.map((history) => (
+                                      <tr
+                                        key={`schedule-history-${history.siteId}-${history.period}`}
+                                        className="border-border/30 border-t"
+                                      >
+                                        <td className="px-4 py-3 font-semibold">
+                                          {history.period}
+                                        </td>
+                                        <td className="px-4 py-3">{history.employeeCount}</td>
+                                        <td className="px-4 py-3">{history.scheduleType}</td>
+                                        <td className="px-4 py-3">{history.rosterType}</td>
+                                        <td className="px-4 py-3">
+                                          {history.updatedAt
+                                            ? new Date(history.updatedAt).toLocaleString('id-ID')
+                                            : '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          <div className="flex justify-end gap-2">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() =>
+                                                openScheduleHistory(history.siteId, history.period)
+                                              }
+                                            >
+                                              Lihat / Edit
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={isDeletingScheduleHistory}
+                                              onClick={() =>
+                                                setDeleteScheduleHistoryTarget({
+                                                  siteId: history.siteId,
+                                                  period: history.period,
+                                                  siteName: history.siteName,
+                                                })
+                                              }
+                                            >
+                                              <Trash2 className="mr-2 size-4" />
+                                              Hapus
+                                            </Button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {rowHistory.length === 0 ? (
+                                      <tr>
+                                        <td
+                                          colSpan={6}
+                                          className="text-muted-foreground px-4 py-6 text-center text-sm"
+                                        >
+                                          Belum ada history roster untuk site ini.
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -3933,36 +4162,137 @@ export function SchedulingTimesheetWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {siteSettingRows.map((row) => (
-                  <tr
-                    key={`field-break-setting-${row.site.id}`}
-                    className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
-                  >
-                    <td className="px-4 py-3 font-semibold">{row.site.name}</td>
-                    <td className="px-4 py-3">{row.employeeCount}</td>
-                    <td className="px-4 py-3">{row.fieldBreakCount}</td>
-                    <td className="px-4 py-3">{row.fieldBreakLockedCount}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={row.fieldBreakConfigured ? 'default' : 'secondary'}>
-                        {row.fieldBreakConfigured ? 'Sudah setting' : 'Belum setting'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">{row.hasConfig ? 'Ada' : '-'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSiteId(String(row.site.id))
-                          setFieldBreakSiteId(String(row.site.id))
-                          setFieldBreakDialogOpen(true)
-                        }}
-                      >
-                        {row.fieldBreakConfigured ? 'Atur' : 'Tambah Setting'}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {siteSettingRows.map((row) => {
+                  const rowHistory = fieldBreakPlans
+                    .filter((plan) => plan.siteId === row.site.id)
+                    .sort((left, right) => {
+                      const periodCompare = right.period.localeCompare(left.period)
+                      if (periodCompare) return periodCompare
+                      return left.employeeName.localeCompare(right.employeeName)
+                    })
+                  const isHistoryOpen = openFieldBreakHistorySiteId === row.site.id
+
+                  return (
+                    <React.Fragment key={`field-break-setting-${row.site.id}`}>
+                      <tr className="border-border/30 hover:bg-surface-container-low/40 border-t transition">
+                        <td className="px-4 py-3 font-semibold">{row.site.name}</td>
+                        <td className="px-4 py-3">{row.employeeCount}</td>
+                        <td className="px-4 py-3">{row.fieldBreakCount}</td>
+                        <td className="px-4 py-3">{row.fieldBreakLockedCount}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={row.fieldBreakConfigured ? 'default' : 'secondary'}>
+                            {row.fieldBreakConfigured ? 'Sudah setting' : 'Belum setting'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">{row.hasConfig ? 'Ada' : '-'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title={`History field break ${row.site.name}`}
+                              aria-label={`History field break ${row.site.name}`}
+                              onClick={() =>
+                                setOpenFieldBreakHistorySiteId(isHistoryOpen ? null : row.site.id)
+                              }
+                            >
+                              <History className="size-4" />
+                              <span className="sr-only">History</span>
+                              <span className="text-[11px] font-semibold">{rowHistory.length}</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title={`${row.fieldBreakConfigured ? 'Atur' : 'Tambah'} field break ${row.site.name}`}
+                              aria-label={`${row.fieldBreakConfigured ? 'Atur' : 'Tambah'} field break ${row.site.name}`}
+                              onClick={() => {
+                                setSiteId(String(row.site.id))
+                                setFieldBreakSiteId(String(row.site.id))
+                                setFieldBreakDialogOpen(true)
+                              }}
+                            >
+                              <Settings2 className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isHistoryOpen ? (
+                        <tr className="border-border/30 bg-surface-container-low/40 border-t">
+                          <td colSpan={7} className="p-0">
+                            <div className="px-4 py-3">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-display text-foreground text-sm font-semibold">
+                                    History Field Break - {row.site.name}
+                                  </p>
+                                  <p className="text-muted-foreground text-xs">
+                                    Riwayat bulanan siapa saja yang libur field break.
+                                  </p>
+                                </div>
+                                <Badge variant="outline">{rowHistory.length} record</Badge>
+                              </div>
+                              <div className="overflow-auto rounded-xl bg-white">
+                                <table className="w-full min-w-[900px] text-sm">
+                                  <thead>
+                                    <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                                      <th className="px-4 py-3 font-medium">Periode</th>
+                                      <th className="px-4 py-3 font-medium">Nama</th>
+                                      <th className="px-4 py-3 font-medium">Section</th>
+                                      <th className="px-4 py-3 font-medium">Mulai Libur</th>
+                                      <th className="px-4 py-3 font-medium">Selesai</th>
+                                      <th className="px-4 py-3 font-medium">Locked</th>
+                                      <th className="px-4 py-3 font-medium">Updated</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rowHistory.map((history) => (
+                                      <tr
+                                        key={`field-break-history-${history.siteId}-${history.period}-${history.employeeId}`}
+                                        className="border-border/30 border-t"
+                                      >
+                                        <td className="px-4 py-3 font-semibold">
+                                          {history.period}
+                                        </td>
+                                        <td className="px-4 py-3">{history.employeeName}</td>
+                                        <td className="px-4 py-3">
+                                          {history.sectionName || history.rosterSection || '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          {history.fieldBreakDate || '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          {history.fieldBreakEndDate || '-'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          {history.isLocked ? 'Ya' : 'Tidak'}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          {history.updatedAt
+                                            ? new Date(history.updatedAt).toLocaleString('id-ID')
+                                            : '-'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {rowHistory.length === 0 ? (
+                                      <tr>
+                                        <td
+                                          colSpan={7}
+                                          className="text-muted-foreground px-4 py-6 text-center text-sm"
+                                        >
+                                          Belum ada history field break untuk site ini.
+                                        </td>
+                                      </tr>
+                                    ) : null}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -3996,330 +4326,551 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'setup' ? (
         <section className="space-y-4">
-          {/* Config card */}
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">
+          <Dialog open={siteConfigDialogOpen} onOpenChange={setSiteConfigDialogOpen}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1120px]">
+              <DialogHeader>
+                <DialogTitle>
                   Konfigurasi Site
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Tersimpan per site — tidak perlu set ulang setiap bulan.
-                </p>
-              </div>
-              <Button size="sm" disabled={siteId === 'all' || isFinalized} onClick={saveSiteConfig}>
-                <Save className="mr-2 size-4" /> Simpan Setting
-              </Button>
-            </div>
-            <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-5">
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Tipe Shift
-                </Label>
-                <NativeSelect
-                  value={siteConfig.scheduleType}
-                  onValueChange={(value) =>
-                    updateSiteConfig('scheduleType', value as SiteScheduleType)
-                  }
-                  options={[
-                    { value: 'office', label: 'Office / Non Shift' },
-                    { value: 'shift', label: 'Shift DS / NS' },
-                    { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Tipe Roster
-                </Label>
-                <NativeSelect
-                  value={siteConfig.rosterType}
-                  onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
-                  options={[
-                    { value: '5:2', label: 'Roster 5 : 2' },
-                    { value: '6:1', label: 'Roster 6 : 1' },
-                    { value: 'vale', label: 'Vale Sorowako' },
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Tipe MSA
-                </Label>
-                <NativeSelect
-                  value={siteConfig.msaType}
-                  onValueChange={(value) => updateSiteConfig('msaType', value as SiteMsaType)}
-                  options={[
-                    { value: 'staff-nonstaff', label: 'Rate Staff / Non Staff' },
-                    { value: 'same-all', label: 'Sama Semua' },
-                    { value: 'none', label: 'Tidak dihitung' },
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Tipe Meals
-                </Label>
-                <NativeSelect
-                  value={siteConfig.mealsType}
-                  onValueChange={(value) => updateSiteConfig('mealsType', value as SiteMealsType)}
-                  options={[
-                    { value: 'field-break', label: 'Hanya Field Break' },
-                    { value: 'workday', label: 'Semua Hari Kerja' },
-                    { value: 'none', label: 'Tidak dihitung' },
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Hitungan OT
-                </Label>
-                <NativeSelect
-                  value={siteConfig.overtimeType}
-                  onValueChange={(value) =>
-                    updateSiteConfig('overtimeType', value as SiteOvertimeType)
-                  }
-                  options={[
-                    { value: 'five-hour', label: 'Total jam - 5 jam dasar' },
-                    { value: 'roster', label: 'Ikut roster' },
-                    { value: 'none', label: 'Tidak dihitung' },
-                  ]}
-                />
-              </div>
-            </div>
-            <div className="border-border/30 grid gap-4 border-t px-4 py-4 sm:grid-cols-2 xl:grid-cols-7">
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Default Shift
-                </Label>
-                <NativeSelect
-                  value={siteConfig.defaultShiftType}
-                  onValueChange={(value) =>
-                    updateSiteConfig('defaultShiftType', value as DefaultShiftType)
-                  }
-                  options={[
-                    { value: 'day-shift', label: 'Day Shift' },
-                    { value: 'night-shift', label: 'Night Shift' },
-                  ]}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Jam Masuk
-                </Label>
-                <Input
-                  type="time"
-                  value={siteConfig.defaultClockIn}
-                  onChange={(event) => updateSiteConfig('defaultClockIn', event.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Jam Pulang
-                </Label>
-                <Input
-                  type="time"
-                  value={siteConfig.defaultClockOut}
-                  onChange={(event) => updateSiteConfig('defaultClockOut', event.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Lembur Awal (Jam)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={siteConfig.defaultEarlyOvertimeHours}
-                  onChange={(event) =>
-                    updateSiteConfig('defaultEarlyOvertimeHours', Number(event.target.value) || 0)
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  Batas Jam Lembur
-                </Label>
-                <Input
-                  type="time"
-                  value={siteConfig.defaultOvertimeEnd}
-                  onChange={(event) => updateSiteConfig('defaultOvertimeEnd', event.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  FB Masuk (Bulan)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={siteConfig.fieldBreakWorkMonths}
-                  onChange={(event) =>
-                    updateSiteConfig('fieldBreakWorkMonths', Number(event.target.value) || 3)
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                  FB Libur (Hari)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={siteConfig.fieldBreakBreakDays}
-                  onChange={(event) =>
-                    updateSiteConfig('fieldBreakBreakDays', Number(event.target.value) || 14)
-                  }
-                />
-              </div>
-            </div>
-            {/* Tunjangan Lokasi Khusus */}
-            <div className="border-border/30 flex flex-wrap items-end gap-4 border-t px-4 py-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="lokasi-khusus-toggle"
-                  checked={siteConfig.lokasiKhususEnabled}
-                  onChange={(e) => updateSiteConfig('lokasiKhususEnabled', e.target.checked)}
-                  className="border-border size-4 rounded"
-                />
-                <Label
-                  htmlFor="lokasi-khusus-toggle"
-                  className="text-foreground cursor-pointer text-sm font-semibold"
-                >
-                  Tunjangan Lokasi Khusus
-                </Label>
-                <span className="text-muted-foreground text-[10px]">
-                  (Site ini dapat tunjangan pertambangan/remote)
-                </span>
-              </div>
-              {siteConfig.lokasiKhususEnabled ? (
-                <>
-                  <div className="space-y-1">
-                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
-                      Rate Staff / hari
+                  {selectedSite ? ` - ${selectedSite.name}` : ''}
+                </DialogTitle>
+              </DialogHeader>
+              {/* Config card */}
+              <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+                <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                  <div>
+                    <p className="font-display text-foreground text-base font-semibold">
+                      Konfigurasi Site
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Tersimpan per site — tidak perlu set ulang setiap bulan.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={siteId === 'all' || isFinalized}
+                    onClick={() => {
+                      saveSiteConfig()
+                      setSiteConfigDialogOpen(false)
+                    }}
+                  >
+                    <Save className="mr-2 size-4" /> Simpan Setting
+                  </Button>
+                </div>
+                <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Tipe Shift
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.scheduleType}
+                      onValueChange={(value) =>
+                        updateSiteConfig('scheduleType', value as SiteScheduleType)
+                      }
+                      options={[
+                        { value: 'office', label: 'Office / Non Shift' },
+                        { value: 'shift', label: 'Shift DS / NS' },
+                        { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Tipe Roster
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.rosterType}
+                      onValueChange={(value) =>
+                        updateSiteConfig('rosterType', value as SiteRosterType)
+                      }
+                      options={[
+                        { value: '5:2', label: 'Roster 5 : 2' },
+                        { value: '6:1', label: 'Roster 6 : 1' },
+                        { value: 'vale', label: 'Vale Sorowako' },
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Tipe MSA
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.msaType}
+                      onValueChange={(value) => updateSiteConfig('msaType', value as SiteMsaType)}
+                      options={[
+                        { value: 'staff-nonstaff', label: 'Rate Staff / Non Staff' },
+                        { value: 'same-all', label: 'Sama Semua' },
+                        { value: 'none', label: 'Tidak dihitung' },
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Tipe Meals
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.mealsType}
+                      onValueChange={(value) =>
+                        updateSiteConfig('mealsType', value as SiteMealsType)
+                      }
+                      options={[
+                        { value: 'field-break', label: 'Hanya Field Break' },
+                        { value: 'workday', label: 'Semua Hari Kerja' },
+                        { value: 'none', label: 'Tidak dihitung' },
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Hitungan OT
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.overtimeType}
+                      onValueChange={(value) =>
+                        updateSiteConfig('overtimeType', value as SiteOvertimeType)
+                      }
+                      options={[
+                        { value: 'five-hour', label: 'Total jam - 5 jam dasar' },
+                        { value: 'roster', label: 'Ikut roster' },
+                        { value: 'none', label: 'Tidak dihitung' },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div className="border-border/30 grid gap-4 border-t px-4 py-4 sm:grid-cols-2 xl:grid-cols-7">
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Default Shift
+                    </Label>
+                    <NativeSelect
+                      value={siteConfig.defaultShiftType}
+                      onValueChange={(value) =>
+                        updateSiteConfig('defaultShiftType', value as DefaultShiftType)
+                      }
+                      options={[
+                        { value: 'day-shift', label: 'Day Shift' },
+                        { value: 'night-shift', label: 'Night Shift' },
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Jam Masuk
+                    </Label>
+                    <Input
+                      type="time"
+                      value={siteConfig.defaultClockIn}
+                      onChange={(event) => updateSiteConfig('defaultClockIn', event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Jam Pulang
+                    </Label>
+                    <Input
+                      type="time"
+                      value={siteConfig.defaultClockOut}
+                      onChange={(event) => updateSiteConfig('defaultClockOut', event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Lembur Awal (Jam)
                     </Label>
                     <Input
                       type="number"
-                      value={siteConfig.lokasiKhususRateStaff}
-                      onChange={(e) =>
-                        updateSiteConfig('lokasiKhususRateStaff', Number(e.target.value) || 0)
+                      min="0"
+                      step="0.5"
+                      value={siteConfig.defaultEarlyOvertimeHours}
+                      onChange={(event) =>
+                        updateSiteConfig(
+                          'defaultEarlyOvertimeHours',
+                          Number(event.target.value) || 0
+                        )
                       }
-                      className="h-9 w-[140px]"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
-                      Rate Non Staff / hari
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      Batas Jam Lembur
+                    </Label>
+                    <Input
+                      type="time"
+                      value={siteConfig.defaultOvertimeEnd}
+                      onChange={(event) =>
+                        updateSiteConfig('defaultOvertimeEnd', event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      FB Masuk (Bulan)
                     </Label>
                     <Input
                       type="number"
-                      value={siteConfig.lokasiKhususRateNonStaff}
-                      onChange={(e) =>
-                        updateSiteConfig('lokasiKhususRateNonStaff', Number(e.target.value) || 0)
+                      min="1"
+                      value={siteConfig.fieldBreakWorkMonths}
+                      onChange={(event) =>
+                        updateSiteConfig('fieldBreakWorkMonths', Number(event.target.value) || 3)
                       }
-                      className="h-9 w-[140px]"
                     />
                   </div>
-                </>
-              ) : null}
-            </div>
-          </Card>
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                      FB Libur (Hari)
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={siteConfig.fieldBreakBreakDays}
+                      onChange={(event) =>
+                        updateSiteConfig('fieldBreakBreakDays', Number(event.target.value) || 14)
+                      }
+                    />
+                  </div>
+                </div>
+                {/* Tunjangan Lokasi Khusus */}
+                <div className="border-border/30 flex flex-wrap items-end gap-4 border-t px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="lokasi-khusus-toggle"
+                      checked={siteConfig.lokasiKhususEnabled}
+                      onChange={(e) => updateSiteConfig('lokasiKhususEnabled', e.target.checked)}
+                      className="border-border size-4 rounded"
+                    />
+                    <Label
+                      htmlFor="lokasi-khusus-toggle"
+                      className="text-foreground cursor-pointer text-sm font-semibold"
+                    >
+                      Tunjangan Lokasi Khusus
+                    </Label>
+                    <span className="text-muted-foreground text-[10px]">
+                      (Site ini dapat tunjangan pertambangan/remote)
+                    </span>
+                  </div>
+                  {siteConfig.lokasiKhususEnabled ? (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
+                          Rate Staff / hari
+                        </Label>
+                        <Input
+                          type="number"
+                          value={siteConfig.lokasiKhususRateStaff}
+                          onChange={(e) =>
+                            updateSiteConfig('lokasiKhususRateStaff', Number(e.target.value) || 0)
+                          }
+                          className="h-9 w-[140px]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
+                          Rate Non Staff / hari
+                        </Label>
+                        <Input
+                          type="number"
+                          value={siteConfig.lokasiKhususRateNonStaff}
+                          onChange={(e) =>
+                            updateSiteConfig(
+                              'lokasiKhususRateNonStaff',
+                              Number(e.target.value) || 0
+                            )
+                          }
+                          className="h-9 w-[140px]"
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </Card>
+            </DialogContent>
+          </Dialog>
         </section>
       ) : null}
       {mode === 'setup' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">
-                  Variabel MSA, Meals &amp; Overtime
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Nama projek dipilih dari Master Site agar matching rate lebih akurat.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={resetAllowanceVariables}>
-                  Reset
-                </Button>
-                <Button size="sm" onClick={saveAllowanceVariables}>
-                  <Save className="mr-2 size-4" /> Simpan MSA/Meals
-                </Button>
-              </div>
-            </div>
-            <div className="overflow-auto">
-              <table className="w-full min-w-[920px] text-sm">
-                <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                    <th className="px-3 py-2.5 font-medium">No</th>
-                    <th className="px-3 py-2.5 font-medium">Nama Site / Projek</th>
-                    <th className="px-3 py-2.5 font-medium">MSA Staff</th>
-                    <th className="px-3 py-2.5 font-medium">MSA Non Staff</th>
-                    <th className="px-3 py-2.5 font-medium">Meals Staff</th>
-                    <th className="px-3 py-2.5 font-medium">Meals Non Staff</th>
-                    <th className="px-3 py-2.5 font-medium">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allowanceVariables.map((item, index) => {
-                    const projectOptions = siteNameOptions.includes(item.project)
-                      ? siteNameOptions
-                      : [item.project, ...siteNameOptions]
+          <div className="bg-surface-container-low inline-flex rounded-xl p-1">
+            <Button
+              size="sm"
+              variant={setupVariableTab === 'roster' ? 'default' : 'ghost'}
+              onClick={() => setSetupVariableTab('roster')}
+            >
+              Roster Config
+            </Button>
+            <Button
+              size="sm"
+              variant={setupVariableTab === 'allowance' ? 'default' : 'ghost'}
+              onClick={() => setSetupVariableTab('allowance')}
+            >
+              MSA / Meals
+            </Button>
+            <Button
+              size="sm"
+              variant={setupVariableTab === 'overtime' ? 'default' : 'ghost'}
+              onClick={() => setSetupVariableTab('overtime')}
+            >
+              Setup Overtime
+            </Button>
+          </div>
 
-                    return (
+          {setupVariableTab === 'roster' ? (
+            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+              <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                <div>
+                  <p className="font-display text-foreground text-base font-semibold">
+                    List Konfigurasi Roster per Site
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Pilih site/lokasi, lalu atur konfigurasi di popup.
+                  </p>
+                </div>
+                <Badge variant="outline">{siteSettingRows.length} site</Badge>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full min-w-[920px] text-sm">
+                  <thead>
+                    <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                      <th className="px-4 py-3 font-medium">Site</th>
+                      <th className="px-4 py-3 font-medium">Lokasi</th>
+                      <th className="px-4 py-3 font-medium">Karyawan</th>
+                      <th className="px-4 py-3 font-medium">Tipe Shift</th>
+                      <th className="px-4 py-3 font-medium">Roster</th>
+                      <th className="px-4 py-3 font-medium">Status Config</th>
+                      <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {siteSettingRows.map((row) => (
                       <tr
-                        key={`${item.project}-${index}`}
-                        className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                        key={`setup-config-${row.site.id}`}
+                        className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                       >
-                        <td className="px-3 py-2">{index + 1}</td>
+                        <td className="px-4 py-3 font-semibold">{row.site.name}</td>
+                        <td className="px-4 py-3">{row.site.location || '-'}</td>
+                        <td className="px-4 py-3">{row.employeeCount}</td>
+                        <td className="px-4 py-3">{row.scheduleType}</td>
+                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={row.hasConfig ? 'default' : 'secondary'}>
+                            {row.hasConfig ? 'Sudah setting' : 'Belum setting'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSiteId(String(row.site.id))
+                              setSiteConfigDialogOpen(true)
+                            }}
+                          >
+                            {row.hasConfig ? 'Edit Config' : 'Tambah Config'}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ) : null}
+
+          {setupVariableTab === 'allowance' ? (
+            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+              <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                <div>
+                  <p className="font-display text-foreground text-base font-semibold">
+                    Variabel MSA &amp; Meals
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Nama projek dipilih dari Master Site agar matching rate lebih akurat.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={resetAllowanceVariables}>
+                    Reset
+                  </Button>
+                  <Button size="sm" onClick={saveAllowanceVariables}>
+                    <Save className="mr-2 size-4" /> Simpan MSA/Meals
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full min-w-[920px] text-sm">
+                  <thead>
+                    <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                      <th className="px-3 py-2.5 font-medium">No</th>
+                      <th className="px-3 py-2.5 font-medium">Nama Site / Projek</th>
+                      <th className="px-3 py-2.5 font-medium">MSA Staff</th>
+                      <th className="px-3 py-2.5 font-medium">MSA Non Staff</th>
+                      <th className="px-3 py-2.5 font-medium">Meals Staff</th>
+                      <th className="px-3 py-2.5 font-medium">Meals Non Staff</th>
+                      <th className="px-3 py-2.5 font-medium">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allowanceVariables.map((item, index) => {
+                      const projectOptions = siteNameOptions.includes(item.project)
+                        ? siteNameOptions
+                        : [item.project, ...siteNameOptions]
+
+                      return (
+                        <tr
+                          key={`${item.project}-${index}`}
+                          className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                        >
+                          <td className="px-3 py-2">{index + 1}</td>
+                          <td className="px-3 py-2">
+                            <NativeSelect
+                              value={item.project}
+                              onValueChange={(value) =>
+                                updateAllowanceVariable(index, 'project', value)
+                              }
+                              options={projectOptions.map((siteName) => ({
+                                value: siteName,
+                                label: siteName,
+                              }))}
+                              placeholder="Pilih site"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              value={item.msaStaff}
+                              onChange={(event) =>
+                                updateAllowanceVariable(index, 'msaStaff', event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              value={item.msaNonStaff}
+                              onChange={(event) =>
+                                updateAllowanceVariable(index, 'msaNonStaff', event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              value={item.mealsStaff}
+                              onChange={(event) =>
+                                updateAllowanceVariable(index, 'mealsStaff', event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              value={item.mealsNonStaff}
+                              onChange={(event) =>
+                                updateAllowanceVariable(index, 'mealsNonStaff', event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => removeAllowanceVariable(index)}
+                            >
+                              Hapus
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-border/30 border-t px-4 py-3">
+                <Button size="sm" variant="outline" onClick={addAllowanceVariable}>
+                  + Tambah Project
+                </Button>
+              </div>
+            </Card>
+          ) : null}
+
+          {setupVariableTab === 'overtime' ? (
+            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+              <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                <div>
+                  <p className="font-display text-foreground text-base font-semibold">
+                    Variabel Hitungan Overtime
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Atur hitungan lembur per roster dan hari kerja/libur.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={resetOvertimeVariables}>
+                    Reset
+                  </Button>
+                  <Button size="sm" onClick={saveOvertimeVariables}>
+                    <Save className="mr-2 size-4" /> Simpan Overtime
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead>
+                    <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                      <th className="px-3 py-2.5 font-medium">Roster</th>
+                      <th className="px-3 py-2.5 font-medium">Tipe Hari</th>
+                      <th className="px-3 py-2.5 font-medium">Total Jam</th>
+                      <th className="px-3 py-2.5 font-medium">Hitungan Lembur</th>
+                      <th className="px-3 py-2.5 font-medium">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overtimeVariables.map((item, index) => (
+                      <tr
+                        key={`${item.roster}-${item.dayType}-${item.totalHours}-${index}`}
+                        className="border-b border-slate-100"
+                      >
                         <td className="px-3 py-2">
                           <NativeSelect
-                            value={item.project}
+                            value={item.roster}
                             onValueChange={(value) =>
-                              updateAllowanceVariable(index, 'project', value)
+                              updateOvertimeVariable(index, 'roster', value)
                             }
-                            options={projectOptions.map((siteName) => ({
-                              value: siteName,
-                              label: siteName,
-                            }))}
-                            placeholder="Pilih site"
+                            options={[
+                              { value: '5:2', label: '5 : 2' },
+                              { value: '6:1', label: '6 : 1' },
+                              { value: 'vale', label: 'Vale Sorowako' },
+                            ]}
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <NativeSelect
+                            value={item.dayType}
+                            onValueChange={(value) =>
+                              updateOvertimeVariable(index, 'dayType', value)
+                            }
+                            options={[
+                              { value: 'work', label: 'Hari Kerja' },
+                              { value: 'off', label: 'Hari Libur' },
+                            ]}
                           />
                         </td>
                         <td className="px-3 py-2">
                           <Input
                             type="number"
-                            value={item.msaStaff}
+                            step="0.5"
+                            value={item.totalHours}
                             onChange={(event) =>
-                              updateAllowanceVariable(index, 'msaStaff', event.target.value)
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            value={item.msaNonStaff}
-                            onChange={(event) =>
-                              updateAllowanceVariable(index, 'msaNonStaff', event.target.value)
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            value={item.mealsStaff}
-                            onChange={(event) =>
-                              updateAllowanceVariable(index, 'mealsStaff', event.target.value)
+                              updateOvertimeVariable(index, 'totalHours', event.target.value)
                             }
                           />
                         </td>
                         <td className="px-3 py-2">
                           <Input
                             type="number"
-                            value={item.mealsNonStaff}
+                            step="0.5"
+                            value={item.overtimeHours}
                             onChange={(event) =>
-                              updateAllowanceVariable(index, 'mealsNonStaff', event.target.value)
+                              updateOvertimeVariable(index, 'overtimeHours', event.target.value)
                             }
                           />
                         </td>
@@ -4327,129 +4878,54 @@ export function SchedulingTimesheetWorkspace({
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => removeAllowanceVariable(index)}
+                            onClick={() => removeOvertimeVariable(index)}
                           >
                             Hapus
                           </Button>
                         </td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-border/30 border-t px-4 py-3">
-              <Button size="sm" variant="outline" onClick={addAllowanceVariable}>
-                + Tambah Project
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">
-                  Variabel Hitungan Overtime
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Atur hitungan lembur per roster dan hari kerja/libur.
-                </p>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={resetOvertimeVariables}>
-                  Reset
-                </Button>
-                <Button size="sm" onClick={saveOvertimeVariables}>
-                  <Save className="mr-2 size-4" /> Simpan Overtime
+              <div className="border-border/30 border-t px-4 py-3">
+                <Button size="sm" variant="outline" onClick={addOvertimeVariable}>
+                  + Tambah Overtime
                 </Button>
               </div>
-            </div>
-            <div className="overflow-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                    <th className="px-3 py-2.5 font-medium">Roster</th>
-                    <th className="px-3 py-2.5 font-medium">Tipe Hari</th>
-                    <th className="px-3 py-2.5 font-medium">Total Jam</th>
-                    <th className="px-3 py-2.5 font-medium">Hitungan Lembur</th>
-                    <th className="px-3 py-2.5 font-medium">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overtimeVariables.map((item, index) => (
-                    <tr
-                      key={`${item.roster}-${item.dayType}-${item.totalHours}-${index}`}
-                      className="border-b border-slate-100"
-                    >
-                      <td className="px-3 py-2">
-                        <NativeSelect
-                          value={item.roster}
-                          onValueChange={(value) => updateOvertimeVariable(index, 'roster', value)}
-                          options={[
-                            { value: '5:2', label: '5 : 2' },
-                            { value: '6:1', label: '6 : 1' },
-                            { value: 'vale', label: 'Vale Sorowako' },
-                          ]}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <NativeSelect
-                          value={item.dayType}
-                          onValueChange={(value) => updateOvertimeVariable(index, 'dayType', value)}
-                          options={[
-                            { value: 'work', label: 'Hari Kerja' },
-                            { value: 'off', label: 'Hari Libur' },
-                          ]}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          step="0.5"
-                          value={item.totalHours}
-                          onChange={(event) =>
-                            updateOvertimeVariable(index, 'totalHours', event.target.value)
-                          }
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          step="0.5"
-                          value={item.overtimeHours}
-                          onChange={(event) =>
-                            updateOvertimeVariable(index, 'overtimeHours', event.target.value)
-                          }
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => removeOvertimeVariable(index)}
-                        >
-                          Hapus
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="border-border/30 border-t px-4 py-3">
-              <Button size="sm" variant="outline" onClick={addOvertimeVariable}>
-                + Tambah Overtime
-              </Button>
-            </div>
-          </Card>
+            </Card>
+          ) : null}
         </section>
       ) : null}
 
       {mode === 'schedule' ? (
         <Dialog open={rosterDialogOpen} onOpenChange={setRosterDialogOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1280px]">
+          <DialogContent className="h-[94vh] max-h-[94vh] w-[96vw] max-w-[96vw] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Setting Roster Jadwal Shift</DialogTitle>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <DialogTitle>Setting Roster Jadwal Shift</DialogTitle>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {site?.name ?? 'Pilih site'} memakai konfigurasi roster, OT, MSA, dan meals
+                    aktif.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                    Pilih Bulan
+                  </Label>
+                  <Input
+                    type="month"
+                    value={period}
+                    onChange={(event) => {
+                      setPeriod(event.target.value)
+                      setSelectedCell(null)
+                      setSelectedPermanentCell(null)
+                    }}
+                    className="h-10 w-[180px]"
+                  />
+                </div>
+              </div>
             </DialogHeader>
             <section className="space-y-3">
               <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
@@ -4461,6 +4937,14 @@ export function SchedulingTimesheetWorkspace({
                     <p className="text-muted-foreground text-xs">
                       Generate → edit → save ke Schedule Tetap.
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="outline">Bulan: {period}</Badge>
+                      <Badge variant="outline">Tipe: {siteConfig.scheduleType}</Badge>
+                      <Badge variant="outline">Roster: {siteConfig.rosterType}</Badge>
+                      <Badge variant="outline">OT: {siteConfig.overtimeType}</Badge>
+                      <Badge variant="outline">MSA: {siteConfig.msaType}</Badge>
+                      <Badge variant="outline">Meals: {siteConfig.mealsType}</Badge>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -5541,7 +6025,7 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'field-break' ? (
         <Dialog open={fieldBreakDialogOpen} onOpenChange={setFieldBreakDialogOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1180px]">
+          <DialogContent className="h-[94vh] max-h-[94vh] w-[96vw] max-w-[96vw] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Setting Field Break</DialogTitle>
             </DialogHeader>
@@ -6193,6 +6677,27 @@ export function SchedulingTimesheetWorkspace({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={clearImportedAttendance}>
               Delete Excel Import
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(deleteScheduleHistoryTarget)}
+        onOpenChange={(open) => !open && setDeleteScheduleHistoryTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus history roster?</AlertDialogTitle>
+            <AlertDialogDescription>
+              History roster {deleteScheduleHistoryTarget?.siteName} periode{' '}
+              {deleteScheduleHistoryTarget?.period} akan dihapus. Data attendance tidak ikut
+              dihapus.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingScheduleHistory}>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteScheduleHistory} disabled={isDeletingScheduleHistory}>
+              Hapus History
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

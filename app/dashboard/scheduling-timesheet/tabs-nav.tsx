@@ -21,10 +21,16 @@ const tabs = [
     hint: 'Status per site & periode',
   },
   {
-    label: 'Setup Roster',
+    label: 'Konfigurasi Roster, OT dan Meals',
     href: '/dashboard/scheduling-timesheet/setup',
     icon: Users,
     hint: 'Profil & konfigurasi site',
+  },
+  {
+    label: 'Field Break Schedule',
+    href: '/dashboard/scheduling-timesheet/field-break',
+    icon: Coffee,
+    hint: 'Rotasi FB',
   },
   {
     label: 'Roster & Schedule',
@@ -43,12 +49,6 @@ const tabs = [
     href: '/dashboard/scheduling-timesheet/permission',
     icon: FileText,
     hint: 'Sakit, urgent, izin manual',
-  },
-  {
-    label: 'Field Break Schedule',
-    href: '/dashboard/scheduling-timesheet/field-break',
-    icon: Coffee,
-    hint: 'Rotasi FB',
   },
   {
     label: 'Payroll Timesheet',

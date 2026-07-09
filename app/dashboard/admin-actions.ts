@@ -446,12 +446,52 @@ export async function saveSchedulingTimesheetPlanAction(
   return { ok: true }
 }
 
+const deleteSchedulingTimesheetPlanSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+})
+
+export async function deleteSchedulingTimesheetPlanAction(
+  input: z.infer<typeof deleteSchedulingTimesheetPlanSchema>
+) {
+  const payload = deleteSchedulingTimesheetPlanSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+
+  await db
+    .delete(timesheetSchedulingPlans)
+    .where(
+      and(
+        eq(timesheetSchedulingPlans.siteId, payload.siteId),
+        eq(timesheetSchedulingPlans.period, payload.period)
+      )
+    )
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_deleted',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: 'Deleted scheduling roster plan.',
+  })
+
+  revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/schedule')
+
+  return { ok: true }
+}
+
 const saveTimesheetFieldBreakPlansSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
   plans: z.array(
     z.object({
-      period: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      period: z
+        .string()
+        .regex(/^\d{4}-\d{2}$/)
+        .optional(),
       employeeId: z.number().int().positive(),
       employeeName: z.string().min(1).max(200),
       sectionName: z.string().max(160),
@@ -2530,9 +2570,18 @@ async function applyApprovalDecision(params: {
     })
   }
 
-  if (approval.activityId == null && approval.submissionId == null && approval.apdRequestId != null) {
+  if (
+    approval.activityId == null &&
+    approval.submissionId == null &&
+    approval.apdRequestId != null
+  ) {
     const now = new Date()
-    const decisionStatus = params.decision === 'approved' ? 'approved' : params.decision === 'rejected' ? 'rejected' : 'needs_correction'
+    const decisionStatus =
+      params.decision === 'approved'
+        ? 'approved'
+        : params.decision === 'rejected'
+          ? 'rejected'
+          : 'needs_correction'
     const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
 
     await db.transaction(async (tx) => {
@@ -2544,13 +2593,17 @@ async function applyApprovalDecision(params: {
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
             actor: approval.approverName,
-            message: trimmedNote || (params.decision === 'approved' ? 'APD disetujui.' : 'APD ditolak.'),
+            message:
+              trimmedNote || (params.decision === 'approved' ? 'APD disetujui.' : 'APD ditolak.'),
             at: now.toISOString(),
           }),
         })
         .where(eq(approvals.id, approval.approvalId))
 
-      if ((decisionStatus === 'approved' || decisionStatus === 'rejected') && approval.apdRequestId != null) {
+      if (
+        (decisionStatus === 'approved' || decisionStatus === 'rejected') &&
+        approval.apdRequestId != null
+      ) {
         await tx
           .update(apdRequests)
           .set({ status: decisionStatus, updatedAt: now })
@@ -3866,8 +3919,8 @@ export async function reviewApprovalAction(formData: FormData) {
   })
 
   // Check if a signature file is provided
-  const signatureFile = formData.get('signatureFile') as File | null;
-  let signatureUrl: string | undefined;
+  const signatureFile = formData.get('signatureFile') as File | null
+  let signatureUrl: string | undefined
 
   if (signatureFile && signatureFile.size > 0) {
     const { uploadFile } = await import('@/app/actions/upload')
@@ -3886,9 +3939,7 @@ export async function reviewApprovalAction(formData: FormData) {
   })
 
   if (signatureUrl) {
-    await db.update(approvals)
-      .set({ signatureUrl })
-      .where(eq(approvals.id, payload.approvalId))
+    await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
   }
 
   revalidateAdminSurfaces()
@@ -7771,19 +7822,17 @@ export async function importSioCertAction(
           .where(eq(sioCertifications.id, existing.id))
         updatedCount++
       } else {
-        await db
-          .insert(sioCertifications)
-          .values({
-            employeeId: employee.id,
-            certType,
-            certNumber: row.certNumber || null,
-            certName,
-            issuingBody: row.issuingBody || null,
-            certDate,
-            expiryDate,
-            status,
-            lastSyncFrom: 'excel',
-          })
+        await db.insert(sioCertifications).values({
+          employeeId: employee.id,
+          certType,
+          certNumber: row.certNumber || null,
+          certName,
+          issuingBody: row.issuingBody || null,
+          certDate,
+          expiryDate,
+          status,
+          lastSyncFrom: 'excel',
+        })
         importedCount++
       }
     }

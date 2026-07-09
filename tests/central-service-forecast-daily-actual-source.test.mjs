@@ -31,6 +31,7 @@ test("daily actual dialog supports outstanding and remark-only rows", () => {
   assert.match(dailySource, /<SelectItem value="PO Release">PO Release<\/SelectItem>/);
   assert.match(dailySource, /<SelectItem value="Waiting PO">Waiting PO<\/SelectItem>/);
   assert.match(dailySource, /<SelectItem value="Invoice">Invoice<\/SelectItem>/);
+  assert.match(dailySource, /<SelectItem value="Cancel">Cancel<\/SelectItem>/);
   assert.match(dailySource, /<Label className="text-xs">No PO<\/Label>/);
   assert.match(dailySource, /invoiceNumber: poNumber/);
   assert.match(dailySource, /const hasPayload =\s*amtIdr > 0 \|\|\s*String\(actualsForm\[remarkKey\]/);

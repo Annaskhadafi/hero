@@ -560,7 +560,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Roster & Timesheet',
-    title: 'Setup Roster',
+    title: 'Konfigurasi Roster, OT dan Meals',
     url: '/dashboard/scheduling-timesheet/setup',
     iconName: 'settings',
     resource: 'scheduling_timesheet_setup',

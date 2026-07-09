@@ -1452,6 +1452,7 @@ export function DailyClientPage({
                           <SelectItem value="PO Release">PO Release</SelectItem>
                           <SelectItem value="Waiting PO">Waiting PO</SelectItem>
                           <SelectItem value="Invoice">Invoice</SelectItem>
+                          <SelectItem value="Cancel">Cancel</SelectItem>
                           <SelectItem value="-">-</SelectItem>
                         </SelectContent>
                       </Select>

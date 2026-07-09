@@ -75,6 +75,21 @@ const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
   return normalized === 'PO Release' && po ? `${normalized} / ${po}` : normalized
 }
 
+const isCancelStatusDoc = (status?: string | null) =>
+  (status || '').trim().toLowerCase() === 'cancel'
+
+const resolveLatestNonCancelStatusDoc = (actuals: any[], category: string) => {
+  const categoryActuals = actuals.filter((actual) => actual.category === category)
+  const latestNonCancel = categoryActuals.find((actual) => !isCancelStatusDoc(actual.itemStatus))
+  const latestAny = categoryActuals[0]
+  const source = latestNonCancel ?? latestAny
+
+  return {
+    status: normalizeStatusDoc(source?.itemStatus || '-'),
+    poNumber: source?.invoiceNumber || '',
+  }
+}
+
 const renderBarLabel = (props: any) => {
   const { x, y, width, value } = props
   if (!value || value === 0) return null
@@ -299,8 +314,7 @@ export function ReportClientPage({
 
   const totalScore = useMemo(
     () => ({
-      forecast:
-        totals.osFc + totals.serviceFc + totals.repairFc + totals.retreadFc,
+      forecast: totals.osFc + totals.serviceFc + totals.repairFc + totals.retreadFc,
       actual: totals.serviceAct + totals.repairAct + totals.retreadAct,
       actualUsd: sapRevenue.service.usd + sapRevenue.repair.usd + sapRevenue.retread.usd,
     }),
@@ -418,11 +432,13 @@ export function ReportClientPage({
           if (!seenDailyRemark.has(a.category)) {
             existing.remarkDaily = a.remark || existing.remarkDaily
             existing.sectionDaily = a.jobCode || existing.sectionDaily
-            existing.status = normalizeStatusDoc(a.itemStatus || existing.status)
-            existing.poNumber = a.invoiceNumber || existing.poNumber
+            const latestStatus = resolveLatestNonCancelStatusDoc(w.actuals ?? [], a.category)
+            existing.status = latestStatus.status || existing.status
+            existing.poNumber = latestStatus.poNumber || existing.poNumber
             seenDailyRemark.add(a.category)
           }
         } else {
+          const latestStatus = resolveLatestNonCancelStatusDoc(w.actuals ?? [], a.category)
           if (!seenDailyRemark.has(a.category)) {
             seenDailyRemark.add(a.category)
           }
@@ -435,8 +451,8 @@ export function ReportClientPage({
             remarkMonthly: '',
             remarkDaily: a.remark || '',
             sectionDaily: a.jobCode || '',
-            status: normalizeStatusDoc(a.itemStatus || '-'),
-            poNumber: a.invoiceNumber || '',
+            status: latestStatus.status,
+            poNumber: latestStatus.poNumber,
             color: CAT_COLORS[a.category] || 'bg-gray-100 text-gray-700',
           })
         }
@@ -540,7 +556,9 @@ export function ReportClientPage({
       </div>
 
       <div ref={reportRef} className="bg-white p-10">
-        <h3 className="mb-4 text-sm font-black tracking-wider text-primary uppercase">Revenue SAP</h3>
+        <h3 className="text-primary mb-4 text-sm font-black tracking-wider uppercase">
+          Revenue SAP
+        </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <CategoryScoreCard
             label="Total"
@@ -580,8 +598,8 @@ export function ReportClientPage({
           />
         </div>
 
-        <div className="mt-8 border-t border-primary/15 pt-5">
-          <h3 className="text-sm font-black tracking-wider text-primary uppercase">
+        <div className="border-primary/15 mt-8 border-t pt-5">
+          <h3 className="text-primary text-sm font-black tracking-wider uppercase">
             Document Completed
           </h3>
         </div>
