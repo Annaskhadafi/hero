@@ -162,6 +162,9 @@ export function DailyClientPage({
     return normalized === 'PO Release' && po ? `${normalized} / ${po}` : normalized
   }
 
+  const isCancelStatusDoc = (status?: string | null) =>
+    (status || '').trim().toLowerCase() === 'cancel'
+
   const [actualsForm, setActualsForm] = useState({
     updateDate: new Date().toISOString().split('T')[0],
     exchangeRate: '15000',
@@ -418,7 +421,11 @@ export function DailyClientPage({
   filteredItems.forEach((wrapper: any) => {
     const forecastIdr = getForecastAmountIdr(wrapper.item)
     const actualIdr = wrapper.actuals
-      ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0)
+      ? wrapper.actuals.reduce(
+          (sum: number, a: any) =>
+            isCancelStatusDoc(a.itemStatus) ? sum : sum + Number(a.amountIdr),
+          0
+        )
       : 0
 
     totalForecast += forecastIdr
@@ -429,7 +436,11 @@ export function DailyClientPage({
   const getForecastActual = (wrapper: any) => {
     const forecast = getForecastAmountIdr(wrapper.item)
     const actual = wrapper.actuals
-      ? wrapper.actuals.reduce((sum: number, a: any) => sum + Number(a.amountIdr), 0)
+      ? wrapper.actuals.reduce(
+          (sum: number, a: any) =>
+            isCancelStatusDoc(a.itemStatus) ? sum : sum + Number(a.amountIdr),
+          0
+        )
       : 0
     return { forecast, actual }
   }

@@ -46,6 +46,7 @@ export async function fetchSapRevenue(monthYear: string): Promise<{
       WHERE billing_date IS NOT NULL
         AND (cancelled IS NULL OR cancelled = '')
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1
+        AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
       ORDER BY billing_date DESC
     `, [monthYearToKey(monthYear)]);
 

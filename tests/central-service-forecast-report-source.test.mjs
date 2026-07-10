@@ -11,6 +11,7 @@ function read(relativePath) {
 
 test('daily report shows remaining amount beside category status', () => {
   const reportSource = read('app/dashboard/central-service/forecast/report/client-page.tsx')
+  const sapSource = read('lib/cs-sap-db.ts')
 
   assert.match(reportSource, /Sisa Amount/)
   assert.match(
@@ -23,10 +24,17 @@ test('daily report shows remaining amount beside category status', () => {
   )
   assert.match(reportSource, /label="Total"/)
   assert.match(reportSource, /forecast=\{totalScore\.forecast\}/)
-  assert.match(reportSource, /actual=\{totalScore\.actual\}/)
+  assert.match(
+    reportSource,
+    /actual: sapRevenue\.service\.idr \+ sapRevenue\.repair\.idr \+ sapRevenue\.retread\.idr/
+  )
+  assert.match(reportSource, /actual=\{sapRevenue\.service\.idr\}/)
+  assert.match(reportSource, /actual=\{sapRevenue\.repair\.idr\}/)
+  assert.match(reportSource, /actual=\{sapRevenue\.retread\.idr\}/)
   assert.match(reportSource, /Revenue SAP/)
   assert.match(reportSource, /Document Completed/)
-  assert.match(reportSource, /border-t border-primary\/15/)
+  assert.match(reportSource, /border-primary\/15/)
+  assert.match(reportSource, /border-t/)
   assert.match(reportSource, /const normalizeStatusDoc =/)
   assert.match(reportSource, /const isCancelStatusDoc =/)
   assert.match(reportSource, /const resolveLatestNonCancelStatusDoc =/)
@@ -53,4 +61,5 @@ test('daily report shows remaining amount beside category status', () => {
   assert.ok(categoryColumn > forecastUsdColumn)
   assert.match(reportSource, /colSpan=\{4\}/)
   assert.match(reportSource, /TOTAL/)
+  assert.match(sapSource, /LOWER\(TRIM\(rev_type\)\) IN \('repair', 'service', 'retread job'\)/)
 })

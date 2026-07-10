@@ -28,6 +28,8 @@ test("daily actual dialog supports outstanding and remark-only rows", () => {
   assert.match(dailySource, /status === 'Complete'\) return 'Invoice'/);
   assert.match(dailySource, /status === 'Pending'\) return 'Waiting PO'/);
   assert.match(dailySource, /const formatStatusDoc =/);
+  assert.match(dailySource, /const isCancelStatusDoc =/);
+  assert.match(dailySource, /isCancelStatusDoc\(a\.itemStatus\) \? sum : sum \+ Number\(a\.amountIdr\)/);
   assert.match(dailySource, /<SelectItem value="PO Release">PO Release<\/SelectItem>/);
   assert.match(dailySource, /<SelectItem value="Waiting PO">Waiting PO<\/SelectItem>/);
   assert.match(dailySource, /<SelectItem value="Invoice">Invoice<\/SelectItem>/);

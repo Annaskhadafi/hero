@@ -315,7 +315,7 @@ export function ReportClientPage({
   const totalScore = useMemo(
     () => ({
       forecast: totals.osFc + totals.serviceFc + totals.repairFc + totals.retreadFc,
-      actual: totals.serviceAct + totals.repairAct + totals.retreadAct,
+      actual: sapRevenue.service.idr + sapRevenue.repair.idr + sapRevenue.retread.idr,
       actualUsd: sapRevenue.service.usd + sapRevenue.repair.usd + sapRevenue.retread.usd,
     }),
     [totals, sapRevenue]
@@ -573,7 +573,7 @@ export function ReportClientPage({
             label="Forecast Service"
             forecast={totals.serviceFc}
             forecastUsd={totals.serviceFc / rate}
-            actual={totals.serviceAct}
+            actual={sapRevenue.service.idr}
             actualUsd={sapRevenue.service.usd}
             colorClass="bg-blue-500"
             textClass="text-blue-700"
@@ -582,7 +582,7 @@ export function ReportClientPage({
             label="Forecast Repair"
             forecast={totals.repairFc}
             forecastUsd={totals.repairFc / rate}
-            actual={totals.repairAct}
+            actual={sapRevenue.repair.idr}
             actualUsd={sapRevenue.repair.usd}
             colorClass="bg-amber-500"
             textClass="text-amber-700"
@@ -591,7 +591,7 @@ export function ReportClientPage({
             label="Forecast Retread"
             forecast={totals.retreadFc}
             forecastUsd={totals.retreadFc / rate}
-            actual={totals.retreadAct}
+            actual={sapRevenue.retread.idr}
             actualUsd={sapRevenue.retread.usd}
             colorClass="bg-emerald-500"
             textClass="text-emerald-700"
