@@ -3,19 +3,24 @@
 import React, { useEffect, useMemo, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
 import {
+  AlertTriangle,
   CalendarDays,
   Calculator,
   Check,
+  CheckCircle2,
   Clock3,
   Download,
   History,
   RefreshCw,
   Save,
+  Search,
   Settings2,
   Upload,
   Lock,
   Trash2,
   Undo2,
+  Users,
+  X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -899,6 +904,9 @@ export function SchedulingTimesheetWorkspace({
     null
   )
   const [fieldBreakDrafts, setFieldBreakDrafts] = useState<Record<number, FieldBreakDraft>>({})
+  const [fieldBreakSearch, setFieldBreakSearch] = useState('')
+  const [fieldBreakSectionFilter, setFieldBreakSectionFilter] = useState('all')
+  const [fieldBreakSourceFilter, setFieldBreakSourceFilter] = useState('all')
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition()
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({})
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({})
@@ -998,15 +1006,17 @@ export function SchedulingTimesheetWorkspace({
   }, [selectedCell?.employeeId, selectedCell?.day])
 
   const dayCount = daysInMonth(period)
-  const days = Array.from({ length: dayCount }, (_, index) => index + 1)
-  const holidaysByDay = new Map(
-    holidays.map((holiday) => [holiday.day ?? Number(holiday.date.slice(-2)), holiday])
+  const days = useMemo(() => Array.from({ length: dayCount }, (_, index) => index + 1), [dayCount])
+  const holidaysByDay = useMemo(
+    () => new Map(holidays.map((holiday) => [holiday.day ?? Number(holiday.date.slice(-2)), holiday])),
+    [holidays]
   )
-  const site = sites.find((item) => String(item.id) === siteId)
+  const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
-  const siteNameOptions = [
-    ...new Set(sites.map((item) => extractSiteNameLocal(item.name)).filter(Boolean)),
-  ]
+  const siteNameOptions = useMemo(
+    () => [...new Set(sites.map((item) => extractSiteNameLocal(item.name)).filter(Boolean))],
+    [sites]
+  )
   const siteExtractedName = extractSiteNameLocal(site?.name)
   const rate =
     allowanceVariables.find((item) => item.project === siteExtractedName) ??
@@ -1250,117 +1260,147 @@ export function SchedulingTimesheetWorkspace({
     return filtered
   }, [employees, mode, selectedSite, siteId])
 
-  const rosterSectionByEmployee = new Map(
-    visibleEmployees.map((employee) => {
-      const profile = employeeProfiles[employee.id]
-      return [
-        employee.id,
-        normalizeRosterSection(profile?.section || employee.section || employee.role),
-      ]
-    })
+  const rosterSectionByEmployee = useMemo(
+    () =>
+      new Map(
+        visibleEmployees.map((employee) => {
+          const profile = employeeProfiles[employee.id]
+          return [
+            employee.id,
+            normalizeRosterSection(profile?.section || employee.section || employee.role),
+          ]
+        })
+      ),
+    [employeeProfiles, visibleEmployees]
   )
-  const rosterSectionCounts = visibleEmployees.reduce<Record<string, number>>(
-    (counts, employee) => {
-      const rosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
-      counts[rosterSection] = (counts[rosterSection] ?? 0) + 1
-      return counts
-    },
-    {}
+  const rosterSectionCounts = useMemo(
+    () =>
+      visibleEmployees.reduce<Record<string, number>>((counts, employee) => {
+        const rosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
+        counts[rosterSection] = (counts[rosterSection] ?? 0) + 1
+        return counts
+      }, {}),
+    [rosterSectionByEmployee, visibleEmployees]
   )
 
-  const rows = visibleEmployees.map((employee, employeeIndex) => {
-    const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
-    const forceDayShift =
-      (employeeRosterSection === 'Service Operation' ||
-        employeeRosterSection === 'Repair Retread') &&
-      (rosterSectionCounts[employeeRosterSection] ?? 0) < 3
-    const schedule = days.map((day) => {
-      const scheduleType = siteScheduleTypes[siteId] ?? 'office'
-      const date = dateKey(period, day)
-      const fieldBreakPlan = fieldBreakPlans.find(
-        (plan) =>
-          String(plan.siteId) === siteId &&
-          plan.period === period &&
-          plan.employeeId === employee.id &&
-          isDateInRange(date, plan.fieldBreakDate, plan.fieldBreakEndDate || plan.fieldBreakDate)
-      )
-      const generatedCode = forceDayShift
-        ? 'DS'
-        : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
-      const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
-        scheduleType,
-        rosterType: siteConfig.rosterType,
-        isHoliday: isHoliday(period, day, holidays),
-      })
-      const fieldBreakAdjustedCode = fieldBreakPlan ? 'FB' : holidayAdjustedCode
-
-      return overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode
-    })
-    const workDays = schedule.filter(
-      (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
-    ).length
-    const msaDays = schedule.filter(
-      (code, index) =>
-        (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
-        !isHoliday(period, index + 1, holidays)
-    ).length
-    const fieldBreakDays = schedule.filter((code) => code === 'FB').length
-    const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-    const staff = isStaffRole(employee.role)
-    const msa =
-      siteConfig.msaType === 'none'
-        ? 0
-        : msaDays *
-          (siteConfig.msaType === 'same-all'
-            ? rate.msaNonStaff
-            : staff
-              ? rate.msaStaff
-              : rate.msaNonStaff)
-    const mealsBaseDays = siteConfig.mealsType === 'workday' ? msaDays : fieldBreakDays
-    const meals =
-      siteConfig.mealsType === 'none'
-        ? 0
-        : mealsBaseDays * (staff ? rate.mealsStaff : rate.mealsNonStaff)
-    const overtime =
-      siteConfig.overtimeType === 'none'
-        ? 0
-        : calculateOvertimeFromVariables(
-            schedule,
-            period,
-            siteConfig.rosterType,
-            overtimeVariables,
-            holidays
+  const rows = useMemo(
+    () =>
+      visibleEmployees.map((employee, employeeIndex) => {
+        const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
+        const forceDayShift =
+          (employeeRosterSection === 'Service Operation' ||
+            employeeRosterSection === 'Repair Retread') &&
+          (rosterSectionCounts[employeeRosterSection] ?? 0) < 3
+        const schedule = days.map((day) => {
+          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
+          const date = dateKey(period, day)
+          const fieldBreakPlan = fieldBreakPlans.find(
+            (plan) =>
+              String(plan.siteId) === siteId &&
+              plan.period === period &&
+              plan.employeeId === employee.id &&
+              isDateInRange(date, plan.fieldBreakDate, plan.fieldBreakEndDate || plan.fieldBreakDate)
           )
-    const profile = employeeProfiles[employee.id] ?? {
-      employeeId: employee.id,
-      section: normalizeRosterSection(employee.section || employee.role),
-      positionOnSite: defaultPositionOnSite(employee.section || employee.role),
-      kimperLv: false,
-      kimperTh: false,
-    }
-    const rosterSection = normalizeRosterSection(
-      profile.section || employee.section || employee.role
-    )
-    const sectionLabel = employee.section || rosterSection
-    const positionOnSite = isLeadershipPosition(profile.positionOnSite)
-      ? profile.positionOnSite
-      : defaultPositionOnSite(sectionLabel)
-    return {
-      employee,
-      schedule,
-      workDays,
-      msaDays,
-      fieldBreakDays,
-      totalHours,
-      staff,
-      msa,
-      meals,
-      overtime,
-      profile: { ...profile, section: rosterSection, positionOnSite },
-      sectionLabel,
-      rosterSection,
-    }
-  })
+          const generatedCode = forceDayShift
+            ? 'DS'
+            : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
+          const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
+            scheduleType,
+            rosterType: siteConfig.rosterType,
+            isHoliday: isHoliday(period, day, holidays),
+          })
+          const fieldBreakAdjustedCode = fieldBreakPlan ? 'FB' : holidayAdjustedCode
+
+          return overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode
+        })
+        const workDays = schedule.filter(
+          (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
+        ).length
+        const msaDays = schedule.filter(
+          (code, index) =>
+            (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
+            !isHoliday(period, index + 1, holidays)
+        ).length
+        const fieldBreakDays = schedule.filter((code) => code === 'FB').length
+        const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
+        const staff = isStaffRole(employee.role)
+        const msa =
+          siteConfig.msaType === 'none'
+            ? 0
+            : msaDays *
+              (siteConfig.msaType === 'same-all'
+                ? rate.msaNonStaff
+                : staff
+                  ? rate.msaStaff
+                  : rate.msaNonStaff)
+        const mealsBaseDays = siteConfig.mealsType === 'workday' ? msaDays : fieldBreakDays
+        const meals =
+          siteConfig.mealsType === 'none'
+            ? 0
+            : mealsBaseDays * (staff ? rate.mealsStaff : rate.mealsNonStaff)
+        const overtime =
+          siteConfig.overtimeType === 'none'
+            ? 0
+            : calculateOvertimeFromVariables(
+                schedule,
+                period,
+                siteConfig.rosterType,
+                overtimeVariables,
+                holidays
+              )
+        const profile = employeeProfiles[employee.id] ?? {
+          employeeId: employee.id,
+          section: normalizeRosterSection(employee.section || employee.role),
+          positionOnSite: defaultPositionOnSite(employee.section || employee.role),
+          kimperLv: false,
+          kimperTh: false,
+        }
+        const rosterSection = normalizeRosterSection(
+          profile.section || employee.section || employee.role
+        )
+        const sectionLabel = employee.section || rosterSection
+        const positionOnSite = isLeadershipPosition(profile.positionOnSite)
+          ? profile.positionOnSite
+          : defaultPositionOnSite(sectionLabel)
+        return {
+          employee,
+          schedule,
+          workDays,
+          msaDays,
+          fieldBreakDays,
+          totalHours,
+          staff,
+          msa,
+          meals,
+          overtime,
+          profile: { ...profile, section: rosterSection, positionOnSite },
+          sectionLabel,
+          rosterSection,
+        }
+      }),
+    [
+      days,
+      employeeProfiles,
+      fieldBreakPlans,
+      holidays,
+      overtimeVariables,
+      overrides,
+      period,
+      rate.mealsNonStaff,
+      rate.mealsStaff,
+      rate.msaNonStaff,
+      rate.msaStaff,
+      rosterSectionByEmployee,
+      rosterSectionCounts,
+      siteConfig.mealsType,
+      siteConfig.msaType,
+      siteConfig.overtimeType,
+      siteConfig.rosterType,
+      siteId,
+      siteScheduleTypes,
+      visibleEmployees,
+    ]
+  )
 
   function renderRosterTable(
     tableRows: typeof rows,
@@ -1664,12 +1704,12 @@ export function SchedulingTimesheetWorkspace({
       : []
   const selectedSwapTargetRow =
     swapTargetRows.find((row) => String(row.employee.id) === swapTargetEmployeeId) ?? null
-  const savedFieldBreakByEmployee = new Map(
+  const savedFieldBreakByEmployee = useMemo(() => new Map(
     fieldBreakPlans
       .filter((plan) => String(plan.siteId) === fieldBreakSiteId && plan.period === period)
       .map((plan) => [plan.employeeId, plan])
-  )
-  const fieldBreakRows = rows.map((row) => {
+  ), [fieldBreakPlans, fieldBreakSiteId, period])
+  const fieldBreakRows = useMemo(() => rows.map((row) => {
     const savedPlan = savedFieldBreakByEmployee.get(row.employee.id)
     const draft = fieldBreakDrafts[row.employee.id]
     const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? ''
@@ -1691,9 +1731,34 @@ export function SchedulingTimesheetWorkspace({
       notes,
       savedAt: savedPlan?.updatedAt ?? null,
     }
-  })
+  }), [rows, savedFieldBreakByEmployee, fieldBreakDrafts])
+  const fieldBreakSections = useMemo(
+    () => Array.from(new Set(fieldBreakRows.map((row) => row.rosterSection || row.sectionLabel).filter(Boolean))).sort(),
+    [fieldBreakRows]
+  )
+  const filteredFieldBreakRows = useMemo(() => {
+    const query = fieldBreakSearch.trim().toLowerCase()
+
+    return fieldBreakRows.filter((row) => {
+      const section = row.rosterSection || row.sectionLabel
+      const status = row.isLocked ? 'locked' : row.source
+      const searchable = `${row.employee.name} ${row.sectionLabel} ${row.rosterSection} ${row.notes}`.toLowerCase()
+
+      return (
+        (!query || searchable.includes(query)) &&
+        (fieldBreakSectionFilter === 'all' || section === fieldBreakSectionFilter) &&
+        (fieldBreakSourceFilter === 'all' || status === fieldBreakSourceFilter)
+      )
+    })
+  }, [fieldBreakRows, fieldBreakSearch, fieldBreakSectionFilter, fieldBreakSourceFilter])
   const fieldBreakCapacity = Math.max(1, Math.floor(fieldBreakRows.length / 6))
-  const fieldBreakViolations = validateFieldBreakCapacity(
+  const fieldBreakLockedCount = fieldBreakRows.filter((row) => row.isLocked).length
+  const fieldBreakAutoCount = fieldBreakRows.filter((row) => row.source === 'auto' && !row.isLocked).length
+  const fieldBreakReadyCount = fieldBreakRows.filter(
+    (row) => row.onSiteDate && row.fieldBreakDate && row.fieldBreakEndDate
+  ).length
+  const currentFieldBreakSite = sites.find((item) => String(item.id) === fieldBreakSiteId)
+  const fieldBreakViolations = useMemo(() => validateFieldBreakCapacity(
     fieldBreakRows
       .filter((row) => row.fieldBreakDate && row.fieldBreakEndDate)
       .map((row) => ({
@@ -1711,37 +1776,49 @@ export function SchedulingTimesheetWorkspace({
         notes: row.notes,
       })),
     fieldBreakRows.length
-  )
-  const siteSettingRows = sites.map((siteItem) => {
-    const siteKey = extractSiteNameLocal(siteItem.location || siteItem.name)
-    const siteEmployees = employees.filter(
-      (employee) =>
-        String(employee.siteId) === String(siteItem.id) || employee.locationName === siteKey
-    )
-    const siteRosterPlan = savedPlans.find(
-      (plan) =>
-        !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
-        plan.siteId === siteItem.id &&
-        plan.period === period
-    )
-    const siteFieldBreakRows = fieldBreakPlans.filter(
-      (plan) => plan.siteId === siteItem.id && plan.period === period
-    )
-    const siteConfigRow = schedulingConfigs.find((config) => config.siteId === siteItem.id)
+  ), [fieldBreakRows, period])
+  const siteSettingRows = useMemo(
+    () =>
+      sites.map((siteItem) => {
+        const siteKey = extractSiteNameLocal(siteItem.location || siteItem.name)
+        const siteEmployees = employees.filter(
+          (employee) =>
+            String(employee.siteId) === String(siteItem.id) || employee.locationName === siteKey
+        )
+        const siteRosterPlan = savedPlans.find(
+          (plan) =>
+            !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+            plan.siteId === siteItem.id &&
+            plan.period === period
+        )
+        const siteFieldBreakRows = fieldBreakPlans.filter(
+          (plan) => plan.siteId === siteItem.id && plan.period === period
+        )
+        const siteConfigRow = schedulingConfigs.find((config) => config.siteId === siteItem.id)
 
-    return {
-      site: siteItem,
-      employeeCount: siteEmployees.length,
-      rosterConfigured: Boolean(siteRosterPlan?.fixedSchedule?.length),
-      rosterUpdatedAt: siteRosterPlan?.updatedAt ?? '',
-      fieldBreakConfigured: siteFieldBreakRows.length > 0,
-      fieldBreakCount: siteFieldBreakRows.length,
-      fieldBreakLockedCount: siteFieldBreakRows.filter((plan) => plan.isLocked).length,
-      hasConfig: Boolean(siteConfigRow),
-      scheduleType: (siteConfigRow?.scheduleType ?? 'office') as SiteScheduleType,
-      rosterType: (siteConfigRow?.rosterType ?? '5:2') as SiteRosterType,
-    }
-  })
+        return {
+          site: siteItem,
+          employeeCount: siteEmployees.length,
+          rosterConfigured: Boolean(siteRosterPlan?.fixedSchedule?.length),
+          rosterUpdatedAt: siteRosterPlan?.updatedAt ?? '',
+          fieldBreakConfigured: siteFieldBreakRows.length > 0,
+          fieldBreakCount: siteFieldBreakRows.length,
+          fieldBreakLockedCount: siteFieldBreakRows.filter((plan) => plan.isLocked).length,
+          hasConfig: Boolean(siteConfigRow),
+          scheduleType: (siteConfigRow?.scheduleType ?? 'office') as SiteScheduleType,
+          rosterType: (siteConfigRow?.rosterType ?? '5:2') as SiteRosterType,
+        }
+      }),
+    [
+      deletedSchedulePlanKeys,
+      employees,
+      fieldBreakPlans,
+      period,
+      savedPlans,
+      schedulingConfigs,
+      sites,
+    ]
+  )
   const scheduleHistoryRows = savedPlans
     .filter((plan) => !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`))
     .map((plan) => {
@@ -6025,86 +6102,178 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'field-break' ? (
         <Dialog open={fieldBreakDialogOpen} onOpenChange={setFieldBreakDialogOpen}>
-          <DialogContent className="h-[94vh] max-h-[94vh] w-[96vw] max-w-[96vw] overflow-y-auto">
+          <DialogContent
+            className="h-[94vh] max-h-[94vh] w-[96vw] max-w-[96vw] overflow-y-auto"
+            onInteractOutside={(e) => e.preventDefault()}
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onFocusOutside={(e) => e.preventDefault()}
+          >
             <DialogHeader>
-              <DialogTitle>Setting Field Break</DialogTitle>
+              <DialogTitle className="font-display text-xl">
+                Field Break {currentFieldBreakSite ? `- ${currentFieldBreakSite.name}` : ''}
+              </DialogTitle>
             </DialogHeader>
-            <section className="space-y-4">
-              <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-                <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                  <div>
-                    <p className="font-display text-foreground text-base font-semibold">
-                      Schedule Field Break
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      Isi tanggal on-site dan field break per karyawan, lalu simpan ke database.
-                    </p>
+            <section className="space-y-3">
+              <div className="sticky top-0 z-20 -mx-1 rounded-[1rem] bg-white/95 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px]">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Site
+                      </Label>
+                      <NativeSelect
+                        value={fieldBreakSiteId}
+                        onValueChange={(value) => {
+                          setFieldBreakSiteId(value)
+                          setSiteId(value)
+                        }}
+                        options={sites.map((item) => ({ value: String(item.id), label: item.name }))}
+                        placeholder="Pilih site"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Periode
+                      </Label>
+                      <Input
+                        type="month"
+                        value={period}
+                        onChange={(event) => setPeriod(event.target.value)}
+                        className="h-10"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Kapasitas
+                      </Label>
+                      <div className="bg-surface-container-low text-foreground flex h-10 items-center rounded-lg px-3 text-sm font-semibold tabular-nums">
+                        {fieldBreakCapacity} aktif / {fieldBreakRows.length} orang
+                      </div>
+                    </div>
                   </div>
-                  <TabExportActions
-                    tabTitle="Schedule Field Break"
-                    columns={['Nama', 'Section', 'Group', 'On Site', 'Day', 'FB', 'Updated']}
-                    exportRows={fieldBreakRows.map((row) => [
-                      row.employee.name,
-                      row.sectionLabel,
-                      row.rosterSection,
-                      formatShortDate(row.onSiteDate),
-                      row.dayCount ?? '',
-                      `${formatShortDate(row.fieldBreakDate)} - ${formatShortDate(row.fieldBreakEndDate)}`,
-                      row.savedAt
-                        ? new Date(row.savedAt).toLocaleString('id-ID')
-                        : 'Belum tersimpan',
-                    ])}
-                  />
-                </div>
-                <div className="flex flex-wrap items-end gap-3 p-4">
-                  <div className="min-w-[200px] flex-1 space-y-1.5">
-                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                      Site Field Break
-                    </Label>
-                    <NativeSelect
-                      value={fieldBreakSiteId}
-                      onValueChange={(value) => {
-                        setFieldBreakSiteId(value)
-                        setSiteId(value)
-                      }}
-                      options={sites.map((item) => ({ value: String(item.id), label: item.name }))}
-                      placeholder="Pilih site"
+
+                  <div className="flex flex-wrap gap-2">
+                    <TabExportActions
+                      tabTitle="Schedule Field Break"
+                      columns={['Nama', 'Section', 'Group', 'On Site', 'Day', 'FB', 'Updated']}
+                      exportRows={fieldBreakRows.map((row) => [
+                        row.employee.name,
+                        row.sectionLabel,
+                        row.rosterSection,
+                        formatShortDate(row.onSiteDate),
+                        row.dayCount ?? '',
+                        `${formatShortDate(row.fieldBreakDate)} - ${formatShortDate(row.fieldBreakEndDate)}`,
+                        row.savedAt
+                          ? new Date(row.savedAt).toLocaleString('id-ID')
+                          : 'Belum tersimpan',
+                      ])}
                     />
+                    <Button
+                      variant="outline"
+                      disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                      onClick={generateFieldBreakYear}
+                      className="h-10"
+                    >
+                      <RefreshCw className="size-4" /> Generate
+                    </Button>
+                    <Button
+                      disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                      onClick={syncFieldBreakPlansToDatabase}
+                      className="h-10"
+                    >
+                      <Save className="size-4" />
+                      {isSavingFieldBreak ? 'Menyimpan' : 'Simpan'}
+                    </Button>
                   </div>
-                  <div className="bg-surface-container-low text-muted-foreground rounded-xl px-3 py-2 text-xs font-semibold">
-                    Max FB aktif: {fieldBreakCapacity} dari {fieldBreakRows.length} orang
-                  </div>
-                  <Button
-                    variant="outline"
-                    disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
-                    onClick={generateFieldBreakYear}
-                  >
-                    <RefreshCw className="mr-2 size-4" /> Generate 12 Bulan
-                  </Button>
-                  <Button
-                    disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
-                    onClick={syncFieldBreakPlansToDatabase}
-                  >
-                    {isSavingFieldBreak ? 'Menyimpan...' : 'Simpan ke Database'}
-                  </Button>
                 </div>
-              </Card>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: 'Siap disimpan', value: fieldBreakReadyCount, Icon: CheckCircle2 },
+                  { label: 'Auto generated', value: fieldBreakAutoCount, Icon: RefreshCw },
+                  { label: 'Locked manual', value: fieldBreakLockedCount, Icon: Lock },
+                  { label: 'Perlu dicek', value: fieldBreakViolations.length, Icon: AlertTriangle },
+                ].map(({ label, value, Icon }) => (
+                  <div
+                    key={label}
+                    className="surface-muted-card flex items-center justify-between gap-3 rounded-[1rem] border-0 p-4"
+                  >
+                    <div>
+                      <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        {label}
+                      </p>
+                      <p className="font-display text-foreground mt-1 text-2xl font-semibold tabular-nums">
+                        {value}
+                      </p>
+                    </div>
+                    <span className="bg-surface-container-low text-muted-foreground grid size-9 place-items-center rounded-xl">
+                      <Icon className="size-4" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+
               {fieldBreakViolations.length > 0 ? (
-                <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                <Alert className="border-0 bg-amber-50 text-amber-950 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.18)]">
                   <AlertDescription>
                     {fieldBreakViolations.length} tanggal melebihi limit field break. Cek tanggal{' '}
                     {fieldBreakViolations[0]?.date}.
                   </AlertDescription>
                 </Alert>
               ) : null}
+
               <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
-                <div className="overflow-auto">
-                  <table className="w-full min-w-[1180px] text-sm">
+                <div className="bg-surface-container-low flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="relative w-full lg:max-w-[280px]">
+                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                    <Input
+                      value={fieldBreakSearch}
+                      onChange={(event) => setFieldBreakSearch(event.target.value)}
+                      placeholder="Cari karyawan / section"
+                      className="h-9 rounded-lg bg-white pl-9 text-[13px]"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <NativeSelect
+                      value={fieldBreakSectionFilter}
+                      onValueChange={setFieldBreakSectionFilter}
+                      options={[
+                        { value: 'all', label: 'Semua section' },
+                        ...fieldBreakSections.map((section) => ({ value: section, label: section })),
+                      ]}
+                    />
+                    <NativeSelect
+                      value={fieldBreakSourceFilter}
+                      onValueChange={setFieldBreakSourceFilter}
+                      options={[
+                        { value: 'all', label: 'Semua status' },
+                        { value: 'auto', label: 'Auto' },
+                        { value: 'manual', label: 'Manual' },
+                        { value: 'locked', label: 'Locked' },
+                      ]}
+                    />
+                    {(fieldBreakSearch || fieldBreakSectionFilter !== 'all' || fieldBreakSourceFilter !== 'all') ? (
+                      <Button
+                        variant="ghost"
+                        className="h-9 rounded-lg px-3"
+                        onClick={() => {
+                          setFieldBreakSearch('')
+                          setFieldBreakSectionFilter('all')
+                          setFieldBreakSourceFilter('all')
+                        }}
+                      >
+                        <X className="size-4" /> Reset
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="max-h-[58vh] overflow-auto">
+                  <table className="w-full min-w-[1100px] text-sm">
                     <thead>
-                      <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                        <th className="px-4 py-3 font-medium">Nama</th>
-                        <th className="px-4 py-3 font-medium">Section</th>
-                        <th className="px-4 py-3 font-medium">Group</th>
+                      <tr className="bg-surface-container-low text-muted-foreground sticky top-0 z-10 text-left text-[11px] tracking-[0.12em] uppercase">
+                        <th className="sticky left-0 z-20 bg-surface-container-low px-4 py-3 font-medium">Nama</th>
+                        <th className="px-4 py-3 font-medium">Section / Group</th>
                         <th className="px-4 py-3 font-medium">Mulai On-Site</th>
                         <th className="px-4 py-3 font-medium">Mulai FB</th>
                         <th className="px-4 py-3 font-medium">Selesai FB</th>
@@ -6114,17 +6283,22 @@ export function SchedulingTimesheetWorkspace({
                       </tr>
                     </thead>
                     <tbody>
-                      {fieldBreakRows.map((row) => (
+                      {filteredFieldBreakRows.map((row) => (
                         <tr
                           key={row.employee.id}
                           className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                         >
-                          <td className="px-4 py-3 font-medium">{row.employee.name}</td>
-                          <td className="px-4 py-3">{row.sectionLabel}</td>
-                          <td className="px-4 py-3">{row.rosterSection}</td>
+                          <td className="sticky left-0 z-10 bg-white px-4 py-3 font-semibold shadow-[8px_0_18px_rgba(15,23,42,0.04)]">
+                            <div className="max-w-[220px] truncate">{row.employee.name}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium">{row.sectionLabel || '-'}</div>
+                            <div className="text-muted-foreground text-xs">{row.rosterSection || '-'}</div>
+                          </td>
                           <td className="px-4 py-3">
                             <Input
                               type="date"
+                              className="h-9 w-[150px]"
                               value={row.onSiteDate}
                               onChange={(event) =>
                                 updateFieldBreakDraft(
@@ -6138,7 +6312,7 @@ export function SchedulingTimesheetWorkspace({
                           <td className="px-4 py-3">
                             <Input
                               type="date"
-                              min={row.onSiteDate}
+                              className="h-9 w-[150px]"
                               value={row.fieldBreakDate}
                               onChange={(event) =>
                                 updateFieldBreakDraft(
@@ -6152,7 +6326,7 @@ export function SchedulingTimesheetWorkspace({
                           <td className="px-4 py-3">
                             <Input
                               type="date"
-                              min={row.fieldBreakDate}
+                              className="h-9 w-[150px]"
                               value={row.fieldBreakEndDate}
                               onChange={(event) =>
                                 updateFieldBreakDraft(
@@ -6163,9 +6337,9 @@ export function SchedulingTimesheetWorkspace({
                               }
                             />
                           </td>
-                          <td className="px-4 py-3 font-semibold">{row.dayCount ?? ''}</td>
+                          <td className="px-4 py-3 font-semibold tabular-nums">{row.dayCount ?? '-'}</td>
                           <td className="px-4 py-3">
-                            <label className="flex items-center gap-2 text-xs font-semibold">
+                            <label className="flex min-h-10 items-center gap-2 text-xs font-semibold">
                               <input
                                 type="checkbox"
                                 checked={row.isLocked}
@@ -6176,13 +6350,19 @@ export function SchedulingTimesheetWorkspace({
                                   })
                                 }
                               />
-                              {row.isLocked ? 'Locked' : row.source === 'auto' ? 'Auto' : 'Manual'}
+                              <Badge
+                                variant={row.isLocked ? 'default' : row.source === 'auto' ? 'secondary' : 'outline'}
+                                className="rounded-lg"
+                              >
+                                {row.isLocked ? 'Locked' : row.source === 'auto' ? 'Auto' : 'Manual'}
+                              </Badge>
                             </label>
                           </td>
                           <td className="px-4 py-3">
                             <Input
                               value={row.notes}
-                              placeholder="Customer fixed / notes"
+                              placeholder="Catatan"
+                              className="h-9 min-w-[220px]"
                               onChange={(event) =>
                                 updateFieldBreakMeta(row.employee.id, {
                                   notes: event.target.value,
@@ -6193,8 +6373,27 @@ export function SchedulingTimesheetWorkspace({
                           </td>
                         </tr>
                       ))}
+                      {filteredFieldBreakRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-12 text-center">
+                            <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
+                              <span className="bg-surface-container-low text-muted-foreground grid size-10 place-items-center rounded-xl">
+                                <Users className="size-4" />
+                              </span>
+                              <p className="text-foreground text-sm font-semibold">Tidak ada baris cocok.</p>
+                              <p className="text-muted-foreground text-xs">Reset filter atau pilih site lain.</p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
+                </div>
+                <div className="text-muted-foreground flex flex-col gap-2 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span className="tabular-nums">
+                    Menampilkan {filteredFieldBreakRows.length} dari {fieldBreakRows.length} karyawan.
+                  </span>
+                  <span>Locked menjaga tanggal manual saat generate ulang.</span>
                 </div>
               </Card>
             </section>
