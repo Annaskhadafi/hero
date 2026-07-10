@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert'
 import {
+  addDaysIso,
   generateFieldBreakYearPlans,
   getFieldBreakCapacity,
   validateFieldBreakCapacity,
@@ -16,20 +17,27 @@ function employees(count: number) {
 
 assert.equal(getFieldBreakCapacity(11), 1)
 assert.equal(getFieldBreakCapacity(12), 2)
+assert.equal(addDaysIso('2026-07-10', 1), '2026-07-11')
 
 const eleven = generateFieldBreakYearPlans({
   employees: employees(11),
   startPeriod: '2026-01',
 })
 assert.equal(eleven.capacity, 1)
-assert.equal(validateFieldBreakCapacity(eleven.plans.filter((plan) => plan.period === '2026-04')).length, 0)
+assert.equal(
+  validateFieldBreakCapacity(eleven.plans.filter((plan) => plan.period === '2026-04')).length,
+  0
+)
 
 const twelve = generateFieldBreakYearPlans({
   employees: employees(12),
   startPeriod: '2026-01',
 })
 assert.equal(twelve.capacity, 2)
-assert.equal(validateFieldBreakCapacity(twelve.plans.filter((plan) => plan.period === '2026-04')).length, 0)
+assert.equal(
+  validateFieldBreakCapacity(twelve.plans.filter((plan) => plan.period === '2026-04')).length,
+  0
+)
 
 const locked = generateFieldBreakYearPlans({
   employees: employees(2),

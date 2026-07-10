@@ -1008,7 +1008,8 @@ export function SchedulingTimesheetWorkspace({
   const dayCount = daysInMonth(period)
   const days = useMemo(() => Array.from({ length: dayCount }, (_, index) => index + 1), [dayCount])
   const holidaysByDay = useMemo(
-    () => new Map(holidays.map((holiday) => [holiday.day ?? Number(holiday.date.slice(-2)), holiday])),
+    () =>
+      new Map(holidays.map((holiday) => [holiday.day ?? Number(holiday.date.slice(-2)), holiday])),
     [holidays]
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
@@ -1282,6 +1283,16 @@ export function SchedulingTimesheetWorkspace({
       }, {}),
     [rosterSectionByEmployee, visibleEmployees]
   )
+  const fieldBreakPlansByEmployee = useMemo(() => {
+    const map = new Map<number, SavedFieldBreakPlan[]>()
+    for (const plan of fieldBreakPlans) {
+      if (String(plan.siteId) !== siteId || plan.period !== period) continue
+      const items = map.get(plan.employeeId) ?? []
+      items.push(plan)
+      map.set(plan.employeeId, items)
+    }
+    return map
+  }, [fieldBreakPlans, period, siteId])
 
   const rows = useMemo(
     () =>
@@ -1294,13 +1305,6 @@ export function SchedulingTimesheetWorkspace({
         const schedule = days.map((day) => {
           const scheduleType = siteScheduleTypes[siteId] ?? 'office'
           const date = dateKey(period, day)
-          const fieldBreakPlan = fieldBreakPlans.find(
-            (plan) =>
-              String(plan.siteId) === siteId &&
-              plan.period === period &&
-              plan.employeeId === employee.id &&
-              isDateInRange(date, plan.fieldBreakDate, plan.fieldBreakEndDate || plan.fieldBreakDate)
-          )
           const generatedCode = forceDayShift
             ? 'DS'
             : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
@@ -1309,7 +1313,16 @@ export function SchedulingTimesheetWorkspace({
             rosterType: siteConfig.rosterType,
             isHoliday: isHoliday(period, day, holidays),
           })
-          const fieldBreakAdjustedCode = fieldBreakPlan ? 'FB' : holidayAdjustedCode
+          const fieldBreakAdjustedCode = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
+            (plan) =>
+              isDateInRange(
+                date,
+                plan.fieldBreakDate,
+                plan.fieldBreakEndDate || plan.fieldBreakDate
+              )
+          )
+            ? 'FB'
+            : holidayAdjustedCode
 
           return overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode
         })
@@ -1381,7 +1394,7 @@ export function SchedulingTimesheetWorkspace({
     [
       days,
       employeeProfiles,
-      fieldBreakPlans,
+      fieldBreakPlansByEmployee,
       holidays,
       overtimeVariables,
       overrides,
@@ -1640,36 +1653,39 @@ export function SchedulingTimesheetWorkspace({
     )
   }
 
-  const permanentRows = rows
-    .map((row) => ({
-      ...row,
-      schedule: row.schedule.map((code, index) => {
-        const day = index + 1
-        const key = `${row.employee.id}-${day}`
-        const savedCode = permanentOverrides[key] ?? permanentBase[key] ?? code
+  const permanentRows =
+    mode === 'schedule'
+      ? rows
+          .map((row) => ({
+            ...row,
+            schedule: row.schedule.map((code, index) => {
+              const day = index + 1
+              const key = `${row.employee.id}-${day}`
+              const savedCode = permanentOverrides[key] ?? permanentBase[key] ?? code
 
-        return permanentOverrides[key]
-          ? savedCode
-          : applyHolidayPolicy(savedCode, {
-              scheduleType: siteConfig.scheduleType,
-              rosterType: siteConfig.rosterType,
-              isHoliday: isHoliday(period, day, holidays),
-            })
-      }),
-    }))
-    .map((row) => ({
-      ...row,
-      workDays: row.schedule.filter(
-        (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
-      ).length,
-      msaDays: row.schedule.filter(
-        (code, index) =>
-          (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
-          !isHoliday(period, index + 1, holidays)
-      ).length,
-      fieldBreakDays: row.schedule.filter((code) => code === 'FB').length,
-      totalHours: row.schedule.reduce((sum, code) => sum + hoursFromCode(code), 0),
-    }))
+              return permanentOverrides[key]
+                ? savedCode
+                : applyHolidayPolicy(savedCode, {
+                    scheduleType: siteConfig.scheduleType,
+                    rosterType: siteConfig.rosterType,
+                    isHoliday: isHoliday(period, day, holidays),
+                  })
+            }),
+          }))
+          .map((row) => ({
+            ...row,
+            workDays: row.schedule.filter(
+              (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
+            ).length,
+            msaDays: row.schedule.filter(
+              (code, index) =>
+                (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
+                !isHoliday(period, index + 1, holidays)
+            ).length,
+            fieldBreakDays: row.schedule.filter((code) => code === 'FB').length,
+            totalHours: row.schedule.reduce((sum, code) => sum + hoursFromCode(code), 0),
+          }))
+      : []
   const selectedEmployee =
     visibleEmployees.find((employee) => employee.id === selectedEmployeeId) ?? null
   const selectedRow = selectedCell
@@ -1704,36 +1720,47 @@ export function SchedulingTimesheetWorkspace({
       : []
   const selectedSwapTargetRow =
     swapTargetRows.find((row) => String(row.employee.id) === swapTargetEmployeeId) ?? null
-  const savedFieldBreakByEmployee = useMemo(() => new Map(
-    fieldBreakPlans
-      .filter((plan) => String(plan.siteId) === fieldBreakSiteId && plan.period === period)
-      .map((plan) => [plan.employeeId, plan])
-  ), [fieldBreakPlans, fieldBreakSiteId, period])
-  const fieldBreakRows = useMemo(() => rows.map((row) => {
-    const savedPlan = savedFieldBreakByEmployee.get(row.employee.id)
-    const draft = fieldBreakDrafts[row.employee.id]
-    const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? ''
-    const fieldBreakDate = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? ''
-    const fieldBreakEndDate = draft?.fieldBreakEndDate ?? savedPlan?.fieldBreakEndDate ?? ''
-    const dayCountValue = draft?.dayCount ?? savedPlan?.dayCount ?? null
-    const source = draft?.source ?? savedPlan?.source ?? 'manual'
-    const isLocked = draft?.isLocked ?? savedPlan?.isLocked ?? false
-    const notes = draft?.notes ?? savedPlan?.notes ?? ''
+  const savedFieldBreakByEmployee = useMemo(
+    () =>
+      new Map(
+        fieldBreakPlans
+          .filter((plan) => String(plan.siteId) === fieldBreakSiteId && plan.period === period)
+          .map((plan) => [plan.employeeId, plan])
+      ),
+    [fieldBreakPlans, fieldBreakSiteId, period]
+  )
+  const fieldBreakRows = useMemo(
+    () =>
+      rows.map((row) => {
+        const savedPlan = savedFieldBreakByEmployee.get(row.employee.id)
+        const draft = fieldBreakDrafts[row.employee.id]
+        const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? ''
+        const fieldBreakDate = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? ''
+        const fieldBreakEndDate = draft?.fieldBreakEndDate ?? savedPlan?.fieldBreakEndDate ?? ''
+        const dayCountValue = draft?.dayCount ?? savedPlan?.dayCount ?? null
+        const source = draft?.source ?? savedPlan?.source ?? 'manual'
+        const isLocked = draft?.isLocked ?? savedPlan?.isLocked ?? false
+        const notes = draft?.notes ?? savedPlan?.notes ?? ''
 
-    return {
-      ...row,
-      onSiteDate,
-      dayCount: dayCountValue,
-      fieldBreakDate,
-      fieldBreakEndDate,
-      source,
-      isLocked,
-      notes,
-      savedAt: savedPlan?.updatedAt ?? null,
-    }
-  }), [rows, savedFieldBreakByEmployee, fieldBreakDrafts])
+        return {
+          ...row,
+          onSiteDate,
+          dayCount: dayCountValue,
+          fieldBreakDate,
+          fieldBreakEndDate,
+          source,
+          isLocked,
+          notes,
+          savedAt: savedPlan?.updatedAt ?? null,
+        }
+      }),
+    [rows, savedFieldBreakByEmployee, fieldBreakDrafts]
+  )
   const fieldBreakSections = useMemo(
-    () => Array.from(new Set(fieldBreakRows.map((row) => row.rosterSection || row.sectionLabel).filter(Boolean))).sort(),
+    () =>
+      Array.from(
+        new Set(fieldBreakRows.map((row) => row.rosterSection || row.sectionLabel).filter(Boolean))
+      ).sort(),
     [fieldBreakRows]
   )
   const filteredFieldBreakRows = useMemo(() => {
@@ -1742,7 +1769,8 @@ export function SchedulingTimesheetWorkspace({
     return fieldBreakRows.filter((row) => {
       const section = row.rosterSection || row.sectionLabel
       const status = row.isLocked ? 'locked' : row.source
-      const searchable = `${row.employee.name} ${row.sectionLabel} ${row.rosterSection} ${row.notes}`.toLowerCase()
+      const searchable =
+        `${row.employee.name} ${row.sectionLabel} ${row.rosterSection} ${row.notes}`.toLowerCase()
 
       return (
         (!query || searchable.includes(query)) &&
@@ -1753,30 +1781,36 @@ export function SchedulingTimesheetWorkspace({
   }, [fieldBreakRows, fieldBreakSearch, fieldBreakSectionFilter, fieldBreakSourceFilter])
   const fieldBreakCapacity = Math.max(1, Math.floor(fieldBreakRows.length / 6))
   const fieldBreakLockedCount = fieldBreakRows.filter((row) => row.isLocked).length
-  const fieldBreakAutoCount = fieldBreakRows.filter((row) => row.source === 'auto' && !row.isLocked).length
+  const fieldBreakAutoCount = fieldBreakRows.filter(
+    (row) => row.source === 'auto' && !row.isLocked
+  ).length
   const fieldBreakReadyCount = fieldBreakRows.filter(
     (row) => row.onSiteDate && row.fieldBreakDate && row.fieldBreakEndDate
   ).length
   const currentFieldBreakSite = sites.find((item) => String(item.id) === fieldBreakSiteId)
-  const fieldBreakViolations = useMemo(() => validateFieldBreakCapacity(
-    fieldBreakRows
-      .filter((row) => row.fieldBreakDate && row.fieldBreakEndDate)
-      .map((row) => ({
-        employeeId: row.employee.id,
-        employeeName: row.employee.name,
-        sectionName: row.sectionLabel,
-        rosterSection: row.rosterSection,
-        period,
-        onSiteDate: row.onSiteDate,
-        dayCount: row.dayCount ?? 1,
-        fieldBreakDate: row.fieldBreakDate,
-        fieldBreakEndDate: row.fieldBreakEndDate,
-        source: row.source,
-        isLocked: row.isLocked,
-        notes: row.notes,
-      })),
-    fieldBreakRows.length
-  ), [fieldBreakRows, period])
+  const fieldBreakViolations = useMemo(
+    () =>
+      validateFieldBreakCapacity(
+        fieldBreakRows
+          .filter((row) => row.fieldBreakDate && row.fieldBreakEndDate)
+          .map((row) => ({
+            employeeId: row.employee.id,
+            employeeName: row.employee.name,
+            sectionName: row.sectionLabel,
+            rosterSection: row.rosterSection,
+            period,
+            onSiteDate: row.onSiteDate,
+            dayCount: row.dayCount ?? 1,
+            fieldBreakDate: row.fieldBreakDate,
+            fieldBreakEndDate: row.fieldBreakEndDate,
+            source: row.source,
+            isLocked: row.isLocked,
+            notes: row.notes,
+          })),
+        fieldBreakRows.length
+      ),
+    [fieldBreakRows, period]
+  )
   const siteSettingRows = useMemo(
     () =>
       sites.map((siteItem) => {
@@ -1841,18 +1875,20 @@ export function SchedulingTimesheetWorkspace({
       if (periodCompare) return periodCompare
       return left.siteName.localeCompare(right.siteName)
     })
-  const servicemanKimperCoverage = days.map((day, index) => {
-    const serviceRows = rows.filter(
-      (row) =>
-        row.rosterSection === 'Service Operation' && row.profile.kimperLv && row.profile.kimperTh
-    )
-
-    return {
-      day,
-      hasDayShift: serviceRows.some((row) => row.schedule[index] === 'DS'),
-      hasNightShift: serviceRows.some((row) => row.schedule[index] === 'NS'),
-    }
-  })
+  const serviceKimperRows =
+    mode === 'schedule'
+      ? rows.filter(
+          (row) =>
+            row.rosterSection === 'Service Operation' &&
+            row.profile.kimperLv &&
+            row.profile.kimperTh
+        )
+      : []
+  const servicemanKimperCoverage = days.map((day, index) => ({
+    day,
+    hasDayShift: serviceKimperRows.some((row) => row.schedule[index] === 'DS'),
+    hasNightShift: serviceKimperRows.some((row) => row.schedule[index] === 'NS'),
+  }))
   const missingServicemanKimperDays = servicemanKimperCoverage.filter(
     (item) => !item.hasDayShift || !item.hasNightShift
   )
@@ -3376,30 +3412,33 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  const attendanceConflicts = rows.flatMap(
-    (row) =>
-      row.schedule
-        .map((code, index) => {
-          const day = index + 1
-          const cell = getAttendanceCell(row.employee.id, day)
-          return cell.status === 'present' && ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
-            ? {
-                employeeId: row.employee.id,
-                employeeName: row.employee.name,
-                day,
-                scheduleCode: code,
-                currentCell: cell,
-              }
-            : null
-        })
-        .filter(Boolean) as Array<{
-        employeeId: number
-        employeeName: string
-        day: number
-        scheduleCode: string
-        currentCell: ManualAttendanceCell
-      }>
-  )
+  const attendanceConflicts =
+    mode === 'attendance'
+      ? rows.flatMap(
+          (row) =>
+            row.schedule
+              .map((code, index) => {
+                const day = index + 1
+                const cell = getAttendanceCell(row.employee.id, day)
+                return cell.status === 'present' && ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                  ? {
+                      employeeId: row.employee.id,
+                      employeeName: row.employee.name,
+                      day,
+                      scheduleCode: code,
+                      currentCell: cell,
+                    }
+                  : null
+              })
+              .filter(Boolean) as Array<{
+              employeeId: number
+              employeeName: string
+              day: number
+              scheduleCode: string
+              currentCell: ManualAttendanceCell
+            }>
+        )
+      : []
 
   function clearAttendanceConflict(employeeId: number, day: number) {
     updateAttendanceCell(employeeId, day, { status: 'empty', clockIn: '', clockOut: '', note: '' })
@@ -3432,14 +3471,18 @@ export function SchedulingTimesheetWorkspace({
     setConflictsDismissed(true)
     toast.success(`${attendanceConflicts.length} conflicts resolved.`)
   }
-  const conflictKeySet = new Set(
-    attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
-  )
-  const displayedAttendanceRows = showConflictsOnly
-    ? rows.filter((row) =>
-        days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
-      )
-    : rows
+  const conflictKeySet =
+    mode === 'attendance'
+      ? new Set(
+          attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
+        )
+      : new Set<string>()
+  const displayedAttendanceRows =
+    mode === 'attendance' && showConflictsOnly
+      ? rows.filter((row) =>
+          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      : rows
 
   function submitFinalizePeriod() {
     const numericSiteId = Number(siteId)
@@ -3654,22 +3697,40 @@ export function SchedulingTimesheetWorkspace({
     XLSX.writeFile(workbook, `attendance-real-template-${period}.xlsx`)
   }
 
-  const attendanceStats = rows.reduce(
-    (stats, row) => {
-      for (const day of days) {
-        const status = getAttendanceCell(row.employee.id, day).status
-        stats[status] += 1
-      }
-      return stats
-    },
-    { present: 0, late_pending: 0, empty: 0, sick: 0, leave: 0, absent: 0, off: 0 } as Record<
-      AttendanceCellStatus,
-      number
-    >
-  )
+  const attendanceStats =
+    mode === 'attendance'
+      ? rows.reduce(
+          (stats, row) => {
+            for (const day of days) {
+              const status = getAttendanceCell(row.employee.id, day).status
+              stats[status] += 1
+            }
+            return stats
+          },
+          {
+            present: 0,
+            late_pending: 0,
+            empty: 0,
+            sick: 0,
+            leave: 0,
+            absent: 0,
+            off: 0,
+          } as Record<AttendanceCellStatus, number>
+        )
+      : ({
+          present: 0,
+          late_pending: 0,
+          empty: 0,
+          sick: 0,
+          leave: 0,
+          absent: 0,
+          off: 0,
+        } as Record<AttendanceCellStatus, number>)
 
   // Source summary stats for AttendanceSummaryBar (Req 7.1, 7.2, 7.5)
   const attendanceSourceStats = useMemo(() => {
+    if (mode !== 'attendance')
+      return { faceDays: 0, excelDays: 0, manualDays: 0, totalFilledDays: 0, facePercentage: 0 }
     let faceDays = 0
     let excelDays = 0
     let manualDays = 0
@@ -3686,10 +3747,11 @@ export function SchedulingTimesheetWorkspace({
     const facePercentage =
       totalFilledDays > 0 ? Math.round((faceDays / totalFilledDays) * 1000) / 10 : 0
     return { faceDays, excelDays, manualDays, totalFilledDays, facePercentage }
-  }, [rows, days, manualAttendance, attendanceByCell, period, siteId])
+  }, [mode, rows, days, manualAttendance, attendanceByCell, period, siteId])
 
   // Set of employee IDs with zero face attendance records (Req 7.3)
   const employeesWithZeroFace = useMemo(() => {
+    if (mode !== 'attendance') return new Set<number>()
     const zeroFaceSet = new Set<number>()
     for (const row of rows) {
       let hasFace = false
@@ -3703,9 +3765,10 @@ export function SchedulingTimesheetWorkspace({
       if (!hasFace) zeroFaceSet.add(row.employee.id)
     }
     return zeroFaceSet
-  }, [rows, days, manualAttendance, attendanceByCell, period, siteId])
+  }, [mode, rows, days, manualAttendance, attendanceByCell, period, siteId])
 
   const fieldBreakDaysByEmployee = useMemo(() => {
+    if (mode !== 'payroll') return new Map<number, Set<number>>()
     const result = new Map<number, Set<number>>()
     for (const plan of fieldBreakPlans) {
       if (String(plan.siteId) !== siteId || plan.period !== period) continue
@@ -3719,7 +3782,7 @@ export function SchedulingTimesheetWorkspace({
       result.set(plan.employeeId, days)
     }
     return result
-  }, [dayCount, fieldBreakPlans, period, siteId])
+  }, [dayCount, fieldBreakPlans, mode, period, siteId])
 
   const selectedAttendanceEmployee = selectedAttendanceCell
     ? visibleEmployees.find((employee) => employee.id === selectedAttendanceCell.employeeId)
@@ -3727,23 +3790,26 @@ export function SchedulingTimesheetWorkspace({
   const selectedAttendanceValue = selectedAttendanceCell
     ? getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
     : null
-  const attendanceOvertimeRows = rows.map((row) => {
-    const baseHours = row.schedule.reduce((sum, code, index) => {
-      if (hoursFromCode(code) <= 0) return sum
-      return isHoliday(period, index + 1, holidays) ? sum : sum + 5
-    }, 0)
-    const calculated = calculateAttendanceOvertime(
-      days.map((day) => getAttendanceCell(row.employee.id, day)),
-      baseHours
-    )
+  const attendanceOvertimeRows =
+    mode === 'payroll'
+      ? rows.map((row) => {
+          const baseHours = row.schedule.reduce((sum, code, index) => {
+            if (hoursFromCode(code) <= 0) return sum
+            return isHoliday(period, index + 1, holidays) ? sum : sum + 5
+          }, 0)
+          const calculated = calculateAttendanceOvertime(
+            days.map((day) => getAttendanceCell(row.employee.id, day)),
+            baseHours
+          )
 
-    return {
-      ...row,
-      attendanceTotalHours: calculated.totalHours,
-      attendanceBaseHours: calculated.baseHours,
-      attendanceOvertime: calculated.overtime,
-    }
-  })
+          return {
+            ...row,
+            attendanceTotalHours: calculated.totalHours,
+            attendanceBaseHours: calculated.baseHours,
+            attendanceOvertime: calculated.overtime,
+          }
+        })
+      : []
 
   function buildPayrollSnapshot() {
     let totalMsa = 0
@@ -6127,7 +6193,10 @@ export function SchedulingTimesheetWorkspace({
                           setFieldBreakSiteId(value)
                           setSiteId(value)
                         }}
-                        options={sites.map((item) => ({ value: String(item.id), label: item.name }))}
+                        options={sites.map((item) => ({
+                          value: String(item.id),
+                          label: item.name,
+                        }))}
                         placeholder="Pilih site"
                       />
                     </div>
@@ -6240,7 +6309,10 @@ export function SchedulingTimesheetWorkspace({
                       onValueChange={setFieldBreakSectionFilter}
                       options={[
                         { value: 'all', label: 'Semua section' },
-                        ...fieldBreakSections.map((section) => ({ value: section, label: section })),
+                        ...fieldBreakSections.map((section) => ({
+                          value: section,
+                          label: section,
+                        })),
                       ]}
                     />
                     <NativeSelect
@@ -6253,7 +6325,9 @@ export function SchedulingTimesheetWorkspace({
                         { value: 'locked', label: 'Locked' },
                       ]}
                     />
-                    {(fieldBreakSearch || fieldBreakSectionFilter !== 'all' || fieldBreakSourceFilter !== 'all') ? (
+                    {fieldBreakSearch ||
+                    fieldBreakSectionFilter !== 'all' ||
+                    fieldBreakSourceFilter !== 'all' ? (
                       <Button
                         variant="ghost"
                         className="h-9 rounded-lg px-3"
@@ -6272,7 +6346,9 @@ export function SchedulingTimesheetWorkspace({
                   <table className="w-full min-w-[1100px] text-sm">
                     <thead>
                       <tr className="bg-surface-container-low text-muted-foreground sticky top-0 z-10 text-left text-[11px] tracking-[0.12em] uppercase">
-                        <th className="sticky left-0 z-20 bg-surface-container-low px-4 py-3 font-medium">Nama</th>
+                        <th className="bg-surface-container-low sticky left-0 z-20 px-4 py-3 font-medium">
+                          Nama
+                        </th>
                         <th className="px-4 py-3 font-medium">Section / Group</th>
                         <th className="px-4 py-3 font-medium">Mulai On-Site</th>
                         <th className="px-4 py-3 font-medium">Mulai FB</th>
@@ -6293,7 +6369,9 @@ export function SchedulingTimesheetWorkspace({
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium">{row.sectionLabel || '-'}</div>
-                            <div className="text-muted-foreground text-xs">{row.rosterSection || '-'}</div>
+                            <div className="text-muted-foreground text-xs">
+                              {row.rosterSection || '-'}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <Input
@@ -6337,7 +6415,9 @@ export function SchedulingTimesheetWorkspace({
                               }
                             />
                           </td>
-                          <td className="px-4 py-3 font-semibold tabular-nums">{row.dayCount ?? '-'}</td>
+                          <td className="px-4 py-3 font-semibold tabular-nums">
+                            {row.dayCount ?? '-'}
+                          </td>
                           <td className="px-4 py-3">
                             <label className="flex min-h-10 items-center gap-2 text-xs font-semibold">
                               <input
@@ -6351,10 +6431,20 @@ export function SchedulingTimesheetWorkspace({
                                 }
                               />
                               <Badge
-                                variant={row.isLocked ? 'default' : row.source === 'auto' ? 'secondary' : 'outline'}
+                                variant={
+                                  row.isLocked
+                                    ? 'default'
+                                    : row.source === 'auto'
+                                      ? 'secondary'
+                                      : 'outline'
+                                }
                                 className="rounded-lg"
                               >
-                                {row.isLocked ? 'Locked' : row.source === 'auto' ? 'Auto' : 'Manual'}
+                                {row.isLocked
+                                  ? 'Locked'
+                                  : row.source === 'auto'
+                                    ? 'Auto'
+                                    : 'Manual'}
                               </Badge>
                             </label>
                           </td>
@@ -6380,8 +6470,12 @@ export function SchedulingTimesheetWorkspace({
                               <span className="bg-surface-container-low text-muted-foreground grid size-10 place-items-center rounded-xl">
                                 <Users className="size-4" />
                               </span>
-                              <p className="text-foreground text-sm font-semibold">Tidak ada baris cocok.</p>
-                              <p className="text-muted-foreground text-xs">Reset filter atau pilih site lain.</p>
+                              <p className="text-foreground text-sm font-semibold">
+                                Tidak ada baris cocok.
+                              </p>
+                              <p className="text-muted-foreground text-xs">
+                                Reset filter atau pilih site lain.
+                              </p>
                             </div>
                           </td>
                         </tr>
@@ -6391,7 +6485,8 @@ export function SchedulingTimesheetWorkspace({
                 </div>
                 <div className="text-muted-foreground flex flex-col gap-2 px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
                   <span className="tabular-nums">
-                    Menampilkan {filteredFieldBreakRows.length} dari {fieldBreakRows.length} karyawan.
+                    Menampilkan {filteredFieldBreakRows.length} dari {fieldBreakRows.length}{' '}
+                    karyawan.
                   </span>
                   <span>Locked menjaga tanggal manual saat generate ulang.</span>
                 </div>

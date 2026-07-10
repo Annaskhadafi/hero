@@ -36,18 +36,18 @@ export function getFieldBreakCapacity(employeeCount: number) {
 }
 
 export function addMonths(value: string, months: number) {
-  const date = new Date(`${value}T00:00:00`)
+  const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return ''
-  const day = date.getDate()
-  date.setMonth(date.getMonth() + months)
-  if (date.getDate() !== day) date.setDate(0)
+  const day = date.getUTCDate()
+  date.setUTCMonth(date.getUTCMonth() + months)
+  if (date.getUTCDate() !== day) date.setUTCDate(0)
   return date.toISOString().slice(0, 10)
 }
 
 export function addDaysIso(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00`)
+  const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return ''
-  date.setDate(date.getDate() + days)
+  date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
 }
 
@@ -60,17 +60,17 @@ export function monthPeriods(startPeriod: string, count: number) {
   })
 }
 
-export function isDateRangeOverlapping(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string
-) {
+export function isDateRangeOverlapping(startA: string, endA: string, startB: string, endB: string) {
   return startA <= endB && startB <= endA
 }
 
-export function validateFieldBreakCapacity(plans: GeneratedFieldBreakPlan[], employeeCount?: number) {
-  const capacity = getFieldBreakCapacity(employeeCount ?? new Set(plans.map((plan) => plan.employeeId)).size)
+export function validateFieldBreakCapacity(
+  plans: GeneratedFieldBreakPlan[],
+  employeeCount?: number
+) {
+  const capacity = getFieldBreakCapacity(
+    employeeCount ?? new Set(plans.map((plan) => plan.employeeId)).size
+  )
   const violations: Array<{ date: string; count: number; capacity: number }> = []
   const counts = new Map<string, number>()
 
@@ -156,7 +156,11 @@ export function generateFieldBreakYearPlans(input: {
         rosterSection: employee.rosterSection,
         period,
         onSiteDate: existing?.onSiteDate ?? onSiteDate,
-        dayCount: daysBetween(existing?.onSiteDate ?? onSiteDate, existing?.fieldBreakDate ?? shiftedStart) ?? workMonths * 30,
+        dayCount:
+          daysBetween(
+            existing?.onSiteDate ?? onSiteDate,
+            existing?.fieldBreakDate ?? shiftedStart
+          ) ?? workMonths * 30,
         fieldBreakDate: existing?.fieldBreakDate ?? shiftedStart,
         fieldBreakEndDate: existing?.fieldBreakEndDate ?? shiftedEnd,
         source: existing?.source === 'manual' ? 'manual' : 'auto',
