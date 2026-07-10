@@ -64,6 +64,8 @@ test("central service assets supports multiple attachments with list and preview
   assert.match(formSource, /multiple/);
   assert.match(tableSource, /AssetAttachmentsDialog/);
   assert.match(tableSource, /md:grid-cols-\[320px_minmax\(0,1fr\)\]/);
+  assert.match(tableSource, /function uploadProxyUrl/);
+  assert.match(tableSource, /\/api\/uploads\/\$\{parts\.slice/);
   assert.match(tableSource, /<iframe title=\{selected\.fileName\}/);
   assert.match(tableSource, /<img[\s\S]*src=\{attachmentUrl\(selected\)\}/);
 });
@@ -89,6 +91,15 @@ test("central service asset scorecards follow active filters", () => {
   assert.doesNotMatch(tableSource, /const total = data\.length/);
 });
 
+test("central service asset global search includes serial number", () => {
+  const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
+
+  assert.match(tableSource, /function assetSearchText\(asset: Asset\)/);
+  assert.match(tableSource, /asset\.serialNumber/);
+  assert.match(tableSource, /globalFilterFn: \(row, _columnId, filterValue\)/);
+  assert.match(tableSource, /assetSearchText\(row\.original\)\.includes/);
+});
+
 test("central service assets can filter and default-sort certificate or calibration due items", () => {
   const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
 
@@ -101,6 +112,27 @@ test("central service assets can filter and default-sort certificate or calibrat
   assert.match(tableSource, /table\.getColumn\("dueStatus"\)\?\.setFilterValue/);
   assert.match(tableSource, /Calibration Due/);
   assert.match(tableSource, /Certificate Due/);
+});
+
+test("central service assets hides calibration fields and supports inline condition workflow", () => {
+  const actionsSource = read("app/dashboard/central-service/assets/actions.ts");
+  const tableSource = read("app/dashboard/central-service/assets/components/assets-table.tsx");
+  const formSource = read("app/dashboard/central-service/assets/components/asset-form-dialog.tsx");
+
+  assert.doesNotMatch(formSource, /<FormLabel>Last Calibration<\/FormLabel>/);
+  assert.doesNotMatch(formSource, /<FormLabel>Cycle \(bulan\)<\/FormLabel>[\s\S]*calibrationCycleMonths/);
+  assert.doesNotMatch(formSource, /<FormLabel>Calibration Due<\/FormLabel>/);
+  assert.doesNotMatch(tableSource, /header: "Last Calibration"/);
+  assert.doesNotMatch(tableSource, /header: "Cycle \(Mo\)"/);
+  assert.doesNotMatch(tableSource, /header: "Calib\. Due"/);
+  assert.doesNotMatch(tableSource, /header: "Cert\. Date"/);
+  assert.doesNotMatch(tableSource, /header: "Cert\. Cycle"/);
+  assert.doesNotMatch(tableSource, /header: "Cert\. Due"/);
+  assert.match(tableSource, /const DEFAULT_CONDITION_FILTERS = CONDITIONS\.filter\(\(condition\) => condition !== "SCRAP"\)/);
+  assert.match(tableSource, /DropdownMenuCheckboxItem/);
+  assert.match(tableSource, /updateAssetCondition\(asset\.id, condition\)/);
+  assert.match(actionsSource, /export async function updateAssetCondition/);
+  assert.match(actionsSource, /Kondisi tidak valid/);
 });
 
 test("central service assets stores and shows change history logs", () => {

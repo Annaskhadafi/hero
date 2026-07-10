@@ -297,6 +297,42 @@ export async function updateAsset(id: number, data: AssetData) {
   }
 }
 
+export async function updateAssetCondition(id: number, condition: string) {
+  try {
+    const parsedCondition = condition.trim().toUpperCase();
+    if (!["ACTIVE", "GOOD", "BAD", "SCRAP"].includes(parsedCondition)) {
+      return { success: false, error: "Kondisi tidak valid" };
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(centralServiceAssets).where(eq(centralServiceAssets.id, id)).limit(1);
+      if (!before) return null;
+
+      const [asset] = await tx
+        .update(centralServiceAssets)
+        .set({ condition: parsedCondition, updatedAt: new Date() })
+        .where(eq(centralServiceAssets.id, id))
+        .returning();
+
+      const changeRows = buildChangeRows(id, before, { ...before, condition: parsedCondition });
+      const histories =
+        changeRows.length > 0
+          ? await tx.insert(centralServiceAssetHistories).values(changeRows).returning()
+          : [];
+
+      return { ...asset, attachments: [], histories };
+    });
+
+    if (!result) return { success: false, error: "Asset tidak ditemukan" };
+
+    revalidatePath("/dashboard/central-service/assets");
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Failed to update asset condition:", error);
+    return { success: false, error: "Gagal mengupdate kondisi asset" };
+  }
+}
+
 export async function deleteAsset(id: number) {
   try {
     await db.delete(centralServiceAssets).where(eq(centralServiceAssets.id, id));

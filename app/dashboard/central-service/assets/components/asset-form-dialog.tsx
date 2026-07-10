@@ -415,71 +415,7 @@ export function AssetFormDialog({
               />
             </div>
 
-            {/* Row 4: Calibration */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <p className="text-sm font-medium text-muted-foreground">Kalibrasi</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                <FormField
-                  control={form.control}
-                  name="lastCalibrationDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Last Calibration</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="date"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="calibrationCycleMonths"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cycle (bulan)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          placeholder="e.g. 6"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === "" ? undefined : Number(e.target.value)
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="calibrationDueDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Calibration Due</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="date"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Row 5: Certificate */}
+            {/* Row 4: Certificate */}
             <div className="rounded-lg border p-4 space-y-3">
               <p className="text-sm font-medium text-muted-foreground">Sertifikat</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">

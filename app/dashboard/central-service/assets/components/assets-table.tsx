@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
@@ -54,7 +55,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { AssetFormDialog } from "./asset-form-dialog";
-import { deleteAsset } from "../actions";
+import { deleteAsset, updateAssetCondition } from "../actions";
 import { toast } from "sonner";
 import { format, differenceInMonths, isAfter, isBefore, addMonths, startOfDay } from "date-fns";
 import {
@@ -271,7 +272,22 @@ function historyActionLabel(action: string) {
 }
 
 function attachmentUrl(attachment: AssetAttachment) {
-  return attachment.previewUrl || attachment.fileUrl;
+  const proxied = uploadProxyUrl(attachment.fileUrl);
+  return proxied || attachment.previewUrl || attachment.fileUrl;
+}
+
+function uploadProxyUrl(url: string | null | undefined) {
+  if (!url) return "";
+  const cleanPath = url.trim().split("?")[0];
+  if (cleanPath.startsWith("/api/uploads/")) return cleanPath;
+  const parts = cleanPath.split("/").filter(Boolean);
+  const prefixIndex = parts.findIndex((part) =>
+    ["upload", "attendance-photos", "curhat", "profile-photos"].includes(decodeURIComponent(part))
+  );
+  if (prefixIndex >= 0) {
+    return `/api/uploads/${parts.slice(prefixIndex).map((part) => encodeURIComponent(decodeURIComponent(part))).join("/")}`;
+  }
+  return "";
 }
 
 function isPdfAttachment(attachment: AssetAttachment) {
@@ -394,12 +410,6 @@ function exportToCSV(data: Asset[]) {
     "SN",
     "Tanggal Pembelian",
     "Delivery To Site",
-    "Last Calibration",
-    "Cycle (Month)",
-    "Calibration Due",
-    "Certificate Date",
-    "Certificate Cycle",
-    "Certificate Due",
     "Condition",
     "Umur Aset",
     "Qty",
@@ -415,12 +425,6 @@ function exportToCSV(data: Asset[]) {
     a.serialNumber ?? "",
     fmtDate(a.purchaseDate),
     fmtDate(a.deliveryToSiteDate),
-    fmtDate(a.lastCalibrationDate),
-    a.calibrationCycleMonths ?? "",
-    fmtDate(a.calibrationDueDate),
-    fmtDate(a.certificateDate),
-    a.certificateCycleMonths ?? "",
-    fmtDate(a.certificateDueDate),
     a.condition,
     calcAge(a.purchaseDate),
     a.qty,
@@ -451,6 +455,7 @@ const SECTIONS = [
 ];
 
 const CONDITIONS = ["ACTIVE", "GOOD", "BAD", "SCRAP"];
+const DEFAULT_CONDITION_FILTERS = CONDITIONS.filter((condition) => condition !== "SCRAP");
 
 const DUE_FILTERS = [
   { value: "__all__", label: "Semua Due" },
@@ -461,17 +466,36 @@ const DUE_FILTERS = [
   { value: "certificate", label: "Certificate Due" },
 ];
 
+function assetSearchText(asset: Asset) {
+  return [
+    asset.workSection,
+    asset.section,
+    asset.location,
+    asset.description,
+    asset.assetNumber,
+    asset.serialNumber,
+    asset.condition,
+    asset.remarks,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 export function AssetsTable({ data: initialData, masterSections }: AssetsTableProps) {
   const [data, setData] = useState(initialData);
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "duePriority", desc: false }]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
+    { id: "condition", value: DEFAULT_CONDITION_FILTERS },
+  ]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [attachmentAsset, setAttachmentAsset] = useState<Asset | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [updatingConditionId, setUpdatingConditionId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const locationOptions = useMemo(
@@ -522,6 +546,39 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
     },
     []
   );
+
+  const handleConditionChange = useCallback(async (asset: Asset, condition: string) => {
+    if (asset.condition === condition) return;
+    setUpdatingConditionId(asset.id);
+    const res = await updateAssetCondition(asset.id, condition);
+    if (res.success && res.data) {
+      toast.success("Kondisi asset diupdate");
+      setData((prev) =>
+        prev.map((item) =>
+          item.id === asset.id
+            ? {
+                ...item,
+                condition: res.data.condition,
+                histories: [...(res.data.histories ?? []), ...(item.histories ?? [])],
+              }
+            : item
+        )
+      );
+    } else {
+      toast.error(res.error || "Gagal mengupdate kondisi asset");
+    }
+    setUpdatingConditionId(null);
+  }, []);
+
+  const selectedConditionFilters = (columnFilters.find((filter) => filter.id === "condition")?.value ??
+    DEFAULT_CONDITION_FILTERS) as string[];
+
+  const setConditionFilters = useCallback((next: string[]) => {
+    setColumnFilters((filters) => {
+      const others = filters.filter((filter) => filter.id !== "condition");
+      return next.length === CONDITIONS.length ? others : [...others, { id: "condition", value: next }];
+    });
+  }, []);
 
   const columns = useMemo<ColumnDef<Asset>[]>(
     () => [
@@ -652,58 +709,31 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         ),
       },
       {
-        accessorKey: "lastCalibrationDate",
-        header: "Last Calibration",
-        size: 120,
-        cell: ({ getValue }) => (
-          <span className="text-xs">{fmtDate(getValue() as Date)}</span>
-        ),
-      },
-      {
-        accessorKey: "calibrationCycleMonths",
-        header: "Cycle (Mo)",
-        size: 80,
-        cell: ({ getValue }) => (
-          <span className="text-xs text-center block">
-            {getValue() != null ? String(getValue()) : "-"}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "calibrationDueDate",
-        header: "Calib. Due",
-        size: 130,
-        cell: ({ getValue }) => dueDateCell(getValue() as Date | null),
-      },
-      {
-        accessorKey: "certificateDate",
-        header: "Cert. Date",
-        size: 110,
-        cell: ({ getValue }) => (
-          <span className="text-xs">{fmtDate(getValue() as Date)}</span>
-        ),
-      },
-      {
-        accessorKey: "certificateCycleMonths",
-        header: "Cert. Cycle",
-        size: 80,
-        cell: ({ getValue }) => (
-          <span className="text-xs text-center block">
-            {getValue() != null ? String(getValue()) : "-"}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "certificateDueDate",
-        header: "Cert. Due",
-        size: 130,
-        cell: ({ getValue }) => dueDateCell(getValue() as Date | null),
-      },
-      {
         accessorKey: "condition",
         header: "Kondisi",
-        size: 110,
-        cell: ({ getValue }) => conditionBadge(String(getValue())),
+        size: 130,
+        filterFn: (row, columnId, filterValue) => {
+          const values = Array.isArray(filterValue) ? filterValue : [];
+          return values.length === 0 || values.includes(String(row.getValue(columnId) ?? "").toUpperCase());
+        },
+        cell: ({ row }) => (
+          <Select
+            value={row.original.condition}
+            onValueChange={(value) => handleConditionChange(row.original, value)}
+            disabled={updatingConditionId === row.original.id}
+          >
+            <SelectTrigger className="h-8 w-[118px] border-0 bg-transparent px-0 shadow-none focus:ring-0">
+              <span>{conditionBadge(row.original.condition)}</span>
+            </SelectTrigger>
+            <SelectContent>
+              {CONDITIONS.map((condition) => (
+                <SelectItem key={condition} value={condition}>
+                  {condition}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ),
       },
       {
         accessorKey: "qty",
@@ -799,7 +829,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         ),
       },
     ],
-    [expandedHistoryId]
+    [expandedHistoryId, handleConditionChange, updatingConditionId]
   );
 
   const table = useReactTable({
@@ -809,6 +839,8 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, _columnId, filterValue) =>
+      assetSearchText(row.original).includes(String(filterValue ?? "").toLowerCase()),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -935,24 +967,31 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
               ))}
             </SelectContent>
           </Select>
-          <Select
-            value={(table.getColumn("condition")?.getFilterValue() as string) ?? ""}
-            onValueChange={(val) =>
-              table.getColumn("condition")?.setFilterValue(val === "__all__" ? "" : val)
-            }
-          >
-            <SelectTrigger className="h-9 w-36">
-              <SelectValue placeholder="Semua Kondisi" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Semua Kondisi</SelectItem>
-              {CONDITIONS.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 min-w-40 justify-between">
+                Kondisi: {selectedConditionFilters.length === CONDITIONS.length ? "Semua" : selectedConditionFilters.join(", ")}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {CONDITIONS.map((condition) => (
+                <DropdownMenuCheckboxItem
+                  key={condition}
+                  checked={selectedConditionFilters.includes(condition)}
+                  onCheckedChange={(checked) => {
+                    const next = checked
+                      ? Array.from(new Set([...selectedConditionFilters, condition]))
+                      : selectedConditionFilters.filter((item) => item !== condition);
+                    setConditionFilters(next);
+                  }}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  {condition}
+                </DropdownMenuCheckboxItem>
               ))}
-            </SelectContent>
-          </Select>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Select
             value={(table.getColumn("dueStatus")?.getFilterValue() as string) ?? ""}
             onValueChange={(val) =>
