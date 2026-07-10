@@ -22,6 +22,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -86,6 +87,7 @@ import {
   generateFieldBreakYearPlans,
   validateFieldBreakCapacity,
 } from '@/lib/timesheet/field-break-generator'
+import { getScheduleV2DayCount } from '@/lib/timesheet/schedule-v2'
 import type {
   AttendancePreviewConflict,
   AttendancePreviewRow,
@@ -110,6 +112,35 @@ type SiteOption = {
   customerName: string
 }
 
+function getYearlyMonthWeeks(startPeriod: string) {
+  const [yearStr, monthStr] = startPeriod.split('-')
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+
+  const months = []
+  for (let i = 0; i < 12; i++) {
+    const y = year + Math.floor((month - 1 + i) / 12)
+    const m = ((month - 1 + i) % 12) + 1
+    const pStr = `${y}-${String(m).padStart(2, '0')}`
+    const endDay = new Date(y, m, 0).getDate()
+    
+    // Short label e.g., 'Jul 26'
+    const monthLabel = new Date(y, m - 1, 1).toLocaleString('id-ID', { month: 'short', year: '2-digit' })
+
+    months.push({
+      period: pStr,
+      label: monthLabel,
+      weeks: [
+        { start: `${pStr}-01`, end: `${pStr}-07`, label: 'M1' },
+        { start: `${pStr}-08`, end: `${pStr}-14`, label: 'M2' },
+        { start: `${pStr}-15`, end: `${pStr}-21`, label: 'M3' },
+        { start: `${pStr}-22`, end: `${pStr}-${String(endDay).padStart(2, '0')}`, label: 'M4' },
+      ]
+    })
+  }
+  return months
+}
+
 type SavedScheduleRow = {
   employeeId: number
   schedule: string[]
@@ -124,6 +155,7 @@ type SavedSchedulingPlan = {
   employeeProfiles: EmployeeScheduleProfile[]
   fieldBreakConfig: { workWeeks: number; breakWeeks: number } | null
   updatedAt: string
+  sourceVersion?: 'v1' | 'v2'
 }
 
 type EmployeeScheduleProfile = {
@@ -2126,18 +2158,16 @@ export function SchedulingTimesheetWorkspace({
       startPeriod: period,
       workMonths: siteConfig.fieldBreakWorkMonths,
       breakDays: siteConfig.fieldBreakBreakDays,
-      existingPlans: fieldBreakPlans
-        .filter((plan) => String(plan.siteId) === fieldBreakSiteId)
-        .map((plan) => ({
-          employeeId: plan.employeeId,
-          period: plan.period,
-          onSiteDate: plan.onSiteDate,
-          fieldBreakDate: plan.fieldBreakDate,
-          fieldBreakEndDate: plan.fieldBreakEndDate,
-          source: plan.source,
-          isLocked: plan.isLocked,
-          notes: plan.notes,
-        })),
+      existingPlans: fieldBreakRows.map((row) => ({
+        employeeId: row.employee.id,
+        period: period,
+        onSiteDate: row.onSiteDate,
+        fieldBreakDate: row.fieldBreakDate,
+        fieldBreakEndDate: row.fieldBreakEndDate,
+        source: row.source,
+        isLocked: row.isLocked,
+        notes: row.notes,
+      })),
     })
     startSavingFieldBreak(async () => {
       try {
@@ -2159,6 +2189,20 @@ export function SchedulingTimesheetWorkspace({
             notes: plan.notes,
           })),
         })
+        setFieldBreakPlans((current) => {
+          const next = [...current]
+          for (const plan of generated.plans) {
+             const newPlan = { ...plan, siteId: numericSiteId, updatedAt: new Date().toISOString() }
+             const existingIdx = next.findIndex(p => p.employeeId === plan.employeeId && p.period === plan.period && p.siteId === numericSiteId)
+             if (existingIdx >= 0) {
+                next[existingIdx] = { ...next[existingIdx], ...newPlan }
+             } else {
+                next.push(newPlan as any)
+             }
+          }
+          return next
+        })
+        // Also update drafts for the current period so Mulai FB updates locally
         setFieldBreakDrafts((current) => {
           const next = { ...current }
           for (const plan of generated.plans.filter((item) => item.period === period)) {
@@ -3921,6 +3965,8 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  const yearlyMonths = useMemo(() => getYearlyMonthWeeks(period), [period])
+
   return (
     <div className="space-y-4">
       {isFinalized ? (
@@ -3954,6 +4000,11 @@ export function SchedulingTimesheetWorkspace({
             </div>
             {currentStatus ? (
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                {savedPlan?.sourceVersion ? (
+                  <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
+                    Source: Schedule {savedPlan.sourceVersion.toUpperCase()}
+                  </span>
+                ) : null}
                 <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
                   Schedule: {currentStatus.scheduleStatus || 'none'}
                 </span>
@@ -6343,7 +6394,7 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                 </div>
                 <div className="max-h-[58vh] overflow-auto">
-                  <table className="w-full min-w-[1100px] text-sm">
+                  <table className="w-max min-w-full text-sm">
                     <thead>
                       <tr className="bg-surface-container-low text-muted-foreground sticky top-0 z-10 text-left text-[11px] tracking-[0.12em] uppercase">
                         <th className="bg-surface-container-low sticky left-0 z-20 px-4 py-3 font-medium">
@@ -6355,7 +6406,20 @@ export function SchedulingTimesheetWorkspace({
                         <th className="px-4 py-3 font-medium">Selesai FB</th>
                         <th className="px-4 py-3 font-medium">Hari</th>
                         <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium">Catatan</th>
+                        <th className="border-border border-r px-4 py-3 font-medium">Catatan</th>
+                        {yearlyMonths.map((month) => (
+                          <th
+                            key={month.period}
+                            className="border-border min-w-[160px] border-r px-0 py-2 text-center text-[11px] font-semibold"
+                          >
+                            <div className="text-muted-foreground/80">{month.label}</div>
+                            <div className="border-border mt-1 grid grid-cols-4 divide-x border-t pt-1 text-[10px] tabular-nums">
+                              {month.weeks.map((week, idx) => (
+                                <div key={idx} className="px-1">{week.label}</div>
+                              ))}
+                            </div>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -6448,11 +6512,11 @@ export function SchedulingTimesheetWorkspace({
                               </Badge>
                             </label>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="border-border border-r px-4 py-3">
                             <Input
-                              value={row.notes}
-                              placeholder="Catatan"
                               className="h-9 min-w-[220px]"
+                              placeholder="Catatan"
+                              value={row.notes}
                               onChange={(event) =>
                                 updateFieldBreakMeta(row.employee.id, {
                                   notes: event.target.value,
@@ -6461,6 +6525,39 @@ export function SchedulingTimesheetWorkspace({
                               }
                             />
                           </td>
+                          {yearlyMonths.map((month) => (
+                            <td key={month.period} className="border-border min-w-[160px] border-r p-0">
+                              <div className="grid h-full grid-cols-4 divide-x border-transparent">
+                                {month.weeks.map((week, idx) => {
+                                  // Check if any plan for this employee intersects with this week
+                                  const employeeBreaks = fieldBreakPlans.filter((p) => p.employeeId === row.employee.id)
+                                  
+                                  // Also include the draft if it's currently active in the row
+                                  const currentDraftStart = row.fieldBreakDate
+                                  const currentDraftEnd = row.fieldBreakEndDate
+                                  const hasDraftBreak = currentDraftStart && currentDraftEnd && currentDraftStart <= week.end && currentDraftEnd >= week.start
+
+                                  const isBreak = hasDraftBreak || employeeBreaks.some(
+                                    (b) => b.fieldBreakDate && b.fieldBreakEndDate && b.fieldBreakDate <= week.end && b.fieldBreakEndDate >= week.start
+                                  )
+
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={cn(
+                                        'flex min-h-[52px] items-center justify-center transition-colors',
+                                        isBreak ? 'bg-amber-100' : 'bg-transparent'
+                                      )}
+                                    >
+                                      {isBreak ? (
+                                        <div className="bg-amber-400 h-2 w-full max-w-[80%] rounded-full opacity-60" />
+                                      ) : null}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </td>
+                          ))}
                         </tr>
                       ))}
                       {filteredFieldBreakRows.length === 0 ? (

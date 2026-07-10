@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import Fuse from 'fuse.js'
 import { db } from '@/db'
 import {
   activities,
@@ -60,6 +61,7 @@ import {
   timesheetFieldBreakPlans,
   timesheetSchedulingConfigs,
   timesheetSchedulingPlans,
+  timesheetSchedulingPlansV2,
   timesheetSchedulingStatuses,
 } from '@/db/schema/timesheet'
 import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
@@ -73,6 +75,7 @@ import {
   getActiveMasterCategoryOptionMap,
 } from '@/lib/master-categories'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import { mergeActiveSchedulePlans, type ScheduleV2Row } from '@/lib/timesheet/schedule-v2'
 import { ensureDepartmentSectionSeedData } from '@/lib/org-seed-data'
 
 let seedPromise: Promise<void> | null = null
@@ -5687,6 +5690,7 @@ export async function getSchedulingTimesheetOptions() {
     employeeRows,
     siteRows,
     savedPlans,
+    savedPlansV2,
     fieldBreakPlans,
     attendanceRows,
     attendanceOverrides,
@@ -5694,6 +5698,8 @@ export async function getSchedulingTimesheetOptions() {
     schedulingStatuses,
     importPreviews,
     activitiesRows,
+    trainingRecordsRows,
+    sioCertificationsRows,
   ] = await Promise.all([
     db
       .select({
@@ -5731,6 +5737,25 @@ export async function getSchedulingTimesheetOptions() {
       .from(timesheetSchedulingPlans)
       .catch(() => []),
     db
+      .select({
+        id: timesheetSchedulingPlansV2.id,
+        siteId: timesheetSchedulingPlansV2.siteId,
+        period: timesheetSchedulingPlansV2.period,
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+        createdByUserId: timesheetSchedulingPlansV2.createdByUserId,
+        updatedByUserId: timesheetSchedulingPlansV2.updatedByUserId,
+        creatorName: employees.name,
+        activatedAt: timesheetSchedulingPlansV2.activatedAt,
+        createdAt: timesheetSchedulingPlansV2.createdAt,
+        updatedAt: timesheetSchedulingPlansV2.updatedAt,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
+      .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
+      .catch(() => []),
+    db
       .select()
       .from(timesheetFieldBreakPlans)
       .catch(() => []),
@@ -5766,7 +5791,90 @@ export async function getSchedulingTimesheetOptions() {
       })
       .from(activities)
       .catch(() => []),
+    db
+      .select({
+        employeeId: trainingRecords.employeeId,
+        trainingName: trainingRecords.trainingName,
+        status: trainingRecords.status,
+      })
+      .from(trainingRecords)
+      .where(inArray(sql`lower(${trainingRecords.status})`, ['valid', 'active', 'aktif']))
+      .catch(() => []),
+    db
+      .select({
+        employeeId: sioCertifications.employeeId,
+        certName: sioCertifications.certName,
+        certType: sioCertifications.certType,
+        status: sioCertifications.status,
+      })
+      .from(sioCertifications)
+      .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
+      .catch(() => []),
   ])
+
+  const kimperMap = new Map<number, { isLV: boolean; isTH: boolean; sioNames: string[] }>()
+  
+  // Set up Fuse instances for fuzzy matching TH (Heavy equipment)
+  const thKeywords = ['forklift', 'loader', 'tyrehandler', 'tyre handler', 'heavy', 'excavator', 'dozer', 'grader', 'crane', 'buldozer', 'bulldozer', 'compactor', 'vibro', 'roller']
+  const thFuse = new Fuse(thKeywords.map(k => ({ keyword: k })), {
+    keys: ['keyword'],
+    threshold: 0.4,
+  })
+
+  // We can also use simple regex for LV since it's short, or a strict match
+  const isLV = (name: string) => /\b(lv|light vehicle|sim a|sim b)\b/i.test(name)
+
+  const allRecords = [
+    ...sioCertificationsRows.map((r) => {
+      let combinedName = r.certName || ''
+      if (r.certType && r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()) {
+        combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
+      }
+      return {
+        employeeId: r.employeeId,
+        name: combinedName.trim(),
+      }
+    }),
+  ]
+
+  for (const record of allRecords) {
+    const name = record.name.toLowerCase()
+    const state = kimperMap.get(record.employeeId) || { isLV: false, isTH: false, sioNames: [] }
+    
+    if (record.name && record.name.trim() !== 'undefined') {
+      state.sioNames.push(record.name)
+    }
+    
+    // Check LV first
+    if (isLV(name)) {
+      state.isLV = true
+    }
+    
+    // Also check TH using Fuse
+    const words = name.split(/[\s,/-]+/)
+    const thFuse = new Fuse(thKeywords.map(kw => ({ kw })), { keys: ['kw'], threshold: 0.3 })
+    
+    let matchedTH = false
+    for (const w of words) {
+      if (thFuse.search(w).length > 0) {
+        matchedTH = true
+        break
+      }
+    }
+    // Check exact matches just in case the phrase has spaces like 'tyre handler'
+    for (const kw of thKeywords) {
+      if (name.includes(kw)) {
+        matchedTH = true
+        break
+      }
+    }
+
+    if (matchedTH) {
+      state.isTH = true
+    }
+    
+    kimperMap.set(record.employeeId, state)
+  }
 
   const currentEmployee = authSession?.user?.email
     ? employeeRows.find(
@@ -5774,8 +5882,58 @@ export async function getSchedulingTimesheetOptions() {
       )
     : null
 
+  const serializedV1Plans = savedPlans.map((plan) => ({
+    siteId: plan.siteId,
+    period: plan.period,
+    siteScheduleType: plan.siteScheduleType,
+    draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
+    fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
+    employeeProfiles: plan.employeeProfiles as Array<{
+      employeeId: number
+      section: string
+      positionOnSite: string
+      kimperLv: boolean
+      kimperTh: boolean
+    }>,
+    fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
+    updatedAt: plan.updatedAt.toISOString(),
+    sourceVersion: 'v1' as 'v1' | 'v2',
+  }))
+  const serializedV2Plans = savedPlansV2.map((plan) => ({
+    ...plan,
+    creatorName: plan.creatorName ?? 'User Management',
+    draftSchedule: plan.draftSchedule as ScheduleV2Row[],
+    activeSchedule: plan.activeSchedule as ScheduleV2Row[],
+    activatedAt: plan.activatedAt?.toISOString() ?? null,
+    createdAt: plan.createdAt.toISOString(),
+    updatedAt: plan.updatedAt.toISOString(),
+  }))
+  const activeSavedPlans = mergeActiveSchedulePlans(
+    serializedV1Plans,
+    serializedV2Plans,
+    (plan) => {
+      const config = schedulingConfigs.find((item) => item.siteId === plan.siteId)
+      const schedule = plan.activeSchedule.map((row) => ({
+        employeeId: row.employeeId,
+        schedule: [...row.schedule],
+      }))
+      return {
+        siteId: plan.siteId,
+        period: plan.period,
+        siteScheduleType: config?.scheduleType ?? 'shift',
+        draftSchedule: schedule,
+        fixedSchedule: schedule,
+        employeeProfiles: [],
+        fieldBreakConfig: null,
+        updatedAt: plan.updatedAt,
+        sourceVersion: 'v2' as const,
+      }
+    }
+  )
+
   return {
     currentEmployeeSiteId: currentEmployee?.siteId ?? null,
+    currentEmployeeName: currentEmployee?.name ?? authSession?.user?.name ?? 'User Management',
     employees: employeeRows.map((employee) => ({
       id: employee.id,
       name: employee.name,
@@ -5786,24 +5944,16 @@ export async function getSchedulingTimesheetOptions() {
       section: employee.section ?? null,
       siteId: employee.siteId,
       locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+      kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
+      kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
+      sio: kimperMap.get(employee.id)?.sioNames 
+        ? Array.from(new Set(kimperMap.get(employee.id)!.sioNames)).join(', ') 
+        : null,
     })),
     sites: siteRows,
-    savedPlans: savedPlans.map((plan) => ({
-      siteId: plan.siteId,
-      period: plan.period,
-      siteScheduleType: plan.siteScheduleType,
-      draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
-      fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
-      employeeProfiles: plan.employeeProfiles as Array<{
-        employeeId: number
-        section: string
-        positionOnSite: string
-        kimperLv: boolean
-        kimperTh: boolean
-      }>,
-      fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
-      updatedAt: plan.updatedAt.toISOString(),
-    })),
+    savedPlans: serializedV1Plans,
+    activeSavedPlans,
+    savedPlansV2: serializedV2Plans,
     fieldBreakPlans: fieldBreakPlans.map((plan) => ({
       siteId: plan.siteId,
       period: plan.period,
@@ -6066,8 +6216,17 @@ export async function getSchedulingTimesheetScheduleOptions() {
   return getSchedulingTimesheetOptions()
 }
 
+export async function getSchedulingTimesheetScheduleV2Options() {
+  const [options, access] = await Promise.all([
+    getSchedulingTimesheetOptions(),
+    getCurrentMenuPermission('scheduling_timesheet'),
+  ])
+  return { ...options, access }
+}
+
 export async function getSchedulingTimesheetAttendanceOptions() {
-  return getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions()
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetFieldBreakOptions() {
@@ -6075,7 +6234,8 @@ export async function getSchedulingTimesheetFieldBreakOptions() {
 }
 
 export async function getSchedulingTimesheetPayrollOptions() {
-  return getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions()
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSecurityOverviewData() {

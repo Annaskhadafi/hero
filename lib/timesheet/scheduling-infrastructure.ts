@@ -93,6 +93,25 @@ export async function ensureSchedulingTimesheetTables() {
       on hero_timesheet_scheduling_plans(site_id, period);
     `);
     await tx.execute(sql`
+      create table if not exists hero_timesheet_scheduling_plans_v2 (
+        id serial primary key,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        period text not null,
+        status text not null default 'draft',
+        draft_schedule jsonb not null default '[]'::jsonb,
+        active_schedule jsonb not null default '[]'::jsonb,
+        created_by_user_id text references "user"(id) on delete set null,
+        updated_by_user_id text references "user"(id) on delete set null,
+        activated_at timestamp,
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`
+      create unique index if not exists hero_timesheet_scheduling_plans_v2_site_period_uidx
+      on hero_timesheet_scheduling_plans_v2(site_id, period);
+    `);
+    await tx.execute(sql`
       create table if not exists hero_timesheet_field_break_plans (
         id serial primary key,
         site_id integer not null references hero_sites(id) on delete cascade,

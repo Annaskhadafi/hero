@@ -28,7 +28,14 @@ function snMatches(column: AnyColumn, snVariants: string[]) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { sn } = await req.json()
+    let body: { sn?: string } = {}
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid or missing JSON payload' }, { status: 400 })
+    }
+
+    const { sn } = body
     if (!sn || typeof sn !== 'string') {
       return NextResponse.json({ error: 'SN required' }, { status: 400 })
     }

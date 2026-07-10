@@ -288,6 +288,24 @@ export const timesheetSchedulingPlans = pgTable("hero_timesheet_scheduling_plans
   sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_plans_site_period_uidx").on(table.siteId, table.period),
 }));
 
+export const timesheetSchedulingPlansV2 = pgTable("hero_timesheet_scheduling_plans_v2", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  status: text("status").notNull().default("draft"),
+  draftSchedule: jsonb("draft_schedule").notNull().default([]),
+  activeSchedule: jsonb("active_schedule").notNull().default([]),
+  createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  updatedByUserId: text("updated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  activatedAt: timestamp("activated_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_plans_v2_site_period_uidx").on(table.siteId, table.period),
+}));
+
 export const timesheetFieldBreakPlans = pgTable("hero_timesheet_field_break_plans", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id")

@@ -237,6 +237,27 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
   };
 }
 
+export async function createDirectS3UploadUrl(
+  fileName: string,
+  contentType: string,
+  prefixOverride?: string,
+) {
+  const extension = getObjectExtension(contentType, fileName);
+  const prefix = prefixOverride || serverEnv.s3UploadPrefix || "upload";
+  const key = `${prefix}/${randomUUID()}.${extension}`;
+  const uploadUrl = await getSignedUrl(
+    getS3Client(),
+    new PutObjectCommand({
+      Bucket: serverEnv.s3BucketName,
+      Key: key,
+      ContentType: contentType,
+    }),
+    { expiresIn: 15 * 60 },
+  );
+
+  return { key, url: buildS3PublicUrl(key), uploadUrl };
+}
+
 export async function uploadAttendancePhotoToS3(file: File) {
   return uploadAnyFileToS3(file, ATTENDANCE_PHOTO_PREFIX);
 }

@@ -110,24 +110,36 @@ export function generateFieldBreakYearPlans(input: {
   const generated: GeneratedFieldBreakPlan[] = []
   const activeBreaks: Array<{ start: string; end: string }> = []
 
-  employees.forEach((employee, employeeIndex) => {
-    const cycleIndex = Math.floor(employeeIndex / capacity)
-    const onSiteDate = addMonths(firstDay, cycleIndex * workMonths)
-    const fieldBreakDate = addMonths(onSiteDate, workMonths)
-    const fieldBreakEndDate = addDaysIso(fieldBreakDate, breakDays - 1)
+  employees.forEach((employee) => {
+    // Get the manual onSiteDate from the first period if it exists
+    const existingFirst = existingByEmployeePeriod.get(`${employee.employeeId}:${periods[0]}`)
+    const onSiteDate = existingFirst?.onSiteDate && existingFirst.onSiteDate !== '' 
+      ? existingFirst.onSiteDate 
+      : null
 
-    // ponytail: linear collision shift is enough for yearly site rosters; replace with interval scheduler if customer adds many hard constraints.
-    let shiftedStart = fieldBreakDate
-    let shiftedEnd = fieldBreakEndDate
-    while (
-      activeBreaks.filter((item) =>
-        isDateRangeOverlapping(shiftedStart, shiftedEnd, item.start, item.end)
-      ).length >= capacity
-    ) {
-      shiftedStart = addDaysIso(shiftedStart, breakDays)
-      shiftedEnd = addDaysIso(shiftedEnd, breakDays)
+    let shiftedStart = ''
+    let shiftedEnd = ''
+
+    if (onSiteDate) {
+      const fieldBreakDate = addMonths(onSiteDate, workMonths)
+      const fieldBreakEndDate = addDaysIso(fieldBreakDate, breakDays - 1)
+      const maxFieldBreakDate = addMonths(onSiteDate, 4)
+
+      // ponytail: linear collision shift is enough for yearly site rosters; replace with interval scheduler if customer adds many hard constraints.
+      shiftedStart = fieldBreakDate
+      shiftedEnd = fieldBreakEndDate
+      while (
+        activeBreaks.filter((item) =>
+          isDateRangeOverlapping(shiftedStart, shiftedEnd, item.start, item.end)
+        ).length >= capacity
+      ) {
+        const nextShiftStart = addDaysIso(shiftedStart, breakDays)
+        if (nextShiftStart > maxFieldBreakDate) break
+        shiftedStart = nextShiftStart
+        shiftedEnd = addDaysIso(shiftedEnd, breakDays)
+      }
+      activeBreaks.push({ start: shiftedStart, end: shiftedEnd })
     }
-    activeBreaks.push({ start: shiftedStart, end: shiftedEnd })
 
     for (const period of periods) {
       const existing = existingByEmployeePeriod.get(`${employee.employeeId}:${period}`)
@@ -138,10 +150,10 @@ export function generateFieldBreakYearPlans(input: {
           sectionName: employee.sectionName,
           rosterSection: employee.rosterSection,
           period,
-          onSiteDate: existing.onSiteDate ?? onSiteDate,
+          onSiteDate: existing.onSiteDate ?? '',
           dayCount: daysBetween(existing.onSiteDate, existing.fieldBreakDate) ?? workMonths * 30,
-          fieldBreakDate: existing.fieldBreakDate ?? shiftedStart,
-          fieldBreakEndDate: existing.fieldBreakEndDate ?? shiftedEnd,
+          fieldBreakDate: existing.fieldBreakDate ?? '',
+          fieldBreakEndDate: existing.fieldBreakEndDate ?? '',
           source: 'manual',
           isLocked: true,
           notes: existing.notes ?? '',
@@ -155,15 +167,11 @@ export function generateFieldBreakYearPlans(input: {
         sectionName: employee.sectionName,
         rosterSection: employee.rosterSection,
         period,
-        onSiteDate: existing?.onSiteDate ?? onSiteDate,
-        dayCount:
-          daysBetween(
-            existing?.onSiteDate ?? onSiteDate,
-            existing?.fieldBreakDate ?? shiftedStart
-          ) ?? workMonths * 30,
-        fieldBreakDate: existing?.fieldBreakDate ?? shiftedStart,
-        fieldBreakEndDate: existing?.fieldBreakEndDate ?? shiftedEnd,
-        source: existing?.source === 'manual' ? 'manual' : 'auto',
+        onSiteDate: onSiteDate ?? '',
+        dayCount: onSiteDate ? workMonths * 30 : null,
+        fieldBreakDate: shiftedStart,
+        fieldBreakEndDate: shiftedEnd,
+        source: onSiteDate ? 'auto' : 'manual',
         isLocked: false,
         notes: existing?.notes ?? '',
       })

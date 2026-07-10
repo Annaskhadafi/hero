@@ -143,6 +143,7 @@ import {
   timesheetPayrollSnapshots,
   timesheetSchedulingConfigs,
   timesheetSchedulingPlans,
+  timesheetSchedulingPlansV2,
   timesheetSchedulingStatuses,
 } from '@/db/schema/timesheet'
 import { fetchIndonesiaHolidays } from '@/lib/openholiday'
@@ -153,6 +154,12 @@ import {
   type AttendancePreviewRow,
 } from '@/lib/timesheet/attendance-import'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import {
+  createEmptyScheduleV2,
+  getScheduleV2DayCount,
+  isCompleteScheduleV2,
+  type ScheduleV2Row,
+} from '@/lib/timesheet/schedule-v2'
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
@@ -443,6 +450,258 @@ export async function saveSchedulingTimesheetPlanAction(
 
   revalidatePath('/dashboard/scheduling-timesheet')
 
+  return { ok: true }
+}
+
+const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB'])
+const scheduleV2RowSchema = z.object({
+  employeeId: z.number().int().positive(),
+  schedule: z.array(scheduleV2CodeSchema),
+})
+const scheduleV2KeySchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+})
+const saveScheduleV2Schema = scheduleV2KeySchema.extend({
+  rows: z.array(scheduleV2RowSchema),
+})
+
+async function getActiveScheduleEmployees(siteId: number) {
+  const rows = await db
+    .select({ id: employees.id, section: employees.section, role: employees.role })
+    .from(employees)
+    .where(and(eq(employees.siteId, siteId), eq(employees.isActive, true)))
+    .orderBy(asc(employees.name))
+  return rows
+}
+
+async function validateScheduleV2Rows(siteId: number, period: string, rows: ScheduleV2Row[]) {
+  const activeEmployees = await getActiveScheduleEmployees(siteId)
+  const allowedIds = new Set(activeEmployees.map(e => e.id))
+  const dayCount = getScheduleV2DayCount(period)
+  if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
+    throw new Error('Duplicate employee pada schedule V2.')
+  }
+  for (const row of rows) {
+    if (!allowedIds.has(row.employeeId)) throw new Error('Employee bukan anggota aktif site ini.')
+    if (row.schedule.length !== dayCount) throw new Error(`Schedule harus berisi ${dayCount} hari.`)
+  }
+  return employeeIds
+}
+
+function revalidateSchedulingV2Paths() {
+  revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
+  revalidatePath('/dashboard/scheduling-timesheet/payroll')
+}
+
+export async function createSchedulingTimesheetPlanV2Action(
+  input: z.infer<typeof scheduleV2KeySchema>
+) {
+  const payload = scheduleV2KeySchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const activeEmployees = await getActiveScheduleEmployees(payload.siteId)
+  const [site] = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(and(eq(sites.id, payload.siteId), eq(sites.isActive, true)))
+    .limit(1)
+  if (!site) throw new Error('Site tidak ditemukan atau tidak aktif.')
+
+  const holidays = await getIndonesiaHolidaysAction({ period: payload.period })
+
+  const [created] = await db
+    .insert(timesheetSchedulingPlansV2)
+    .values({
+      siteId: payload.siteId,
+      period: payload.period,
+      draftSchedule: createEmptyScheduleV2(activeEmployees, payload.period, holidays),
+      createdByUserId: actorUserId,
+      updatedByUserId: actorUserId,
+    })
+    .onConflictDoNothing()
+    .returning({ id: timesheetSchedulingPlansV2.id })
+  const existing = created
+    ? null
+    : await db
+        .select({ id: timesheetSchedulingPlansV2.id })
+        .from(timesheetSchedulingPlansV2)
+        .where(
+          and(
+            eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+            eq(timesheetSchedulingPlansV2.period, payload.period)
+          )
+        )
+        .limit(1)
+
+  await logAuditEvent({
+    actorEmail,
+    action: created ? 'timesheet.schedule_v2_created' : 'timesheet.schedule_v2_opened',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: created
+      ? 'Created manual scheduling V2 draft.'
+      : 'Opened existing scheduling V2 draft.',
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, id: created?.id ?? existing?.[0]?.id, existing: !created }
+}
+
+export async function saveSchedulingTimesheetPlanV2DraftAction(
+  input: z.infer<typeof saveScheduleV2Schema>
+) {
+  const payload = saveScheduleV2Schema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [updated] = await db
+    .update(timesheetSchedulingPlansV2)
+    .set({ draftSchedule: payload.rows, updatedByUserId: actorUserId, updatedAt: now })
+    .where(
+      and(
+        eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+        eq(timesheetSchedulingPlansV2.period, payload.period)
+      )
+    )
+    .returning({ id: timesheetSchedulingPlansV2.id })
+  if (!updated) throw new Error('Schedule V2 tidak ditemukan.')
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_draft_saved',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Saved manual scheduling V2 draft (${payload.rows.length} rows).`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, updatedAt: now.toISOString() }
+}
+
+export async function activateSchedulingTimesheetPlanV2Action(
+  input: z.infer<typeof saveScheduleV2Schema>
+) {
+  const payload = saveScheduleV2Schema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const employeeIds = await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
+  if (!isCompleteScheduleV2(payload.rows, employeeIds, payload.period)) {
+    throw new Error('Schedule belum lengkap. Isi semua cell sebelum aktivasi.')
+  }
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(timesheetSchedulingPlansV2)
+      .set({
+        status: 'active',
+        draftSchedule: payload.rows,
+        activeSchedule: payload.rows,
+        updatedByUserId: actorUserId,
+        activatedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .returning({ id: timesheetSchedulingPlansV2.id })
+    if (!updated) throw new Error('Schedule V2 tidak ditemukan.')
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        scheduleStatus: 'saved',
+        lastSavedAt: now,
+        savedByUserId: actorUserId,
+        metadata: { scheduleSource: 'v2' },
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: {
+          scheduleStatus: 'saved',
+          lastSavedAt: now,
+          savedByUserId: actorUserId,
+          metadata: { scheduleSource: 'v2' },
+          updatedAt: now,
+        },
+      })
+  })
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_activated',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Activated manual scheduling V2 (${payload.rows.length} rows).`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, activatedAt: now.toISOString() }
+}
+
+export async function deleteSchedulingTimesheetPlanV2Action(
+  input: z.infer<typeof scheduleV2KeySchema>
+) {
+  const payload = scheduleV2KeySchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const [deleted] = await db
+    .delete(timesheetSchedulingPlansV2)
+    .where(
+      and(
+        eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+        eq(timesheetSchedulingPlansV2.period, payload.period)
+      )
+    )
+    .returning({ id: timesheetSchedulingPlansV2.id, status: timesheetSchedulingPlansV2.status })
+  if (!deleted) throw new Error('Schedule V2 tidak ditemukan.')
+  if (deleted.status === 'active') {
+    const [fallbackV1] = await db
+      .select({ id: timesheetSchedulingPlans.id })
+      .from(timesheetSchedulingPlans)
+      .where(
+        and(
+          eq(timesheetSchedulingPlans.siteId, payload.siteId),
+          eq(timesheetSchedulingPlans.period, payload.period)
+        )
+      )
+      .limit(1)
+    await db
+      .update(timesheetSchedulingStatuses)
+      .set({
+        scheduleStatus: fallbackV1 ? 'saved' : 'draft',
+        metadata: fallbackV1 ? { scheduleSource: 'v1' } : null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingStatuses.siteId, payload.siteId),
+          eq(timesheetSchedulingStatuses.period, payload.period)
+        )
+      )
+  }
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_deleted',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: 'Deleted manual scheduling V2. Operational source falls back to V1.',
+  })
+  revalidateSchedulingV2Paths()
   return { ok: true }
 }
 

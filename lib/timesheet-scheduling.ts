@@ -62,6 +62,13 @@ export function applyHolidayPolicy(code: ScheduleCode, context: { scheduleType: 
   return code;
 }
 
+export function normalizeRosterSection(value?: string | null) {
+  const v = (value || '').trim().toLowerCase()
+  if (v.includes('service operation')) return 'Service Operation'
+  if (v.includes('repair retread') || v.includes('repair / retread') || v.includes('repair/retread') || v.includes('repair')) return 'Repair Retread'
+  return 'Crew Office'
+}
+
 export function canSwapOff(codeA?: ScheduleCode, codeB?: ScheduleCode) {
   return codeA === "OFF" || codeB === "OFF";
 }

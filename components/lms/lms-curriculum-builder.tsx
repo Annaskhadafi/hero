@@ -319,6 +319,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
   const [quizSettings, setQuizSettings] = useState<any>({})
   const [loading, setLoading] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [questionsLibraryOpen, setQuestionsLibraryOpen] = useState(false)
 
   useEffect(() => {
@@ -489,20 +490,35 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
     if (!file) return
 
     setUploadingFile(true)
+    setUploadProgress(0)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const result = await uploadFile(formData)
-      if (result.success && result.url) {
-        setFileUrl(result.readableUrl || result.url)
-        toast.success('File terupload')
-      } else {
-        toast.error(result.error || 'Gagal upload file')
-      }
-    } catch {
-      toast.error('Gagal upload file')
+      const ticketResponse = await fetch('/api/uploads/lms-presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, contentType: file.type || 'application/octet-stream' }),
+      })
+      const ticket = await ticketResponse.json()
+      if (!ticketResponse.ok) throw new Error(ticket.error || 'Gagal menyiapkan upload file')
+
+      await new Promise<void>((resolve, reject) => {
+        const request = new XMLHttpRequest()
+        request.upload.onprogress = (progressEvent) => {
+          if (progressEvent.lengthComputable) setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100))
+        }
+        request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error('Upload file ditolak oleh storage'))
+        request.onerror = () => reject(new Error('Koneksi upload terputus'))
+        request.open('PUT', ticket.uploadUrl)
+        request.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        request.send(file)
+      })
+
+      setFileUrl(ticket.url)
+      toast.success('File terupload')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal upload file')
     } finally {
       setUploadingFile(false)
+      setUploadProgress(null)
       event.target.value = ''
     }
   }
@@ -808,6 +824,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                                 {uploadingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                               </Button>
                             </div>
+                            {uploadProgress !== null && <p className="text-xs font-medium text-slate-600">Upload materi {uploadProgress}%</p>}
                             <DocumentMaterialPreview fileUrl={fileUrl} />
                           </div>
                         )}
@@ -927,6 +944,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                     {uploadingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                   </Button>
                 </div>
+                {uploadProgress !== null && <p className="text-xs font-medium text-slate-600">Upload materi {uploadProgress}%</p>}
                 <DocumentMaterialPreview fileUrl={fileUrl} />
               </div>
             )}

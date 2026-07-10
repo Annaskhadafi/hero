@@ -39,6 +39,12 @@ const tabs = [
     hint: 'Roster draft & tetap',
   },
   {
+    label: 'Schedule V2',
+    href: '/dashboard/scheduling-timesheet/schedule-v2',
+    icon: CalendarDays,
+    hint: 'Manual grid tanpa auto-generate',
+  },
+  {
     label: 'Sync Log',
     href: '/dashboard/scheduling-timesheet/attendance',
     icon: ClipboardList,
@@ -65,6 +71,7 @@ export function SchedulingTabs() {
     if (href === '/dashboard/scheduling-timesheet') {
       return pathname === href
     }
+    if (href === '/dashboard/scheduling-timesheet/schedule') return pathname === href
     return pathname?.startsWith(href)
   }
 

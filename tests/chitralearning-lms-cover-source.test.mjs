@@ -21,6 +21,7 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const uploadAction = read("app/actions/upload.ts");
   const curriculumBuilder = read("components/lms/lms-curriculum-builder.tsx");
   const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
+  const lmsPresignRoute = read("app/api/uploads/lms-presign/route.ts");
 
   assert.doesNotMatch(card, /next\/image/);
   assert.doesNotMatch(hero, /next\/image/);
@@ -81,6 +82,12 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(curriculumBuilder, /<DocumentMaterialPreview fileUrl=\{fileUrl\} \/>/);
   assert.match(uploadAction, /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/);
   assert.match(uploadAction, /OFFICE_EXTENSIONS = new Set\(\["doc", "docx", "ppt", "pptx"\]\)/);
+  assert.match(curriculumBuilder, /fetch\('\/api\/uploads\/lms-presign'/);
+  assert.match(curriculumBuilder, /request\.upload\.onprogress/);
+  assert.match(curriculumBuilder, /Upload materi \{uploadProgress\}%/);
+  assert.match(lmsPresignRoute, /createDirectS3UploadUrl/);
+  assert.match(lmsPresignRoute, /lms-materials/);
+  assert.doesNotMatch(lmsPresignRoute, /MAX_FILE_SIZE/);
   assert.match(questionsLibrary, /const result = await copyInternalLmsQuestionsAction/);
   assert.match(questionsLibrary, /onSuccess\?\.\(result\.questions \|\| \[\]\)/);
   assert.match(completeButton, /Selesai & Materi Selanjutnya/);
