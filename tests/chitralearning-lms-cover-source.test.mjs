@@ -20,6 +20,7 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const completeButton = read("components/lms/lms-lesson-complete-button.tsx");
   const uploadAction = read("app/actions/upload.ts");
   const curriculumBuilder = read("components/lms/lms-curriculum-builder.tsx");
+  const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
 
   assert.doesNotMatch(card, /next\/image/);
   assert.doesNotMatch(hero, /next\/image/);
@@ -42,8 +43,8 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(actions, /eq\(chitraLearningQuizQuestions\.lessonId, lessonId\)/);
   assert.match(quizPlayer, /dangerouslySetInnerHTML=\{\{ __html: html \|\| '' \}\}/);
   assert.match(quizPlayer, /questionImageUrl\?: string/);
-  assert.match(learnPage, /questionImageUrl: question\.questionImageUrl/);
-  assert.match(learnPage, /imageUrl: question\.optionAImageUrl/);
+  assert.match(learnPage, /questionImageUrl: resolveUploadUrl\(question\.questionImageUrl\)/);
+  assert.match(learnPage, /imageUrl: resolveUploadUrl\(question\.optionAImageUrl\)/);
   assert.match(quizPlayer, /Materi Selanjutnya/);
   assert.match(quizPlayer, /Kembali ke Kursus/);
   assert.match(quizPlayer, /\{courseHref && \(/);
@@ -57,8 +58,11 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(videoPlayer, /router\.refresh\(\)/);
   assert.match(quizPlayer, /router\.refresh\(\)/);
   assert.match(learnPage, /chitraLearningEnrollments/);
-  assert.match(learnPage, /progress: 10/);
+  assert.match(learnPage, /progress: Math\.max\(existingEnrollment\.progress, 10\)/);
   assert.match(actions, /completeInternalLmsLessonAction/);
+  assert.match(actions, /export async function duplicateLesson/);
+  assert.match(actions, /testPhase: targetPhase/);
+  assert.match(actions, /return \{ success: true, questions: copied \}/);
   assert.match(actions, /action: "quiz_submitted"/);
   assert.match(actions, /answers: questions\.map/);
   assert.doesNotMatch(playerSidebar, /Progress Anda/);
@@ -70,9 +74,14 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(curriculumBuilder, /accept="\.pdf,\.doc,\.docx,\.ppt,\.pptx"/);
   assert.match(curriculumBuilder, /accept="\.zip,\.pdf,\.doc,\.docx,\.ppt,\.pptx"/);
   assert.match(curriculumBuilder, /function DocumentMaterialPreview/);
+  assert.match(curriculumBuilder, /duplicateLesson\(parseInt\(lessonId, 10\)\)/);
+  assert.match(curriculumBuilder, /aria-label="Duplikat materi"/);
+  assert.match(curriculumBuilder, /setQuestions\(\(current\) => \[\.\.\.current, \.\.\.copiedQuestions\]\)/);
   assert.match(curriculumBuilder, /view\.officeapps\.live\.com\/op\/embed\.aspx/);
   assert.match(curriculumBuilder, /<DocumentMaterialPreview fileUrl=\{fileUrl\} \/>/);
   assert.match(uploadAction, /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/);
   assert.match(uploadAction, /OFFICE_EXTENSIONS = new Set\(\["doc", "docx", "ppt", "pptx"\]\)/);
+  assert.match(questionsLibrary, /const result = await copyInternalLmsQuestionsAction/);
+  assert.match(questionsLibrary, /onSuccess\?\.\(result\.questions \|\| \[\]\)/);
   assert.match(completeButton, /Selesai & Materi Selanjutnya/);
 });

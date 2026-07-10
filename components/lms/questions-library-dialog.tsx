@@ -21,7 +21,7 @@ export function QuestionsLibraryDialog({
   onOpenChange: (open: boolean) => void
   courseId: number
   lessonId: number
-  onSuccess?: () => void
+  onSuccess?: (questions: any[]) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [copying, setCopying] = useState(false)
@@ -66,10 +66,10 @@ export function QuestionsLibraryDialog({
     if (selectedIds.size === 0) return
     setCopying(true)
     try {
-      await copyInternalLmsQuestionsAction(Array.from(selectedIds), courseId, lessonId)
+      const result = await copyInternalLmsQuestionsAction(Array.from(selectedIds), courseId, lessonId)
       toast.success(`${selectedIds.size} soal berhasil ditambahkan`)
       onOpenChange(false)
-      onSuccess?.()
+      onSuccess?.(result.questions || [])
       router.refresh()
     } catch (e) {
       toast.error('Gagal menyalin soal')

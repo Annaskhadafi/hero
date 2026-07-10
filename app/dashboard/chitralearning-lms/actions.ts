@@ -310,6 +310,66 @@ export async function deleteLesson(lessonId: number) {
   return { success: true };
 }
 
+export async function duplicateLesson(lessonId: number) {
+  const session = await getServerSession();
+  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+
+  const [source] = await db.select().from(chitraLearningLessons).where(eq(chitraLearningLessons.id, lessonId)).limit(1);
+  if (!source) throw new Error("Materi tidak ditemukan");
+
+  const [maxOrder] = await db
+    .select({ max: sql<number>`MAX(sort_order)` })
+    .from(chitraLearningLessons)
+    .where(eq(chitraLearningLessons.courseId, source.courseId));
+
+  const [created] = await db.insert(chitraLearningLessons).values({
+    courseId: source.courseId,
+    title: `${source.title} (Copy)`,
+    description: source.description,
+    sectionTitle: source.sectionTitle,
+    sectionOrder: source.sectionOrder,
+    lessonType: source.lessonType,
+    videoUrl: source.videoUrl,
+    fileUrl: source.fileUrl,
+    durationMinutes: source.durationMinutes,
+    quizSettings: source.quizSettings,
+    sortOrder: (maxOrder?.max || 0) + 1,
+    isRequired: source.isRequired,
+  }).returning();
+
+  const questions = await db
+    .select()
+    .from(chitraLearningQuizQuestions)
+    .where(eq(chitraLearningQuizQuestions.lessonId, source.id))
+    .orderBy(asc(chitraLearningQuizQuestions.sortOrder), asc(chitraLearningQuizQuestions.id));
+
+  if (questions.length) {
+    await db.insert(chitraLearningQuizQuestions).values(questions.map((question, index) => ({
+      courseId: source.courseId,
+      lessonId: created.id,
+      testPhase: question.testPhase,
+      questionText: question.questionText,
+      questionImageUrl: question.questionImageUrl,
+      optionA: question.optionA,
+      optionAImageUrl: question.optionAImageUrl,
+      optionB: question.optionB,
+      optionBImageUrl: question.optionBImageUrl,
+      optionC: question.optionC,
+      optionCImageUrl: question.optionCImageUrl,
+      optionD: question.optionD,
+      optionDImageUrl: question.optionDImageUrl,
+      correctOption: question.correctOption,
+      points: question.points,
+      sortOrder: index + 1,
+    })));
+  }
+
+  revalidateLms();
+  return created;
+}
+
 export async function deleteQuizQuestion(questionId: number) {
   const session = await getServerSession();
   const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
@@ -385,6 +445,13 @@ export async function copyInternalLmsQuestionsAction(sourceQuestionIds: number[]
 
   if (!sourceQuestionIds.length) return { success: true };
 
+  const [targetLesson] = await db
+    .select({ lessonType: chitraLearningLessons.lessonType })
+    .from(chitraLearningLessons)
+    .where(eq(chitraLearningLessons.id, targetLessonId))
+    .limit(1);
+  const targetPhase = targetLesson?.lessonType === "pretest" ? "pretest" : "posttest";
+
   // Fetch source questions
   const sourceQuestions = await db
     .select()
@@ -404,7 +471,7 @@ export async function copyInternalLmsQuestionsAction(sourceQuestionIds: number[]
   const newQuestions = sourceQuestions.map(q => ({
     courseId: targetCourseId,
     lessonId: targetLessonId,
-    testPhase: q.testPhase,
+    testPhase: targetPhase,
     questionText: q.questionText,
     questionImageUrl: q.questionImageUrl,
     optionA: q.optionA,
@@ -420,11 +487,11 @@ export async function copyInternalLmsQuestionsAction(sourceQuestionIds: number[]
     sortOrder: nextOrder++,
   }));
 
-  await db.insert(chitraLearningQuizQuestions).values(newQuestions);
+  const copied = await db.insert(chitraLearningQuizQuestions).values(newQuestions).returning();
 
   revalidateLms();
   revalidatePath(`/dashboard/chitralearning-lms/courses/${targetCourseId}/edit`);
-  return { success: true };
+  return { success: true, questions: copied };
 }
 
 async function getCurrentEmployeeId() {

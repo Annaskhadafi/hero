@@ -21,6 +21,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen,
   ChevronDown,
+  Copy,
   Edit2,
   FileQuestion,
   FileText,
@@ -39,7 +40,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
-import { createLesson, deleteLesson, deleteQuizQuestion, reorderCurriculum, updateLesson } from '@/app/dashboard/chitralearning-lms/actions'
+import { createLesson, deleteLesson, deleteQuizQuestion, duplicateLesson, reorderCurriculum, updateLesson } from '@/app/dashboard/chitralearning-lms/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -154,6 +155,7 @@ function SortableLesson({
   sectionId,
   onSelect,
   onDelete,
+  onDuplicate,
   onReorder,
 }: {
   lesson: BuilderLesson
@@ -161,6 +163,7 @@ function SortableLesson({
   sectionId: string
   onSelect: (id: string) => void
   onDelete: (lessonId: string, sectionId: string) => void
+  onDuplicate: (lessonId: string, sectionId: string) => void
   onReorder: (sectionId: string, oldIndex: number, newIndex: number) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `lesson-${sectionId}-${lesson.id}` })
@@ -189,6 +192,9 @@ function SortableLesson({
         {lesson.title}
       </button>
       {isQuizType(lesson.type) && <Badge variant="outline" className="h-5 rounded-[4px] bg-white px-1.5 text-[10px] uppercase">Quiz</Badge>}
+      <button type="button" onClick={() => onDuplicate(lesson.id, sectionId)} className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-blue-50 hover:text-blue-600" aria-label="Duplikat materi">
+        <Copy className="h-3.5 w-3.5" />
+      </button>
       <button type="button" onClick={() => onDelete(lesson.id, sectionId)} className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-500" aria-label="Hapus materi">
         <Trash2 className="h-3.5 w-3.5" />
       </button>
@@ -204,6 +210,7 @@ function SortableSection({
   onImportMaterials,
   onSelectLesson,
   onDeleteLesson,
+  onDuplicateLesson,
   removeSection,
   onReorderLessons,
 }: {
@@ -214,6 +221,7 @@ function SortableSection({
   onImportMaterials: (sectionId: string) => void
   onSelectLesson: (lessonId: string) => void
   onDeleteLesson: (lessonId: string, sectionId: string) => void
+  onDuplicateLesson: (lessonId: string, sectionId: string) => void
   removeSection: (id: string) => void
   onReorderLessons: (sectionId: string, oldIndex: number, newIndex: number) => void
 }) {
@@ -272,6 +280,7 @@ function SortableSection({
                   isActive={activeLessonId === lesson.id}
                   onSelect={onSelectLesson}
                   onDelete={onDeleteLesson}
+                  onDuplicate={onDuplicateLesson}
                   onReorder={onReorderLessons}
                 />
               ))}
@@ -427,6 +436,38 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
       router.refresh()
     } catch {
       toast.error('Gagal hapus materi')
+    }
+  }
+
+  async function handleDuplicateLesson(lessonId: string, sectionId: string) {
+    const section = sections.find((item) => item.id === sectionId)
+    const source = section?.lessons.find((lesson) => lesson.id === lessonId)
+    if (!section || !source) return
+
+    try {
+      if (lessonId.startsWith('new-')) {
+        const copy = { ...source, id: `new-${Date.now()}`, title: `${source.title} (Copy)` }
+        setAndEmit(sections.map((item) => item.id === sectionId ? { ...item, lessons: [...item.lessons, copy] } : item))
+        toast.success('Materi diduplikat')
+        return
+      }
+
+      const created = await duplicateLesson(parseInt(lessonId, 10))
+      const copy: BuilderLesson = {
+        id: String(created.id),
+        title: created.title,
+        type: created.lessonType as LessonType,
+        description: created.description,
+        videoUrl: created.videoUrl,
+        fileUrl: created.fileUrl,
+        durationMinutes: created.durationMinutes,
+        quizSettings: created.quizSettings,
+      }
+      setAndEmit(sections.map((item) => item.id === sectionId ? { ...item, lessons: [...item.lessons, copy] } : item))
+      toast.success('Materi diduplikat')
+      router.refresh()
+    } catch {
+      toast.error('Gagal duplikat materi')
     }
   }
 
@@ -595,6 +636,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                     onImportMaterials={openImportMaterials}
                     onSelectLesson={setActiveLessonId}
                     onDeleteLesson={handleDeleteLesson}
+                    onDuplicateLesson={handleDuplicateLesson}
                     removeSection={removeSection}
                     onReorderLessons={handleReorderLessons}
                   />
@@ -909,8 +951,8 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
           onOpenChange={setQuestionsLibraryOpen}
           courseId={courseId}
           lessonId={parseInt(activeLesson.id, 10)}
-          onSuccess={() => {
-            // refresh data
+          onSuccess={(copiedQuestions) => {
+            setQuestions((current) => [...current, ...copiedQuestions])
             router.refresh()
           }}
         />
