@@ -35,6 +35,7 @@ import {
   Trash2,
   Upload,
   Video,
+  Presentation,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -52,7 +53,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { QuestionsLibraryDialog } from './questions-library-dialog'
 
-export type LessonType = 'video' | 'article' | 'quiz' | 'pretest' | 'posttest'
+export type LessonType = 'video' | 'article' | 'quiz' | 'pretest' | 'posttest' | 'google_slide'
 
 export interface BuilderLesson {
   id: string
@@ -97,6 +98,7 @@ interface LmsCurriculumBuilderProps {
 function lessonIcon(type: LessonType) {
   if (type === 'video') return <Video className="h-4 w-4" />
   if (type === 'quiz' || type === 'pretest' || type === 'posttest') return <HelpCircle className="h-4 w-4" />
+  if (type === 'google_slide') return <Presentation className="h-4 w-4" />
   return <FileText className="h-4 w-4" />
 }
 
@@ -104,6 +106,7 @@ function lessonLabel(type: LessonType) {
   if (type === 'pretest') return 'Pre-test'
   if (type === 'posttest') return 'Post-test'
   if (type === 'article') return 'Text lesson'
+  if (type === 'google_slide') return 'Google Slide'
   return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
@@ -814,6 +817,18 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                               </div>
                             )}
                           </div>
+                        ) : lessonType === 'google_slide' ? (
+                          <div className="grid gap-2">
+                            <Label>Embed Link Google Slide</Label>
+                            <Input 
+                               value={fileUrl} 
+                               onChange={(event) => setFileUrl(event.target.value)} 
+                               placeholder='<iframe src="https://docs.google.com/presentation/d/e/.../pubembed?..." ...></iframe>' 
+                            />
+                            {fileUrl && fileUrl.includes('<iframe') && (
+                              <div className="mt-2 w-full max-w-xl overflow-hidden rounded-md border border-slate-200 bg-slate-100 flex items-center justify-center [&>iframe]:w-full [&>iframe]:h-80" dangerouslySetInnerHTML={{ __html: fileUrl }} />
+                            )}
+                          </div>
                         ) : (
                           <div className="grid gap-2">
                             <Label>Lesson materials</Label>
@@ -908,6 +923,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                 <SelectContent>
                   <SelectItem value="video">Video</SelectItem>
                   <SelectItem value="article">Text lesson / Dokumen</SelectItem>
+                  <SelectItem value="google_slide">Google Slide</SelectItem>
                   <SelectItem value="pretest">Pre-test</SelectItem>
                   <SelectItem value="quiz">Quiz</SelectItem>
                   <SelectItem value="posttest">Post-test</SelectItem>
@@ -946,6 +962,16 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                 </div>
                 {uploadProgress !== null && <p className="text-xs font-medium text-slate-600">Upload materi {uploadProgress}%</p>}
                 <DocumentMaterialPreview fileUrl={fileUrl} />
+              </div>
+            )}
+            {lessonType === 'google_slide' && (
+              <div className="grid gap-2">
+                <Label>Embed Link Google Slide</Label>
+                <Input 
+                   value={fileUrl} 
+                   onChange={(event) => setFileUrl(event.target.value)} 
+                   placeholder='<iframe src="https://docs.google.com/presentation/d/e/.../pubembed?..." ...></iframe>' 
+                />
               </div>
             )}
             <div className="grid gap-2">

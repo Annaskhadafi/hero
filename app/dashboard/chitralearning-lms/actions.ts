@@ -22,7 +22,12 @@ import {
 } from "@/db/schema/hero";
 import { sendLmsNotification } from "@/lib/chitralearning-lms/notifications";
 import { getServerSession } from "@/lib/auth-session";
-import { runInternalLmsReminderTick, slugifyCourseTitle } from "@/lib/chitralearning-lms";
+import { 
+  runInternalLmsReminderTick, 
+  slugifyCourseTitle,
+  isLmsAdmin 
+} from "@/lib/chitralearning-lms";
+import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 
 const LMS_PATH = "/dashboard/chitralearning-lms";
 
@@ -649,6 +654,10 @@ export async function completeInternalLmsLessonAction(input: { courseId: number;
     afterValue: { lessonId: input.lessonId, progress },
   });
 
+  if (progress >= 100 && employee.email) {
+    syncLmsToTrainingRecords(employee.email).catch(console.error);
+  }
+
   revalidateLms();
   return { progress };
 }
@@ -1224,6 +1233,10 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
     if (passed && course.certificateEnabled) {
       await issueCertificateForEmployee(courseId, employee.id, enrollment.id, employee.id, "auto_issued_after_posttest");
+    }
+
+    if (passed && employee.email) {
+      syncLmsToTrainingRecords(employee.email).catch(console.error);
     }
 
     await db

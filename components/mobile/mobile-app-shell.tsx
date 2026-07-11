@@ -100,7 +100,7 @@ const drawerItems: DrawerItem[] = [
   { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
   { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText },
   { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature },
-  { type: 'link', label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
+  { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen },
   { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert },
   { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
   { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy },
@@ -407,40 +407,42 @@ export function MobileAppShell({
           ) : null}
         </main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] bg-white/94 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-18px_36px_rgba(8,32,51,0.08)] backdrop-blur-xl">
-          <div
-            className="grid gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${Math.max(visibleBottomNavItems.length, 1)}, minmax(0, 1fr))`,
-            }}
-          >
-            {visibleBottomNavItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+        {!pathname.includes('/learn/') && (
+          <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] bg-white/94 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-18px_36px_rgba(8,32,51,0.08)] backdrop-blur-xl">
+            <div
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(visibleBottomNavItems.length, 1)}, minmax(0, 1fr))`,
+              }}
+            >
+              {visibleBottomNavItems.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
 
-              return (
-                <Link
-                  prefetch={false}
-                  key={item.href}
-                  href={item.href}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => beginNavigation(item.href)}
-                  className={cn(
-                    'flex min-h-12 touch-manipulation flex-col items-center justify-center gap-1 rounded-lg px-1 text-[9px] font-black tracking-[0.02em] uppercase transition active:scale-[0.96]',
-                    isActive
-                      ? 'bg-[#003f78] text-white shadow-[0_12px_26px_rgba(0,63,120,0.22)]'
-                      : pendingHref === item.href
-                        ? 'bg-[#e9f6fd] text-[#003f78]'
-                        : 'text-[#486275] active:bg-[#eaf4fb]'
-                  )}
-                >
-                  <Icon className="size-4" />
-                  <span className="max-w-full truncate leading-none">{item.label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
+                return (
+                  <Link
+                    prefetch={false}
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => beginNavigation(item.href)}
+                    className={cn(
+                      'flex min-h-12 touch-manipulation flex-col items-center justify-center gap-1 rounded-lg px-1 text-[9px] font-black tracking-[0.02em] uppercase transition active:scale-[0.96]',
+                      isActive
+                        ? 'bg-[#003f78] text-white shadow-[0_12px_26px_rgba(0,63,120,0.22)]'
+                        : pendingHref === item.href
+                          ? 'bg-[#e9f6fd] text-[#003f78]'
+                          : 'text-[#486275] active:bg-[#eaf4fb]'
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    <span className="max-w-full truncate leading-none">{item.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </nav>
+        )}
       </div>
     </div>
   )

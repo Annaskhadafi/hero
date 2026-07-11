@@ -39,7 +39,7 @@ interface LmsQuizPlayerProps {
 function QuizHtml({ html, className = '' }: { html: string; className?: string }) {
   return (
     <div
-      className={`prose prose-slate max-w-none [&_img]:my-4 [&_img]:max-h-[360px] [&_img]:rounded-xl [&_img]:border [&_img]:border-slate-200 [&_img]:object-contain ${className}`}
+      className={`prose prose-slate max-w-none break-words [&_img]:my-4 [&_img]:max-h-[360px] [&_img]:rounded-xl [&_img]:border [&_img]:border-slate-200 [&_img]:object-contain ${className}`}
       dangerouslySetInnerHTML={{ __html: html || '' }}
     />
   )
@@ -155,8 +155,8 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
 
   if (submitted) {
     return (
-      <Card className={`w-full max-w-2xl mx-auto border ${scoreResult?.passed === false ? 'border-amber-100 bg-amber-50/10' : 'border-emerald-100 bg-emerald-50/50'}`}>
-        <CardContent className="p-12 text-center flex flex-col items-center">
+      <Card className={`w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm ${scoreResult?.passed === false ? 'sm:border-amber-100 bg-amber-50/10' : 'sm:border-emerald-100 bg-emerald-50/50'}`}>
+        <CardContent className="p-6 sm:p-12 text-center flex flex-col items-center">
           {scoreResult?.passed === false ? (
             <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
           ) : (
@@ -205,8 +205,8 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
   }
 
   return (
-    <Card className="w-full max-w-3xl mx-auto border-slate-200">
-      <CardContent className="p-8">
+    <Card className="w-full max-w-3xl mx-auto border-0 sm:border border-slate-200 shadow-none sm:shadow-sm">
+      <CardContent className="p-4 sm:p-8">
         <div className="flex items-center justify-between mb-8">
           <Badge variant="outline" className="text-slate-500">
             Pertanyaan {currentQuestionIndex + 1} dari {questions.length}
@@ -225,7 +225,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
           )}
           <QuizHtml 
             html={qType === 'fill_in_the_gap' ? question.question.replace(/\[BLANK\]/g, '____') : question.question} 
-            className="text-xl font-medium leading-relaxed text-slate-900" 
+            className="text-lg sm:text-xl font-medium leading-relaxed text-slate-900 break-words" 
           />
         </div>
 

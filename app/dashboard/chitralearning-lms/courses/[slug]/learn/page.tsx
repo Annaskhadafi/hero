@@ -184,7 +184,7 @@ export default async function LmsCoursePlayerPage({
     : ''
   const pdfViewerUrl = isPdfResource ? `${fileUrl}${fileUrl.includes('#') ? '&' : '#'}toolbar=0&navpanes=0&scrollbar=1` : ''
 
-  const isDocument = isPdfResource || isOfficeResource
+  const isDocument = isPdfResource || isOfficeResource || activeLessonType === 'google_slide'
   const playerContainerClass = isDocument ? "w-full max-w-none lg:px-4" : "w-full max-w-5xl"
 
   return (
@@ -256,7 +256,9 @@ export default async function LmsCoursePlayerPage({
                   {activeLesson.description ? (
                     <div dangerouslySetInnerHTML={{ __html: activeLesson.description }} />
                   ) : null}
-                  {fileUrl ? (
+                  {activeLessonType === 'google_slide' && rawFileUrl && rawFileUrl.includes('<iframe') ? (
+                    <div className="mt-6 not-prose w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center [&>iframe]:w-full [&>iframe]:h-[82vh]" dangerouslySetInnerHTML={{ __html: rawFileUrl }} />
+                  ) : fileUrl && activeLessonType !== 'google_slide' ? (
                     <div className="mt-6 not-prose">
                       {isPdfResource ? (
                         <iframe
@@ -280,7 +282,7 @@ export default async function LmsCoursePlayerPage({
                       )}
                     </div>
                   ) : null}
-                  {!activeLesson.description && !fileUrl ? 'Konten tidak tersedia.' : null}
+                  {!activeLesson.description && !rawFileUrl ? 'Konten tidak tersedia.' : null}
                 </div>
                 <LmsLessonCompleteButton courseId={course.id} lessonId={activeLesson.id} nextLessonHref={nextLessonHref} />
               </div>

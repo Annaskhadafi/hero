@@ -18,7 +18,8 @@ import {
   Dumbbell,
   Trophy,
   Route,
-  HardHat
+  HardHat,
+  BookOpen
 } from "lucide-react";
 import {
   IconBook,
@@ -132,12 +133,11 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-rose-500/10 text-rose-600",
     },
     {
-      title: "Chitra LMS",
-      href: "/api/lms/sso",
+      title: "Chitra Learning",
+      href: "/mobile/chitralearning",
       resource: "lms_integration",
-      target: "_blank",
-      icon: Sparkles,
-      bg: "bg-purple-500/10 text-purple-600",
+      icon: BookOpen,
+      bg: "bg-[#0ea5b0]/10 text-[#003461]",
     },
     {
       title: "Curhat HR",
