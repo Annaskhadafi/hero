@@ -1,116 +1,196 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import * as fabric from 'fabric'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Download } from 'lucide-react'
 
-export function CertificateViewer({ template, variables }: { template: any, variables: Record<string, string> }) {
+export function CertificateViewer({ variables }: { variables: Record<string, string> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [canvas, setCanvas] = useState<fabric.StaticCanvas | null>(null)
+  const canvasInstanceRef = useRef<fabric.StaticCanvas | null>(null)
+
+  // Extract variables to avoid object reference dependency issues in useEffect
+  const { employeeName, courseTitle, date, certificateNumber } = variables
 
   useEffect(() => {
-    if (canvasRef.current && !canvas) {
-      // Use StaticCanvas for view-only
-      const initCanvas = new fabric.StaticCanvas(canvasRef.current, {
-        width: 800,
-        height: 600,
-        backgroundColor: '#ffffff'
-      })
-      setCanvas(initCanvas)
+    if (!canvasRef.current) return
 
-      if (template?.canvasData && Object.keys(template.canvasData).length > 0) {
-        let jsonData = JSON.stringify(template.canvasData)
-        jsonData = jsonData.replace(/https?:\/\/[^"'\s\\]+\/(upload|attendance-photos|profile-photos|curhat)\/([^"'\s\\]+)/g, '/api/uploads/$1/$2')
-        initCanvas.loadFromJSON(JSON.parse(jsonData)).then(() => {
-          // Replace variables
-          const objects = initCanvas.getObjects()
-          objects.forEach(obj => {
-            if (obj.type === 'i-text' || obj.type === 'text') {
-              const textObj = obj as fabric.IText
-              let text = textObj.text || ''
-              
-              // Replace all matching {{var}}
-              Object.keys(variables).forEach(key => {
-                const regex = new RegExp(`{{${key}}}`, 'g')
-                text = text.replace(regex, variables[key])
-              })
-              
-              textObj.set({ text })
-            }
-          })
-          
-          // Render QR Code
-          const qrcodePlaceholder = objects.find(obj => obj.name === 'qrcode_placeholder')
-          if (qrcodePlaceholder && variables.certificateNumber) {
-            const verificationUrl = `${window.location.origin}/verify-certificate/${variables.certificateNumber}`
-            QRCode.toDataURL(verificationUrl, { margin: 1, scale: 4 }).then(dataUrl => {
-              fabric.FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' }).then(img => {
-                if (img) {
-                  img.set({
-                    left: qrcodePlaceholder.left,
-                    top: qrcodePlaceholder.top,
-                  })
-                  // Scale to fit the placeholder size (which is 100x100)
-                  const scaleX = (qrcodePlaceholder.width || 100) / img.width!
-                  const scaleY = (qrcodePlaceholder.height || 100) / img.height!
-                  img.scaleX = scaleX
-                  img.scaleY = scaleY
-                  
-                  initCanvas.remove(qrcodePlaceholder)
-                  initCanvas.add(img)
-                  initCanvas.renderAll()
-                }
-              })
-            })
-          }
+    // Initialize canvas
+    const canvas = new fabric.StaticCanvas(canvasRef.current, {
+      width: 1000,
+      height: 707,
+      backgroundColor: '#ffffff'
+    })
+    canvasInstanceRef.current = canvas
 
-          initCanvas.renderAll()
-        })
-      }
-      
-      return () => {
-        initCanvas.dispose()
-      }
-    }
-  }, [canvasRef, canvas, template, variables])
-
-  useEffect(() => {
-    if (canvas && template.backgroundImageUrl) {
-      const getProxiedUrl = (url: string) => {
-        if (!url || url.startsWith('/')) return url;
-        const match = url.match(/(?:upload|attendance-photos|profile-photos|curhat)\/.+/);
-        return match ? `/api/uploads/${match[0]}` : url;
-      };
-      
-      const proxyUrl = getProxiedUrl(template.backgroundImageUrl);
-      
-      fabric.FabricImage.fromURL(proxyUrl, { crossOrigin: 'anonymous' }).then((img) => {
-        if (!img) return;
+    // Load background image
+    const bgUrl = '/CERTIFICATE-LMS-CLEAR.png'
+    fabric.FabricImage.fromURL(bgUrl, { crossOrigin: 'anonymous' }).then((img) => {
+      if (img && canvasInstanceRef.current) {
         img.set({
-          scaleX: canvas.width! / img.width!,
-          scaleY: canvas.height! / img.height!,
+          scaleX: 1000 / img.width!,
+          scaleY: 707 / img.height!,
           originX: 'left',
           originY: 'top'
-        });
-        canvas.backgroundImage = img;
+        })
+        canvas.backgroundImage = img
         canvas.renderAll()
-      }).catch(err => {
-        console.error("Fabric load error:", err);
+      }
+    }).catch(err => {
+      console.error("Failed to load certificate background image:", err)
+    })
+
+    // Add Name Text
+    const nameText = new fabric.Text(employeeName || '', {
+      left: 500,
+      top: 320,
+      originX: 'center',
+      originY: 'middle',
+      fontSize: 36,
+      fontWeight: 'bold',
+      fontFamily: 'sans-serif',
+      fill: '#0f172a',
+      textAlign: 'center'
+    })
+    canvas.add(nameText)
+
+    // Add Course Title Text
+    const courseText = new fabric.Text(courseTitle || '', {
+      left: 500,
+      top: 430,
+      originX: 'center',
+      originY: 'middle',
+      fontSize: 24,
+      fontWeight: 'normal',
+      fontFamily: 'sans-serif',
+      fill: '#1e40af',
+      textAlign: 'center'
+    })
+    canvas.add(courseText)
+
+    // Add Date Text
+    const dateText = new fabric.Text(`Diberikan pada tanggal: ${date || ''}`, {
+      left: 500,
+      top: 500,
+      originX: 'center',
+      originY: 'middle',
+      fontSize: 16,
+      fontFamily: 'sans-serif',
+      fill: '#475569',
+      textAlign: 'center'
+    })
+    canvas.add(dateText)
+
+    // Add Certificate Number Text
+    const certNoText = new fabric.Text(`No: ${certificateNumber || ''}`, {
+      left: 500,
+      top: 540,
+      originX: 'center',
+      originY: 'middle',
+      fontSize: 14,
+      fontFamily: 'sans-serif',
+      fill: '#64748b',
+      textAlign: 'center'
+    })
+    canvas.add(certNoText)
+
+    // Add QR Code at the bottom right corner
+    if (certificateNumber) {
+      const verificationUrl = `${window.location.origin}/verify-certificate/${certificateNumber}`
+      QRCode.toDataURL(verificationUrl, { margin: 1, scale: 4 }).then(dataUrl => {
+        fabric.FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' }).then(qrImg => {
+          if (qrImg && canvasInstanceRef.current) {
+            qrImg.set({
+              left: 880,
+              top: 580,
+              scaleX: 80 / qrImg.width!,
+              scaleY: 80 / qrImg.height!,
+            })
+            canvas.add(qrImg)
+            canvas.renderAll()
+          }
+        })
       })
     }
-  }, [canvas, template])
 
-  function handleDownload() {
+    canvas.renderAll()
+
+    return () => {
+      canvas.dispose()
+      canvasInstanceRef.current = null
+    }
+  }, [employeeName, courseTitle, date, certificateNumber])
+
+  function handleDownloadPng() {
+    const canvas = canvasInstanceRef.current
     if (!canvas) return
     const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 })
     const link = document.createElement('a')
-    link.download = `Sertifikat-${variables.employeeName}.png`
+    link.download = `Sertifikat-${employeeName}.png`
     link.href = dataUrl
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  function handleDownloadJpg() {
+    const canvas = canvasInstanceRef.current
+    if (!canvas) return
+    const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1 })
+    const link = document.createElement('a')
+    link.download = `Sertifikat-${employeeName}.jpg`
+    link.href = dataUrl
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  function handleDownloadPdf() {
+    const canvas = canvasInstanceRef.current
+    if (!canvas) return
+    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 })
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Sertifikat - ${employeeName}</title>
+          <style>
+            @page {
+              size: A4 landscape;
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              background-color: #fff;
+            }
+            img {
+              max-width: 100%;
+              max-height: 100%;
+              object-fit: contain;
+            }
+            @media print {
+              body {
+                background: none;
+              }
+              img {
+                width: 100vw;
+                height: 100vh;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <img src="${dataUrl}" onload="window.print(); window.close();" />
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
   }
 
   return (
@@ -118,10 +198,18 @@ export function CertificateViewer({ template, variables }: { template: any, vari
       <div className="border border-slate-300 shadow-sm max-w-full overflow-x-auto relative rounded-md bg-white">
         <canvas ref={canvasRef} />
       </div>
-      <div className="mt-6 flex justify-center">
-        <Button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700">
+      <div className="mt-6 flex flex-wrap gap-3 justify-center">
+        <Button onClick={handleDownloadPng} className="bg-blue-600 hover:bg-blue-700">
           <Download className="h-4 w-4 mr-2" />
-          Download Sertifikat (PNG)
+          Download PNG
+        </Button>
+        <Button onClick={handleDownloadJpg} className="bg-slate-700 hover:bg-slate-800">
+          <Download className="h-4 w-4 mr-2" />
+          Download JPG
+        </Button>
+        <Button onClick={handleDownloadPdf} className="bg-emerald-600 hover:bg-emerald-700">
+          <Download className="h-4 w-4 mr-2" />
+          Download PDF
         </Button>
       </div>
     </div>

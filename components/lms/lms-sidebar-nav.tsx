@@ -76,12 +76,7 @@ const ADMIN_ITEMS = [
     icon: Megaphone,
     color: 'orange',
   },
-  {
-    title: 'Certificate Builder',
-    href: '/dashboard/chitralearning-lms/certificates/builder',
-    icon: Award,
-    color: 'amber',
-  },
+
   {
     title: 'Learning Paths',
     href: '/dashboard/chitralearning-lms/paths',

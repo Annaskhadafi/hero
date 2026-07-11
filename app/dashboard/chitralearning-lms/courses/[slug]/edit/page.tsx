@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
-import { chitraLearningCourses, chitraLearningLessons, chitraLearningQuizQuestions, chitraLearningCourseAccess, chitraLearningCertificateTemplates } from '@/db/schema/hero'
+import { chitraLearningCourses, chitraLearningLessons, chitraLearningQuizQuestions, chitraLearningCourseAccess } from '@/db/schema/hero'
 import { eq, asc } from 'drizzle-orm'
 import { LmsCurriculumBuilder, type BuilderSection } from '@/components/lms/lms-curriculum-builder'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Eye, Save } from 'lucide-react'
 import Link from 'next/link'
 import { EditCourseInfoForm, EditCourseSettingsForm, EditCourseAccessForm } from './client-forms'
-import { CertificateBuilder } from './certificate-builder'
 import { chitraLearningCategories, employees } from '@/db/schema/hero'
 import { updateCourseSettings } from '../../../actions'
 
@@ -63,11 +62,7 @@ export default async function LmsCourseEditPage({ params, searchParams }: { para
     .where(eq(chitraLearningCourseAccess.courseId, course.id))
     .orderBy(asc(chitraLearningCourseAccess.id))
 
-  const [certificateTemplate] = await db
-    .select()
-    .from(chitraLearningCertificateTemplates)
-    .where(eq(chitraLearningCertificateTemplates.courseId, course.id))
-    .limit(1)
+
 
   // Fetch unique departments and sections for access rules
   const allEmployees = await db.select({ department: employees.department, section: employees.section }).from(employees)
@@ -177,12 +172,11 @@ export default async function LmsCourseEditPage({ params, searchParams }: { para
           </div>
         </div>
 
-        <TabsList className="grid h-12 w-full grid-cols-5 rounded-none bg-slate-100 p-1 2xl:hidden">
+        <TabsList className="grid h-12 w-full grid-cols-4 rounded-none bg-slate-100 p-1 2xl:hidden">
           <TabsTrigger value="curriculum">Curriculum</TabsTrigger>
           <TabsTrigger value="info">Info</TabsTrigger>
           <TabsTrigger value="settings">Pengaturan</TabsTrigger>
           <TabsTrigger value="access">Akses</TabsTrigger>
-          <TabsTrigger value="certificate">Sertifikat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="curriculum" className="mt-0 p-3">
@@ -233,15 +227,6 @@ export default async function LmsCourseEditPage({ params, searchParams }: { para
               </div>
             </TabsContent>
 
-        <TabsContent value="certificate" className="mt-0 p-6">
-          <div className="rounded-[10px] border border-slate-200 bg-white p-6">
-            <div className="mb-6">
-              <h2 className="font-heading text-lg font-semibold text-slate-950">Sertifikat (Certificate Builder)</h2>
-              <p className="text-sm text-slate-500">Desain sertifikat kelulusan dengan drag-and-drop elemen dinamis.</p>
-            </div>
-            <CertificateBuilder courseId={course.id} initialTemplate={certificateTemplate || null} />
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   )

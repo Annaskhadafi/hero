@@ -654,6 +654,11 @@ export async function completeInternalLmsLessonAction(input: { courseId: number;
     afterValue: { lessonId: input.lessonId, progress },
   });
 
+  const course = await getCourse(input.courseId);
+  if (progress >= 100 && course?.certificateEnabled) {
+    await issueCertificateForEmployee(input.courseId, employee.id, enrollment.id, employee.id, "auto_issued_after_lessons_completion");
+  }
+
   if (progress >= 100 && employee.email) {
     syncLmsToTrainingRecords(employee.email).catch(console.error);
   }

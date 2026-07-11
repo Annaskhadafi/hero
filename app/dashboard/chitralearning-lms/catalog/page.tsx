@@ -48,7 +48,13 @@ export default async function LmsCatalogPage() {
     if (inProgress) {
       enrollment = { progress: inProgress.enrollment?.progress || 0, status: 'in-progress' }
     } else if (completed) {
-      enrollment = { progress: 100, status: 'completed' }
+      const certNumber = completed.certificate?.certificateNumber || `CL-${new Date().getFullYear()}-${course.id}-${currentEmployee?.id}`
+      enrollment = {
+        progress: 100,
+        status: 'completed',
+        certificateNumber: certNumber,
+        employeeName: currentEmployee?.name || ''
+      }
     }
 
     return {

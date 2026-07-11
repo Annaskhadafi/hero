@@ -8,6 +8,9 @@ import { resolveClientUploadUrl } from '@/lib/client-url'
 import { Progress } from '@/components/ui/progress'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CertificateViewer } from '@/app/verify-certificate/[certificateNumber]/client-viewer'
+import { Button } from '@/components/ui/button'
 
 export interface LmsCourseCardProps {
   course: {
@@ -24,6 +27,8 @@ export interface LmsCourseCardProps {
   enrollment?: {
     progress: number
     status: string
+    certificateNumber?: string
+    employeeName?: string
   }
   href: string
 }
@@ -32,6 +37,7 @@ export function LmsCourseCard({ course, enrollment, href }: LmsCourseCardProps) 
   const isDraft = course.status === 'draft'
   const isEnrolled = !!enrollment
   const [coverFailed, setCoverFailed] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const hasCover = Boolean(course.coverImageUrl && !coverFailed)
   
   const getLevelBadgeColor = (level: string) => {
@@ -113,12 +119,22 @@ export function LmsCourseCard({ course, enrollment, href }: LmsCourseCardProps) 
               <span className="text-slate-900">{enrollment.progress}%</span>
             </div>
             <Progress value={enrollment.progress} className="h-1.5" />
-            <Link
-              href={href}
-              className={cn(buttonVariants({ size: "sm", variant: enrollment.progress === 100 ? "outline" : "default" }), "mt-2 w-full")}
-            >
-              {enrollment.progress === 100 ? "View Certificate" : "Continue"}
-            </Link>
+            {enrollment.progress === 100 ? (
+              <Button
+                variant="outline"
+                className="mt-2 w-full"
+                onClick={() => setIsModalOpen(true)}
+              >
+                View Certificate
+              </Button>
+            ) : (
+              <Link
+                href={href}
+                className={cn(buttonVariants({ size: "sm", variant: "default" }), "mt-2 w-full")}
+              >
+                Continue
+              </Link>
+            )}
           </div>
         ) : (
           <div className="mt-2">
@@ -131,6 +147,24 @@ export function LmsCourseCard({ course, enrollment, href }: LmsCourseCardProps) 
           </div>
         )}
       </div>
+
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Sertifikat Kelulusan - {course.title}</DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-center p-4">
+            <CertificateViewer
+              variables={{
+                employeeName: enrollment?.employeeName || '',
+                courseTitle: course.title,
+                date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+                certificateNumber: enrollment?.certificateNumber || ''
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -2,8 +2,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
-import { employees } from '@/db/schema/hero'
-import { eq } from 'drizzle-orm'
+import { employees, chitraLearningEnrollments, chitraLearningCertificates, chitraLearningCourses, trainingRecords } from '@/db/schema/hero'
+import { eq, and, or } from 'drizzle-orm'
 import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/lib/chitralearning-lms'
 import { MobileCourseCover } from '@/components/mobile/mobile-course-cover'
 import { Award, BookOpen, Calendar, ExternalLink, Star } from 'lucide-react'
@@ -12,12 +12,78 @@ export default async function MobileCertificatesPage() {
   const session = await getServerSession()
   if (!session?.user?.email) redirect('/sign-in')
 
-  const [employeeRows, workspaceData] = await Promise.all([
-    db.select().from(employees).where(eq(employees.email, session.user.email)).limit(1),
-    getInternalLmsWorkspaceData(),
-  ])
+  const [employeeRows] = await db.select().from(employees).where(eq(employees.email, session.user.email)).limit(1)
+  const currentEmployee = employeeRows ?? null
 
-  const currentEmployee = employeeRows[0] ?? null
+  if (currentEmployee) {
+    // Auto-heal missing certificates
+    const completedEnrollments = await db
+      .select({
+        id: chitraLearningEnrollments.id,
+        courseId: chitraLearningEnrollments.courseId,
+        courseTitle: chitraLearningCourses.title,
+        certificateEnabled: chitraLearningCourses.certificateEnabled,
+        completedAt: chitraLearningEnrollments.completedAt,
+      })
+      .from(chitraLearningEnrollments)
+      .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+      .where(
+        and(
+          eq(chitraLearningEnrollments.employeeId, currentEmployee.id),
+          or(
+            eq(chitraLearningEnrollments.status, 'passed'),
+            eq(chitraLearningEnrollments.progress, 100)
+          )
+        )
+      )
+
+    for (const enrollment of completedEnrollments) {
+      if (!enrollment.certificateEnabled) continue;
+      // Check if certificate exists
+      const [existing] = await db
+        .select({ id: chitraLearningCertificates.id })
+        .from(chitraLearningCertificates)
+        .where(
+          and(
+            eq(chitraLearningCertificates.courseId, enrollment.courseId),
+            eq(chitraLearningCertificates.employeeId, currentEmployee.id)
+          )
+        )
+        .limit(1)
+
+      if (!existing) {
+        // Create training record
+        const [tr] = await db
+          .insert(trainingRecords)
+          .values({
+            employeeId: currentEmployee.id,
+            trainingName: enrollment.courseTitle,
+            provider: "ChitraLearning LMS Internal",
+            completedYear: enrollment.completedAt ? enrollment.completedAt.getFullYear() : new Date().getFullYear(),
+            status: "valid",
+          })
+          .returning({ id: trainingRecords.id })
+
+        // Create certificate
+        await db
+          .insert(chitraLearningCertificates)
+          .values({
+            courseId: enrollment.courseId,
+            employeeId: currentEmployee.id,
+            enrollmentId: enrollment.id,
+            trainingRecordId: tr?.id ?? null,
+            certificateNumber: `CL-${new Date().getFullYear()}-${enrollment.courseId}-${currentEmployee.id}`,
+            status: "issued",
+            metadata: {
+              source: "chitralearning-internal",
+              issuedBy: currentEmployee.id,
+            },
+          })
+      }
+    }
+  }
+
+  const workspaceData = await getInternalLmsWorkspaceData()
   const learnerCourses = buildInternalLmsLearnerCourses(workspaceData, currentEmployee)
 
   const certifiedCourses = learnerCourses.filter(c => !!c.certificate)
@@ -146,11 +212,11 @@ export default async function MobileCertificatesPage() {
 
                     {/* View cert button */}
                     <Link
-                      href={`/dashboard/chitralearning-lms/certificates`}
+                      href={`/verify-certificate/${cert.certificateNumber}`}
                       className="mt-3 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#003461]/20 text-[10px] font-black uppercase tracking-wider text-[#003461] active:bg-[#e9f6fd] transition-colors"
                     >
                       <ExternalLink className="size-3.5" />
-                      Lihat Sertifikat Lengkap
+                      Lihat & Unduh Sertifikat
                     </Link>
                   </div>
                 </div>

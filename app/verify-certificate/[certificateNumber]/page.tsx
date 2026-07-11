@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { chitraLearningCertificates, chitraLearningCertificateTemplates, chitraLearningCourses, employees } from '@/db/schema/hero'
+import { chitraLearningCertificates, chitraLearningCourses, employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
 import { notFound } from 'next/navigation'
 import { CertificateViewer } from './client-viewer'
@@ -30,11 +30,7 @@ export default async function VerifyCertificatePage({ params }: { params: { cert
     notFound()
   }
 
-  const [template] = await db
-    .select()
-    .from(chitraLearningCertificateTemplates)
-    .where(eq(chitraLearningCertificateTemplates.courseId, certificate.courseId))
-    .limit(1)
+
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center">
@@ -81,21 +77,14 @@ export default async function VerifyCertificatePage({ params }: { params: { cert
           </div>
 
           <div className="mt-8 flex justify-center">
-            {template ? (
-              <CertificateViewer 
-                template={template} 
-                variables={{
-                  employeeName: certificate.employeeName,
-                  courseTitle: certificate.courseTitle,
-                  date: certificate.issuedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-                  certificateNumber: certificate.certificateNumber
-                }} 
-              />
-            ) : (
-              <div className="text-center py-12 px-6 border-2 border-dashed border-slate-200 rounded-xl w-full">
-                <p className="text-slate-500">Preview sertifikat tidak tersedia (Template belum diatur).</p>
-              </div>
-            )}
+            <CertificateViewer 
+              variables={{
+                employeeName: certificate.employeeName,
+                courseTitle: certificate.courseTitle,
+                date: certificate.issuedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+                certificateNumber: certificate.certificateNumber
+              }} 
+            />
           </div>
         </div>
       </div>
