@@ -2,8 +2,9 @@ import { getServerSession } from '@/lib/auth-session'
 import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
-import { eq } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/lib/chitralearning-lms'
+import { chitraLearningEnrollments, chitraLearningCertificates, chitraLearningCourses, trainingRecords } from '@/db/schema/hero'
 import { LmsCourseGrid } from '@/components/lms/lms-course-grid'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
@@ -18,8 +19,7 @@ export default async function LmsCatalogPage() {
     redirect('/auth/signin')
   }
 
-  // Fetch base workspace data
-  const workspaceData = await getInternalLmsWorkspaceData()
+
   
   // Find current employee
   const currentEmployeeRows = await db
@@ -30,6 +30,77 @@ export default async function LmsCatalogPage() {
   
   const currentEmployee = currentEmployeeRows[0] || null
 
+  if (currentEmployee) {
+    // Auto-heal missing certificates
+    const completedEnrollments = await db
+      .select({
+        id: chitraLearningEnrollments.id,
+        courseId: chitraLearningEnrollments.courseId,
+        courseTitle: chitraLearningCourses.title,
+        certificateEnabled: chitraLearningCourses.certificateEnabled,
+        completedAt: chitraLearningEnrollments.completedAt,
+      })
+      .from(chitraLearningEnrollments)
+      .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+      .where(
+        and(
+          eq(chitraLearningEnrollments.employeeId, currentEmployee.id),
+          or(
+            eq(chitraLearningEnrollments.status, 'passed'),
+            eq(chitraLearningEnrollments.progress, 100)
+          )
+        )
+      )
+
+    for (const enrollment of completedEnrollments) {
+      if (!enrollment.certificateEnabled) continue;
+      // Check if certificate exists
+      const [existing] = await db
+        .select({ id: chitraLearningCertificates.id })
+        .from(chitraLearningCertificates)
+        .where(
+          and(
+            eq(chitraLearningCertificates.courseId, enrollment.courseId),
+            eq(chitraLearningCertificates.employeeId, currentEmployee.id)
+          )
+        )
+        .limit(1)
+
+      if (!existing) {
+        // Create training record
+        const [tr] = await db
+          .insert(trainingRecords)
+          .values({
+            employeeId: currentEmployee.id,
+            trainingName: enrollment.courseTitle,
+            provider: "ChitraLearning LMS Internal",
+            completedYear: enrollment.completedAt ? enrollment.completedAt.getFullYear() : new Date().getFullYear(),
+            status: "valid",
+          })
+          .returning({ id: trainingRecords.id })
+
+        // Create certificate
+        await db
+          .insert(chitraLearningCertificates)
+          .values({
+            courseId: enrollment.courseId,
+            employeeId: currentEmployee.id,
+            enrollmentId: enrollment.id,
+            trainingRecordId: tr?.id ?? null,
+            certificateNumber: `CL-${new Date().getFullYear()}-${enrollment.courseId}-${currentEmployee.id}`,
+            status: "issued",
+            metadata: {
+              source: "chitralearning-internal",
+              issuedBy: currentEmployee.id,
+            },
+          })
+      }
+    }
+  }
+
+  // Fetch base workspace data (moved after auto-heal to catch new certificates)
+  const workspaceData = await getInternalLmsWorkspaceData()
+  
   // Compute learner courses to get enrollment progress
   const learnerCourses = buildInternalLmsLearnerCourses(workspaceData, currentEmployee)
 

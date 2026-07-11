@@ -1,6 +1,6 @@
 import { db } from '@/db'
-import { chitraLearningCertificates, chitraLearningCourses, employees } from '@/db/schema/hero'
-import { eq } from 'drizzle-orm'
+import { chitraLearningCertificates, chitraLearningCourses, employees, chitraLearningEnrollments, trainingRecords } from '@/db/schema/hero'
+import { eq, and, or } from 'drizzle-orm'
 import { notFound } from 'next/navigation'
 import { CertificateViewer } from './client-viewer'
 import Image from 'next/image'
@@ -9,8 +9,9 @@ export const metadata = {
   title: 'Verifikasi Sertifikat | ChitraLearning',
 }
 
-export default async function VerifyCertificatePage({ params }: { params: { certificateNumber: string } }) {
-  const [certificate] = await db
+export default async function VerifyCertificatePage({ params }: { params: Promise<{ certificateNumber: string }> }) {
+  const { certificateNumber } = await params
+  const certificateRows = await db
     .select({
       id: chitraLearningCertificates.id,
       certificateNumber: chitraLearningCertificates.certificateNumber,
@@ -23,8 +24,85 @@ export default async function VerifyCertificatePage({ params }: { params: { cert
     .from(chitraLearningCertificates)
     .innerJoin(employees, eq(chitraLearningCertificates.employeeId, employees.id))
     .innerJoin(chitraLearningCourses, eq(chitraLearningCertificates.courseId, chitraLearningCourses.id))
-    .where(eq(chitraLearningCertificates.certificateNumber, params.certificateNumber))
+    .where(eq(chitraLearningCertificates.certificateNumber, certificateNumber))
     .limit(1)
+
+  let certificate = certificateRows[0] || null
+
+  if (!certificate) {
+    const match = certificateNumber.match(/^CL-(\d+)-(\d+)-(\d+)$/)
+    if (match) {
+      const year = parseInt(match[1])
+      const courseId = parseInt(match[2])
+      const employeeId = parseInt(match[3])
+
+      // Verify enrollment eligibility
+      const [enrollment] = await db
+        .select({
+          id: chitraLearningEnrollments.id,
+          completedAt: chitraLearningEnrollments.completedAt,
+          courseTitle: chitraLearningCourses.title,
+          employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+        })
+        .from(chitraLearningEnrollments)
+        .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+        .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+        .where(
+          and(
+            eq(chitraLearningEnrollments.courseId, courseId),
+            eq(chitraLearningEnrollments.employeeId, employeeId),
+            or(
+              eq(chitraLearningEnrollments.status, 'passed'),
+              eq(chitraLearningEnrollments.progress, 100)
+            )
+          )
+        )
+        .limit(1)
+
+      if (enrollment) {
+        // Issue certificate automatically
+        const [tr] = await db
+          .insert(trainingRecords)
+          .values({
+            employeeId,
+            trainingName: enrollment.courseTitle,
+            provider: "ChitraLearning LMS Internal",
+            completedYear: enrollment.completedAt ? enrollment.completedAt.getFullYear() : year,
+            status: "valid",
+          })
+          .returning({ id: trainingRecords.id })
+
+        const [createdCert] = await db
+          .insert(chitraLearningCertificates)
+          .values({
+            courseId,
+            employeeId,
+            enrollmentId: enrollment.id,
+            trainingRecordId: tr?.id ?? null,
+            certificateNumber: certificateNumber,
+            status: "issued",
+            metadata: {
+              source: "chitralearning-internal-autoheal",
+              issuedBy: employeeId,
+            },
+          })
+          .returning()
+
+        if (createdCert) {
+          certificate = {
+            id: createdCert.id,
+            certificateNumber: createdCert.certificateNumber,
+            issuedAt: createdCert.issuedAt,
+            employeeName: enrollment.employeeName,
+            employeeSn: enrollment.employeeSn,
+            courseTitle: enrollment.courseTitle,
+            courseId,
+          }
+        }
+      }
+    }
+  }
 
   if (!certificate) {
     notFound()

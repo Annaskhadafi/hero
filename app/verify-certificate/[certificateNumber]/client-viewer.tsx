@@ -44,12 +44,12 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
     // Add Name Text
     const nameText = new fabric.Text(employeeName || '', {
       left: 500,
-      top: 320,
+      top: 310,
       originX: 'center',
       originY: 'middle',
-      fontSize: 36,
+      fontSize: 38,
       fontWeight: 'bold',
-      fontFamily: 'sans-serif',
+      fontFamily: 'Georgia, serif',
       fill: '#0f172a',
       textAlign: 'center'
     })
@@ -58,56 +58,76 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
     // Add Course Title Text
     const courseText = new fabric.Text(courseTitle || '', {
       left: 500,
-      top: 430,
+      top: 455,
       originX: 'center',
       originY: 'middle',
       fontSize: 24,
-      fontWeight: 'normal',
-      fontFamily: 'sans-serif',
+      fontWeight: 'bold',
+      fontFamily: 'Georgia, serif',
       fill: '#1e40af',
       textAlign: 'center'
     })
     canvas.add(courseText)
 
-    // Add Date Text
-    const dateText = new fabric.Text(`Diberikan pada tanggal: ${date || ''}`, {
+    // Add Date Text (aligned under pre-printed 'ON')
+    const dateText = new fabric.Text(date || '', {
       left: 500,
-      top: 500,
+      top: 635,
       originX: 'center',
       originY: 'middle',
-      fontSize: 16,
-      fontFamily: 'sans-serif',
-      fill: '#475569',
+      fontSize: 20,
+      fontWeight: 'bold',
+      fontStyle: 'italic',
+      fontFamily: 'Georgia, serif',
+      fill: '#0f172a',
       textAlign: 'center'
     })
     canvas.add(dateText)
 
-    // Add Certificate Number Text
+    // Add Certificate Number Text (aligned bottom right)
     const certNoText = new fabric.Text(`No: ${certificateNumber || ''}`, {
-      left: 500,
-      top: 540,
+      left: 860,
+      top: 615,
       originX: 'center',
       originY: 'middle',
       fontSize: 14,
-      fontFamily: 'sans-serif',
-      fill: '#64748b',
+      fontStyle: 'italic',
+      fontFamily: 'Georgia, serif',
+      fill: '#475569',
       textAlign: 'center'
     })
     canvas.add(certNoText)
 
-    // Add QR Code at the bottom right corner
+    // Add QR Code at the bottom left corner
     if (certificateNumber) {
       const verificationUrl = `${window.location.origin}/verify-certificate/${certificateNumber}`
       QRCode.toDataURL(verificationUrl, { margin: 1, scale: 4 }).then(dataUrl => {
         fabric.FabricImage.fromURL(dataUrl, { crossOrigin: 'anonymous' }).then(qrImg => {
           if (qrImg && canvasInstanceRef.current) {
             qrImg.set({
-              left: 880,
-              top: 580,
+              left: 140,
+              top: 560,
+              originX: 'center',
+              originY: 'top',
               scaleX: 80 / qrImg.width!,
               scaleY: 80 / qrImg.height!,
             })
             canvas.add(qrImg)
+            
+            // Add PT Chitra Paratama Text below QR Code
+            const ptText = new fabric.Text('PT Chitra Paratama', {
+              left: 140,
+              top: 650,
+              originX: 'center',
+              originY: 'top',
+              fontSize: 11,
+              fontWeight: 'bold',
+              fontFamily: 'sans-serif',
+              fill: '#475569',
+              textAlign: 'center'
+            })
+            canvas.add(ptText)
+            
             canvas.renderAll()
           }
         })
