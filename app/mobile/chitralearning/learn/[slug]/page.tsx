@@ -343,7 +343,7 @@ export default async function MobileLessonPlayerPage({
             {isGoogleSlide && rawFileUrl && rawFileUrl.includes('<iframe') && (
               <div>
                 <div
-                  className="w-full overflow-hidden bg-slate-900 [&>iframe]:w-full [&>iframe]:h-[55vw] [&>iframe]:min-h-[220px]"
+                  className="w-full bg-slate-900 overflow-hidden [&>iframe]:w-full [&>iframe]:h-[70vh] [&>iframe]:border-none"
                   dangerouslySetInnerHTML={{ __html: rawFileUrl }}
                 />
                 <div className="p-4">
