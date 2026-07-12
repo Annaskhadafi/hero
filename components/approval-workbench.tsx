@@ -179,6 +179,19 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
                               </div>
                               <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>
                             </div>
+                            {item.photoUrl && (
+                              <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
+                                <p className="font-semibold">Foto Dokumentasi</p>
+                                <div className="mt-2 overflow-hidden rounded-md bg-muted flex items-center justify-center">
+                                  <img 
+                                    src={item.photoUrl} 
+                                    alt="Dokumentasi" 
+                                    className="max-h-[300px] w-auto object-contain" 
+                                    loading="lazy"
+                                  />
+                                </div>
+                              </div>
+                            )}
                             <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
                               <p className="font-semibold">Catatan terakhir</p>
                               <p className="mt-1 text-muted-foreground">

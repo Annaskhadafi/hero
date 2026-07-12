@@ -106,6 +106,7 @@ export async function getDailyActivitySessionDocumentData(
         id: dailyActivitySessionItems.id,
         snapshotLabel: dailyActivitySessionItems.snapshotLabel,
         snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+        snapshotPayload: dailyActivitySessionItems.snapshotPayload,
         unitNumber: dailyActivitySessionItems.unitNumber,
         remark: dailyActivitySessionItems.remark,
         startedAt: dailyActivitySessionItems.startedAt,
@@ -130,8 +131,14 @@ export async function getDailyActivitySessionDocumentData(
     .filter((item) => item.isChecked)
     .map((item) => {
       const durationMinutes = minutesBetween(item.startedAt, item.endedAt)
+      let parsedPayload: any = {}
+      try {
+        parsedPayload = JSON.parse(item.snapshotPayload || '{}')
+      } catch (e) {}
+      
       return {
         ...item,
+        photoUrl: parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),

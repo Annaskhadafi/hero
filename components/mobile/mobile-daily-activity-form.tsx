@@ -207,6 +207,10 @@ type RouteItemState = {
   startedAt: string;
   endedAt: string;
   actualPoints: string;
+
+  photoFile?: File | null;
+  photoName?: string;
+  restoredPhotoPayload?: QueuedFilePayload | null;
 };
 
 type SelfInputEntryState = {
@@ -215,6 +219,10 @@ type SelfInputEntryState = {
   endTime: string;
   materialUsed: string;
   notes: string;
+
+  photoFile?: File | null;
+  photoName?: string;
+  restoredPhotoPayload?: QueuedFilePayload | null;
 };
 
 const emptyRouteItemState: RouteItemState = {
@@ -356,6 +364,7 @@ export function MobileDailyActivityForm({
   const [photoName, setPhotoName] = useState("");
   const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null);
   const [photoCaptureMode, setPhotoCaptureMode] = useState<"camera" | "gallery">("gallery");
+  const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null);
   const [geo, setGeo] = useState<GeoState>(initialGeo);
   const [submitState, setSubmitState] = useState<{
     kind: "idle" | "success" | "error";
@@ -487,6 +496,56 @@ export function MobileDailyActivityForm({
         return (itemState?.isChecked ?? false) && item.requiresPhoto;
       }),
     ) ?? false;
+  
+  const renderPhotoWidget = (targetId: string, requiresPhoto: boolean, currentPhotoName?: string) => (
+    <div className="mt-3 space-y-2 rounded-xl bg-[#f6fbff] p-3 border border-[#e9f6fd]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+          <Camera className="size-3.5 text-[#003f78]" />
+          Photo Evidence
+        </p>
+        {requiresPhoto ? (
+          <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+            Wajib
+          </Badge>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-[#003f78] text-xs"
+          onClick={() => {
+            setActivePhotoTarget(targetId);
+            setPhotoCaptureMode("camera");
+            document.getElementById("mobile-activity-photo")?.click();
+          }}
+        >
+          <Camera className="size-3.5" />
+          Kamera
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-[#003f78] text-xs"
+          onClick={() => {
+            setActivePhotoTarget(targetId);
+            setPhotoCaptureMode("gallery");
+            document.getElementById("mobile-activity-photo")?.click();
+          }}
+        >
+          <ImagePlus className="size-3.5" />
+          Galeri
+        </Button>
+      </div>
+      {currentPhotoName ? (
+        <p className="text-[11px] font-semibold text-[#003f78] break-words truncate">
+          ✓ {currentPhotoName}
+        </p>
+      ) : null}
+    </div>
+  );
+
   const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto;
 
   useEffect(() => {
@@ -805,8 +864,16 @@ export function MobileDailyActivityForm({
         return "Waktu selesai harus setelah waktu mulai.";
       }
 
-      if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
-        return "Foto wajib diupload karena assignment / checklist yang dipilih butuh image evidence.";
+      if (selectedAssignment?.requiresPhoto && !photoFile && !restoredPhotoPayload) {
+        return "Foto wajib diupload karena assignment yang dipilih butuh image evidence.";
+      }
+      if (checklistContext) {
+        let missingChecklistPhoto = false;
+        checklistContext.groups.forEach(group => group.items.forEach(item => {
+          const state = routeItemState[item.id];
+          if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
+        }));
+        if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
       }
 
       return "";
@@ -825,8 +892,13 @@ export function MobileDailyActivityForm({
         return "Waktu selesai harus setelah waktu mulai.";
       }
 
-      if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
-        return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
+      if (checklistContext) {
+        let missingChecklistPhoto = false;
+        checklistContext.groups.forEach(group => group.items.forEach(item => {
+          const state = routeItemState[item.id];
+          if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
+        }));
+        if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
       }
 
       return "";
@@ -836,8 +908,20 @@ export function MobileDailyActivityForm({
       return "Pilih minimal satu activity library.";
     }
 
-    if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
-      return "Minimal satu foto wajib karena ada activity / checklist yang butuh image evidence.";
+    let missingLibraryPhoto = false;
+    selectedLibraries.forEach(lib => {
+      const entry = selfInputEntries[`${lib.id}`];
+      if (lib.requiresPhoto && !entry?.photoFile && !entry?.restoredPhotoPayload) missingLibraryPhoto = true;
+    });
+    if (missingLibraryPhoto) return "Foto wajib diupload karena activity yang dipilih butuh image evidence.";
+    
+    if (checklistContext) {
+      let missingChecklistPhoto = false;
+      checklistContext.groups.forEach(group => group.items.forEach(item => {
+        const state = routeItemState[item.id];
+        if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
+      }));
+      if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
     }
 
     const ranges: Array<{ code: string; start: Date; end: Date }> = [];
@@ -905,8 +989,8 @@ export function MobileDailyActivityForm({
     return result;
   }
 
-  function buildSelfInputPayloads(sharedPhoto: QueuedFilePayload | null) {
-    return selectedLibraries.map((library, index) => {
+  async function buildSelfInputPayloads() {
+    return Promise.all(selectedLibraries.map(async (library, index) => {
       const libraryId = `${library.id}`;
       const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
 
@@ -927,10 +1011,14 @@ export function MobileDailyActivityForm({
           routeShiftCode: index === 0 ? draftPayload.routeShiftCode : "",
           routeSummaryRemark: "",
           routeSessionItems: index === 0 ? routeSessionItems : [],
-          photo: sharedPhoto,
+          photo: await (async () => {
+              if (entry?.photoFile) return await fileToPayload(entry.photoFile);
+              if (entry?.restoredPhotoPayload) return entry.restoredPhotoPayload;
+              return null;
+            })(),
         },
       };
-    });
+    }));
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -948,7 +1036,7 @@ export function MobileDailyActivityForm({
       const sharedPhoto = photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload;
 
       if (sourceMode === "self_input") {
-        const payloads = buildSelfInputPayloads(sharedPhoto);
+        const payloads = await buildSelfInputPayloads();
 
         for (const item of payloads) {
           try {
@@ -964,11 +1052,28 @@ export function MobileDailyActivityForm({
           message: `${payloads.length} activity library berhasil dikirim.`,
         });
       } else {
-        await sendPayload({
+        const payloadToSubmit = {
           ...draftPayload,
           photo: sharedPhoto,
           libraryActivityId: "",
-        });
+        };
+
+        if (checklistContext && payloadToSubmit.routeSessionItems) {
+            payloadToSubmit.routeSessionItems = await Promise.all(
+                payloadToSubmit.routeSessionItems.map(async (item) => {
+                    const state = routeItemState[item.routeItemId!];
+                    let itemPhoto = null;
+                    if (state?.photoFile) {
+                        itemPhoto = await fileToPayload(state.photoFile);
+                    } else if (state?.restoredPhotoPayload) {
+                        itemPhoto = state.restoredPhotoPayload;
+                    }
+                    return { ...item, photo: itemPhoto };
+                })
+            );
+        }
+
+        await sendPayload(payloadToSubmit);
 
         setSubmitState({
           kind: "success",
@@ -1146,6 +1251,7 @@ export function MobileDailyActivityForm({
                   ? "Assignment ini wajib upload foto evidence."
                   : "Pilih assignment yang sedang dikerjakan."}
               </p>
+              {selectedAssignment ? renderPhotoWidget("single", !!selectedAssignment.requiresPhoto, photoName) : null}
             </Label>
           ) : null}
 
@@ -1206,6 +1312,7 @@ export function MobileDailyActivityForm({
                   className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                 />
               </Label>
+              {renderPhotoWidget("single", false, photoName)}
               <Label className="block space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
@@ -1342,11 +1449,12 @@ export function MobileDailyActivityForm({
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
-                        ) : null}
+                          ) : null}
 
-                        <Label className="block space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
+                          {renderPhotoWidget(`library:${libraryId}`, !!library.requiresPhoto, entry.photoName)}
+                          <Label className="block space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
                             <SpeechInputButton
                               onFinalTranscript={(text) => updateSelfInputEntry(libraryId, { notes: (entry.notes ? entry.notes + " " + text : text) })}
                               className="size-7"
@@ -1499,6 +1607,7 @@ export function MobileDailyActivityForm({
                                 </div>
                               ) : null}
 
+                              {renderPhotoWidget(`route:${item.id}`, !!item.requiresPhoto, itemState.photoName)}
                               {item.requiresRemark ? (
                                 <Label className="block space-y-2">
                                   <div className="flex items-center justify-between">
@@ -1643,71 +1752,6 @@ export function MobileDailyActivityForm({
           </Label>
         </section>
 
-        <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <div className="flex items-start justify-between gap-3">
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-              <Camera className="size-3.5 text-[#003f78]" />
-              Photo camera / galeri
-            </p>
-            {needsAnyPhoto ? (
-              <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
-                Foto wajib
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
-              onClick={() => {
-                setPhotoCaptureMode("camera");
-                document.getElementById("mobile-activity-photo")?.click();
-              }}
-            >
-              <Camera className="size-4" />
-              Kamera
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
-              onClick={() => {
-                setPhotoCaptureMode("gallery");
-                document.getElementById("mobile-activity-photo")?.click();
-              }}
-            >
-              <ImagePlus className="size-4" />
-              Galeri
-            </Button>
-          </div>
-
-          <input
-            id="mobile-activity-photo"
-            type="file"
-            accept="image/*"
-            capture={photoCaptureMode === "camera" ? "environment" : undefined}
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              setPhotoFile(file);
-              setPhotoName(file?.name ?? "");
-              setRestoredPhotoPayload(null);
-            }}
-          />
-
-          {photoName ? (
-            <p className="text-xs font-semibold text-[#486275]">{photoName}</p>
-          ) : (
-            <p className="text-xs font-semibold text-[#486275]">
-              {needsAnyPhoto
-                ? "Minimal satu foto wajib karena assignment / checklist / activity terpilih butuh image evidence."
-                : "Upload opsional. Cocok untuk bukti kerja dan context lapangan."}
-            </p>
-          )}
-        </section>
-
         <div className="grid grid-cols-2 gap-3">
           <Button
             type="button"
@@ -1733,6 +1777,35 @@ export function MobileDailyActivityForm({
             {isSubmitting ? "Submitting..." : "Submit Activity"}
           </Button>
         </div>
+          <input
+            id="mobile-activity-photo"
+            type="file"
+            accept="image/*"
+            capture={photoCaptureMode === "camera" ? "environment" : undefined}
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              if (!file || !activePhotoTarget) return;
+
+              if (activePhotoTarget === "single") {
+                setPhotoFile(file);
+                setPhotoName(file.name);
+                setRestoredPhotoPayload(null);
+              } else if (activePhotoTarget.startsWith("route:")) {
+                const id = parseInt(activePhotoTarget.split(":")[1], 10);
+                setRouteItemState((prev) => ({
+                  ...prev,
+                  [id]: { ...prev[id], photoFile: file, photoName: file.name, restoredPhotoPayload: null },
+                }));
+              } else if (activePhotoTarget.startsWith("library:")) {
+                const id = activePhotoTarget.split(":")[1];
+                setSelfInputEntries((prev) => ({
+                  ...prev,
+                  [id]: { ...prev[id], photoFile: file, photoName: file.name, restoredPhotoPayload: null },
+                }));
+              }
+            }}
+          />
       </form>
     </>
   );

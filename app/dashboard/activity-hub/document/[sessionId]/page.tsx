@@ -57,12 +57,23 @@ export default async function DailyActivityDocumentPage({
                 className="rounded-[1rem] bg-surface-container-low px-4 py-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
                       Row {index + 1} • {item.snapshotGroupName || "Checklist"}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-[#082033]">{item.snapshotLabel}</p>
                     <p className="mt-1 text-sm text-[#486275]">{item.workSummary}</p>
+                    
+                    {/* Add Image rendering if photoUrl is present */}
+                    {item.photoUrl ? (
+                      <div className="mt-3">
+                        <img 
+                          src={item.photoUrl} 
+                          alt={`Evidence for ${item.snapshotLabel}`}
+                          className="max-h-48 rounded-xl object-contain border border-[#486275]/20 bg-black/5"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right text-xs text-[#486275]">
                     <p>

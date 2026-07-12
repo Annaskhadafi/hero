@@ -41,6 +41,7 @@ export type RouteSessionSyncItem = {
   isChecked: boolean;
   actualPoints: number;
   sortOrder: number;
+  photo?: QueuedFilePayload | null;
 };
 
 export type ActivitySyncPayload = {

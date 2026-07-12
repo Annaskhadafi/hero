@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
+  activityPhotos,
   approvalAttachments,
   approvalMatrices,
   approvalMatrixSteps,
@@ -53,6 +54,7 @@ type ApprovalRecordRow = {
   requesterSection: string;
   requesterJobTitle: string;
   siteName: string;
+  photoUrl: string | null;
 };
 
 type RawApprovalRecordRow = {
@@ -98,6 +100,7 @@ type RawApprovalRecordRow = {
   apdRequestDate?: Date | null;
   apdEmployeeId?: number | null;
   apdSiteId?: number | null;
+  photoUrl?: string | null;
 };
 
 type ApprovalQueueItem = ApprovalRecordRow & {
@@ -349,6 +352,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       requesterSection: requester?.section ?? "",
       requesterJobTitle: requester?.jobTitle ?? "",
       siteName: site?.name ?? siteNameFromSnapshot ?? "-",
+      photoUrl: row.photoUrl ?? null,
     } satisfies ApprovalRecordRow;
   });
 }
@@ -603,9 +607,11 @@ async function fetchApprovalRows() {
       apdRequestDate: apdRequests.requestDate,
       apdEmployeeId: apdRequests.employeeId,
       apdSiteId: apdRequests.siteId,
+      photoUrl: activityPhotos.fileUrl,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
+    .leftJoin(activityPhotos, eq(activities.id, activityPhotos.activityId))
     .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
     .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
     .leftJoin(apdRequests, eq(approvals.apdRequestId, apdRequests.id))
@@ -947,6 +953,7 @@ export async function getApprovalCenterData(email: string) {
         siteName: string;
         notes: ApprovalComment[];
         lastNote: ApprovalComment | null;
+        photoUrl: string | null;
       }>;
     }
   >();
@@ -997,6 +1004,7 @@ export async function getApprovalCenterData(email: string) {
       siteName: item.siteName,
       notes,
       lastNote: notes[0] ?? null,
+      photoUrl: item.photoUrl,
     });
     inboxGroupsMap.set(groupKey, group);
   }
