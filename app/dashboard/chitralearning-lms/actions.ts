@@ -20,22 +20,20 @@ import {
   employees,
   trainingRecords,
 } from "@/db/schema/hero";
-import { sendLmsNotification } from "@/lib/chitralearning-lms/notifications";
+import { sendLmsEnrollmentRequestNotification } from "@/lib/chitralearning-lms/notifications";
 import { getServerSession } from "@/lib/auth-session";
 import { 
   runInternalLmsReminderTick, 
   slugifyCourseTitle,
-  isLmsAdmin 
+  isLmsAdmin,
+  canManageLmsSection,
 } from "@/lib/chitralearning-lms";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 
 const LMS_PATH = "/dashboard/chitralearning-lms";
 
 export async function createCourse(formData: FormData) {
-  const session = await getServerSession();
-  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
-  const isAdmin = await isLmsAdmin(session);
-  if (!isAdmin) {
+  if (!(await canManageLmsSection())) {
     throw new Error("Unauthorized");
   }
 
@@ -755,6 +753,10 @@ async function issueCertificateForEmployee(
 }
 
 export async function createInternalLmsCourseAction(formData: FormData) {
+  if (!(await canManageLmsSection())) {
+    throw new Error("Akses ditolak");
+  }
+
   const title = textValue(formData, "title");
 
   if (!title) {
@@ -1050,14 +1052,6 @@ export async function startInternalLmsCourseAction(formData: FormData) {
       dueAt: dueDate(course.dueDays),
     });
 
-    // Send notification
-    if (employee.email) {
-      void sendLmsNotification({
-        to: employee.email,
-        subject: `Pendaftaran Kursus: ${course.title}`,
-        message: `Halo ${employee.name}, Anda telah didaftarkan dan memulai kursus "${course.title}". Selamat belajar!`
-      });
-    }
   }
 
   revalidateLms();
@@ -1649,6 +1643,18 @@ export async function requestInternalLmsEnrollmentAction(formData: FormData) {
     dueAt: dueDate(course.dueDays),
   });
 
+  try {
+    await sendLmsEnrollmentRequestNotification({
+      employeeName: employee.name,
+      employeeSn: employee.employeeSn ?? '',
+      employeeSection: employee.section ?? '-',
+      courseTitle: course.title,
+      actorEmail: employee.email,
+    })
+  } catch (error) {
+    console.error('[ChitraLearning LMS] enrollment request email failed', error)
+  }
+
   revalidateLms();
 }
 
@@ -1660,10 +1666,7 @@ export async function approveInternalLmsEnrollmentAction(formData: FormData) {
 
   if (!enrollmentId) throw new Error("Enrollment ID wajib");
 
-  const session = await getServerSession();
-  const { isLmsAdmin } = await import('@/lib/chitralearning-lms');
-  const isAdmin = await isLmsAdmin(session);
-  if (!isAdmin) {
+  if (!(await canManageLmsSection())) {
     throw new Error("Akses ditolak");
   }
 

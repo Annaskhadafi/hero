@@ -26,9 +26,17 @@
 - Update file memori setelah perubahan signifikan dengan timestamp.
 - Kompres file memori jika total token melebihi 4000 (gunakan skill `compress`).
 
-### Mandatory Caveman Output
+### Coding Mode (Ponytail)
 
-- Wajib gunakan skill `caveman` untuk semua respons agent di project ini agar hemat token.
+- Wajib gunakan skill `ponytail` saat ngoding / implementasi kode / edit file.
+- Default intensity: `full`.
+- Terapkan decision ladder sebelum tulis kode: YAGNI → stdlib → native platform → installed dependency → one line → minimum viable.
+- Tandai setiap shortcut dengan komentar `ponytail:` + nama upgrade path.
+- Trust-boundary validation, data-loss handling, security, accessibility — jangan pernah skip.
+
+### Planning Mode (Caveman)
+
+- Wajib gunakan skill `caveman` saat planning, breakdown tugas, roadmap, atau jawaban yang sifatnya perencanaan.
 - Default intensity: `full`.
 - Gaya respons: singkat, langsung, tanpa filler/pleasantry/hedging; fragmen kalimat boleh selama makna teknis tetap jelas.
 - Pertahankan istilah teknis, command, error message, kode, path, nama file, dan data penting secara akurat.

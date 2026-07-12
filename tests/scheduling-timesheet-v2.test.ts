@@ -18,7 +18,7 @@ describe('scheduling timesheet V2', () => {
     ['2026-04', 30],
     ['2026-07', 31],
   ])('creates an empty grid for %s', (period, dayCount) => {
-    const rows = createEmptyScheduleV2([10, 11], period)
+    const rows = createEmptyScheduleV2([{ id: 10, section: 'Service Operation' }, { id: 11, section: 'Repair Retread' }], period)
     expect(getScheduleV2DayCount(period)).toBe(dayCount)
     expect(rows).toHaveLength(2)
     expect(rows[0].schedule).toEqual(Array(dayCount).fill(''))
@@ -33,7 +33,7 @@ describe('scheduling timesheet V2', () => {
   })
 
   it('repeats OFF weekly from the selected date and allows custom override', () => {
-    let rows = createEmptyScheduleV2([10], '2026-07')
+    let rows = createEmptyScheduleV2([{ id: 10, section: 'Service Operation' }], '2026-07')
     rows = applyScheduleV2Code(rows, 10, 8, 'OFF')
     expect([8, 15, 22, 29].map((day) => rows[0].schedule[day - 1])).toEqual([
       'OFF',
@@ -48,7 +48,7 @@ describe('scheduling timesheet V2', () => {
   })
 
   it('reports progress and validates complete activation', () => {
-    let rows = createEmptyScheduleV2([10], '2026-02')
+    let rows = createEmptyScheduleV2([{ id: 10, section: 'Service Operation' }], '2026-02')
     expect(getScheduleV2Progress(rows)).toEqual({ filled: 0, total: 28, complete: false })
     rows = [{ employeeId: 10, schedule: Array(28).fill('DS') }]
     expect(getScheduleV2Progress(rows).complete).toBe(true)
@@ -81,5 +81,35 @@ describe('scheduling timesheet V2', () => {
     expect(source).toContain('holidayByDay')
     expect(source).toContain('Holiday hanya penanda')
     expect(source).not.toContain('Generate Auto Scheduling')
+  })
+
+  it('wires site-scoped HR review through centralized approval', () => {
+    const actions = fs.readFileSync(
+      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
+      'utf8'
+    )
+    const approval = fs.readFileSync(
+      path.join(process.cwd(), 'lib/legacy-approval-engine.ts'),
+      'utf8'
+    )
+    const workspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+
+    expect(actions).toContain('return activeEmployees.map((employee) => employee.id)')
+    expect(actions).toContain('assertSchedulingSiteScope')
+    expect(actions).toContain('submitSchedulingPeriodForReviewAction')
+    expect(actions).toContain("templateKey: 'timesheet-period-review'")
+    expect(actions).toContain("scheduleStatus: 'submitted_to_hr'")
+    expect(actions).toContain("issues.push('Payroll snapshot belum dibuat.')")
+    expect(actions).toContain('exception payroll belum diselesaikan')
+    expect(actions).toContain("params.templateKey === 'timesheet-period-review'")
+    expect(approval).toContain('"timesheet-period-review"')
+    expect(workspace).toContain('Submit ke HR')
+    expect(workspace).toContain('Menunggu HR')
+    const loader = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
+    expect(loader).toContain('canSeeSchedulingSite')
+    expect(loader).toContain('hasGlobalSchedulingScope')
   })
 })

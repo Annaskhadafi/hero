@@ -166,7 +166,11 @@ import {
   evaluatePointThresholdBadges,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
-import { createNextLegacyApprovalStep } from '@/lib/legacy-approval-engine'
+import {
+  cancelLegacyApprovalSubmission,
+  createLegacyApprovalRequest,
+  createNextLegacyApprovalStep,
+} from '@/lib/legacy-approval-engine'
 import {
   getMappedValue,
   parseCsvToRecords,
@@ -215,6 +219,17 @@ async function requireSchedulingTimesheetAccess(permission: 'edit' | 'finalize' 
   return access
 }
 
+async function assertSchedulingSiteScope(siteId: number, permission: 'edit' | 'finalize' = 'edit') {
+  const [access, context] = await Promise.all([
+    requireSchedulingTimesheetAccess(permission),
+    getCurrentEmployeeAccessContext(),
+  ])
+  if (!hasGlobalDataAccess(access) && context?.siteId !== siteId) {
+    throw new Error('Anda hanya dapat mengelola scheduling untuk site sendiri.')
+  }
+  return { access, context }
+}
+
 async function getCurrentActorUserId(actorEmail?: string) {
   const actor = actorEmail
     ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1)
@@ -240,6 +255,9 @@ async function assertSchedulingPeriodOpen(siteId: number, period: string) {
     status?.attendanceStatus === 'finalized'
   ) {
     throw new Error('Scheduling period is finalized. Reopen before editing.')
+  }
+  if (status?.scheduleStatus === 'submitted_to_hr') {
+    throw new Error('Scheduling period sedang direview HR. Tunggu keputusan atau return.')
   }
 }
 
@@ -486,7 +504,7 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
     if (!allowedIds.has(row.employeeId)) throw new Error('Employee bukan anggota aktif site ini.')
     if (row.schedule.length !== dayCount) throw new Error(`Schedule harus berisi ${dayCount} hari.`)
   }
-  return employeeIds
+  return activeEmployees.map((employee) => employee.id)
 }
 
 function revalidateSchedulingV2Paths() {
@@ -500,7 +518,7 @@ export async function createSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof scheduleV2KeySchema>
 ) {
   const payload = scheduleV2KeySchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -556,7 +574,7 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   input: z.infer<typeof saveScheduleV2Schema>
 ) {
   const payload = saveScheduleV2Schema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
@@ -589,7 +607,7 @@ export async function activateSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof saveScheduleV2Schema>
 ) {
   const payload = saveScheduleV2Schema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const employeeIds = await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
@@ -655,7 +673,7 @@ export async function deleteSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof scheduleV2KeySchema>
 ) {
   const payload = scheduleV2KeySchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -780,7 +798,7 @@ export async function saveTimesheetFieldBreakPlansAction(
   input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>
 ) {
   const payload = saveTimesheetFieldBreakPlansSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -891,7 +909,7 @@ export async function saveTimesheetPayrollSnapshotAction(
   input: z.infer<typeof saveTimesheetPayrollSnapshotSchema>
 ) {
   const payload = saveTimesheetPayrollSnapshotSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1011,7 +1029,7 @@ export async function saveAttendanceRealOverridesAction(
   input: z.infer<typeof saveAttendanceRealOverridesSchema>
 ) {
   const payload = saveAttendanceRealOverridesSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1116,6 +1134,177 @@ const finalizeSchedulingPeriodSchema = z.object({
   reason: z.string().max(500).optional().default(''),
 })
 
+const submitSchedulingPeriodSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  note: z.string().trim().max(500).default(''),
+})
+
+function schedulingMetadata(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+async function getSchedulingPeriodReadiness(siteId: number, period: string) {
+  const [plan, status, snapshot] = await Promise.all([
+    db
+      .select({ id: timesheetSchedulingPlansV2.id, status: timesheetSchedulingPlansV2.status })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, siteId),
+          eq(timesheetSchedulingPlansV2.period, period),
+          eq(timesheetSchedulingPlansV2.status, 'active')
+        )
+      )
+      .limit(1),
+    db
+      .select()
+      .from(timesheetSchedulingStatuses)
+      .where(
+        and(
+          eq(timesheetSchedulingStatuses.siteId, siteId),
+          eq(timesheetSchedulingStatuses.period, period)
+        )
+      )
+      .limit(1),
+    db
+      .select({ id: timesheetPayrollSnapshots.id, generatedAt: timesheetPayrollSnapshots.generatedAt })
+      .from(timesheetPayrollSnapshots)
+      .where(
+        and(
+          eq(timesheetPayrollSnapshots.siteId, siteId),
+          eq(timesheetPayrollSnapshots.period, period)
+        )
+      )
+      .limit(1),
+  ])
+
+  const issues: string[] = []
+  if (!plan[0]) issues.push('Schedule V2 belum aktif.')
+  if (!status[0] || !['saved', 'applied', 'ready'].includes(status[0].attendanceStatus)) {
+    issues.push('Attendance aktual belum disimpan.')
+  }
+  if ((status[0]?.conflictCount ?? 0) > 0) issues.push('Conflict attendance belum diselesaikan.')
+  if (!snapshot[0]) issues.push('Payroll snapshot belum dibuat.')
+  if (
+    snapshot[0] &&
+    status[0]?.lastSavedAt &&
+    snapshot[0].generatedAt < status[0].lastSavedAt
+  ) {
+    issues.push('Payroll snapshot lebih lama dari perubahan terakhir.')
+  }
+  let exceptionCount = 0
+  if (snapshot[0]) {
+    const [exceptions] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(timesheetPayrollSnapshotItems)
+      .where(
+        and(
+          eq(timesheetPayrollSnapshotItems.snapshotId, snapshot[0].id),
+          or(
+            and(
+              eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
+              inArray(timesheetPayrollSnapshotItems.scheduleCode, ['OFF', 'FB'])
+            ),
+            and(
+              eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
+              or(
+                eq(timesheetPayrollSnapshotItems.clockIn, ''),
+                eq(timesheetPayrollSnapshotItems.clockOut, '')
+              )
+            ),
+            and(
+              ne(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
+              sql`${timesheetPayrollSnapshotItems.overtimeHours} > 0`
+            ),
+            and(
+              ne(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
+              or(
+                sql`${timesheetPayrollSnapshotItems.msaAmount} > 0`,
+                sql`${timesheetPayrollSnapshotItems.mealsAmount} > 0`
+              )
+            )
+          )
+        )
+      )
+    exceptionCount = exceptions?.count ?? 0
+    if (exceptionCount > 0) issues.push(`${exceptionCount} exception payroll belum diselesaikan.`)
+  }
+  return { issues, exceptionCount, status: status[0] ?? null, snapshot: snapshot[0] ?? null }
+}
+
+export async function submitSchedulingPeriodForReviewAction(
+  input: z.infer<typeof submitSchedulingPeriodSchema>
+) {
+  const payload = submitSchedulingPeriodSchema.parse(input)
+  const { context } = await assertSchedulingSiteScope(payload.siteId, 'edit')
+  if (!context) throw new Error('Employee actor tidak ditemukan di User Management.')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const readiness = await getSchedulingPeriodReadiness(payload.siteId, payload.period)
+  if (readiness.issues.length) throw new Error(readiness.issues.join(' '))
+
+  const previousSubmissionId = Number(
+    schedulingMetadata(readiness.status?.metadata).approvalSubmissionId ?? 0
+  )
+  if (previousSubmissionId > 0) {
+    await cancelLegacyApprovalSubmission(previousSubmissionId, 'Timesheet period resubmitted.')
+  }
+
+  const { submission } = await createLegacyApprovalRequest({
+    templateKey: 'timesheet-period-review',
+    requesterEmployeeId: context.employeeId,
+    siteId: payload.siteId,
+    activityType: 'timesheet-period-review',
+    transactionType: 'timesheet_period',
+    referenceId: readiness.snapshot!.id,
+    payloadSnapshot: {
+      siteId: payload.siteId,
+      period: payload.period,
+      payrollSnapshotId: readiness.snapshot!.id,
+    },
+    previewSnapshot: {
+      title: `Timesheet ${payload.period}`,
+      summary: `Review roster, attendance, OT, MSA, dan meals untuk periode ${payload.period}.`,
+      reviewUrl: `/dashboard/scheduling-timesheet/payroll?siteId=${payload.siteId}&period=${payload.period}`,
+    },
+  })
+  const now = new Date()
+  await db
+    .update(timesheetSchedulingStatuses)
+    .set({
+      scheduleStatus: 'submitted_to_hr',
+      attendanceStatus: 'submitted_to_hr',
+      importStatus: 'submitted_to_hr',
+      metadata: {
+        ...schedulingMetadata(readiness.status?.metadata),
+        approvalSubmissionId: submission.id,
+        submittedByEmployeeId: context.employeeId,
+        submittedAt: now.toISOString(),
+        submitNote: payload.note,
+      },
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(timesheetSchedulingStatuses.siteId, payload.siteId),
+        eq(timesheetSchedulingStatuses.period, payload.period)
+      )
+    )
+  await logAuditEvent({
+    actorEmail: await getCurrentActorEmail(),
+    action: 'timesheet.period_submitted',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Submitted timesheet period to HR review. ${payload.note}`.trim(),
+  })
+  revalidateSchedulingV2Paths()
+  revalidatePath('/dashboard/approval')
+  return { ok: true, submissionId: submission.id }
+}
+
 const reopenSchedulingPeriodSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
@@ -1126,8 +1315,13 @@ export async function finalizeSchedulingPeriodAction(
   input: z.infer<typeof finalizeSchedulingPeriodSchema>
 ) {
   const payload = finalizeSchedulingPeriodSchema.parse(input)
-  await requireSchedulingTimesheetAccess('finalize')
+  await assertSchedulingSiteScope(payload.siteId, 'finalize')
   await ensureSchedulingTimesheetTables()
+  const readiness = await getSchedulingPeriodReadiness(payload.siteId, payload.period)
+  if (readiness.issues.length) throw new Error(readiness.issues.join(' '))
+  if (readiness.status?.scheduleStatus !== 'submitted_to_hr') {
+    throw new Error('Period harus disubmit ke HR sebelum finalisasi.')
+  }
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
@@ -1174,7 +1368,7 @@ export async function reopenSchedulingPeriodAction(
   input: z.infer<typeof reopenSchedulingPeriodSchema>
 ) {
   const payload = reopenSchedulingPeriodSchema.parse(input)
-  await requireSchedulingTimesheetAccess('finalize')
+  await assertSchedulingSiteScope(payload.siteId, 'finalize')
   await ensureSchedulingTimesheetTables()
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
@@ -1266,7 +1460,7 @@ export async function createAttendanceImportPreviewAction(
   input: z.infer<typeof createAttendanceImportPreviewSchema>
 ) {
   const payload = createAttendanceImportPreviewSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1421,6 +1615,7 @@ export async function applyAttendanceImportPreviewAction(
     .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
     .limit(1)
   if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingSiteScope(preview.siteId, 'edit')
   await assertSchedulingPeriodOpen(preview.siteId, preview.period)
   const rows = preview.previewRows as AttendancePreviewRow[]
   const conflicts = preview.conflicts as AttendancePreviewConflict[]
@@ -1536,6 +1731,7 @@ export async function updateAttendanceImportPreviewMatchAction(
     .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
     .limit(1)
   if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingSiteScope(preview.siteId, 'edit')
   await assertSchedulingPeriodOpen(preview.siteId, preview.period)
   const [employee] = await db
     .select({ id: employees.id, name: employees.name })
@@ -1622,6 +1818,7 @@ export async function rollbackAttendanceImportPreviewAction(
     .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
     .limit(1)
   if (!preview || preview.status !== 'applied') throw new Error('Applied import not found.')
+  await assertSchedulingSiteScope(preview.siteId, 'edit')
   await assertSchedulingPeriodOpen(preview.siteId, preview.period)
 
   await db.transaction(async (tx) => {
@@ -1662,7 +1859,7 @@ export async function getAttendanceImportHistoryAction(
   input: z.infer<typeof attendanceImportHistorySchema>
 ) {
   const payload = attendanceImportHistorySchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   return db
     .select({
@@ -1695,7 +1892,7 @@ export async function saveAttendanceEmployeeAliasAction(
   input: z.infer<typeof saveAttendanceEmployeeAliasSchema>
 ) {
   const payload = saveAttendanceEmployeeAliasSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   const now = new Date()
   await db
@@ -1748,6 +1945,7 @@ export async function discardAttendanceImportPreviewAction(
     .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
     .limit(1)
   if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingSiteScope(preview.siteId, 'edit')
   await assertSchedulingPeriodOpen(preview.siteId, preview.period)
 
   await db.transaction(async (tx) => {
@@ -1785,7 +1983,7 @@ export async function clearAttendanceRealOverridesAction(
   input: z.infer<typeof clearAttendanceRealOverridesSchema>
 ) {
   const payload = clearAttendanceRealOverridesSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1860,7 +2058,7 @@ export async function saveSchedulingConfigAction(
   input: z.infer<typeof saveSchedulingConfigSchema>
 ) {
   const payload = saveSchedulingConfigSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
@@ -2379,6 +2577,56 @@ async function updateLegacyEntityForSubmissionDecision(params: {
   now: Date
 }) {
   const payload = parseJsonRecord(params.payloadSnapshot)
+  if (params.templateKey === 'timesheet-period-review') {
+    const siteId = Number(payload.siteId ?? 0)
+    const period = String(payload.period ?? '')
+    if (!Number.isInteger(siteId) || siteId <= 0 || !/^\d{4}-\d{2}$/.test(period)) return
+
+    const [current] = await params.tx
+      .select({ metadata: timesheetSchedulingStatuses.metadata })
+      .from(timesheetSchedulingStatuses)
+      .where(
+        and(
+          eq(timesheetSchedulingStatuses.siteId, siteId),
+          eq(timesheetSchedulingStatuses.period, period)
+        )
+      )
+      .limit(1)
+    const approved = params.decision === 'approved'
+    await params.tx
+      .update(timesheetSchedulingStatuses)
+      .set({
+        scheduleStatus: approved ? 'finalized' : 'returned',
+        attendanceStatus: approved ? 'finalized' : 'returned',
+        importStatus: approved ? 'finalized' : 'returned',
+        finalizedAt: approved ? params.now : null,
+        metadata: {
+          ...schedulingMetadata(current?.metadata),
+          reviewedBy: params.actorName,
+          reviewedAt: params.now.toISOString(),
+          reviewDecision: params.decision,
+          reviewNote: params.note,
+        },
+        updatedAt: params.now,
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingStatuses.siteId, siteId),
+          eq(timesheetSchedulingStatuses.period, period)
+        )
+      )
+    await params.tx
+      .update(timesheetPayrollSnapshots)
+      .set({ status: approved ? 'finalized' : 'draft', updatedAt: params.now })
+      .where(
+        and(
+          eq(timesheetPayrollSnapshots.siteId, siteId),
+          eq(timesheetPayrollSnapshots.period, period)
+        )
+      )
+    return
+  }
+
   const legacyRecordId = Number(payload.legacyRecordId ?? 0)
 
   if (!Number.isInteger(legacyRecordId) || legacyRecordId <= 0) {

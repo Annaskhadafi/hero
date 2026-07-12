@@ -11,9 +11,8 @@ export default async function NewCoursePage() {
     redirect('/auth/signin')
   }
 
-  const { isLmsAdmin } = await import('@/lib/chitralearning-lms')
-  const isAdmin = await isLmsAdmin(session)
-  if (!isAdmin) {
+  const { canManageLmsSection } = await import('@/lib/chitralearning-lms')
+  if (!(await canManageLmsSection())) {
     redirect('/dashboard/chitralearning-lms/catalog')
   }
 

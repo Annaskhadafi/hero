@@ -18,8 +18,8 @@ export default async function LmsLayout({
   }
 
   // Define admin access logic - this could be refined based on actual roles
-  const { isLmsAdmin } = await import('@/lib/chitralearning-lms')
-  const isAdmin = await isLmsAdmin(session)
+  const { isLmsAdmin, canManageLmsSection } = await import('@/lib/chitralearning-lms')
+  const isAdmin = (await isLmsAdmin(session)) || (await canManageLmsSection())
 
   return (
     <AdminPageShell title="ChitraLearning LMS">

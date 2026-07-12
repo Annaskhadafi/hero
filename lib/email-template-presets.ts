@@ -15,6 +15,32 @@ export type EmailTemplatePreset = {
 
 const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
+    name: 'ChitraLearning Enrollment Request',
+    templateCode: 'chitralearning_enrollment_request',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: '',
+    ccEmail: '',
+    subject: 'Request enrollment {{employeeName}} - {{courseTitle}}',
+    htmlContent: '',
+    textContent: `Request enrollment baru menunggu review Section Trainer Center.
+
+Karyawan: {{employeeName}} ({{employeeSn}})
+Section: {{employeeSection}}
+Course: {{courseTitle}}
+
+Review enrollment: {{approvalUrl}}`,
+    description: 'Notifikasi request enrollment ke user yang memiliki permission Section Management.',
+    variables: ['employeeName', 'employeeSn', 'employeeSection', 'courseTitle', 'approvalUrl'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      employeeSn: 'CP-2026-001',
+      employeeSection: 'Training Center',
+      courseTitle: 'Safety Leadership',
+      approvalUrl: 'https://hero.chitraparatama.co.id/dashboard/chitralearning-lms/management',
+    },
+  },
+  {
     name: 'Approval Assignment',
     templateCode: 'approval_assignment',
     templateType: 'Notification',
@@ -2641,6 +2667,7 @@ function formatEmailBody(value: string) {
 
 function inferTemplateFeature(templateCode: string) {
   const prefixes: [string, string][] = [
+    ['chitralearning_', 'ChitraLearning LMS'],
     ['hc_leader_performance_', 'HC Management'],
     ['approval_', 'Approval'],
     ['attendance_permission_', 'Attendance / Permission'],
@@ -2730,6 +2757,7 @@ export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
 ) satisfies Record<string, EmailTemplatePreset>
 
 const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
+  ["chitralearning_", "ChitraLearning LMS"],
   ["hc_leader_performance_", "HC Management"],
   ["approval_", "Approval"],
   ["attendance_permission_", "Attendance / Permission"],

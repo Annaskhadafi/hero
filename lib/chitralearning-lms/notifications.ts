@@ -1,49 +1,65 @@
-import nodemailer from 'nodemailer'
+import { and, eq, or, sql } from 'drizzle-orm'
 
-export async function sendLmsNotification({
-  to,
-  subject,
-  message
-}: {
-  to: string,
-  subject: string,
-  message: string
+import { db } from '@/db'
+import {
+  employees,
+  navbarMenuItems,
+  roleMenuPermissions,
+  securityRoles,
+} from '@/db/schema/hero'
+import {
+  getAppUrl,
+  getTemplateRecipientScopeEmails,
+  sendWorkflowEmail,
+} from '@/lib/workflow-email'
+
+export const LMS_SECTION_MANAGEMENT_RESOURCE = 'chitralearning_lms_management'
+export const LMS_ENROLLMENT_REQUEST_TEMPLATE = 'chitralearning_enrollment_request'
+
+export async function getSectionTrainerCenterEmails() {
+  const [roleRecipients, configuredRecipients] = await Promise.all([
+    db
+      .selectDistinct({ email: employees.email })
+      .from(employees)
+      .innerJoin(securityRoles, eq(employees.accessRole, securityRoles.name))
+      .innerJoin(roleMenuPermissions, eq(roleMenuPermissions.roleId, securityRoles.id))
+      .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
+      .where(
+        and(
+          eq(employees.isActive, true),
+          sql`${employees.email} <> ''`,
+          eq(navbarMenuItems.resource, LMS_SECTION_MANAGEMENT_RESOURCE),
+          or(eq(roleMenuPermissions.canView, true), eq(roleMenuPermissions.canEdit, true))
+        )
+      ),
+    getTemplateRecipientScopeEmails(LMS_ENROLLMENT_REQUEST_TEMPLATE),
+  ])
+
+  return Array.from(
+    new Set([...roleRecipients.map((row) => row.email), ...configuredRecipients].map((email) => email.trim().toLowerCase()).filter(Boolean))
+  )
+}
+
+export async function sendLmsEnrollmentRequestNotification(input: {
+  employeeName: string
+  employeeSn: string
+  employeeSection: string
+  courseTitle: string
+  actorEmail?: string | null
 }) {
-  console.log(`[LMS Notification] Sending to: ${to} | Subject: ${subject}`)
-  console.log(`[LMS Notification] Message: ${message}`)
-
-  // Using Nodemailer with test credentials or falling back to environment variables
-  try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: Number(process.env.SMTP_PORT) || 587,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    })
-
-    // If no credentials, we skip sending actual email and just log it
-    if (!process.env.SMTP_USER) {
-      console.log('[LMS Notification] SMTP credentials not set, skipping real email dispatch.')
-      return
-    }
-
-    await transporter.sendMail({
-      from: '"ChitraLearning LMS" <lms@chitralearning.com>',
-      to,
-      subject,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e293b;">${subject}</h2>
-          <p style="color: #475569; line-height: 1.6;">${message}</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-          <p style="color: #94a3b8; font-size: 12px;">Pesan ini dikirim secara otomatis oleh sistem ChitraLearning LMS.</p>
-        </div>
-      `
-    })
-    console.log('[LMS Notification] Email sent successfully.')
-  } catch (error) {
-    console.error('[LMS Notification] Error sending email:', error)
+  const recipients = await getSectionTrainerCenterEmails()
+  if (recipients.length === 0) {
+    return { status: 'skipped' as const, reason: 'Recipient Section Trainer Center kosong.' }
   }
+
+  const approvalUrl = getAppUrl('/dashboard/chitralearning-lms/management')
+  return sendWorkflowEmail({
+    to: recipients,
+    actorEmail: input.actorEmail,
+    templateCode: LMS_ENROLLMENT_REQUEST_TEMPLATE,
+    templateName: 'ChitraLearning Enrollment Request',
+    variables: { ...input, approvalUrl },
+    fallbackSubject: `Request enrollment: ${input.employeeName} - ${input.courseTitle}`,
+    fallbackText: `${input.employeeName} (${input.employeeSn}) dari section ${input.employeeSection} meminta enrollment ke course ${input.courseTitle}. Review: ${approvalUrl}`,
+  })
 }

@@ -17,6 +17,12 @@ import {
   notificationEvents,
 } from "@/db/schema/hero";
 import { getCurrentMenuPermission, getCurrentEmployeeAccessRole } from "@/lib/hero-access";
+import { LMS_SECTION_MANAGEMENT_RESOURCE } from '@/lib/chitralearning-lms/notifications'
+
+export async function canManageLmsSection() {
+  const permission = await getCurrentMenuPermission(LMS_SECTION_MANAGEMENT_RESOURCE)
+  return permission.canView || permission.canEdit
+}
 
 export async function isLmsAdmin(session: any) {
   // [1] Check RBAC permission for LMS Builder (primary path)

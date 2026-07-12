@@ -84,14 +84,14 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
     })
     canvas.add(dateText)
 
-    // Add Certificate Number Text (aligned bottom right)
+    // Add Certificate Number Text above QR Code
     const certNoText = new fabric.Text(`No: ${certificateNumber || ''}`, {
-      left: 860,
-      top: 615,
+      left: 140,
+      top: 545,
       originX: 'center',
       originY: 'middle',
-      fontSize: 14,
-      fontStyle: 'italic',
+      fontSize: 15,
+      fontWeight: 'bold',
       fontFamily: 'Georgia, serif',
       fill: '#475569',
       textAlign: 'center'
@@ -214,20 +214,20 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
   }
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="border border-slate-300 shadow-sm max-w-full overflow-x-auto relative rounded-md bg-white">
-        <canvas ref={canvasRef} />
+    <div className="flex w-full min-w-0 flex-col items-center">
+      <div className="relative aspect-[1000/707] w-full max-w-[1000px] overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm [&_canvas]:!h-auto [&_canvas]:!w-full">
+        <canvas ref={canvasRef} className="block h-auto max-w-full" />
       </div>
-      <div className="mt-6 flex flex-wrap gap-3 justify-center">
-        <Button onClick={handleDownloadPng} className="bg-blue-600 hover:bg-blue-700">
+      <div className="mt-5 grid w-full gap-2.5 sm:mt-6 sm:w-auto sm:grid-cols-3 sm:gap-3">
+        <Button onClick={handleDownloadPng} className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Download PNG
         </Button>
-        <Button onClick={handleDownloadJpg} className="bg-slate-700 hover:bg-slate-800">
+        <Button onClick={handleDownloadJpg} className="w-full bg-slate-700 hover:bg-slate-800 sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Download JPG
         </Button>
-        <Button onClick={handleDownloadPdf} className="bg-emerald-600 hover:bg-emerald-700">
+        <Button onClick={handleDownloadPdf} className="w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Download PDF
         </Button>

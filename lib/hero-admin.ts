@@ -896,7 +896,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'ChitraLearning LMS',
     groupLabel: 'Internal LMS Baru',
-    title: 'Management',
+    title: 'Section Management',
     url: '/dashboard/chitralearning-lms/management',
     iconName: 'settings',
     resource: 'chitralearning_lms_management',
@@ -1773,6 +1773,18 @@ const EMAIL_SMTP_SETTING_SEED = {
 }
 
 const EMAIL_TEMPLATE_SEEDS = [
+  {
+    name: 'ChitraLearning Enrollment Request',
+    templateCode: 'chitralearning_enrollment_request',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: '',
+    ccEmail: '',
+    subject: 'Request enrollment {{employeeName}} - {{courseTitle}}',
+    htmlContent: '<p>{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course <strong>{{courseTitle}}</strong>.</p><p><a href="{{approvalUrl}}">Review enrollment</a></p>',
+    textContent: '{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course {{courseTitle}}. Review: {{approvalUrl}}',
+    isActive: true,
+  },
   {
     name: 'Auth Magic Link',
     templateCode: 'auth_magic_link',
@@ -5868,6 +5880,10 @@ export async function getSchedulingTimesheetOptions() {
         (employee) => employee.email?.toLowerCase() === authSession.user.email.toLowerCase()
       )
     : null
+  const schedulingAccess = await getCurrentMenuPermission('scheduling_timesheet')
+  const hasGlobalSchedulingScope = hasGlobalDataAccess(schedulingAccess)
+  const canSeeSchedulingSite = (siteId: number | null) =>
+    hasGlobalSchedulingScope || (currentEmployee?.siteId != null && siteId === currentEmployee.siteId)
 
   const serializedV1Plans = savedPlans.map((plan) => ({
     siteId: plan.siteId,
@@ -5921,7 +5937,7 @@ export async function getSchedulingTimesheetOptions() {
   return {
     currentEmployeeSiteId: currentEmployee?.siteId ?? null,
     currentEmployeeName: currentEmployee?.name ?? authSession?.user?.name ?? 'User Management',
-    employees: employeeRows.map((employee) => ({
+    employees: employeeRows.filter((employee) => canSeeSchedulingSite(employee.siteId)).map((employee) => ({
       id: employee.id,
       name: employee.name,
       email: employee.email ?? '',
@@ -5937,11 +5953,11 @@ export async function getSchedulingTimesheetOptions() {
         ? Array.from(new Set(kimperMap.get(employee.id)!.sioNames)).join(', ') 
         : null,
     })),
-    sites: siteRows,
-    savedPlans: serializedV1Plans,
-    activeSavedPlans,
-    savedPlansV2: serializedV2Plans,
-    fieldBreakPlans: fieldBreakPlans.map((plan) => ({
+    sites: siteRows.filter((site) => canSeeSchedulingSite(site.id)),
+    savedPlans: serializedV1Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
+    activeSavedPlans: activeSavedPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
+    savedPlansV2: serializedV2Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
+    fieldBreakPlans: fieldBreakPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)).map((plan) => ({
       siteId: plan.siteId,
       period: plan.period,
       employeeId: plan.employeeId,
@@ -5957,7 +5973,7 @@ export async function getSchedulingTimesheetOptions() {
       notes: plan.notes ?? '',
       updatedAt: plan.updatedAt.toISOString(),
     })),
-    attendanceRecords: attendanceRows.map((record) => ({
+    attendanceRecords: attendanceRows.filter((record) => canSeeSchedulingSite(record.siteId)).map((record) => ({
       employeeId: record.employeeId,
       siteId: record.siteId,
       eventType: record.eventType,
@@ -5968,7 +5984,7 @@ export async function getSchedulingTimesheetOptions() {
       latitude: record.latitude,
       longitude: record.longitude,
     })),
-    attendanceOverrides: attendanceOverrides.map((override) => ({
+    attendanceOverrides: attendanceOverrides.filter((override) => canSeeSchedulingSite(override.siteId)).map((override) => ({
       siteId: override.siteId,
       period: override.period,
       employeeId: override.employeeId,
@@ -5984,7 +6000,7 @@ export async function getSchedulingTimesheetOptions() {
         : 'manual',
       updatedAt: override.updatedAt.toISOString(),
     })),
-    schedulingConfigs: schedulingConfigs.map((config) => ({
+    schedulingConfigs: schedulingConfigs.filter((config) => canSeeSchedulingSite(config.siteId)).map((config) => ({
       siteId: config.siteId,
       scheduleType: config.scheduleType,
       rosterType: config.rosterType,
@@ -5996,7 +6012,7 @@ export async function getSchedulingTimesheetOptions() {
       overtimeVariables: config.overtimeVariables,
       updatedAt: config.updatedAt.toISOString(),
     })),
-    schedulingStatuses: schedulingStatuses.map((status) => ({
+    schedulingStatuses: schedulingStatuses.filter((status) => canSeeSchedulingSite(status.siteId)).map((status) => ({
       siteId: status.siteId,
       period: status.period,
       scheduleStatus: status.scheduleStatus,
@@ -6010,7 +6026,7 @@ export async function getSchedulingTimesheetOptions() {
       metadata: status.metadata,
       updatedAt: status.updatedAt.toISOString(),
     })),
-    importPreviews: importPreviews.map((preview) => ({
+    importPreviews: importPreviews.filter((preview) => canSeeSchedulingSite(preview.siteId)).map((preview) => ({
       id: preview.id,
       siteId: preview.siteId,
       period: preview.period,
@@ -6025,7 +6041,10 @@ export async function getSchedulingTimesheetOptions() {
       createdAt: preview.createdAt.toISOString(),
       appliedAt: preview.appliedAt?.toISOString() ?? null,
     })),
-    activities: activitiesRows.map((activity) => ({
+    activities: activitiesRows.filter((activity) => {
+      const employee = employeeRows.find((row) => row.id === activity.employeeId)
+      return canSeeSchedulingSite(employee?.siteId ?? null)
+    }).map((activity) => ({
       id: activity.id,
       employeeId: activity.employeeId,
       activityCode: activity.activityCode,

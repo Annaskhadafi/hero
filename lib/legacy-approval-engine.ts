@@ -34,7 +34,8 @@ import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
 type LegacyApprovalTemplateKey =
   | "attendance-permission"
   | "leave-permission"
-  | "offboarding-request";
+  | "offboarding-request"
+  | "timesheet-period-review";
 
 type LegacyApprovalTemplateConfig = {
   templateKey: LegacyApprovalTemplateKey;
@@ -74,6 +75,14 @@ const LEGACY_APPROVAL_TEMPLATE_CONFIGS: Record<
       "Permintaan offboarding legacy yang kini memakai Approval Engine terpusat.",
     workflowMode: "manual_workflow",
     requestPrefix: "OFF",
+  },
+  "timesheet-period-review": {
+    templateKey: "timesheet-period-review",
+    name: "Timesheet Period Review",
+    category: "HC",
+    description: "Review roster, attendance, overtime, MSA, dan meals sebelum payroll difinalisasi.",
+    workflowMode: "manual_workflow",
+    requestPrefix: "TSH",
   },
 };
 

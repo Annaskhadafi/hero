@@ -22,6 +22,9 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const curriculumBuilder = read("components/lms/lms-curriculum-builder.tsx");
   const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
   const lmsPresignRoute = read("app/api/uploads/lms-presign/route.ts");
+  const notifications = read("lib/chitralearning-lms/notifications.ts");
+  const emailPresets = read("lib/email-template-presets.ts");
+  const heroAdmin = read("lib/hero-admin.ts");
 
   assert.doesNotMatch(card, /next\/image/);
   assert.doesNotMatch(hero, /next\/image/);
@@ -91,4 +94,11 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(questionsLibrary, /const result = await copyInternalLmsQuestionsAction/);
   assert.match(questionsLibrary, /onSuccess\?\.\(result\.questions \|\| \[\]\)/);
   assert.match(completeButton, /Selesai & Materi Selanjutnya/);
+  assert.match(heroAdmin, /title: 'Section Management'/);
+  assert.match(actions, /sendLmsEnrollmentRequestNotification/);
+  assert.match(actions, /approveInternalLmsEnrollmentAction[\s\S]+canManageLmsSection/);
+  assert.match(notifications, /LMS_SECTION_MANAGEMENT_RESOURCE = 'chitralearning_lms_management'/);
+  assert.match(notifications, /sendWorkflowEmail/);
+  assert.match(notifications, /roleMenuPermissions\.canView/);
+  assert.match(emailPresets, /templateCode: 'chitralearning_enrollment_request'/);
 });

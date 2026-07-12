@@ -111,50 +111,49 @@ export default async function VerifyCertificatePage({ params }: { params: Promis
 
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Verifikasi Sertifikat</h1>
-          <p className="text-slate-600">
+    <main className="flex min-h-dvh items-start justify-center bg-slate-50 px-3 py-6 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+      <div className="w-full max-w-5xl">
+        <header className="mb-6 text-center sm:mb-10">
+          <h1 className="mb-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Verifikasi Sertifikat</h1>
+          <p className="mx-auto max-w-xl text-sm leading-6 text-slate-600 sm:text-base">
             Sertifikat ini resmi diterbitkan oleh ChitraLearning LMS untuk:
           </p>
-          <div className="mt-4 inline-block bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full font-medium border border-emerald-200">
-            Terverifikasi Asli ✓
+          <div className="mt-4 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700 sm:px-4">
+            Terverifikasi Asli
           </div>
-        </div>
+        </header>
 
-        <div className="bg-white p-6 md:p-10 rounded-2xl shadow-xl border border-slate-200">
-          <div className="flex flex-col md:flex-row gap-8 items-start mb-8 border-b border-slate-100 pb-8">
-            <div className="flex-1 space-y-4">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-200/60 sm:p-6 lg:p-10">
+          <div className="mb-5 flex flex-col items-start gap-6 border-b border-slate-100 pb-5 sm:mb-8 sm:pb-8 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0 flex-1 space-y-4">
               <div>
-                <p className="text-sm text-slate-500 mb-1">Diberikan kepada</p>
-                <p className="text-xl font-bold text-slate-900">{certificate.employeeName}</p>
-                <p className="text-sm text-slate-600">ID Karyawan: {certificate.employeeSn}</p>
+                <p className="mb-1 text-xs font-medium text-slate-500 sm:text-sm">Diberikan kepada</p>
+                <p className="break-words text-lg font-bold text-slate-900 sm:text-xl">{certificate.employeeName}</p>
+                <p className="break-all text-sm text-slate-600">ID Karyawan: {certificate.employeeSn}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500 mb-1">Atas penyelesaian kursus</p>
-                <p className="text-lg font-semibold text-blue-700">{certificate.courseTitle}</p>
+                <p className="mb-1 text-xs font-medium text-slate-500 sm:text-sm">Atas penyelesaian kursus</p>
+                <p className="text-base font-semibold leading-6 text-blue-700 sm:text-lg">{certificate.courseTitle}</p>
               </div>
-              <div className="flex gap-8">
-                <div>
-                  <p className="text-sm text-slate-500 mb-1">Tanggal Terbit</p>
-                  <p className="font-medium text-slate-900">{certificate.issuedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              <dl className="grid gap-4 sm:grid-cols-2 sm:gap-8">
+                <div className="min-w-0">
+                  <dt className="mb-1 text-xs font-medium text-slate-500 sm:text-sm">Tanggal Terbit</dt>
+                  <dd className="font-medium text-slate-900">{certificate.issuedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</dd>
                 </div>
-                <div>
-                  <p className="text-sm text-slate-500 mb-1">No. Sertifikat</p>
-                  <p className="font-medium text-slate-900">{certificate.certificateNumber}</p>
+                <div className="min-w-0">
+                  <dt className="mb-1 text-xs font-medium text-slate-500 sm:text-sm">No. Sertifikat</dt>
+                  <dd className="break-all font-mono text-sm font-semibold text-slate-900 sm:text-base">{certificate.certificateNumber}</dd>
                 </div>
+              </dl>
+            </div>
+            <div className="hidden shrink-0 md:block" aria-hidden="true">
+              <div className="flex size-24 items-center justify-center rounded-full border border-blue-100 bg-blue-50">
+                <span className="text-2xl font-bold text-blue-700">HERO</span>
               </div>
             </div>
-            <div className="hidden md:block">
-              {/* Optional Company Logo here */}
-              <div className="h-24 w-24 bg-blue-50 rounded-full flex items-center justify-center border border-blue-100">
-                <span className="text-blue-700 font-bold text-2xl">HERO</span>
-              </div>
-            </div>
           </div>
 
-          <div className="mt-8 flex justify-center">
+          <div className="flex w-full justify-center">
             <CertificateViewer 
               variables={{
                 employeeName: certificate.employeeName,
@@ -164,8 +163,8 @@ export default async function VerifyCertificatePage({ params }: { params: Promis
               }} 
             />
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

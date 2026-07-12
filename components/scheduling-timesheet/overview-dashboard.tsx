@@ -291,7 +291,7 @@ export function SchedulingOverviewDashboard({
               <TableMultiFilter
                 label="schedule"
                 filterKey="schedule"
-                options={["none", "draft", "saved", "applied", "ready", "finalized", "locked"].map((status) => ({
+                options={["none", "draft", "saved", "applied", "ready", "submitted_to_hr", "returned", "finalized", "locked"].map((status) => ({
                   value: status,
                   label: statusLabel(status),
                 }))}
@@ -299,7 +299,7 @@ export function SchedulingOverviewDashboard({
               <TableMultiFilter
                 label="attendance"
                 filterKey="attendance"
-                options={["none", "draft", "saved", "applied", "ready", "finalized", "locked", "review"].map((status) => ({
+                options={["none", "draft", "saved", "applied", "ready", "submitted_to_hr", "returned", "finalized", "locked", "review"].map((status) => ({
                   value: status,
                   label: statusLabel(status),
                 }))}

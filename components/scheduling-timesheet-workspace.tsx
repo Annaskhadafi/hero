@@ -45,7 +45,6 @@ import {
   createAttendanceImportPreviewAction,
   deleteSchedulingTimesheetPlanAction,
   discardAttendanceImportPreviewAction,
-  finalizeSchedulingPeriodAction,
   getAttendanceImportHistoryAction,
   getIndonesiaHolidaysAction,
   reopenSchedulingPeriodAction,
@@ -55,6 +54,7 @@ import {
   saveSchedulingTimesheetPlanAction,
   saveTimesheetFieldBreakPlansAction,
   saveTimesheetPayrollSnapshotAction,
+  submitSchedulingPeriodForReviewAction,
   syncIndonesiaHolidaysAction,
   updateAttendanceImportPreviewMatchAction,
 } from '@/app/dashboard/admin-actions'
@@ -1073,6 +1073,7 @@ export function SchedulingTimesheetWorkspace({
     currentStatus?.scheduleStatus === 'finalized' ||
     currentStatus?.attendanceStatus === 'finalized'
   )
+  const isSubmittedToHr = currentStatus?.scheduleStatus === 'submitted_to_hr'
   function guardOpenPeriod(actionLabel: string) {
     if (!isFinalized) return true
     toast.error(`${actionLabel} blocked`, {
@@ -3533,15 +3534,15 @@ export function SchedulingTimesheetWorkspace({
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) return
     startSavingSchedule(async () => {
       try {
-        await finalizeSchedulingPeriodAction({
+        await submitSchedulingPeriodForReviewAction({
           siteId: numericSiteId,
           period,
-          reason: finalizeReason,
+          note: finalizeReason,
         })
-        toast.success('Period finalized')
+        toast.success('Period dikirim ke HR untuk review')
         window.location.reload()
       } catch (error) {
-        toast.error('Finalize failed', {
+        toast.error('Submit review gagal', {
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
@@ -3978,6 +3979,12 @@ export function SchedulingTimesheetWorkspace({
           </span>
         </div>
       ) : null}
+      {isSubmittedToHr ? (
+        <div className="flex items-center gap-2.5 rounded-[0.9rem] bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
+          <Clock3 className="size-4 shrink-0" />
+          Periode sedang direview HR. Editing dikunci sampai HR approve atau return.
+        </div>
+      ) : null}
       {mode !== 'setup' && mode !== 'schedule' && mode !== 'field-break' ? (
         <Card className="surface-module-card rounded-[1rem] border-0 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -4090,13 +4097,17 @@ export function SchedulingTimesheetWorkspace({
                 >
                   Reopen
                 </Button>
+              ) : isSubmittedToHr ? (
+                <Button variant="outline" disabled>
+                  Menunggu HR
+                </Button>
               ) : (
                 <Button
                   variant="outline"
                   disabled={siteId === 'all' || isSavingSchedule}
                   onClick={() => setFinalizeDialogOpen(true)}
                 >
-                  Finalize
+                  Submit ke HR
                 </Button>
               )}
             </div>
@@ -7096,17 +7107,17 @@ export function SchedulingTimesheetWorkspace({
       <Dialog open={finalizeDialogOpen} onOpenChange={setFinalizeDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Finalize period</DialogTitle>
+            <DialogTitle>Submit periode ke HR</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Alert>
-              <Lock className="h-4 w-4" />
+              <CheckCircle2 className="h-4 w-4" />
               <AlertDescription>
-                Finalized periods are locked for schedule, attendance, import, and settings edits.
+                Schedule V2 aktif, attendance aktual, conflict, dan payroll snapshot akan divalidasi sebelum dikirim.
               </AlertDescription>
             </Alert>
             <Input
-              placeholder="Reason (optional)"
+              placeholder="Catatan untuk HR (opsional)"
               value={finalizeReason}
               onChange={(event) => setFinalizeReason(event.target.value)}
             />
@@ -7115,7 +7126,7 @@ export function SchedulingTimesheetWorkspace({
                 Cancel
               </Button>
               <Button onClick={submitFinalizePeriod} disabled={isSavingSchedule}>
-                Finalize
+                Submit ke HR
               </Button>
             </div>
           </div>
