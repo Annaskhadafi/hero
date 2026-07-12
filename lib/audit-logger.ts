@@ -51,6 +51,9 @@ export type AuditAction =
   | 'timesheet.period_submitted'
   | 'spl.status_changed'
   | 'daily_activity.submitted'
+  | 'workflow_studio.saved'
+  | 'workflow_studio.investigated'
+  | 'workflow_studio.reminder_resent'
 
 export type AuditSeverity = 'info' | 'warning' | 'critical'
 

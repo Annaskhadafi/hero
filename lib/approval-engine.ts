@@ -47,6 +47,8 @@ export type ResolvedApprovalStep = {
     | "legacy_manager"
     | "legacy_site_pjo"
     | "legacy_site_foreman"
+    | "apd_site_pjo"
+    | "apd_head_section"
     | "vacant";
   canDelegate: boolean;
   slaHours: number;
@@ -752,18 +754,6 @@ export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput,
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input);
-  
-  if (context.transactionType === "apd-request") {
-    return resolveApdApprovalRoute(context);
-  }
-
-  const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
-    "Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.",
-  ]);
-
-  if (centralServiceSitePjoRoute) {
-    return centralServiceSitePjoRoute;
-  }
 
   const matrixCandidates = await db
     .select({
@@ -817,6 +807,18 @@ export async function resolveApprovalRouteForActivity(
 
   const selectedMatrix = rankedCandidates[0];
   if (!selectedMatrix) {
+    if (context.transactionType === "apd-request") {
+      return resolveApdApprovalRoute(context);
+    }
+
+    const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
+      "Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.",
+    ]);
+
+    if (centralServiceSitePjoRoute) {
+      return centralServiceSitePjoRoute;
+    }
+
     return resolveLegacyFallbackRoute(context);
   }
 

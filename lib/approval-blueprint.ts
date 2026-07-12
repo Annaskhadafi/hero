@@ -2,12 +2,14 @@ import { and, asc, desc, eq, inArray, isNotNull, lt, lte, sql, isNull } from 'dr
 import { db } from '@/db'
 import {
   activities,
+  auditLogs,
   approvalAttachments,
   approvalComments,
   approvalMatrices,
   approvalMatrixSteps,
   approvalRequestActors,
   approvals,
+  emailTemplates,
   employees,
   formFieldOptions,
   formSubmissionValues,
@@ -20,6 +22,7 @@ import {
   inboxItems,
   notificationDeliveries,
   notificationEvents,
+  orgChartNodes,
   reminderJobs,
   requestStatusHistories,
   sites,
@@ -3133,69 +3136,388 @@ export async function getFormStudioConsoleData() {
   }
 }
 
+const APPROVAL_WORKFLOW_REGISTRY = [
+  {
+    key: 'daily-activity',
+    name: 'Daily Activity',
+    pageTitle: 'Input Aktivitas Harian',
+    pageUrl: '/dashboard/activity-hub/my-day',
+    templateKey: 'daily-activity',
+    transactionType: 'activity',
+    sourceType: 'Workflow',
+  },
+  {
+    key: 'overtime-command-letter',
+    name: 'Surat Perintah Lembur',
+    pageTitle: 'Monitoring Tim & SPL',
+    pageUrl: '/dashboard/activity-hub/team-board',
+    templateKey: 'overtime-command-letter',
+    transactionType: 'overtime_request',
+    sourceType: 'Legacy Engine',
+  },
+  {
+    key: 'attendance-permission',
+    name: 'Attendance Permission',
+    pageTitle: 'Exceptions',
+    pageUrl: '/dashboard/scheduling-timesheet/permission',
+    templateKey: 'attendance-permission',
+    transactionType: 'attendance_permission',
+    sourceType: 'Legacy Engine',
+  },
+  {
+    key: 'leave-permission',
+    name: 'Leave / Permission',
+    pageTitle: 'Izin Sakit & Terlambat',
+    pageUrl: '/dashboard/hc/permission',
+    templateKey: 'leave-permission',
+    transactionType: 'leave_request',
+    sourceType: 'Legacy Engine',
+  },
+  {
+    key: 'offboarding-request',
+    name: 'Offboarding Request',
+    pageTitle: 'Employee Data',
+    pageUrl: '/dashboard/hc/employee',
+    templateKey: 'offboarding-request',
+    transactionType: 'offboarding_request',
+    sourceType: 'Legacy Engine',
+  },
+  {
+    key: 'timesheet-period-review',
+    name: 'Timesheet Period Review',
+    pageTitle: 'Payroll Timesheet',
+    pageUrl: '/dashboard/scheduling-timesheet/payroll',
+    templateKey: 'timesheet-period-review',
+    transactionType: 'timesheet_period',
+    sourceType: 'Legacy Engine',
+  },
+  {
+    key: 'apd-request',
+    name: 'Request APD',
+    pageTitle: 'Request APD',
+    pageUrl: '/dashboard/apd',
+    templateKey: 'apd-request',
+    transactionType: 'apd-request',
+    sourceType: 'Hardcode',
+  },
+  {
+    key: 'central-service-pjo',
+    name: 'Central Service PJO Route',
+    pageTitle: 'Central Service',
+    pageUrl: '/dashboard/central-service',
+    templateKey: 'central-service-pjo',
+    transactionType: 'activity',
+    sourceType: 'Hardcode',
+  },
+  {
+    key: 'legacy-manager-fallback',
+    name: 'Legacy Manager / Foreman Fallback',
+    pageTitle: 'Approval Resolver',
+    pageUrl: '/dashboard/approval',
+    templateKey: 'legacy-manager-fallback',
+    transactionType: 'activity',
+    sourceType: 'Hardcode',
+  },
+] as const
+
+function dateIso(value: Date | null | undefined) {
+  return value ? value.toISOString() : ''
+}
+
+function statusBucket(status: string) {
+  const normalized = normalizeStatus(status)
+  if (['approved', 'completed', 'finalized'].includes(normalized)) return 'complete'
+  if (['cancelled', 'canceled', 'rejected', 'expired'].includes(normalized)) return 'cancel'
+  if (['draft'].includes(normalized)) return 'draft'
+  return 'pending'
+}
+
+function durationLabel(from: Date | null | undefined, to = new Date()) {
+  if (!from) return '-'
+  const minutes = Math.max(0, Math.floor((to.getTime() - from.getTime()) / 60000))
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes % 60}m`
+  return `${minutes}m`
+}
+
 export async function getWorkflowStudioConsoleData() {
   const [
     workflowRows,
     versions,
-    conditions,
-    branches,
     stepRules,
     notificationRules,
     reminderRules,
+    matrixRows,
+    matrixSteps,
+    nodeRows,
+    templates,
+    submissions,
+    approvalRows,
+    inboxRows,
+    reminderRows,
+    notificationRows,
+    deliveryRows,
+    auditRows,
+    siteRows,
+    employeeRows,
   ] = await Promise.all([
     db.select().from(workflowTemplates).orderBy(asc(workflowTemplates.name)),
-    db
-      .select()
-      .from(workflowTemplateVersions)
-      .orderBy(desc(workflowTemplateVersions.versionNumber)),
-    db.select().from(workflowConditions).orderBy(asc(workflowConditions.sortOrder)),
-    db.select().from(workflowBranches).orderBy(asc(workflowBranches.sortOrder)),
+    db.select().from(workflowTemplateVersions).orderBy(desc(workflowTemplateVersions.versionNumber)),
     db.select().from(workflowStepRules).orderBy(asc(workflowStepRules.stepOrder)),
     db.select().from(workflowNotificationRules).orderBy(asc(workflowNotificationRules.eventType)),
     db.select().from(workflowReminderRules).orderBy(asc(workflowReminderRules.reminderType)),
+    db.select().from(approvalMatrices).orderBy(desc(approvalMatrices.updatedAt)),
+    db.select().from(approvalMatrixSteps).orderBy(asc(approvalMatrixSteps.stepOrder)),
+    db.select().from(orgChartNodes),
+    db.select().from(emailTemplates).orderBy(asc(emailTemplates.templateCode)),
+    db
+      .select({
+        id: formSubmissions.id,
+        requestNumber: formSubmissions.requestNumber,
+        requestStatus: formSubmissions.requestStatus,
+        submittedAt: formSubmissions.submittedAt,
+        completedAt: formSubmissions.completedAt,
+        cancelledAt: formSubmissions.cancelledAt,
+        updatedAt: formSubmissions.updatedAt,
+        templateKey: formTemplates.templateKey,
+        templateName: formTemplates.name,
+        requesterName: employees.name,
+        siteName: sites.name,
+      })
+      .from(formSubmissions)
+      .innerJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
+      .innerJoin(employees, eq(formSubmissions.requesterEmployeeId, employees.id))
+      .leftJoin(sites, eq(formSubmissions.siteId, sites.id))
+      .orderBy(desc(formSubmissions.updatedAt))
+      .limit(250),
+    db.select().from(approvals).orderBy(desc(approvals.submittedAt)).limit(500),
+    db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)).limit(500),
+    db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)).limit(250),
+    db.select().from(notificationEvents).orderBy(desc(notificationEvents.createdAt)).limit(250),
+    db.select().from(notificationDeliveries).orderBy(desc(notificationDeliveries.createdAt)).limit(250),
+    db
+      .select()
+      .from(auditLogs)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(120),
+    db.select({ id: sites.id, name: sites.name }).from(sites).orderBy(asc(sites.name)),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        siteId: employees.siteId,
+        department: employees.department,
+        section: employees.section,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
   ])
+
+  const latestVersionByWorkflowId = new Map<number, (typeof versions)[number]>()
+  for (const version of versions) {
+    if (!latestVersionByWorkflowId.has(version.workflowTemplateId)) {
+      latestVersionByWorkflowId.set(version.workflowTemplateId, version)
+    }
+  }
+
+  const workflowByKey = new Map(workflowRows.map((workflow) => [workflow.templateKey, workflow]))
+  const activeMatrixByTransaction = new Map<string, (typeof matrixRows)[number][]>()
+  for (const matrix of matrixRows.filter((matrix) => matrix.isActive)) {
+    const key = normalizeStatus(matrix.transactionType)
+    activeMatrixByTransaction.set(key, [...(activeMatrixByTransaction.get(key) ?? []), matrix])
+  }
+
+  const inventory = APPROVAL_WORKFLOW_REGISTRY.map((item) => {
+    const workflow = workflowByKey.get(item.templateKey) ?? workflowByKey.get(`${item.templateKey}-workflow`)
+    const latestVersion = workflow ? latestVersionByWorkflowId.get(workflow.id) : null
+    const relatedMatrices = activeMatrixByTransaction.get(normalizeStatus(item.transactionType)) ?? []
+    const primaryMatrix = relatedMatrices[0] ?? null
+    const primaryMatrixSteps = primaryMatrix
+      ? matrixSteps.filter((step) => step.matrixId === primaryMatrix.id)
+      : []
+    const approverByRole = primaryMatrixSteps.reduce<Record<string, number | null>>((map, step) => {
+      const node = nodeRows.find((row) => row.id === step.nodeId)
+      map[normalizeStatus(step.label)] = node?.employeeId ?? null
+      return map
+    }, {})
+    const relatedSubmissions = submissions.filter((submission) => submission.templateKey === item.templateKey)
+    const counts = relatedSubmissions.reduce(
+      (accumulator, submission) => {
+        accumulator[statusBucket(submission.requestStatus)] += 1
+        return accumulator
+      },
+      { pending: 0, complete: 0, cancel: 0, draft: 0 }
+    )
+    const matrixStepCount = relatedMatrices.reduce(
+      (total, matrix) => total + matrixSteps.filter((step) => step.matrixId === matrix.id).length,
+      0
+    )
+    const isActive = Boolean(workflow?.isActive || relatedMatrices.length > 0)
+    const sourceType =
+      workflow?.isActive && relatedMatrices.length > 0
+        ? 'Workflow'
+        : relatedMatrices.length > 0
+          ? 'Matrix'
+          : item.sourceType
+
+    return {
+      id: item.key,
+      name: item.name,
+      pageTitle: item.pageTitle,
+      pageUrl: item.pageUrl,
+      templateKey: item.templateKey,
+      transactionType: item.transactionType,
+      sourceType,
+      pending: counts.pending,
+      complete: counts.complete,
+      cancel: counts.cancel,
+      status: isActive ? 'Active' : 'Nonactive',
+      updatedAt: dateIso(latestVersion?.updatedAt ?? relatedMatrices[0]?.updatedAt ?? null),
+      stepCount: matrixStepCount || stepRules.filter((step) => step.workflowVersionId === latestVersion?.id).length,
+      duplicateActiveCount: relatedMatrices.length,
+      matrixId: primaryMatrix?.id ?? null,
+      siteId: primaryMatrix?.siteId ?? null,
+      mode: primaryMatrixSteps[0]?.approvalMode ?? 'sequential',
+      notes: primaryMatrix?.description ?? '',
+      effectiveFrom: dateIso(primaryMatrix?.effectiveFrom ?? null),
+      effectiveTo: dateIso(primaryMatrix?.effectiveTo ?? null),
+      leaderId: approverByRole.leader ?? null,
+      pjoId: approverByRole.pjo ?? null,
+      sectionHeadId: approverByRole.section_head ?? null,
+      departmentHeadId: approverByRole.department_head ?? null,
+    }
+  })
+
+  const duplicateKeys = new Set(
+    Array.from(
+      matrixRows
+        .filter((matrix) => matrix.isActive)
+        .reduce<Map<string, number>>((map, matrix) => {
+          const key = [
+            normalizeStatus(matrix.transactionType),
+            matrix.siteId ?? 'all',
+            matrix.departmentId ?? 'all',
+            matrix.sectionId ?? 'all',
+            normalizeStatus(matrix.activityType || 'all'),
+          ].join('|')
+          map.set(key, (map.get(key) ?? 0) + 1)
+          return map
+        }, new Map())
+        .entries()
+    )
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key)
+  )
+
+  const monitoring = submissions.map((submission) => {
+    const relatedApprovals = approvalRows.filter((approval) => approval.submissionId === submission.id)
+    const pendingApproval = relatedApprovals.find((approval) => normalizeStatus(approval.status) === 'pending')
+    const inbox = pendingApproval
+      ? inboxRows.find((item) => item.approvalId === pendingApproval.id && item.status === 'pending')
+      : null
+    const lastApproval = relatedApprovals[0]
+    const pendingSince = pendingApproval?.submittedAt ?? submission.submittedAt ?? submission.updatedAt
+    const dueAt = inbox?.dueAt ?? null
+    const now = new Date()
+
+    return {
+      id: submission.id,
+      requestId: submission.requestNumber || `REQ-${submission.id}`,
+      templateKey: submission.templateKey,
+      activityName: submission.templateName,
+      requester: submission.requesterName,
+      site: submission.siteName ?? '-',
+      status: submission.requestStatus,
+      currentStep: pendingApproval ? `Step ${pendingApproval.level}` : '-',
+      pendingWith: pendingApproval?.approverName ?? '-',
+      pendingSince: dateIso(pendingSince),
+      pendingDuration: statusBucket(submission.requestStatus) === 'pending' ? durationLabel(pendingSince, now) : '-',
+      dueAt: dateIso(dueAt),
+      slaStatus: dueAt && dueAt < now && statusBucket(submission.requestStatus) === 'pending' ? 'Overdue' : 'On Track',
+      lastAction: dateIso(submission.completedAt ?? submission.cancelledAt ?? lastApproval?.reviewedAt ?? submission.updatedAt),
+    }
+  })
 
   return {
     metrics: {
-      workflows: workflowRows.length,
-      versions: versions.length,
-      conditions: conditions.length,
-      branches: branches.length,
-      notificationRules: notificationRules.length,
-      reminderRules: reminderRules.length,
+      workflows: inventory.length,
+      active: inventory.filter((item) => item.status === 'Active').length,
+      pending: inventory.reduce((total, item) => total + item.pending, 0),
+      complete: inventory.reduce((total, item) => total + item.complete, 0),
+      cancel: inventory.reduce((total, item) => total + item.cancel, 0),
+      duplicateActive: duplicateKeys.size,
+      reminders: reminderRows.length,
+      overdue: monitoring.filter((item) => item.slaStatus === 'Overdue').length,
     },
-    workflows: workflowRows.map((workflow) => {
-      const workflowVersions = versions.filter(
-        (version) => version.workflowTemplateId === workflow.id
-      )
-      const latestVersion =
-        workflowVersions.sort((left, right) => right.versionNumber - left.versionNumber)[0] ?? null
-      const workflowConditionsRows = conditions.filter(
-        (condition) => condition.workflowVersionId === latestVersion?.id
-      )
-      const workflowBranchesRows = branches.filter(
-        (branch) => branch.workflowVersionId === latestVersion?.id
-      )
-      const workflowStepRows = stepRules.filter(
-        (stepRule) => stepRule.workflowVersionId === latestVersion?.id
-      )
-      const workflowNotificationRows = notificationRules.filter(
-        (rule) => rule.workflowVersionId === latestVersion?.id
-      )
-      const workflowReminderRows = reminderRules.filter(
-        (rule) => rule.workflowVersionId === latestVersion?.id
-      )
-
-      return {
-        ...workflow,
-        latestVersion,
-        conditions: workflowConditionsRows,
-        branches: workflowBranchesRows,
-        stepRules: workflowStepRows,
-        notificationRules: workflowNotificationRows,
-        reminderRules: workflowReminderRows,
-      }
-    }),
+    inventory,
+    monitoring,
+    emailTemplates: templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      templateCode: template.templateCode,
+      subject: template.subject,
+      isActive: template.isActive,
+      updatedAt: dateIso(template.updatedAt),
+    })),
+    emailRules: notificationRules.map((rule) => ({
+      id: rule.id,
+      eventType: rule.eventType,
+      channel: rule.channel,
+      recipientMode: rule.recipientMode,
+      isActive: rule.isActive,
+      updatedAt: dateIso(rule.updatedAt),
+    })),
+    reminderJobs: reminderRows.map((job) => ({
+      id: job.id,
+      inboxItemId: job.inboxItemId,
+      reminderType: job.reminderType,
+      reminderAt: dateIso(job.reminderAt),
+      status: job.status,
+      executionLog: job.executionLog,
+      updatedAt: dateIso(job.updatedAt),
+    })),
+    notificationDeliveries: deliveryRows.map((delivery) => ({
+      id: delivery.id,
+      channel: delivery.deliveryChannel,
+      recipient: delivery.recipient,
+      status: delivery.status,
+      sentAt: dateIso(delivery.sentAt),
+      updatedAt: dateIso(delivery.updatedAt),
+    })),
+    notificationEvents: notificationRows.map((event) => ({
+      id: event.id,
+      eventType: event.eventType,
+      channel: event.channel,
+      recipient: event.recipient,
+      deliveryStatus: event.deliveryStatus,
+      createdAt: dateIso(event.createdAt),
+    })),
+    audit: auditRows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      entityType: row.entityType,
+      entityLabel: row.entityLabel,
+      description: row.description,
+      severity: row.severity,
+      createdAt: dateIso(row.createdAt),
+    })),
+    builderOptions: {
+      menus: APPROVAL_WORKFLOW_REGISTRY.map((item) => ({
+        key: item.key,
+        label: item.name,
+        pageTitle: item.pageTitle,
+        pageUrl: item.pageUrl,
+        templateKey: item.templateKey,
+        transactionType: item.transactionType,
+      })),
+      sites: siteRows,
+      employees: employeeRows,
+    },
   }
 }
 
