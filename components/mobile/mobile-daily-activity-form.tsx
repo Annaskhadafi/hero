@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SpeechInputButton } from "@/components/ui/speech-input-button";
 import { validateSiteBoundary } from "@/lib/location";
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
@@ -1206,7 +1207,13 @@ export function MobileDailyActivityForm({
                 />
               </Label>
               <Label className="block space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
+                  <SpeechInputButton
+                    onFinalTranscript={(text) => setCustomActivityDescription((prev) => (prev ? prev + " " + text : text))}
+                    className="size-7"
+                  />
+                </div>
                 <Textarea
                   value={customActivityDescription}
                   onChange={(event) => setCustomActivityDescription(event.target.value)}
@@ -1338,7 +1345,13 @@ export function MobileDailyActivityForm({
                         ) : null}
 
                         <Label className="block space-y-2">
-                          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
+                            <SpeechInputButton
+                              onFinalTranscript={(text) => updateSelfInputEntry(libraryId, { notes: (entry.notes ? entry.notes + " " + text : text) })}
+                              className="size-7"
+                            />
+                          </div>
                           <Textarea
                             rows={3}
                             value={entry.notes}
@@ -1488,7 +1501,13 @@ export function MobileDailyActivityForm({
 
                               {item.requiresRemark ? (
                                 <Label className="block space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Keterangan</span>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Keterangan</span>
+                                    <SpeechInputButton
+                                      onFinalTranscript={(text) => updateRouteItem(item.id, { remark: (itemState.remark ? itemState.remark + " " + text : text) })}
+                                      className="size-7"
+                                    />
+                                  </div>
                                   <Textarea
                                     rows={3}
                                     value={itemState.remark}
@@ -1559,7 +1578,13 @@ export function MobileDailyActivityForm({
 
             <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
               <Label className="block space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Notes / hasil kerja</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Notes / hasil kerja</span>
+                  <SpeechInputButton
+                    onFinalTranscript={(text) => setNotes((prev) => (prev ? prev + " " + text : text))}
+                    className="size-7"
+                  />
+                </div>
                 <Textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}

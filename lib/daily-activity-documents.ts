@@ -1,5 +1,5 @@
-import { asc, eq, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { asc, eq, sql } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   dailyActivitySessionItems,
   dailyActivitySessionSignoffs,
@@ -7,47 +7,51 @@ import {
   employees,
   overtimeCommandLetters,
   sites,
-} from "@/db/schema/hero";
+} from '@/db/schema/hero'
 
 function minutesBetween(start?: Date | null, end?: Date | null) {
   if (!start || !end || end <= start) {
-    return 0;
+    return 0
   }
 
-  return Math.round((end.getTime() - start.getTime()) / 60000);
+  return Math.round((end.getTime() - start.getTime()) / 60000)
 }
 
 function formatDurationLabel(totalMinutes: number) {
   if (totalMinutes <= 0) {
-    return "-";
+    return '-'
   }
 
   if (totalMinutes < 60) {
-    return `${totalMinutes} menit`;
+    return `${totalMinutes} menit`
   }
 
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}j ${minutes}m` : `${hours} jam`;
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}j ${minutes}m` : `${hours} jam`
 }
 
-export async function getDailyActivitySessionDocumentData(sessionId: number, email?: string | null) {
+export async function getDailyActivitySessionDocumentData(
+  sessionId: number,
+  email?: string | null
+) {
   if (!email) {
-    return null;
+    return null
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase()
   const [currentEmployee] = await db
     .select({
       id: employees.id,
       siteId: employees.siteId,
+      accessRole: employees.accessRole,
     })
     .from(employees)
     .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
-    .limit(1);
+    .limit(1)
 
   if (!currentEmployee) {
-    return null;
+    return null
   }
 
   const [header] = await db
@@ -80,17 +84,20 @@ export async function getDailyActivitySessionDocumentData(sessionId: number, ema
     .innerJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
     .leftJoin(
       overtimeCommandLetters,
-      eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id),
+      eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id)
     )
     .where(eq(dailyActivitySessions.id, sessionId))
-    .limit(1);
+    .limit(1)
 
   if (!header) {
-    return null;
+    return null
   }
 
-  if (header.employeeId !== currentEmployee.id || header.siteId !== currentEmployee.siteId) {
-    return null;
+  const canReviewHr =
+    header.siteId === currentEmployee.siteId &&
+    ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)
+  if (header.employeeId !== currentEmployee.id && !canReviewHr) {
+    return null
   }
 
   const [itemRows, signoff] = await Promise.all([
@@ -117,33 +124,33 @@ export async function getDailyActivitySessionDocumentData(sessionId: number, ema
       .where(eq(dailyActivitySessionSignoffs.sessionId, sessionId))
       .limit(1)
       .then((rows) => rows[0] ?? null),
-  ]);
+  ])
 
   const checkedItems = itemRows
     .filter((item) => item.isChecked)
     .map((item) => {
-      const durationMinutes = minutesBetween(item.startedAt, item.endedAt);
+      const durationMinutes = minutesBetween(item.startedAt, item.endedAt)
       return {
         ...item,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
-        dayLabel: header.workDate.toLocaleDateString("id-ID", { weekday: "long" }),
-        dateLabel: header.workDate.toLocaleDateString("id-ID", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
+        dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),
+        dateLabel: header.workDate.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
         }),
         startLabel: item.startedAt
-          ? item.startedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-          : "-",
+          ? item.startedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          : '-',
         endLabel: item.endedAt
-          ? item.endedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-          : "-",
-        workSummary: [item.snapshotLabel, item.unitNumber, item.remark].filter(Boolean).join(" - "),
-      };
-    });
+          ? item.endedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          : '-',
+        workSummary: [item.snapshotLabel, item.unitNumber, item.remark].filter(Boolean).join(' - '),
+      }
+    })
 
-  const totalDurationMinutes = checkedItems.reduce((total, item) => total + item.durationMinutes, 0);
+  const totalDurationMinutes = checkedItems.reduce((total, item) => total + item.durationMinutes, 0)
 
   return {
     sessionId: header.sessionId,
@@ -153,9 +160,9 @@ export async function getDailyActivitySessionDocumentData(sessionId: number, ema
     status: header.status,
     summaryRemark: header.summaryRemark,
     submittedAt: header.submittedAt,
-    monthLabel: header.workDate.toLocaleDateString("id-ID", {
-      month: "long",
-      year: "numeric",
+    monthLabel: header.workDate.toLocaleDateString('id-ID', {
+      month: 'long',
+      year: 'numeric',
     }),
     employee: {
       id: header.employeeId,
@@ -188,17 +195,21 @@ export async function getDailyActivitySessionDocumentData(sessionId: number, ema
       totalDurationLabel: formatDurationLabel(totalDurationMinutes),
     },
     signoff: {
-      employeeSignerName: signoff?.employeeSignerName ?? "",
-      employeeSignatureUrl: signoff?.employeeSignatureUrl ?? "",
+      employeeSignerName: signoff?.employeeSignerName ?? '',
+      employeeSignatureUrl: signoff?.employeeSignatureUrl ?? '',
       employeeSignedAt: signoff?.employeeSignedAt ?? null,
-      customerSignerName: signoff?.customerSignerName ?? "",
-      customerSignatureUrl: signoff?.customerSignatureUrl ?? "",
+      customerSignerName: signoff?.customerSignerName ?? '',
+      customerSignatureUrl: signoff?.customerSignatureUrl ?? '',
       customerSignedAt: signoff?.customerSignedAt ?? null,
-      hrCheckerName: signoff?.hrCheckerName ?? "",
-      hrChecklistStatus: signoff?.hrChecklistStatus ?? "pending",
-      hrChecklistNote: signoff?.hrChecklistNote ?? "",
-      hrSignatureUrl: signoff?.hrSignatureUrl ?? "",
+      hrCheckerName: signoff?.hrCheckerName ?? '',
+      hrChecklistStatus: signoff?.hrChecklistStatus ?? 'pending',
+      hrChecklistNote: signoff?.hrChecklistNote ?? '',
+      hrSignatureUrl: signoff?.hrSignatureUrl ?? '',
       hrCheckedAt: signoff?.hrCheckedAt ?? null,
     },
-  };
+    permissions: {
+      canSignEmployee: header.employeeId === currentEmployee.id,
+      canReviewHr,
+    },
+  }
 }

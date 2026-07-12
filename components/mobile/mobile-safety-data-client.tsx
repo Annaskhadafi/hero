@@ -23,7 +23,7 @@ import {
 } from '@/app/dashboard/safety/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { cn } from '@/lib/utils'
 import type { getSafetyDashboardData } from '@/lib/safety-dashboard/queries'
 

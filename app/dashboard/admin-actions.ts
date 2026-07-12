@@ -97,6 +97,7 @@ import {
   notificationEvents,
   attendanceRecords,
   dailyReports,
+  dailyActivitySessions,
   employees,
   hrEmployeeStatuses,
   hrOrgNodes,
@@ -110,6 +111,8 @@ import {
   navbarThemes,
   orgChartNodes,
   orgChartStructures,
+  overtimeCommandLetters,
+  overtimeCommandLetterItems,
   pointEvents,
   penaltyEvents,
   pointDisputes,
@@ -495,7 +498,7 @@ async function getActiveScheduleEmployees(siteId: number) {
 
 async function validateScheduleV2Rows(siteId: number, period: string, rows: ScheduleV2Row[]) {
   const activeEmployees = await getActiveScheduleEmployees(siteId)
-  const allowedIds = new Set(activeEmployees.map(e => e.id))
+  const allowedIds = new Set(activeEmployees.map((e) => e.id))
   const dayCount = getScheduleV2DayCount(period)
   if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
     throw new Error('Duplicate employee pada schedule V2.')
@@ -1170,7 +1173,10 @@ async function getSchedulingPeriodReadiness(siteId: number, period: string) {
       )
       .limit(1),
     db
-      .select({ id: timesheetPayrollSnapshots.id, generatedAt: timesheetPayrollSnapshots.generatedAt })
+      .select({
+        id: timesheetPayrollSnapshots.id,
+        generatedAt: timesheetPayrollSnapshots.generatedAt,
+      })
       .from(timesheetPayrollSnapshots)
       .where(
         and(
@@ -1188,11 +1194,7 @@ async function getSchedulingPeriodReadiness(siteId: number, period: string) {
   }
   if ((status[0]?.conflictCount ?? 0) > 0) issues.push('Conflict attendance belum diselesaikan.')
   if (!snapshot[0]) issues.push('Payroll snapshot belum dibuat.')
-  if (
-    snapshot[0] &&
-    status[0]?.lastSavedAt &&
-    snapshot[0].generatedAt < status[0].lastSavedAt
-  ) {
+  if (snapshot[0] && status[0]?.lastSavedAt && snapshot[0].generatedAt < status[0].lastSavedAt) {
     issues.push('Payroll snapshot lebih lama dari perubahan terakhir.')
   }
   let exceptionCount = 0
@@ -2574,9 +2576,30 @@ async function updateLegacyEntityForSubmissionDecision(params: {
   decision: 'approved' | 'rejected' | 'needs_correction'
   note: string
   actorName: string
+  actorEmployeeId: number
   now: Date
 }) {
   const payload = parseJsonRecord(params.payloadSnapshot)
+  if (params.templateKey === 'overtime-command-letter') {
+    const legacyRecordId = Number(payload.legacyRecordId ?? 0)
+    if (!Number.isInteger(legacyRecordId) || legacyRecordId <= 0) return
+
+    await params.tx
+      .update(overtimeCommandLetters)
+      .set({
+        status:
+          params.decision === 'approved'
+            ? 'approved'
+            : params.decision === 'rejected'
+              ? 'rejected'
+              : 'returned',
+        approvedByEmployeeId: params.decision === 'approved' ? params.actorEmployeeId : null,
+        updatedAt: params.now,
+      })
+      .where(eq(overtimeCommandLetters.id, legacyRecordId))
+    return
+  }
+
   if (params.templateKey === 'timesheet-period-review') {
     const siteId = Number(payload.siteId ?? 0)
     const period = String(payload.period ?? '')
@@ -2710,6 +2733,8 @@ async function applyLegacySubmissionDecision(params: {
     requesterEmployeeId: number
     requesterName: string
   }
+  actorEmployeeId: number
+  actorName: string
   decision: 'approved' | 'rejected' | 'needs_correction'
   note: string
 }) {
@@ -2753,7 +2778,7 @@ async function applyLegacySubmissionDecision(params: {
         reviewedAt: now,
         decisionNote: appendApprovalNoteEntry(params.approval.decisionNote, {
           kind: params.decision,
-          actor: params.approval.approverName,
+          actor: params.actorName,
           message: trimmedNote || defaultDecisionMessage,
           at: now.toISOString(),
         }),
@@ -2771,7 +2796,7 @@ async function applyLegacySubmissionDecision(params: {
     await tx.insert(stepDecisionHistories).values({
       submissionId: params.approval.submissionId,
       approvalId: params.approval.approvalId,
-      actorEmployeeId: null,
+      actorEmployeeId: params.actorEmployeeId,
       decision: params.decision,
       decisionNote: trimmedNote,
       decidedAt: now,
@@ -2826,7 +2851,7 @@ async function applyLegacySubmissionDecision(params: {
       await tx.insert(requestStatusHistories).values({
         submissionId: params.approval.submissionId,
         approvalId: params.approval.approvalId,
-        actorEmployeeId: null,
+        actorEmployeeId: params.actorEmployeeId,
         fromStatus: params.approval.requestStatus,
         toStatus: nextStatus,
         note: trimmedNote,
@@ -2840,7 +2865,8 @@ async function applyLegacySubmissionDecision(params: {
         payloadSnapshot: params.approval.payloadSnapshot,
         decision: params.decision,
         note: trimmedNote,
-        actorName: params.approval.approverName,
+        actorName: params.actorName,
+        actorEmployeeId: params.actorEmployeeId,
         now,
       })
       return
@@ -2924,7 +2950,7 @@ async function applyLegacySubmissionDecision(params: {
       await tx.insert(requestStatusHistories).values({
         submissionId: params.approval.submissionId,
         approvalId: params.approval.approvalId,
-        actorEmployeeId: null,
+        actorEmployeeId: params.actorEmployeeId,
         fromStatus: params.approval.requestStatus,
         toStatus: 'in_review',
         note: trimmedNote || 'Moved to next approval step.',
@@ -2945,7 +2971,7 @@ async function applyLegacySubmissionDecision(params: {
     await tx.insert(requestStatusHistories).values({
       submissionId: params.approval.submissionId,
       approvalId: params.approval.approvalId,
-      actorEmployeeId: null,
+      actorEmployeeId: params.actorEmployeeId,
       fromStatus: params.approval.requestStatus,
       toStatus: 'approved',
       note: trimmedNote || 'Request fully approved.',
@@ -2959,10 +2985,77 @@ async function applyLegacySubmissionDecision(params: {
       payloadSnapshot: params.approval.payloadSnapshot,
       decision: 'approved',
       note: trimmedNote,
-      actorName: params.approval.approverName,
+      actorName: params.actorName,
+      actorEmployeeId: params.actorEmployeeId,
       now,
     })
   })
+
+  if (params.approval.templateKey === 'overtime-command-letter') {
+    const payload = parseJsonRecord(params.approval.payloadSnapshot)
+    const splId = Number(payload.legacyRecordId ?? 0)
+    if (Number.isInteger(splId) && splId > 0) {
+      const [spl] = await db
+        .select({
+          splNumber: overtimeCommandLetters.splNumber,
+          title: overtimeCommandLetters.title,
+          requesterEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+        })
+        .from(overtimeCommandLetters)
+        .where(eq(overtimeCommandLetters.id, splId))
+        .limit(1)
+      const finalApproved = params.decision === 'approved' && nextStepGroup.length === 0
+      if (!finalApproved && params.decision === 'approved') {
+        // The next approval step will publish its own assignment notification.
+      } else {
+        const workerRows = finalApproved
+          ? await db
+              .select({ employeeId: overtimeCommandLetterItems.assignedEmployeeId })
+              .from(overtimeCommandLetterItems)
+              .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, splId))
+          : []
+        const recipients = finalApproved
+          ? Array.from(
+              new Set(
+                workerRows.map((row) => row.employeeId).filter((id): id is number => id != null)
+              )
+            )
+          : spl
+            ? [spl.requesterEmployeeId]
+            : []
+        const title = finalApproved
+          ? 'SPL disetujui dan siap dikerjakan'
+          : params.decision === 'rejected'
+            ? 'SPL ditolak'
+            : 'SPL dikembalikan untuk revisi'
+        try {
+          await Promise.all(
+            recipients.map(async (employeeId) => {
+              const event = await createNotificationEventForEmployee({
+                employeeId,
+                eventType: `spl_${finalApproved ? 'approved' : params.decision}`,
+                category: 'approval_requests',
+                title,
+                body: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
+                url: finalApproved ? '/mobile/activity/input' : '/dashboard/overtime-requests',
+              })
+              await sendPushNotification({
+                employeeId,
+                category: 'approval_requests',
+                title,
+                body: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
+                url: finalApproved ? '/mobile/activity/input' : '/dashboard/overtime-requests',
+                tag: `spl-decision-${splId}-${employeeId}`,
+                notificationEventId: event?.id,
+              })
+            })
+          )
+        } catch (notificationError) {
+          console.error('Failed to dispatch SPL decision notification', notificationError)
+        }
+      }
+    }
+  }
 
   if (params.decision === 'approved' && nextStepGroup.length > 0 && approvalRoute != null) {
     await createNextLegacyApprovalStep({
@@ -2998,6 +3091,19 @@ async function applyApprovalDecision(params: {
   note: string
 }) {
   const trimmedNote = params.note.trim()
+  const [actor, approvalPermission] = await Promise.all([
+    getCurrentEmployeeAccessContext(),
+    getCurrentMenuPermission('approval_inbox'),
+  ])
+  if (!actor) {
+    throw new Error('Authenticated employee profile is required.')
+  }
+  const [actorEmployee] = await db
+    .select({ name: employees.name })
+    .from(employees)
+    .where(eq(employees.id, actor.employeeId))
+    .limit(1)
+  const actorName = actorEmployee?.name ?? actor.roleName ?? 'Approver'
 
   if (params.decision === 'rejected' && !trimmedNote) {
     throw new Error('Rejection comment is required.')
@@ -3006,6 +3112,7 @@ async function applyApprovalDecision(params: {
   const [approval] = await db
     .select({
       approvalId: approvals.id,
+      approverEmployeeId: approvals.approverEmployeeId,
       submissionId: approvals.submissionId,
       apdRequestId: approvals.apdRequestId,
       level: approvals.level,
@@ -3027,6 +3134,7 @@ async function applyApprovalDecision(params: {
       employeeId: activities.employeeId,
       siteId: activities.siteId,
       requestStatus: formSubmissions.requestStatus,
+      submissionSiteId: formSubmissions.siteId,
       requestNumber: formSubmissions.requestNumber,
       workflowSnapshot: formSubmissions.workflowSnapshot,
       payloadSnapshot: formSubmissions.payloadSnapshot,
@@ -3034,6 +3142,7 @@ async function applyApprovalDecision(params: {
       templateKey: formTemplates.templateKey,
       templateName: formTemplates.name,
       requesterName: employees.name,
+      apdSiteId: apdRequests.siteId,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -3045,6 +3154,15 @@ async function applyApprovalDecision(params: {
 
   if (!approval) {
     throw new Error('Approval not found.')
+  }
+
+  const requestSiteId = approval.siteId ?? approval.submissionSiteId ?? approval.apdSiteId ?? null
+  const isAssignedApprover = approval.approverEmployeeId === actor.employeeId
+  const hasAdminReviewAccess =
+    approvalPermission.canEdit &&
+    (hasGlobalDataAccess(approvalPermission) || requestSiteId === actor.siteId)
+  if (!isAssignedApprover && !hasAdminReviewAccess) {
+    throw new Error('Anda bukan approver yang ditugaskan untuk request ini.')
   }
 
   if (approval.status !== 'pending') {
@@ -3072,6 +3190,8 @@ async function applyApprovalDecision(params: {
         requesterEmployeeId: approval.requesterEmployeeId ?? 0,
         requesterName: approval.requesterName ?? 'Requester',
       },
+      actorEmployeeId: actor.employeeId,
+      actorName,
       decision: params.decision,
       note: params.note,
     })
@@ -3099,7 +3219,7 @@ async function applyApprovalDecision(params: {
           reviewedAt: now,
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
-            actor: approval.approverName,
+            actor: actorName,
             message:
               trimmedNote || (params.decision === 'approved' ? 'APD disetujui.' : 'APD ditolak.'),
             at: now.toISOString(),
@@ -3143,7 +3263,6 @@ async function applyApprovalDecision(params: {
     approval.activityId == null ||
     approval.employeeId == null ||
     approval.siteId == null ||
-    approval.startTime == null ||
     approval.endTime == null
   ) {
     throw new Error('Activity approval context is incomplete.')
@@ -3151,8 +3270,6 @@ async function applyApprovalDecision(params: {
 
   const activityId = approval.activityId
   const employeeId = approval.employeeId
-  const siteId = approval.siteId
-  const startTime = approval.startTime
   const endTime = approval.endTime
   const pointsAwarded = approval.pointsAwarded ?? 0
   const penaltyDeducted = approval.penaltyDeducted ?? 0
@@ -3193,7 +3310,7 @@ async function applyApprovalDecision(params: {
         reviewedAt: now,
         decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
           kind: params.decision,
-          actor: approval.approverName,
+          actor: actorName,
           message: trimmedNote || defaultDecisionMessage,
           at: now.toISOString(),
         }),
@@ -3223,6 +3340,10 @@ async function applyApprovalDecision(params: {
           status: 'Needs Correction',
         })
         .where(eq(activities.id, activityId))
+      await tx
+        .update(dailyActivitySessions)
+        .set({ status: 'returned', approvedAt: null, updatedAt: now })
+        .where(eq(dailyActivitySessions.activityId, activityId))
 
       return
     }
@@ -3250,6 +3371,10 @@ async function applyApprovalDecision(params: {
           status: 'Rejected',
         })
         .where(eq(activities.id, activityId))
+      await tx
+        .update(dailyActivitySessions)
+        .set({ status: 'rejected', approvedAt: null, updatedAt: now })
+        .where(eq(dailyActivitySessions.activityId, activityId))
 
       return
     }
@@ -3291,7 +3416,7 @@ async function applyApprovalDecision(params: {
           reviewedAt: now,
           decisionNote: appendApprovalNoteEntry('', {
             kind: 'system',
-            actor: approval.approverName,
+            actor: actorName,
             message: 'Step parallel-any diselesaikan oleh approver lain pada level yang sama.',
             at: now.toISOString(),
           }),
@@ -3358,57 +3483,6 @@ async function applyApprovalDecision(params: {
       }
     }
 
-    const durationMinutes = Math.max(
-      0,
-      Math.round((endTime.getTime() - startTime.getTime()) / 60000)
-    )
-    const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes)
-    const overtimeRate = 70000
-    const periodLabel = getPeriodLabel(endTime)
-
-    const [existingTimesheet] = await tx
-      .select({
-        id: timesheetEntries.id,
-        regularMinutes: timesheetEntries.regularMinutes,
-        overtimeMinutes: timesheetEntries.overtimeMinutes,
-        overtimeAmount: timesheetEntries.overtimeAmount,
-      })
-      .from(timesheetEntries)
-      .where(
-        and(
-          eq(timesheetEntries.employeeId, employeeId),
-          eq(timesheetEntries.siteId, siteId),
-          eq(timesheetEntries.periodLabel, periodLabel)
-        )
-      )
-      .limit(1)
-
-    if (existingTimesheet) {
-      await tx
-        .update(timesheetEntries)
-        .set({
-          regularMinutes: existingTimesheet.regularMinutes + regularMinutes,
-          overtimeMinutes: existingTimesheet.overtimeMinutes + approval.overtimeMinutes,
-          overtimeAmount:
-            existingTimesheet.overtimeAmount +
-            Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-          status: 'ready_for_payroll',
-          updatedAt: now,
-        })
-        .where(eq(timesheetEntries.id, existingTimesheet.id))
-    } else {
-      await tx.insert(timesheetEntries).values({
-        employeeId,
-        siteId,
-        periodLabel,
-        regularMinutes,
-        overtimeMinutes: approval.overtimeMinutes,
-        overtimeAmount: Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-        status: 'ready_for_payroll',
-        updatedAt: now,
-      })
-    }
-
     if (approval.submissionTime != null) {
       const [existingAwardEvent] = await tx
         .select({ id: pointEvents.id })
@@ -3464,6 +3538,10 @@ async function applyApprovalDecision(params: {
         status: 'Approved',
       })
       .where(eq(activities.id, activityId))
+    await tx
+      .update(dailyActivitySessions)
+      .set({ status: 'approved', approvedAt: now, updatedAt: now })
+      .where(eq(dailyActivitySessions.activityId, activityId))
   })
 
   await syncActivityWorkflowArtifacts(activityId)

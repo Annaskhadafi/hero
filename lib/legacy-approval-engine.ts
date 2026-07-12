@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { db } from "@/db";
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   approvalRequestActors,
   approvals,
@@ -12,108 +12,101 @@ import {
   reminderJobs,
   requestStatusHistories,
   employees,
-} from "@/db/schema/hero";
-import {
-  ensureApprovalBlueprintSeedData,
-} from "@/lib/approval-blueprint";
-import {
-  getAppUrl,
-  buildWorkflowEmailContent,
-  sendWorkflowEmail,
-} from "@/lib/workflow-email";
-import {
-  sendPushNotification,
-  getEmployeeTargetByEmail,
-} from "@/lib/push-notifications";
-import type {
-  ApprovalRouteResolution,
-  ResolvedApprovalStep,
-} from "@/lib/approval-engine";
-import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
+} from '@/db/schema/hero'
+import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
+import { getAppUrl, buildWorkflowEmailContent, sendWorkflowEmail } from '@/lib/workflow-email'
+import { sendPushNotification, getEmployeeTargetByEmail } from '@/lib/push-notifications'
+import type { ApprovalRouteResolution, ResolvedApprovalStep } from '@/lib/approval-engine'
+import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 
 type LegacyApprovalTemplateKey =
-  | "attendance-permission"
-  | "leave-permission"
-  | "offboarding-request"
-  | "timesheet-period-review";
+  | 'attendance-permission'
+  | 'leave-permission'
+  | 'offboarding-request'
+  | 'timesheet-period-review'
+  | 'overtime-command-letter'
 
 type LegacyApprovalTemplateConfig = {
-  templateKey: LegacyApprovalTemplateKey;
-  name: string;
-  category: string;
-  description: string;
-  workflowMode: "manual_workflow" | "org_template";
-  requestPrefix: string;
-};
+  templateKey: LegacyApprovalTemplateKey
+  name: string
+  category: string
+  description: string
+  workflowMode: 'manual_workflow' | 'org_template'
+  requestPrefix: string
+}
 
 const LEGACY_APPROVAL_TEMPLATE_CONFIGS: Record<
   LegacyApprovalTemplateKey,
   LegacyApprovalTemplateConfig
 > = {
-  "attendance-permission": {
-    templateKey: "attendance-permission",
-    name: "Attendance Permission",
-    category: "HC",
+  'attendance-permission': {
+    templateKey: 'attendance-permission',
+    name: 'Attendance Permission',
+    category: 'HC',
+    description: 'Pengajuan izin attendance legacy yang kini masuk Approval Engine terpusat.',
+    workflowMode: 'manual_workflow',
+    requestPrefix: 'ATT',
+  },
+  'leave-permission': {
+    templateKey: 'leave-permission',
+    name: 'Leave / Permission',
+    category: 'HC',
+    description: 'Permohonan cuti, izin, dan approval lintas atasan/HC.',
+    workflowMode: 'manual_workflow',
+    requestPrefix: 'LEV',
+  },
+  'offboarding-request': {
+    templateKey: 'offboarding-request',
+    name: 'Offboarding Request',
+    category: 'HC',
+    description: 'Permintaan offboarding legacy yang kini memakai Approval Engine terpusat.',
+    workflowMode: 'manual_workflow',
+    requestPrefix: 'OFF',
+  },
+  'timesheet-period-review': {
+    templateKey: 'timesheet-period-review',
+    name: 'Timesheet Period Review',
+    category: 'HC',
     description:
-      "Pengajuan izin attendance legacy yang kini masuk Approval Engine terpusat.",
-    workflowMode: "manual_workflow",
-    requestPrefix: "ATT",
+      'Review roster, attendance, overtime, MSA, dan meals sebelum payroll difinalisasi.',
+    workflowMode: 'manual_workflow',
+    requestPrefix: 'TSH',
   },
-  "leave-permission": {
-    templateKey: "leave-permission",
-    name: "Leave / Permission",
-    category: "HC",
-    description: "Permohonan cuti, izin, dan approval lintas atasan/HC.",
-    workflowMode: "manual_workflow",
-    requestPrefix: "LEV",
+  'overtime-command-letter': {
+    templateKey: 'overtime-command-letter',
+    name: 'Surat Perintah Lembur',
+    category: 'HC',
+    description: 'Pengajuan SPL leader yang direview melalui Approval Engine terpusat.',
+    workflowMode: 'manual_workflow',
+    requestPrefix: 'SPL',
   },
-  "offboarding-request": {
-    templateKey: "offboarding-request",
-    name: "Offboarding Request",
-    category: "HC",
-    description:
-      "Permintaan offboarding legacy yang kini memakai Approval Engine terpusat.",
-    workflowMode: "manual_workflow",
-    requestPrefix: "OFF",
-  },
-  "timesheet-period-review": {
-    templateKey: "timesheet-period-review",
-    name: "Timesheet Period Review",
-    category: "HC",
-    description: "Review roster, attendance, overtime, MSA, dan meals sebelum payroll difinalisasi.",
-    workflowMode: "manual_workflow",
-    requestPrefix: "TSH",
-  },
-};
-
-type CreateLegacyApprovalRequestInput = {
-  templateKey: LegacyApprovalTemplateKey;
-  requesterEmployeeId: number;
-  siteId?: number | null;
-  activityType: string;
-  transactionType?: string | null;
-  priority?: string | null;
-  referenceId: number;
-  payloadSnapshot: Record<string, unknown>;
-  previewSnapshot: Record<string, unknown>;
-  submittedAt?: Date;
-};
-
-function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
-  return steps.filter((step) => step.stepOrder === stepOrder);
 }
 
-function getNextRouteStepGroup(
-  steps: ResolvedApprovalStep[],
-  currentStepOrder: number,
-) {
+type CreateLegacyApprovalRequestInput = {
+  templateKey: LegacyApprovalTemplateKey
+  requesterEmployeeId: number
+  siteId?: number | null
+  activityType: string
+  transactionType?: string | null
+  priority?: string | null
+  referenceId: number
+  payloadSnapshot: Record<string, unknown>
+  previewSnapshot: Record<string, unknown>
+  submittedAt?: Date
+}
+
+function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
+  return steps.filter((step) => step.stepOrder === stepOrder)
+}
+
+function getNextRouteStepGroup(steps: ResolvedApprovalStep[], currentStepOrder: number) {
   const nextStepOrder =
     steps
       .map((step) => step.stepOrder)
       .filter((stepOrder) => stepOrder > currentStepOrder)
-      .sort((left, right) => left - right)[0] ?? null;
+      .sort((left, right) => left - right)[0] ?? null
 
-  return nextStepOrder == null ? [] : getRouteStepGroup(steps, nextStepOrder);
+  return nextStepOrder == null ? [] : getRouteStepGroup(steps, nextStepOrder)
 }
 
 function serializeApprovalRoute(route: ApprovalRouteResolution) {
@@ -139,30 +132,28 @@ function serializeApprovalRoute(route: ApprovalRouteResolution) {
       fallbackLabel: step.fallbackLabel,
       escalationLabel: step.escalationLabel,
     })),
-  });
+  })
 }
 
 function buildRequestNumber(prefix: string, referenceId: number, date: Date) {
   const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(
     2,
-    "0",
-  )}${String(date.getDate()).padStart(2, "0")}`;
-  return `${prefix}-${datePart}-${String(referenceId).padStart(5, "0")}`;
+    '0'
+  )}${String(date.getDate()).padStart(2, '0')}`
+  return `${prefix}-${datePart}-${String(referenceId).padStart(5, '0')}`
 }
 
-async function ensureLegacyTemplateVersion(
-  templateKey: LegacyApprovalTemplateKey,
-) {
-  const config = LEGACY_APPROVAL_TEMPLATE_CONFIGS[templateKey];
+async function ensureLegacyTemplateVersion(templateKey: LegacyApprovalTemplateKey) {
+  const config = LEGACY_APPROVAL_TEMPLATE_CONFIGS[templateKey]
 
   let [template] = await db
     .select()
     .from(formTemplates)
     .where(eq(formTemplates.templateKey, templateKey))
-    .limit(1);
+    .limit(1)
 
   if (!template) {
-    [template] = await db
+    ;[template] = await db
       .insert(formTemplates)
       .values({
         templateKey: config.templateKey,
@@ -172,7 +163,7 @@ async function ensureLegacyTemplateVersion(
         description: config.description,
         isActive: true,
       })
-      .returning();
+      .returning()
   }
 
   let [version] = await db
@@ -180,10 +171,10 @@ async function ensureLegacyTemplateVersion(
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, template.id))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (!version) {
-    [version] = await db
+    ;[version] = await db
       .insert(formTemplateVersions)
       .values({
         templateId: template.id,
@@ -193,15 +184,15 @@ async function ensureLegacyTemplateVersion(
           fields: [],
         }),
         workflowSnapshot: JSON.stringify({
-          type: "approval_engine",
+          type: 'approval_engine',
           templateKey: config.templateKey,
         }),
-        publishStatus: "published",
+        publishStatus: 'published',
       })
-      .returning();
+      .returning()
   }
 
-  return { template, version, config };
+  return { template, version, config }
 }
 
 async function getSubmissionRequesterContext(requesterEmployeeId: number) {
@@ -213,47 +204,45 @@ async function getSubmissionRequesterContext(requesterEmployeeId: number) {
     })
     .from(employees)
     .where(eq(employees.id, requesterEmployeeId))
-    .limit(1);
+    .limit(1)
 
   if (!employee) {
-    throw new Error("Requester employee for approval submission not found.");
+    throw new Error('Requester employee for approval submission not found.')
   }
 
-  return employee;
+  return employee
 }
 
 async function createPendingArtifactsForSubmission(params: {
-  submissionId: number;
-  route: ApprovalRouteResolution;
-  stepGroup: ResolvedApprovalStep[];
-  submittedAt: Date;
-  requestTitle: string;
-  requestPath: string;
-  requesterName: string;
+  submissionId: number
+  route: ApprovalRouteResolution
+  stepGroup: ResolvedApprovalStep[]
+  submittedAt: Date
+  requestTitle: string
+  requestPath: string
+  requesterName: string
 }) {
   if (params.stepGroup.length === 0) {
-    return;
+    return
   }
 
   const notificationsToSend: Array<{
-    approvalId: number;
-    approverEmail: string;
-    approverName: string;
-    approverEmployeeId: number | null;
-    dueAt: Date;
-    currentStepLabel: string;
-    inboxItemId: number;
-  }> = [];
+    approvalId: number
+    approverEmail: string
+    approverName: string
+    approverEmployeeId: number | null
+    dueAt: Date
+    currentStepLabel: string
+    inboxItemId: number
+  }> = []
 
   await db.transaction(async (tx) => {
     for (const step of params.stepGroup) {
-      const dueAt = new Date(
-        params.submittedAt.getTime() + step.slaHours * 60 * 60 * 1000,
-      );
+      const dueAt = new Date(params.submittedAt.getTime() + step.slaHours * 60 * 60 * 1000)
       const currentStepLabel =
         step.stepOrder > 0
-          ? `Step ${step.stepOrder}: ${step.approverName || "Pending Approval"}`
-          : "Pending Approval";
+          ? `Step ${step.stepOrder}: ${step.approverName || 'Pending Approval'}`
+          : 'Pending Approval'
 
       const [approval] = await tx
         .insert(approvals)
@@ -265,24 +254,24 @@ async function createPendingArtifactsForSubmission(params: {
           approverEmployeeId: step.approverEmployeeId ?? null,
           approverNodeId: step.approverNodeId ?? null,
           approvalStepId: step.approvalMatrixStepId ?? null,
-          status: "pending",
+          status: 'pending',
           submittedAt: params.submittedAt,
           overtimeMinutes: 0,
           resolutionSource: step.resolutionSource,
           routeSnapshot: serializeApprovalRoute(params.route),
           createdAt: params.submittedAt,
         })
-        .returning({ id: approvals.id });
+        .returning({ id: approvals.id })
 
       await tx.insert(approvalRequestActors).values({
         submissionId: params.submissionId,
         approvalId: approval.id,
         actorEmployeeId: step.approverEmployeeId ?? null,
-        actorRole: "approver",
-        assignmentType: step.approvalMode === "parallel" ? "parallel" : "primary",
-        status: "pending",
+        actorRole: 'approver',
+        assignmentType: step.approvalMode === 'parallel' ? 'parallel' : 'primary',
+        status: 'pending',
         dueAt,
-      });
+      })
 
       const [inboxItem] = await tx
         .insert(inboxItems)
@@ -290,11 +279,11 @@ async function createPendingArtifactsForSubmission(params: {
           submissionId: params.submissionId,
           approvalId: approval.id,
           assigneeEmployeeId: step.approverEmployeeId ?? null,
-          inboxType: "approval",
-          status: "pending",
+          inboxType: 'approval',
+          status: 'pending',
           dueAt,
         })
-        .returning({ id: inboxItems.id });
+        .returning({ id: inboxItems.id })
 
       const [approverContact] = step.approverEmployeeId
         ? await tx
@@ -302,8 +291,8 @@ async function createPendingArtifactsForSubmission(params: {
             .from(employees)
             .where(eq(employees.id, step.approverEmployeeId))
             .limit(1)
-        : [];
-      const approverEmail = approverContact?.email?.trim().toLowerCase() ?? "";
+        : []
+      const approverEmail = approverContact?.email?.trim().toLowerCase() ?? ''
 
       if (approverEmail) {
         const [emailEvent] = await tx
@@ -312,26 +301,26 @@ async function createPendingArtifactsForSubmission(params: {
             submissionId: params.submissionId,
             inboxItemId: inboxItem.id,
             approvalId: approval.id,
-            channel: "email",
-            eventType: "approval_assignment",
+            channel: 'email',
+            eventType: 'approval_assignment',
             recipient: approverEmail,
             payloadSnapshot: JSON.stringify({
               title: `${params.requestTitle} menunggu approval`,
               body: currentStepLabel,
-              url: "/dashboard/approval",
+              url: '/dashboard/approval',
               requestTitle: params.requestTitle,
               currentStepLabel,
             }),
-            deliveryStatus: "queued",
+            deliveryStatus: 'queued',
           })
-          .returning({ id: notificationEvents.id });
+          .returning({ id: notificationEvents.id })
 
         await tx.insert(notificationDeliveries).values({
           notificationEventId: emailEvent.id,
-          deliveryChannel: "email",
+          deliveryChannel: 'email',
           recipient: approverEmail,
-          status: "queued",
-        });
+          status: 'queued',
+        })
 
         const [inAppEvent] = await tx
           .insert(notificationEvents)
@@ -339,58 +328,58 @@ async function createPendingArtifactsForSubmission(params: {
             submissionId: params.submissionId,
             inboxItemId: inboxItem.id,
             approvalId: approval.id,
-            channel: "in_app",
-            eventType: "approval_assignment",
+            channel: 'in_app',
+            eventType: 'approval_assignment',
             recipient: approverEmail,
             payloadSnapshot: JSON.stringify({
               title: `${params.requestTitle} menunggu approval`,
               body: currentStepLabel,
-              url: "/dashboard/approval",
+              url: '/dashboard/approval',
               requestTitle: params.requestTitle,
               currentStepLabel,
             }),
-            deliveryStatus: "delivered",
+            deliveryStatus: 'delivered',
             deliveredAt: params.submittedAt,
           })
-          .returning({ id: notificationEvents.id });
+          .returning({ id: notificationEvents.id })
 
         await tx.insert(notificationDeliveries).values({
           notificationEventId: inAppEvent.id,
-          deliveryChannel: "in_app",
+          deliveryChannel: 'in_app',
           recipient: approverEmail,
-          status: "delivered",
+          status: 'delivered',
           sentAt: params.submittedAt,
-        });
+        })
       }
 
-      const beforeDueReminderAt = new Date(dueAt.getTime() - 4 * 60 * 60 * 1000);
+      const beforeDueReminderAt = new Date(dueAt.getTime() - 4 * 60 * 60 * 1000)
       if (beforeDueReminderAt > params.submittedAt) {
         await tx.insert(reminderJobs).values({
           inboxItemId: inboxItem.id,
-          reminderType: "before_due",
+          reminderType: 'before_due',
           reminderAt: beforeDueReminderAt,
-          status: "scheduled",
-        });
+          status: 'scheduled',
+        })
       }
 
       await tx.insert(reminderJobs).values({
         inboxItemId: inboxItem.id,
-        reminderType: "overdue",
+        reminderType: 'overdue',
         reminderAt: dueAt,
-        status: "scheduled",
-      });
+        status: 'scheduled',
+      })
 
       notificationsToSend.push({
         approvalId: approval.id,
         approverEmail,
-        approverName: step.approverName || "Approver",
+        approverName: step.approverName || 'Approver',
         approverEmployeeId: step.approverEmployeeId ?? null,
         dueAt,
         currentStepLabel,
         inboxItemId: inboxItem.id,
-      });
+      })
     }
-  });
+  })
 
   for (const target of notificationsToSend) {
     if (!target.approverEmail && target.approverEmployeeId) {
@@ -399,7 +388,7 @@ async function createPendingArtifactsForSubmission(params: {
         .from(employees)
         .where(eq(employees.id, target.approverEmployeeId))
         .limit(1)
-      target.approverEmail = approver?.email ?? ""
+      target.approverEmail = approver?.email ?? ''
     }
 
     if (target.approverEmail) {
@@ -410,29 +399,29 @@ async function createPendingArtifactsForSubmission(params: {
           intro: `${params.requesterName} mengirim ${params.requestTitle.toLowerCase()} dan membutuhkan review Anda.`,
           details: [
             `Step: ${target.currentStepLabel}`,
-            `Due date: ${target.dueAt.toLocaleString("id-ID")}`,
+            `Due date: ${target.dueAt.toLocaleString('id-ID')}`,
           ],
-          ctaLabel: "Buka Approval Inbox",
+          ctaLabel: 'Buka Approval Inbox',
           ctaUrl: getAppUrl(params.requestPath),
-        });
+        })
 
         await sendWorkflowEmail({
           to: target.approverEmail,
-          templateCode: "approval_assignment",
-          templateName: "Approval Assignment",
+          templateCode: 'approval_assignment',
+          templateName: 'Approval Assignment',
           variables: {
             requestTitle: params.requestTitle,
             approverName: target.approverName,
             requesterName: params.requesterName,
-            dueDateTime: target.dueAt.toLocaleString("id-ID"),
+            dueDateTime: target.dueAt.toLocaleString('id-ID'),
             approvalUrl: getAppUrl(params.requestPath),
           },
           fallbackSubject: `${params.requestTitle} menunggu approval`,
           fallbackHtml: emailContent.html,
           fallbackText: emailContent.text,
-        });
+        })
       } catch (error) {
-        console.error("Failed to send legacy approval assignment email", error);
+        console.error('Failed to send legacy approval assignment email', error)
       }
     }
 
@@ -440,7 +429,7 @@ async function createPendingArtifactsForSubmission(params: {
       try {
         await sendPushNotification({
           employeeId: target.approverEmployeeId,
-          category: "approval_requests",
+          category: 'approval_requests',
           title: `${params.requestTitle} menunggu approval`,
           body: `${params.requesterName} membutuhkan review Anda.`,
           url: params.requestPath,
@@ -449,17 +438,17 @@ async function createPendingArtifactsForSubmission(params: {
             inboxItemId: target.inboxItemId,
             requestTitle: params.requestTitle,
           },
-        });
+        })
       } catch (error) {
-        console.error("Failed to send legacy approval push notification", error);
+        console.error('Failed to send legacy approval push notification', error)
       }
     } else if (target.approverEmail) {
-      const pushTarget = await getEmployeeTargetByEmail(target.approverEmail);
+      const pushTarget = await getEmployeeTargetByEmail(target.approverEmail)
       if (pushTarget) {
         try {
           await sendPushNotification({
             employeeId: pushTarget.id,
-            category: "approval_requests",
+            category: 'approval_requests',
             title: `${params.requestTitle} menunggu approval`,
             body: `${params.requesterName} membutuhkan review Anda.`,
             url: params.requestPath,
@@ -468,39 +457,35 @@ async function createPendingArtifactsForSubmission(params: {
               inboxItemId: target.inboxItemId,
               requestTitle: params.requestTitle,
             },
-          });
+          })
         } catch (error) {
-          console.error("Failed to send fallback legacy approval push notification", error);
+          console.error('Failed to send fallback legacy approval push notification', error)
         }
       }
     }
   }
 }
 
-export async function createLegacyApprovalRequest(
-  input: CreateLegacyApprovalRequestInput,
-) {
-  await ensureApprovalBlueprintSeedData();
+export async function createLegacyApprovalRequest(input: CreateLegacyApprovalRequestInput) {
+  await ensureApprovalBlueprintSeedData()
 
-  const { template, version, config } = await ensureLegacyTemplateVersion(
-    input.templateKey,
-  );
-  const requester = await getSubmissionRequesterContext(input.requesterEmployeeId);
-  const submittedAt = input.submittedAt ?? new Date();
+  const { template, version, config } = await ensureLegacyTemplateVersion(input.templateKey)
+  const requester = await getSubmissionRequesterContext(input.requesterEmployeeId)
+  const submittedAt = input.submittedAt ?? new Date()
 
   const route = await resolveApprovalRouteForActivity({
     employeeId: input.requesterEmployeeId,
     activityType: input.activityType,
-    priority: input.priority ?? "normal",
+    priority: input.priority ?? 'normal',
     transactionType: input.transactionType ?? undefined,
     overtimeMinutes: 0,
-  });
+  })
 
-  const requestNumber = buildRequestNumber(
-    config.requestPrefix,
-    input.referenceId,
-    submittedAt,
-  );
+  if (route.steps.length === 0) {
+    throw new Error('Approval route belum tersedia untuk pengajuan ini.')
+  }
+
+  const requestNumber = buildRequestNumber(config.requestPrefix, input.referenceId, submittedAt)
 
   const [submission] = await db
     .insert(formSubmissions)
@@ -511,7 +496,7 @@ export async function createLegacyApprovalRequest(
       siteId: input.siteId ?? null,
       legacyActivityId: null,
       requestNumber,
-      requestStatus: "in_review",
+      requestStatus: 'in_review',
       payloadSnapshot: JSON.stringify(input.payloadSnapshot),
       previewSnapshot: JSON.stringify(input.previewSnapshot),
       workflowSnapshot: serializeApprovalRoute(route),
@@ -519,22 +504,20 @@ export async function createLegacyApprovalRequest(
       createdAt: submittedAt,
       updatedAt: submittedAt,
     })
-    .returning();
+    .returning()
 
   await db.insert(requestStatusHistories).values({
     submissionId: submission.id,
     approvalId: null,
     actorEmployeeId: input.requesterEmployeeId,
-    fromStatus: "draft",
-    toStatus: "in_review",
-    note: "Legacy workflow submitted to centralized Approval Engine.",
+    fromStatus: 'draft',
+    toStatus: 'in_review',
+    note: 'Legacy workflow submitted to centralized Approval Engine.',
     createdAt: submittedAt,
-  });
+  })
 
-  const firstStep = route.steps[0];
-  const firstStepGroup = firstStep
-    ? getRouteStepGroup(route.steps, firstStep.stepOrder)
-    : [];
+  const firstStep = route.steps[0]
+  const firstStepGroup = firstStep ? getRouteStepGroup(route.steps, firstStep.stepOrder) : []
 
   await createPendingArtifactsForSubmission({
     submissionId: submission.id,
@@ -542,22 +525,22 @@ export async function createLegacyApprovalRequest(
     stepGroup: firstStepGroup,
     submittedAt,
     requestTitle: template.name,
-    requestPath: "/dashboard/approval",
+    requestPath: '/dashboard/approval',
     requesterName: requester.name,
-  });
+  })
 
-  return { submission, route };
+  return { submission, route }
 }
 
 export async function cancelLegacyApprovalSubmission(
   submissionId: number | null | undefined,
-  note = "Superseded by a newer submission.",
+  note = 'Superseded by a newer submission.'
 ) {
   if (!submissionId) {
-    return;
+    return
   }
 
-  const now = new Date();
+  const now = new Date()
 
   await db.transaction(async (tx) => {
     const [submission] = await tx
@@ -568,61 +551,54 @@ export async function cancelLegacyApprovalSubmission(
       })
       .from(formSubmissions)
       .where(eq(formSubmissions.id, submissionId))
-      .limit(1);
+      .limit(1)
 
     if (!submission) {
-      return;
+      return
     }
 
     await tx
       .update(formSubmissions)
       .set({
-        requestStatus: "cancelled",
+        requestStatus: 'cancelled',
         cancelledAt: now,
         updatedAt: now,
       })
-      .where(eq(formSubmissions.id, submissionId));
+      .where(eq(formSubmissions.id, submissionId))
 
     const pendingApprovals = await tx
       .select({ id: approvals.id })
       .from(approvals)
-      .where(
-        and(eq(approvals.submissionId, submissionId), eq(approvals.status, "pending")),
-      );
+      .where(and(eq(approvals.submissionId, submissionId), eq(approvals.status, 'pending')))
 
-    const pendingApprovalIds = pendingApprovals.map((item) => item.id);
+    const pendingApprovalIds = pendingApprovals.map((item) => item.id)
 
     if (pendingApprovalIds.length > 0) {
       await tx
         .update(approvals)
-        .set({ status: "cancelled" })
-        .where(inArray(approvals.id, pendingApprovalIds));
+        .set({ status: 'cancelled' })
+        .where(inArray(approvals.id, pendingApprovalIds))
 
       const activeInboxItems = await tx
         .select({ id: inboxItems.id })
         .from(inboxItems)
-        .where(
-          and(
-            eq(inboxItems.submissionId, submissionId),
-            eq(inboxItems.status, "pending"),
-          ),
-        );
+        .where(and(eq(inboxItems.submissionId, submissionId), eq(inboxItems.status, 'pending')))
 
-      const inboxIds = activeInboxItems.map((item) => item.id);
+      const inboxIds = activeInboxItems.map((item) => item.id)
       if (inboxIds.length > 0) {
         await tx
           .update(inboxItems)
-          .set({ status: "cancelled", updatedAt: now })
-          .where(inArray(inboxItems.id, inboxIds));
+          .set({ status: 'cancelled', updatedAt: now })
+          .where(inArray(inboxItems.id, inboxIds))
 
         await tx
           .update(reminderJobs)
           .set({
-            status: "cancelled",
+            status: 'cancelled',
             executionLog: note,
             updatedAt: now,
           })
-          .where(inArray(reminderJobs.inboxItemId, inboxIds));
+          .where(inArray(reminderJobs.inboxItemId, inboxIds))
       }
     }
 
@@ -631,24 +607,24 @@ export async function cancelLegacyApprovalSubmission(
       approvalId: null,
       actorEmployeeId: submission.requesterEmployeeId,
       fromStatus: submission.requestStatus,
-      toStatus: "cancelled",
+      toStatus: 'cancelled',
       note,
       createdAt: now,
-    });
-  });
+    })
+  })
 }
 
 export async function createNextLegacyApprovalStep(params: {
-  submissionId: number;
-  route: ApprovalRouteResolution;
-  currentStepOrder: number;
-  submittedAt: Date;
-  requestTitle: string;
-  requesterName: string;
+  submissionId: number
+  route: ApprovalRouteResolution
+  currentStepOrder: number
+  submittedAt: Date
+  requestTitle: string
+  requesterName: string
 }) {
-  const nextGroup = getNextRouteStepGroup(params.route.steps, params.currentStepOrder);
+  const nextGroup = getNextRouteStepGroup(params.route.steps, params.currentStepOrder)
   if (nextGroup.length === 0) {
-    return;
+    return
   }
 
   await createPendingArtifactsForSubmission({
@@ -657,7 +633,7 @@ export async function createNextLegacyApprovalStep(params: {
     stepGroup: nextGroup,
     submittedAt: params.submittedAt,
     requestTitle: params.requestTitle,
-    requestPath: "/dashboard/approval",
+    requestPath: '/dashboard/approval',
     requesterName: params.requesterName,
-  });
+  })
 }

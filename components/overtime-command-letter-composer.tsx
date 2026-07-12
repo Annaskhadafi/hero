@@ -1,97 +1,97 @@
-"use client";
+'use client'
 
-import { useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { useMemo, useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 type OvertimeLineDraft = {
-  key: string;
-  assignedEmployeeId: string;
-  routeTemplateId: string;
-  libraryActivityId: string;
-  lineLabel: string;
-  lineDescription: string;
-  targetUnit: string;
-  estimatedMinutes: string;
-  plannedPoints: string;
-  isCustomLine: boolean;
-};
+  key: string
+  assignedEmployeeId: string
+  routeTemplateId: string
+  libraryActivityId: string
+  lineLabel: string
+  lineDescription: string
+  targetUnit: string
+  estimatedMinutes: string
+  plannedPoints: string
+  isCustomLine: boolean
+}
 
 type ComposerDefaults = {
-  id: number;
-  title: string;
-  workDate: Date;
-  plannedStartAt: Date | null;
-  plannedEndAt: Date | null;
-  status: string;
-  requestNotes: string;
-  executionNotes: string;
+  id: number
+  title: string
+  workDate: Date
+  plannedStartAt: Date | null
+  plannedEndAt: Date | null
+  status: string
+  requestNotes: string
+  executionNotes: string
   items: Array<{
-    assignedEmployeeId: number | null;
-    routeTemplateId: number | null;
-    libraryActivityId: number | null;
-    lineLabel: string;
-    lineDescription: string;
-    targetUnit: string;
-    estimatedMinutes: number;
-    plannedPoints: number;
-    isCustomLine: boolean;
-  }>;
-};
+    assignedEmployeeId: number | null
+    routeTemplateId: number | null
+    libraryActivityId: number | null
+    lineLabel: string
+    lineDescription: string
+    targetUnit: string
+    estimatedMinutes: number
+    plannedPoints: number
+    isCustomLine: boolean
+  }>
+}
 
 type OvertimeCommandLetterComposerProps = {
-  action: (formData: FormData) => void | Promise<void>;
-  intent: "create" | "update";
-  submitLabel: string;
+  action: (formData: FormData) => void | Promise<void>
+  intent: 'create' | 'update'
+  submitLabel: string
   routeTemplates: Array<{
-    id: number;
-    routeCode: string;
-    routeName: string;
-    sectionName: string | null;
-    positionName: string | null;
-  }>;
+    id: number
+    routeCode: string
+    routeName: string
+    sectionName: string | null
+    positionName: string | null
+  }>
   libraryActivities: Array<{
-    id: number;
-    activityCode: string;
-    activityName: string;
-    basePoints: number;
-  }>;
+    id: number
+    activityCode: string
+    activityName: string
+    basePoints: number
+  }>
   teamMembers: Array<{
-    id: number;
-    name: string;
-    role: string;
-  }>;
-  defaults?: ComposerDefaults | null;
-};
+    id: number
+    name: string
+    role: string
+  }>
+  defaults?: ComposerDefaults | null
+}
 
 function dateInputValue(value?: Date | null) {
-  if (!value) return "";
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
+  if (!value) return ''
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 10)
 }
 
 function dateTimeInputValue(value?: Date | null) {
-  if (!value) return "";
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  if (!value) return ''
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
 }
 
 function createEmptyLine(): OvertimeLineDraft {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    assignedEmployeeId: "",
-    routeTemplateId: "",
-    libraryActivityId: "",
-    lineLabel: "",
-    lineDescription: "",
-    targetUnit: "",
-    estimatedMinutes: "60",
-    plannedPoints: "0",
+    assignedEmployeeId: '',
+    routeTemplateId: '',
+    libraryActivityId: '',
+    lineLabel: '',
+    lineDescription: '',
+    targetUnit: '',
+    estimatedMinutes: '60',
+    plannedPoints: '0',
     isCustomLine: true,
-  };
+  }
 }
 
 export function OvertimeCommandLetterComposer({
@@ -107,9 +107,9 @@ export function OvertimeCommandLetterComposer({
     defaults?.items.length
       ? defaults.items.map((item, index) => ({
           key: `${defaults.id}-${index}`,
-          assignedEmployeeId: item.assignedEmployeeId ? `${item.assignedEmployeeId}` : "",
-          routeTemplateId: item.routeTemplateId ? `${item.routeTemplateId}` : "",
-          libraryActivityId: item.libraryActivityId ? `${item.libraryActivityId}` : "",
+          assignedEmployeeId: item.assignedEmployeeId ? `${item.assignedEmployeeId}` : '',
+          routeTemplateId: item.routeTemplateId ? `${item.routeTemplateId}` : '',
+          libraryActivityId: item.libraryActivityId ? `${item.libraryActivityId}` : '',
           lineLabel: item.lineLabel,
           lineDescription: item.lineDescription,
           targetUnit: item.targetUnit,
@@ -117,8 +117,8 @@ export function OvertimeCommandLetterComposer({
           plannedPoints: `${item.plannedPoints}`,
           isCustomLine: item.isCustomLine,
         }))
-      : [createEmptyLine()],
-  );
+      : [createEmptyLine()]
+  )
 
   const lineItemsJson = useMemo(
     () =>
@@ -135,33 +135,40 @@ export function OvertimeCommandLetterComposer({
           sortOrder: index + 1,
           assignedEmployeeId: Number(line.assignedEmployeeId || 0),
           isCustomLine: line.isCustomLine,
-        })),
+        }))
       ),
-    [lines],
-  );
+    [lines]
+  )
 
   const selectedMembers = useMemo(() => {
     const selectedIds = new Set(
-      lines.map((line) => Number(line.assignedEmployeeId || 0)).filter((value) => value > 0),
-    );
-    return teamMembers.filter((member) => selectedIds.has(member.id));
-  }, [lines, teamMembers]);
+      lines.map((line) => Number(line.assignedEmployeeId || 0)).filter((value) => value > 0)
+    )
+    return teamMembers.filter((member) => selectedIds.has(member.id))
+  }, [lines, teamMembers])
 
   function updateLine(key: string, nextValue: Partial<OvertimeLineDraft>) {
     setLines((current) =>
-      current.map((line) => (line.key === key ? { ...line, ...nextValue } : line)),
-    );
+      current.map((line) => (line.key === key ? { ...line, ...nextValue } : line))
+    )
   }
 
   function removeLine(key: string) {
-    setLines((current) => (current.length > 1 ? current.filter((line) => line.key !== key) : current));
+    setLines((current) =>
+      current.length > 1 ? current.filter((line) => line.key !== key) : current
+    )
   }
 
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="intent" value={intent} />
-      <input type="hidden" name="id" value={defaults?.id ?? ""} />
+      <input type="hidden" name="id" value={defaults?.id ?? ''} />
       <input type="hidden" name="lineItemsJson" value={lineItemsJson} />
+      <input
+        type="hidden"
+        name="status"
+        value={defaults?.status === 'returned' ? 'returned' : 'draft'}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Label className="grid gap-2">
@@ -169,7 +176,7 @@ export function OvertimeCommandLetterComposer({
           <Input
             name="title"
             required
-            defaultValue={defaults?.title ?? ""}
+            defaultValue={defaults?.title ?? ''}
             placeholder="SPL Tire Service Night Shift"
           />
         </Label>
@@ -198,19 +205,6 @@ export function OvertimeCommandLetterComposer({
             defaultValue={dateTimeInputValue(defaults?.plannedEndAt ?? null)}
           />
         </Label>
-        <Label className="grid gap-2">
-          Status
-          <select
-            name="status"
-            defaultValue={defaults?.status ?? "draft"}
-            className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-          >
-            <option value="draft">Draft</option>
-            <option value="submitted">Submitted</option>
-            <option value="approved">Approved</option>
-            <option value="closed">Closed</option>
-          </select>
-        </Label>
       </div>
 
       <Label className="grid gap-2">
@@ -218,7 +212,7 @@ export function OvertimeCommandLetterComposer({
         <Textarea
           name="requestNotes"
           rows={3}
-          defaultValue={defaults?.requestNotes ?? ""}
+          defaultValue={defaults?.requestNotes ?? ''}
           placeholder="Alasan lembur, area kerja, risiko, dan instruksi utama."
         />
       </Label>
@@ -228,16 +222,16 @@ export function OvertimeCommandLetterComposer({
         <Textarea
           name="executionNotes"
           rows={3}
-          defaultValue={defaults?.executionNotes ?? ""}
+          defaultValue={defaults?.executionNotes ?? ''}
           placeholder="Catatan pelaksanaan atau hasil akhir."
         />
       </Label>
 
-      <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-4">
+      <div className="bg-surface-container-low space-y-3 rounded-[1.2rem] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">Line pekerjaan SPL</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-foreground text-sm font-semibold">Line pekerjaan SPL</p>
+            <p className="text-muted-foreground text-xs">
               Pilih bawahan dulu, lalu assign checklist/library per orang.
             </p>
           </div>
@@ -258,7 +252,7 @@ export function OvertimeCommandLetterComposer({
             {selectedMembers.map((member) => (
               <div
                 key={member.id}
-                className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-semibold text-foreground"
+                className="bg-surface-container-low text-foreground rounded-full px-3 py-1 text-xs font-semibold"
               >
                 {member.name} • {member.role}
               </div>
@@ -268,9 +262,12 @@ export function OvertimeCommandLetterComposer({
 
         <div className="space-y-3">
           {lines.map((line, index) => (
-            <div key={line.key} className="rounded-[1rem] bg-white p-4 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+            <div
+              key={line.key}
+              className="rounded-[1rem] bg-white p-4 shadow-[0_10px_22px_rgba(8,32,51,0.05)]"
+            >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-foreground">Line {index + 1}</p>
+                <p className="text-foreground text-sm font-semibold">Line {index + 1}</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -290,8 +287,10 @@ export function OvertimeCommandLetterComposer({
                     name={`assignedEmployee-${line.key}`}
                     required
                     value={line.assignedEmployeeId}
-                    onChange={(event) => updateLine(line.key, { assignedEmployeeId: event.target.value })}
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    onChange={(event) =>
+                      updateLine(line.key, { assignedEmployeeId: event.target.value })
+                    }
+                    className="border-input bg-background h-11 rounded-xl border px-3 text-sm"
                   >
                     <option value="">Pilih bawahan</option>
                     {teamMembers.map((member) => (
@@ -306,8 +305,10 @@ export function OvertimeCommandLetterComposer({
                   Route template
                   <select
                     value={line.routeTemplateId}
-                    onChange={(event) => updateLine(line.key, { routeTemplateId: event.target.value })}
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    onChange={(event) =>
+                      updateLine(line.key, { routeTemplateId: event.target.value })
+                    }
+                    className="border-input bg-background h-11 rounded-xl border px-3 text-sm"
                   >
                     <option value="">Tanpa route template</option>
                     {routeTemplates.map((template) => (
@@ -324,17 +325,19 @@ export function OvertimeCommandLetterComposer({
                     value={line.libraryActivityId}
                     onChange={(event) => {
                       const selected = libraryActivities.find(
-                        (item) => `${item.id}` === event.target.value,
-                      );
+                        (item) => `${item.id}` === event.target.value
+                      )
                       updateLine(line.key, {
                         libraryActivityId: event.target.value,
                         lineLabel: selected?.activityName || line.lineLabel,
-                        lineDescription: selected ? `Checklist library ${selected.activityCode}` : line.lineDescription,
+                        lineDescription: selected
+                          ? `Checklist library ${selected.activityCode}`
+                          : line.lineDescription,
                         plannedPoints: selected ? `${selected.basePoints}` : line.plannedPoints,
                         isCustomLine: !selected,
-                      });
+                      })
                     }}
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                    className="border-input bg-background h-11 rounded-xl border px-3 text-sm"
                   >
                     <option value="">Tanpa library</option>
                     {libraryActivities.map((item) => (
@@ -360,7 +363,9 @@ export function OvertimeCommandLetterComposer({
                   <Textarea
                     rows={3}
                     value={line.lineDescription}
-                    onChange={(event) => updateLine(line.key, { lineDescription: event.target.value })}
+                    onChange={(event) =>
+                      updateLine(line.key, { lineDescription: event.target.value })
+                    }
                     placeholder="Deskripsi line pekerjaan."
                   />
                 </Label>
@@ -379,7 +384,9 @@ export function OvertimeCommandLetterComposer({
                   <Input
                     type="number"
                     value={line.estimatedMinutes}
-                    onChange={(event) => updateLine(line.key, { estimatedMinutes: event.target.value })}
+                    onChange={(event) =>
+                      updateLine(line.key, { estimatedMinutes: event.target.value })
+                    }
                   />
                 </Label>
 
@@ -388,7 +395,9 @@ export function OvertimeCommandLetterComposer({
                   <Input
                     type="number"
                     value={line.plannedPoints}
-                    onChange={(event) => updateLine(line.key, { plannedPoints: event.target.value })}
+                    onChange={(event) =>
+                      updateLine(line.key, { plannedPoints: event.target.value })
+                    }
                   />
                 </Label>
               </div>
@@ -401,5 +410,5 @@ export function OvertimeCommandLetterComposer({
         {submitLabel}
       </Button>
     </form>
-  );
+  )
 }

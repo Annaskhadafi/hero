@@ -1,13 +1,18 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { CheckCheck, ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
-import { manageOvertimeCommandLetterAction } from "@/app/dashboard/activity-hub/actions";
-import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
-import { OvertimeCommandLetterComposer } from "@/components/overtime-command-letter-composer";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { CheckCheck, ClipboardList, Eye, Pencil, Trash2 } from 'lucide-react'
+import { manageOvertimeCommandLetterAction } from '@/app/dashboard/activity-hub/actions'
+import { ActivityTeamLogPanel } from '@/components/activity-team-log-panel'
+import { OvertimeCommandLetterComposer } from '@/components/overtime-command-letter-composer'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -15,69 +20,66 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getServerSession } from "@/lib/auth-session";
-import { getActivityPagePurpose } from "@/lib/activity-navigation";
-import { getDailyActivityTeamBoardData } from "@/lib/daily-activity";
+} from '@/components/ui/dialog'
+import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getServerSession } from '@/lib/auth-session'
+import { getActivityPagePurpose } from '@/lib/activity-navigation'
+import { getDailyActivityTeamBoardData } from '@/lib/daily-activity'
 
-type TeamBoardData = NonNullable<Awaited<ReturnType<typeof getDailyActivityTeamBoardData>>>;
+type TeamBoardData = NonNullable<Awaited<ReturnType<typeof getDailyActivityTeamBoardData>>>
 
 function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase()
 
-  if (["draft", "submitted"].includes(normalized)) {
-    return "bg-amber-100 text-amber-900";
+  if (['draft', 'submitted'].includes(normalized)) {
+    return 'bg-amber-100 text-amber-900'
   }
-  if (["approved", "closed"].includes(normalized)) {
-    return "bg-emerald-100 text-emerald-900";
+  if (['approved', 'closed'].includes(normalized)) {
+    return 'bg-emerald-100 text-emerald-900'
   }
-  if (normalized.includes("working")) {
-    return "bg-emerald-100 text-emerald-900";
+  if (normalized.includes('working')) {
+    return 'bg-emerald-100 text-emerald-900'
   }
-  if (normalized.includes("review")) {
-    return "bg-amber-100 text-amber-900";
+  if (normalized.includes('review')) {
+    return 'bg-amber-100 text-amber-900'
   }
-  if (normalized.includes("travel")) {
-    return "bg-sky-100 text-sky-900";
+  if (normalized.includes('travel')) {
+    return 'bg-sky-100 text-sky-900'
   }
 
-  return "bg-slate-100 text-slate-800";
+  return 'bg-slate-100 text-slate-800'
 }
 
 function riskBadgeClass(risk: string) {
-  if (risk === "Emergency") {
-    return "bg-rose-100 text-rose-900";
+  if (risk === 'Emergency') {
+    return 'bg-rose-100 text-rose-900'
   }
 
-  if (risk === "Escalation") {
-    return "bg-amber-100 text-amber-900";
+  if (risk === 'Escalation') {
+    return 'bg-amber-100 text-amber-900'
   }
 
-  return "bg-slate-100 text-slate-800";
+  return 'bg-slate-100 text-slate-800'
 }
-function MetricPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
+function MetricPill({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-full bg-surface-container-low px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+    <div className="bg-surface-container-low rounded-full px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
       <span className="text-muted-foreground">{label}</span>
-      <span className="ml-2 font-semibold text-foreground">{value}</span>
+      <span className="text-foreground ml-2 font-semibold">{value}</span>
     </div>
-  );
+  )
 }
 
-function SplLinesDialog({
-  document,
-}: {
-  document: TeamBoardData["splDocuments"][number];
-}) {
+function SplLinesDialog({ document }: { document: TeamBoardData['splDocuments'][number] }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -85,7 +87,7 @@ function SplLinesDialog({
           type="button"
           variant="ghost"
           size="icon"
-          className="rounded-xl text-primary hover:bg-surface-container-low"
+          className="text-primary hover:bg-surface-container-low rounded-xl"
           aria-label={`Lihat line ${document.title}`}
           title={`Lihat line ${document.title}`}
         >
@@ -97,37 +99,47 @@ function SplLinesDialog({
         <DialogHeader>
           <DialogTitle>Line SPL</DialogTitle>
           <DialogDescription>
-            {document.title} • {document.lineCount} line • {document.estimatedMinutesTotal} menit • {document.plannedPointsTotal} pts
+            {document.title} • {document.lineCount} line • {document.estimatedMinutesTotal} menit •{' '}
+            {document.plannedPointsTotal} pts
           </DialogDescription>
         </DialogHeader>
 
-        <Accordion type="single" collapsible className="rounded-xl bg-surface-container-low px-4">
+        <Accordion type="single" collapsible className="bg-surface-container-low rounded-xl px-4">
           {document.items.map((item, index) => (
-            <AccordionItem key={item.id} value={`line-${item.id}`} className="border-[rgba(66,71,80,0.08)]">
+            <AccordionItem
+              key={item.id}
+              value={`line-${item.id}`}
+              className="border-[rgba(66,71,80,0.08)]"
+            >
               <AccordionTrigger className="hover:no-underline">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Line {index + 1}</p>
-                  <p className="mt-2 font-semibold text-foreground">{item.lineLabel}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {item.targetUnit || "-"} • {item.estimatedMinutes} menit • {item.plannedPoints} pts
+                  <p className="text-muted-foreground text-xs font-semibold uppercase">
+                    Line {index + 1}
+                  </p>
+                  <p className="text-foreground mt-2 font-semibold">{item.lineLabel}</p>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {item.targetUnit || '-'} • {item.estimatedMinutes} menit • {item.plannedPoints}{' '}
+                    pts
                   </p>
                 </div>
               </AccordionTrigger>
               <AccordionContent>
                 <div className="rounded-xl bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase text-muted-foreground">Detail line</p>
+                  <p className="text-muted-foreground text-xs font-semibold uppercase">
+                    Detail line
+                  </p>
                   <div className="mt-3 grid gap-3 md:grid-cols-3">
                     <div>
-                      <p className="text-xs text-muted-foreground">Target Unit</p>
-                      <p className="font-medium text-foreground">{item.targetUnit || "-"}</p>
+                      <p className="text-muted-foreground text-xs">Target Unit</p>
+                      <p className="text-foreground font-medium">{item.targetUnit || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Estimasi</p>
-                      <p className="font-medium text-foreground">{item.estimatedMinutes} menit</p>
+                      <p className="text-muted-foreground text-xs">Estimasi</p>
+                      <p className="text-foreground font-medium">{item.estimatedMinutes} menit</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Planned Point</p>
-                      <p className="font-medium text-foreground">{item.plannedPoints} pts</p>
+                      <p className="text-muted-foreground text-xs">Planned Point</p>
+                      <p className="text-foreground font-medium">{item.plannedPoints} pts</p>
                     </div>
                   </div>
                 </div>
@@ -137,7 +149,7 @@ function SplLinesDialog({
         </Accordion>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
 
 function EditSplDialog({
@@ -146,11 +158,15 @@ function EditSplDialog({
   libraryActivities,
   teamMembers,
 }: {
-  document: TeamBoardData["splDocuments"][number];
-  routeTemplates: TeamBoardData["splOptions"]["routeTemplates"];
-  libraryActivities: TeamBoardData["splOptions"]["libraryActivities"];
-  teamMembers: Array<{ id: number; name: string; role: string }>;
+  document: TeamBoardData['splDocuments'][number]
+  routeTemplates: TeamBoardData['splOptions']['routeTemplates']
+  libraryActivities: TeamBoardData['splOptions']['libraryActivities']
+  teamMembers: Array<{ id: number; name: string; role: string }>
 }) {
+  if (!['draft', 'returned'].includes(document.status.toLowerCase())) {
+    return null
+  }
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -158,7 +174,7 @@ function EditSplDialog({
           type="button"
           variant="ghost"
           size="icon"
-          className="rounded-xl text-primary hover:bg-surface-container-low"
+          className="text-primary hover:bg-surface-container-low rounded-xl"
           aria-label={`Edit SPL ${document.title}`}
           title={`Edit SPL ${document.title}`}
         >
@@ -195,23 +211,23 @@ function EditSplDialog({
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
 
 export default async function TeamBoardPage() {
-  const session = await getServerSession();
+  const session = await getServerSession()
 
   if (!session?.user?.email) {
-    redirect("/sign-in");
+    redirect('/sign-in')
   }
 
-  const data = await getDailyActivityTeamBoardData(session.user.email);
+  const data = await getDailyActivityTeamBoardData(session.user.email)
 
   if (!data) {
-    return null;
+    return null
   }
 
-  const pagePurpose = getActivityPagePurpose("teamBoard");
+  const pagePurpose = getActivityPagePurpose('teamBoard')
 
   return (
     <div className="space-y-5">
@@ -226,7 +242,8 @@ export default async function TeamBoardPage() {
             <div className="space-y-2">
               <CardTitle className="text-2xl">{pagePurpose.title}</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                {pagePurpose.description} Penugasan tetap satu pintu, tapi istilah kerja lapangan sekarang diselaraskan ke SPL.
+                {pagePurpose.description} Penugasan tetap satu pintu, tapi istilah kerja lapangan
+                sekarang diselaraskan ke SPL.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -297,54 +314,59 @@ export default async function TeamBoardPage() {
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">{document.title}</p>
-                              <p className="text-xs text-muted-foreground">{document.splNumber}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Dibuat {document.createdAt.toLocaleString("id-ID")}
+                              <p className="text-muted-foreground text-xs">{document.splNumber}</p>
+                              <p className="text-muted-foreground text-xs">
+                                Dibuat {document.createdAt.toLocaleString('id-ID')}
                               </p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="space-y-1 text-sm">
                               <p>
-                                {document.workDate.toLocaleDateString("id-ID", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
+                                {document.workDate.toLocaleDateString('id-ID', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
                                 })}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-muted-foreground text-xs">
                                 {document.plannedStartAt
-                                  ? document.plannedStartAt.toLocaleTimeString("id-ID", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
+                                  ? document.plannedStartAt.toLocaleTimeString('id-ID', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
                                     })
-                                  : "--:--"}{" "}
-                                -{" "}
+                                  : '--:--'}{' '}
+                                -{' '}
                                 {document.plannedEndAt
-                                  ? document.plannedEndAt.toLocaleTimeString("id-ID", {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
+                                  ? document.plannedEndAt.toLocaleTimeString('id-ID', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
                                     })
-                                  : "--:--"}
+                                  : '--:--'}
                               </p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="space-y-1 text-sm">
-                              <p>{document.sectionName ?? "Semua section"}</p>
-                              <p className="text-xs text-muted-foreground">{document.positionName ?? "Semua jabatan"}</p>
+                              <p>{document.sectionName ?? 'Semua section'}</p>
+                              <p className="text-muted-foreground text-xs">
+                                {document.positionName ?? 'Semua jabatan'}
+                              </p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="space-y-1 text-sm">
                               <p>{document.lineCount} line</p>
-                              <p className="text-xs text-muted-foreground">
-                                {document.estimatedMinutesTotal} menit • {document.plannedPointsTotal} pts
+                              <p className="text-muted-foreground text-xs">
+                                {document.estimatedMinutesTotal} menit •{' '}
+                                {document.plannedPointsTotal} pts
                               </p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
-                            <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
+                            <Badge className={statusBadgeClass(document.status)}>
+                              {document.status}
+                            </Badge>
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="flex items-center gap-1">
@@ -365,7 +387,7 @@ export default async function TeamBoardPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={6} className="text-muted-foreground h-24 text-center">
                           Belum ada dokumen SPL di site ini.
                         </TableCell>
                       </TableRow>
@@ -405,11 +427,13 @@ export default async function TeamBoardPage() {
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">{member.name}</p>
-                              <p className="text-xs text-muted-foreground">{member.role}</p>
+                              <p className="text-muted-foreground text-xs">{member.role}</p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
-                            <Badge className={statusBadgeClass(member.status)}>{member.status}</Badge>
+                            <Badge className={statusBadgeClass(member.status)}>
+                              {member.status}
+                            </Badge>
                           </TableCell>
                           <TableCell className="align-top">{member.currentJob}</TableCell>
                           <TableCell className="align-top">{member.progress}%</TableCell>
@@ -419,7 +443,7 @@ export default async function TeamBoardPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={6} className="text-muted-foreground h-24 text-center">
                           Belum ada status anggota tim yang tersedia.
                         </TableCell>
                       </TableRow>
@@ -435,9 +459,10 @@ export default async function TeamBoardPage() {
           <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">Log Aktivitas Bawahan</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Group berdasarkan nama lalu hari, dan tiap nama bisa collapse supaya monitoring lebih rapi.
+                <h3 className="text-foreground text-lg font-semibold">Log Aktivitas Bawahan</h3>
+                <p className="text-muted-foreground text-sm leading-6">
+                  Group berdasarkan nama lalu hari, dan tiap nama bisa collapse supaya monitoring
+                  lebih rapi.
                 </p>
               </div>
 
@@ -472,17 +497,22 @@ export default async function TeamBoardPage() {
                   <TableBody>
                     {data.pendingApprovals.length > 0 ? (
                       data.pendingApprovals.map((item) => (
-                        <TableRow key={item.approvalId} data-date-value={item.submittedAt.toISOString()}>
+                        <TableRow
+                          key={item.approvalId}
+                          data-date-value={item.submittedAt.toISOString()}
+                        >
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">{item.requesterName}</p>
-                              <p className="text-xs text-muted-foreground">{item.requesterJobTitle}</p>
+                              <p className="text-muted-foreground text-xs">
+                                {item.requesterJobTitle}
+                              </p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">{item.activityTitle}</p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-muted-foreground text-xs">
                                 Level {item.level} • {item.approverName}
                               </p>
                             </div>
@@ -491,11 +521,11 @@ export default async function TeamBoardPage() {
                             <Badge className={riskBadgeClass(item.risk)}>{item.risk}</Badge>
                           </TableCell>
                           <TableCell className="align-top">
-                            {item.submittedAt.toLocaleString("id-ID", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              day: "2-digit",
-                              month: "short",
+                            {item.submittedAt.toLocaleString('id-ID', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              day: '2-digit',
+                              month: 'short',
                             })}
                           </TableCell>
                           <TableCell className="align-top">
@@ -507,7 +537,7 @@ export default async function TeamBoardPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
                           Tidak ada approval pending saat ini.
                         </TableCell>
                       </TableRow>
@@ -542,21 +572,34 @@ export default async function TeamBoardPage() {
                   <TableBody>
                     {data.disputes.length > 0 ? (
                       data.disputes.map((dispute) => (
-                        <TableRow key={dispute.id} data-date-value={dispute.createdAt.toISOString()}>
-                          <TableCell className="align-top font-medium">{dispute.employeeName}</TableCell>
+                        <TableRow
+                          key={dispute.id}
+                          data-date-value={dispute.createdAt.toISOString()}
+                        >
+                          <TableCell className="align-top font-medium">
+                            {dispute.employeeName}
+                          </TableCell>
                           <TableCell className="align-top">{dispute.penaltyCode}</TableCell>
                           <TableCell className="align-top">{dispute.reason}</TableCell>
                           <TableCell className="align-top">
-                            <Badge className={dispute.status === "pending" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-800"}>
+                            <Badge
+                              className={
+                                dispute.status === 'pending'
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-slate-100 text-slate-800'
+                              }
+                            >
                               {dispute.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="align-top">{dispute.createdAt.toLocaleString("id-ID")}</TableCell>
+                          <TableCell className="align-top">
+                            {dispute.createdAt.toLocaleString('id-ID')}
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={5} className="text-muted-foreground h-24 text-center">
                           Belum ada dispute penalty.
                         </TableCell>
                       </TableRow>
@@ -569,5 +612,5 @@ export default async function TeamBoardPage() {
         </TabsContent>
       </Tabs>
     </div>
-  );
+  )
 }

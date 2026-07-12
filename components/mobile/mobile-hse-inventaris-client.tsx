@@ -9,7 +9,7 @@ import { uploadFile } from '@/app/actions/upload'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { cn } from '@/lib/utils'
 
 type HseInventory = { id: number; documentId: string; name: string; category: string; qty: number; location: string; condition: string; notes: string; picName: string; photoUrl: string; verifiedStatus: string; verifiedAt: Date | string; purchaseDate: Date | string | null; validityMonths: number | null; expirationDate: Date | string | null; reminderDaysBefore: number; reminderEmailRecipients: string; lastReminderSentAt: Date | string | null; createdAt: Date | string; updatedAt: Date | string }

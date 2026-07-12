@@ -1,51 +1,52 @@
-import { redirect } from "next/navigation";
-import { ClipboardList, Settings2, Users2 } from "lucide-react";
+import { redirect } from 'next/navigation'
+import { ClipboardList, Settings2, Users2 } from 'lucide-react'
 
 import {
   manageOvertimeCommandLetterAction,
   manageOvertimeRequestLeaderPermissionAction,
-} from "@/app/dashboard/activity-hub/actions";
-import { OvertimeCommandLetterComposer } from "@/components/overtime-command-letter-composer";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getServerSession } from "@/lib/auth-session";
-import { getOvertimeRequestWorkspaceData } from "@/lib/overtime-request-data";
+  transitionOvertimeCommandLetterStatusAction,
+} from '@/app/dashboard/activity-hub/actions'
+import { OvertimeCommandLetterComposer } from '@/components/overtime-command-letter-composer'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getServerSession } from '@/lib/auth-session'
+import { getOvertimeRequestWorkspaceData } from '@/lib/overtime-request-data'
 
 function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase()
 
-  if (["draft", "submitted"].includes(normalized)) {
-    return "bg-amber-100 text-amber-900";
+  if (['draft', 'submitted'].includes(normalized)) {
+    return 'bg-amber-100 text-amber-900'
   }
 
-  if (["approved", "closed"].includes(normalized)) {
-    return "bg-emerald-100 text-emerald-900";
+  if (['approved', 'closed'].includes(normalized)) {
+    return 'bg-emerald-100 text-emerald-900'
   }
 
-  return "bg-slate-100 text-slate-800";
+  return 'bg-slate-100 text-slate-800'
 }
 
 function MetricPill({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-full bg-surface-container-low px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+    <div className="bg-surface-container-low rounded-full px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
       <span className="text-muted-foreground">{label}</span>
-      <span className="ml-2 font-semibold text-foreground">{value}</span>
+      <span className="text-foreground ml-2 font-semibold">{value}</span>
     </div>
-  );
+  )
 }
 
 export default async function OvertimeRequestsPage() {
-  const session = await getServerSession();
+  const session = await getServerSession()
 
   if (!session?.user?.email) {
-    redirect("/sign-in");
+    redirect('/sign-in')
   }
 
-  const data = await getOvertimeRequestWorkspaceData(session.user.email);
+  const data = await getOvertimeRequestWorkspaceData(session.user.email)
   if (!data) {
-    return null;
+    return null
   }
 
   return (
@@ -59,24 +60,29 @@ export default async function OvertimeRequestsPage() {
               <Badge variant="outline">{data.lead.department}</Badge>
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">Workspace Surat Pengajuan Lembur</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl">
+                Workspace Surat Pengajuan Lembur
+              </CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Leader pilih bawahan yang boleh ikut lembur, lalu assign checklist pekerjaan dari library untuk tiap
-                orang. Mobile dan web baca sumber data yang sama.
+                Leader pilih bawahan yang boleh ikut lembur, lalu assign checklist pekerjaan dari
+                library untuk tiap orang. Mobile dan web baca sumber data yang sama.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <MetricPill label="Dokumen" value={data.metrics.totalDocuments} />
-              <MetricPill label="Leader aktif" value={`${data.metrics.activeLeaders}/${data.metrics.totalLeaders}`} />
+              <MetricPill
+                label="Leader aktif"
+                value={`${data.metrics.activeLeaders}/${data.metrics.totalLeaders}`}
+              />
               <MetricPill label="Assigned workers" value={data.metrics.totalAssignedWorkers} />
               <MetricPill label="Assigned lines" value={data.metrics.totalAssignedLines} />
             </div>
           </div>
 
-          <div className="rounded-[1.2rem] bg-surface-container-low px-4 py-3 text-sm text-muted-foreground">
+          <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-3 text-sm">
             {data.canCreateRequests
               ? `Akses leader aktif. Bawahan tersedia: ${data.team.length} orang.`
-              : "Leader ini belum aktif di setting pengajuan lembur."}
+              : 'Leader ini belum aktif di setting pengajuan lembur.'}
           </div>
         </CardHeader>
       </Card>
@@ -92,11 +98,12 @@ export default async function OvertimeRequestsPage() {
           <Card className="rounded-[1.4rem]">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="size-5 text-primary" />
+                <ClipboardList className="text-primary size-5" />
                 Form Pengajuan Lembur
               </CardTitle>
               <CardDescription>
-                Satu line = satu checklist kerja untuk satu bawahan. Tambahkan line sebanyak yang dibutuhkan.
+                Satu line = satu checklist kerja untuk satu bawahan. Tambahkan line sebanyak yang
+                dibutuhkan.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -114,10 +121,10 @@ export default async function OvertimeRequestsPage() {
                   }))}
                 />
               ) : (
-                <div className="rounded-[1.2rem] bg-surface-container-low px-4 py-6 text-sm font-medium text-muted-foreground">
+                <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-6 text-sm font-medium">
                   {data.team.length === 0
-                    ? "Belum ada bawahan aktif. Pengajuan lembur baru bisa dibuat setelah struktur bawahan tersedia."
-                    : "Leader ini belum diaktifkan pada setting pengajuan lembur."}
+                    ? 'Belum ada bawahan aktif. Pengajuan lembur baru bisa dibuat setelah struktur bawahan tersedia.'
+                    : 'Leader ini belum diaktifkan pada setting pengajuan lembur.'}
                 </div>
               )}
             </CardContent>
@@ -132,36 +139,58 @@ export default async function OvertimeRequestsPage() {
                   <CardContent className="space-y-4 pt-6">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
-                        <p className="text-lg font-semibold text-foreground">{document.title}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {document.splNumber} • {document.workDate.toLocaleDateString("id-ID")}
+                        <p className="text-foreground text-lg font-semibold">{document.title}</p>
+                        <p className="text-muted-foreground text-sm">
+                          {document.splNumber} • {document.workDate.toLocaleDateString('id-ID')}
                         </p>
                       </div>
                       <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
                     </div>
 
+                    {['draft', 'returned'].includes(document.status.toLowerCase()) ? (
+                      <form action={transitionOvertimeCommandLetterStatusAction}>
+                        <input type="hidden" name="id" value={document.id} />
+                        <input type="hidden" name="targetStatus" value="submitted" />
+                        <Button type="submit" className="rounded-xl">
+                          Submit ke Approval
+                        </Button>
+                      </form>
+                    ) : null}
+
                     <div className="grid gap-3 md:grid-cols-4">
-                      <div className="rounded-[1rem] bg-surface-container-low px-4 py-3 text-sm">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workers</p>
-                        <p className="mt-2 font-semibold text-foreground">{document.workerCount}</p>
+                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
+                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+                          Workers
+                        </p>
+                        <p className="text-foreground mt-2 font-semibold">{document.workerCount}</p>
                       </div>
-                      <div className="rounded-[1rem] bg-surface-container-low px-4 py-3 text-sm">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Lines</p>
-                        <p className="mt-2 font-semibold text-foreground">{document.lineCount}</p>
+                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
+                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+                          Lines
+                        </p>
+                        <p className="text-foreground mt-2 font-semibold">{document.lineCount}</p>
                       </div>
-                      <div className="rounded-[1rem] bg-surface-container-low px-4 py-3 text-sm">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Progress</p>
-                        <p className="mt-2 font-semibold text-foreground">{document.progressPercent}%</p>
+                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
+                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+                          Progress
+                        </p>
+                        <p className="text-foreground mt-2 font-semibold">
+                          {document.progressPercent}%
+                        </p>
                       </div>
-                      <div className="rounded-[1rem] bg-surface-container-low px-4 py-3 text-sm">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Planned Points</p>
-                        <p className="mt-2 font-semibold text-foreground">{document.plannedPointsTotal}</p>
+                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
+                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+                          Planned Points
+                        </p>
+                        <p className="text-foreground mt-2 font-semibold">
+                          {document.plannedPointsTotal}
+                        </p>
                       </div>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-                      <div className="rounded-[1rem] bg-surface-container-low px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-4">
+                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
                           Assigned Workers
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -169,25 +198,30 @@ export default async function OvertimeRequestsPage() {
                             document.workers.map((worker) => (
                               <div
                                 key={worker.employeeId}
-                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-foreground"
+                                className="text-foreground rounded-full bg-white px-3 py-1 text-xs font-semibold"
                               >
                                 {worker.employeeName}
                               </div>
                             ))
                           ) : (
-                            <div className="text-sm text-muted-foreground">Belum ada worker terpasang.</div>
+                            <div className="text-muted-foreground text-sm">
+                              Belum ada worker terpasang.
+                            </div>
                           )}
                         </div>
 
                         <div className="mt-4 space-y-2">
                           {document.items.map((item) => (
-                            <div key={item.id} className="rounded-[0.9rem] bg-white px-3 py-3 text-sm">
+                            <div
+                              key={item.id}
+                              className="rounded-[0.9rem] bg-white px-3 py-3 text-sm"
+                            >
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-semibold text-foreground">{item.lineLabel}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {item.assignedEmployeeName ?? "Belum pilih"} • {item.targetUnit || "-"} •{" "}
-                                    {item.estimatedMinutes} menit
+                                  <p className="text-foreground font-semibold">{item.lineLabel}</p>
+                                  <p className="text-muted-foreground text-xs">
+                                    {item.assignedEmployeeName ?? 'Belum pilih'} •{' '}
+                                    {item.targetUnit || '-'} • {item.estimatedMinutes} menit
                                   </p>
                                 </div>
                                 <Badge variant="outline">{item.plannedPoints} pts</Badge>
@@ -197,41 +231,47 @@ export default async function OvertimeRequestsPage() {
                         </div>
                       </div>
 
-                      <details className="rounded-[1rem] bg-surface-container-low px-4 py-4">
-                        <summary className="cursor-pointer list-none text-sm font-semibold text-foreground">
-                          Edit Pengajuan
-                        </summary>
-                        <div className="mt-4">
-                          <OvertimeCommandLetterComposer
-                            action={manageOvertimeCommandLetterAction}
-                            intent="update"
-                            submitLabel="Update Request"
-                            routeTemplates={data.splOptions.routeTemplates}
-                            libraryActivities={data.splOptions.libraryActivities}
-                            teamMembers={data.team.map((member) => ({
-                              id: member.id,
-                              name: member.name,
-                              role: member.jobTitle || member.role,
-                            }))}
-                            defaults={document}
-                          />
+                      {['draft', 'returned'].includes(document.status.toLowerCase()) ? (
+                        <details className="bg-surface-container-low rounded-[1rem] px-4 py-4">
+                          <summary className="text-foreground cursor-pointer list-none text-sm font-semibold">
+                            Edit Pengajuan
+                          </summary>
+                          <div className="mt-4">
+                            <OvertimeCommandLetterComposer
+                              action={manageOvertimeCommandLetterAction}
+                              intent="update"
+                              submitLabel="Update Request"
+                              routeTemplates={data.splOptions.routeTemplates}
+                              libraryActivities={data.splOptions.libraryActivities}
+                              teamMembers={data.team.map((member) => ({
+                                id: member.id,
+                                name: member.name,
+                                role: member.jobTitle || member.role,
+                              }))}
+                              defaults={document}
+                            />
 
-                          <form action={manageOvertimeCommandLetterAction} className="mt-3">
-                            <input type="hidden" name="intent" value="delete" />
-                            <input type="hidden" name="id" value={document.id} />
-                            <Button type="submit" variant="outline" className="w-full rounded-xl text-rose-700">
-                              Hapus Pengajuan
-                            </Button>
-                          </form>
-                        </div>
-                      </details>
+                            <form action={manageOvertimeCommandLetterAction} className="mt-3">
+                              <input type="hidden" name="intent" value="delete" />
+                              <input type="hidden" name="id" value={document.id} />
+                              <Button
+                                type="submit"
+                                variant="outline"
+                                className="w-full rounded-xl text-rose-700"
+                              >
+                                Hapus Pengajuan
+                              </Button>
+                            </form>
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
                   </CardContent>
                 </Card>
               ))
             ) : (
               <Card className="rounded-[1.4rem]">
-                <CardContent className="pt-6 text-sm text-muted-foreground">
+                <CardContent className="text-muted-foreground pt-6 text-sm">
                   Belum ada pengajuan lembur untuk site ini.
                 </CardContent>
               </Card>
@@ -244,11 +284,12 @@ export default async function OvertimeRequestsPage() {
             <Card className="rounded-[1.4rem]">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Settings2 className="size-5 text-primary" />
+                  <Settings2 className="text-primary size-5" />
                   Setting Leader Pembuat
                 </CardTitle>
                 <CardDescription>
-                  Aktifkan siapa saja yang boleh membuat pengajuan lembur. Scope tetap otomatis hanya ke bawahan dia.
+                  Aktifkan siapa saja yang boleh membuat pengajuan lembur. Scope tetap otomatis
+                  hanya ke bawahan dia.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -256,35 +297,49 @@ export default async function OvertimeRequestsPage() {
                   data.leaderCandidates.map((leader) => (
                     <div
                       key={leader.id}
-                      className="flex flex-col gap-3 rounded-[1rem] bg-surface-container-low px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                      className="bg-surface-container-low flex flex-col gap-3 rounded-[1rem] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
                     >
                       <div>
-                        <p className="font-semibold text-foreground">{leader.name}</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-foreground font-semibold">{leader.name}</p>
+                        <p className="text-muted-foreground text-sm">
                           {leader.jobTitle || leader.role} • {leader.department}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="text-muted-foreground mt-1 text-xs">
                           Bawahan aktif: {leader.subordinateCount}
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={leader.isActive ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-800"}>
-                          {leader.isActive ? "Aktif" : "Nonaktif"}
+                        <Badge
+                          className={
+                            leader.isActive
+                              ? 'bg-emerald-100 text-emerald-900'
+                              : 'bg-slate-100 text-slate-800'
+                          }
+                        >
+                          {leader.isActive ? 'Aktif' : 'Nonaktif'}
                         </Badge>
                         <form action={manageOvertimeRequestLeaderPermissionAction}>
                           <input type="hidden" name="leaderEmployeeId" value={leader.id} />
-                          <input type="hidden" name="isActive" value={leader.isActive ? "false" : "true"} />
-                          <Button type="submit" variant={leader.isActive ? "outline" : "default"} className="rounded-full">
+                          <input
+                            type="hidden"
+                            name="isActive"
+                            value={leader.isActive ? 'false' : 'true'}
+                          />
+                          <Button
+                            type="submit"
+                            variant={leader.isActive ? 'outline' : 'default'}
+                            className="rounded-full"
+                          >
                             <Users2 className="size-4" />
-                            {leader.isActive ? "Nonaktifkan" : "Aktifkan"}
+                            {leader.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                           </Button>
                         </form>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-[1rem] bg-surface-container-low px-4 py-6 text-sm text-muted-foreground">
+                  <div className="bg-surface-container-low text-muted-foreground rounded-[1rem] px-4 py-6 text-sm">
                     Belum ada kandidat leader dengan bawahan aktif di site ini.
                   </div>
                 )}
@@ -294,5 +349,5 @@ export default async function OvertimeRequestsPage() {
         ) : null}
       </Tabs>
     </div>
-  );
+  )
 }

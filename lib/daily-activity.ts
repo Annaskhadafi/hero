@@ -308,7 +308,7 @@ function getRouteTemplateScore(
     positionId: number | null
     shiftCode: string
   },
-  employee: typeof employees.$inferSelect,
+  employee: DailyActivityEmployeeContext,
   shiftAliases: Set<string>
 ) {
   if (template.siteId != null && template.siteId !== employee.siteId) {
@@ -431,8 +431,13 @@ type MatchedRouteChecklist = {
   }>
 }
 
+type DailyActivityEmployeeContext = Pick<
+  typeof employees.$inferSelect,
+  'id' | 'siteId' | 'departmentId' | 'sectionId' | 'positionId' | 'orgNodeId'
+>
+
 async function getActiveOvertimeCommandLetterForEmployee(
-  employee: typeof employees.$inferSelect,
+  employee: DailyActivityEmployeeContext,
   referenceDate = new Date()
 ) {
   const dayStart = startOfDay(referenceDate)
@@ -459,11 +464,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
         eq(overtimeCommandLetters.siteId, employee.siteId),
         gte(overtimeCommandLetters.workDate, dayStart),
         lte(overtimeCommandLetters.workDate, dayEnd),
-        or(
-          eq(overtimeCommandLetters.status, 'draft'),
-          eq(overtimeCommandLetters.status, 'submitted'),
-          eq(overtimeCommandLetters.status, 'approved')
-        )
+        eq(overtimeCommandLetters.status, 'approved')
       )
     )
     .orderBy(
@@ -572,7 +573,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
 }
 
 async function getStandaloneOvertimeChecklistForEmployee(
-  employee: typeof employees.$inferSelect,
+  employee: DailyActivityEmployeeContext,
   referenceDate = new Date()
 ) {
   const activeSpl = await getActiveOvertimeCommandLetterForEmployee(employee, referenceDate)
@@ -657,7 +658,7 @@ async function getStandaloneOvertimeChecklistForEmployee(
 }
 
 async function getMatchedRouteChecklistForEmployee(
-  employee: typeof employees.$inferSelect,
+  employee: DailyActivityEmployeeContext,
   referenceDate = new Date()
 ): Promise<MatchedRouteChecklist | null> {
   const routeTemplateRows = await db
@@ -1007,7 +1008,7 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
   return null
 }
 
-async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inferSelect) {
+async function getManagedEmployeesForLead(currentEmployee: DailyActivityEmployeeContext) {
   const directReports = await db
     .select({
       id: employees.id,
@@ -1303,6 +1304,7 @@ async function ensureDailyActivityTables() {
     create table if not exists hero_penalty_events (
       id serial primary key,
       employee_id integer not null references hero_employees(id) on delete cascade,
+      activity_id integer references hero_activities(id) on delete set null,
       site_id integer not null references hero_sites(id) on delete cascade,
       activity_id integer references hero_activities(id) on delete set null,
       penalty_code text not null,
@@ -1315,6 +1317,11 @@ async function ensureDailyActivityTables() {
       resolved_at timestamp,
       created_at timestamp not null default now()
     );
+  `)
+
+  await db.execute(sql`
+    alter table hero_daily_activity_sessions
+    add column if not exists activity_id integer references hero_activities(id) on delete set null;
   `)
 
   await db.execute(sql`

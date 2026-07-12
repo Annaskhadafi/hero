@@ -1,21 +1,21 @@
-import fs from 'fs';
+import fs from 'fs'
 
-const filePath = 'app/dashboard/hc/employee/client-page.tsx';
-let code = fs.readFileSync(filePath, 'utf-8');
+const filePath = 'app/dashboard/hc/employee/client-page.tsx'
+let code = fs.readFileSync(filePath, 'utf-8')
 
 // 1. Import Checkbox and bulkUpdateEmployees
 if (!code.includes('import { Checkbox }')) {
   code = code.replace(
     'import { Button } from "@/components/ui/button";',
     'import { Button } from "@/components/ui/button";\nimport { Checkbox } from "@/components/ui/checkbox";'
-  );
+  )
 }
 
 if (!code.includes('bulkUpdateEmployees')) {
   code = code.replace(
     '  deleteEmployee,\n} from "@/app/actions/employee";',
     '  deleteEmployee,\n  bulkUpdateEmployees,\n} from "@/app/actions/employee";'
-  );
+  )
 }
 
 // 2. Add state
@@ -29,13 +29,13 @@ const stateToInsert = `
     expMinePermit: "",
     lastMcuDate: "",
   });
-`;
+`
 
 if (!code.includes('const [selectedIds, setSelectedIds]')) {
   code = code.replace(
     '  const [isSubmitting, setIsSubmitting] = useState(false);',
     '  const [isSubmitting, setIsSubmitting] = useState(false);\n' + stateToInsert
-  );
+  )
 }
 
 // 3. Add handleSelectAll and handleSelectRow
@@ -76,35 +76,35 @@ const handlersToInsert = `
       setIsSubmitting(false);
     }
   };
-`;
+`
 
 if (!code.includes('const handleSelectAll')) {
   code = code.replace(
     '  async function handleConfirmDelete() {',
     handlersToInsert + '\n  async function handleConfirmDelete() {'
-  );
+  )
 }
 
 // 4. Update Table headers
 if (!code.includes('<TableHead className="w-12 text-center">')) {
   code = code.replace(
     '<TableHead className="w-14 text-center">No</TableHead>',
-    \`<TableHead className="w-12 text-center">
+    `<TableHead className="w-12 text-center">
                 <Checkbox 
                   checked={data.length > 0 && selectedIds.size === data.length}
                   onCheckedChange={handleSelectAll}
                   aria-label="Select all"
                 />
               </TableHead>
-              <TableHead className="w-14 text-center">No</TableHead>\`
-  );
+              <TableHead className="w-14 text-center">No</TableHead>`
+  )
 }
 
 // 5. Update Table body
 if (!code.includes('<TableCell className="text-center">\\n                      <Checkbox')) {
   code = code.replace(
     '<TableCell className="text-center text-muted-foreground">\\n                      {index + 1}',
-    \`<TableCell className="text-center">
+    `<TableCell className="text-center">
                       <Checkbox 
                         checked={selectedIds.has(emp.id)}
                         onCheckedChange={(c) => handleSelectRow(emp.id, c === true)}
@@ -112,27 +112,27 @@ if (!code.includes('<TableCell className="text-center">\\n                      
                       />
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
-                      {index + 1}\`
-  );
+                      {index + 1}`
+  )
 }
 
 // 6. Add bulk edit button to actions of MinimalTableShell
 if (!code.includes('Bulk Edit')) {
   code = code.replace(
     '<MinimalTableShell',
-    \`<MinimalTableShell
+    `<MinimalTableShell
         actions={
           selectedIds.size > 0 ? (
             <Button size="sm" variant="secondary" onClick={() => setBulkEditOpen(true)}>
               Bulk Edit ({selectedIds.size})
             </Button>
           ) : null
-        }\`
-  );
+        }`
+  )
 }
 
 // 7. Add Bulk Edit Dialog at the end
-const dialogToInsert = \`
+const dialogToInsert = `
       {/* Bulk Edit Dialog */}
       <EnterpriseRecordDialog
         open={bulkEditOpen}
@@ -199,14 +199,11 @@ const dialogToInsert = \`
           </div>
         </EnterpriseFormGrid>
       </EnterpriseRecordDialog>
-\`;
+`
 
 if (!code.includes('Bulk Edit Dialog')) {
-  code = code.replace(
-    '    </div>\n  );\n}\n',
-    dialogToInsert + '    </div>\n  );\n}\n'
-  );
+  code = code.replace('    </div>\n  );\n}\n', dialogToInsert + '    </div>\n  );\n}\n')
 }
 
-fs.writeFileSync(filePath, code, 'utf-8');
-console.log('Successfully added bulk edit functionality!');
+fs.writeFileSync(filePath, code, 'utf-8')
+console.log('Successfully added bulk edit functionality!')

@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - heading "Verifikasi Sertifikat" [level=1] [ref=e5]
+        - paragraph [ref=e6]: "Sertifikat ini resmi diterbitkan oleh ChitraLearning LMS untuk:"
+        - generic [ref=e7]: Terverifikasi Asli
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - generic [ref=e11]:
+              - paragraph [ref=e12]: Diberikan kepada
+              - paragraph [ref=e13]: Mochamad Annas Khadafi
+              - paragraph [ref=e14]: "ID Karyawan: 71261"
+            - generic [ref=e15]:
+              - paragraph [ref=e16]: Atas penyelesaian kursus
+              - paragraph [ref=e17]: tes
+            - generic [ref=e18]:
+              - generic [ref=e19]:
+                - term [ref=e20]: Tanggal Terbit
+                - definition [ref=e21]: 11 Juli 2026
+              - generic [ref=e22]:
+                - term [ref=e23]: No. Sertifikat
+                - definition [ref=e24]: CL-2026-12-5
+          - generic [ref=e25]: HERO
+        - generic [ref=e32]:
+          - button "Download PNG" [ref=e33]
+          - button "Download JPG" [ref=e34]
+          - button "Download PDF" [ref=e35]
+  - button "Open Next.js Dev Tools" [ref=e41] [cursor=pointer]

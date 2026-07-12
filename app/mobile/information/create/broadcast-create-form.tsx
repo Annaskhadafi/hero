@@ -6,7 +6,7 @@ import { ArrowLeft, ImageIcon, Video, FileText, Upload, Loader2, Globe } from "l
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { uploadFile } from "@/app/actions/upload"

@@ -11,7 +11,7 @@ import { deleteMobileCorrectiveAction, saveMobileCorrectiveAction } from '@/app/
 import { deleteMobilePtwPermit, saveMobilePtwPermit } from '@/app/mobile/hse/ptw/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { cn } from '@/lib/utils'
 
 type Access = { canView: boolean; canEdit: boolean; canDelete: boolean; canSelectAll?: boolean }

@@ -48,6 +48,9 @@ export type AuditAction =
   | 'timesheet.import_discarded'
   | 'timesheet.period_finalized'
   | 'timesheet.period_reopened'
+  | 'timesheet.period_submitted'
+  | 'spl.status_changed'
+  | 'daily_activity.submitted'
 
 export type AuditSeverity = 'info' | 'warning' | 'critical'
 

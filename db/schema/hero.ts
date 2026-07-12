@@ -350,6 +350,7 @@ export const dailyActivitySessions = pgTable('hero_daily_activity_sessions', {
   employeeId: integer('employee_id')
     .notNull()
     .references(() => employees.id, { onDelete: 'cascade' }),
+  activityId: integer('activity_id').references(() => activities.id, { onDelete: 'set null' }),
   departmentId: integer('department_id'),
   sectionId: integer('section_id'),
   positionId: integer('position_id'),
@@ -501,8 +502,7 @@ export const activities = pgTable('hero_activities', {
 })
 export const approvals = pgTable('hero_approvals', {
   id: serial('id').primaryKey(),
-  activityId: integer('activity_id')
-    .references(() => activities.id, { onDelete: 'cascade' }),
+  activityId: integer('activity_id').references(() => activities.id, { onDelete: 'cascade' }),
   submissionId: integer('submission_id').references(() => formSubmissions.id, {
     onDelete: 'cascade',
   }),
@@ -814,13 +814,21 @@ export const safetyPerformanceMetrics = pgTable('hero_safety_performance_metrics
   year: integer('year').notNull(),
   periodLabel: text('period_label').notNull(),
   employeeCount: integer('employee_count').notNull().default(0),
-  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 }).notNull().default('0'),
-  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 })
+    .notNull()
+    .default('0'),
+  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   fatalityActual: decimal('fatality_actual', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiThreshold: decimal('lti_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiActual: decimal('lti_actual', { precision: 10, scale: 2 }).notNull().default('0'),
-  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
-  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 }).notNull().default('0'),
+  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
+  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   sourceSheet: text('source_sheet').notNull().default('manual'),
   sourceRowNumber: integer('source_row_number'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -970,7 +978,9 @@ export const chitraLearningQuizQuestions = pgTable('hero_chitralearning_quiz_que
   courseId: integer('course_id')
     .notNull()
     .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
-  lessonId: integer('lesson_id').references(() => chitraLearningLessons.id, { onDelete: 'set null' }),
+  lessonId: integer('lesson_id').references(() => chitraLearningLessons.id, {
+    onDelete: 'set null',
+  }),
   testPhase: text('test_phase').notNull().default('posttest'),
   questionType: text('question_type').notNull().default('single_choice'),
   questionMetadata: jsonb('question_metadata'),
@@ -1076,18 +1086,21 @@ export const chitraLearningPathCourses = pgTable('hero_chitralearning_path_cours
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const chitraLearningCertificateTemplates = pgTable('hero_chitralearning_certificate_templates', {
-  id: serial('id').primaryKey(),
-  courseId: integer('course_id')
-    .notNull()
-    .unique()
-    .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
-  backgroundImageUrl: text('background_image_url').notNull().default(''),
-  canvasData: jsonb('canvas_data').default('{}'),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+export const chitraLearningCertificateTemplates = pgTable(
+  'hero_chitralearning_certificate_templates',
+  {
+    id: serial('id').primaryKey(),
+    courseId: integer('course_id')
+      .notNull()
+      .unique()
+      .references(() => chitraLearningCourses.id, { onDelete: 'cascade' }),
+    backgroundImageUrl: text('background_image_url').notNull().default(''),
+    canvasData: jsonb('canvas_data').default('{}'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  }
+)
 
 export const chitraLearningCertificates = pgTable(
   'hero_chitralearning_certificates',
@@ -1117,10 +1130,9 @@ export const chitraLearningCertificates = pgTable(
     certificateNumberUnique: uniqueIndex('hero_chitralearning_certificates_number_uq').on(
       table.certificateNumber
     ),
-    employeeCourseCertificateUnique: uniqueIndex('hero_chitralearning_certificates_employee_course_uq').on(
-      table.employeeId,
-      table.courseId
-    ),
+    employeeCourseCertificateUnique: uniqueIndex(
+      'hero_chitralearning_certificates_employee_course_uq'
+    ).on(table.employeeId, table.courseId),
   })
 )
 
@@ -1175,25 +1187,28 @@ export const chitraLearningCampaignParticipants = pgTable(
   })
 )
 
-export const chitraLearningAssignmentResponses = pgTable('hero_chitralearning_assignment_responses', {
-  id: serial('id').primaryKey(),
-  campaignId: integer('campaign_id')
-    .notNull()
-    .references(() => chitraLearningCampaigns.id, { onDelete: 'cascade' }),
-  employeeId: integer('employee_id')
-    .notNull()
-    .references(() => employees.id, { onDelete: 'cascade' }),
-  responseText: text('response_text').notNull().default(''),
-  fileUrl: text('file_url').notNull().default(''),
-  status: text('status').notNull().default('submitted'),
-  submittedAt: timestamp('submitted_at').notNull().defaultNow(),
-  reviewedAt: timestamp('reviewed_at'),
-  reviewedByEmployeeId: integer('reviewed_by_employee_id').references(() => employees.id, {
-    onDelete: 'set null',
-  }),
-  score: integer('score'),
-  feedback: text('feedback').notNull().default(''),
-})
+export const chitraLearningAssignmentResponses = pgTable(
+  'hero_chitralearning_assignment_responses',
+  {
+    id: serial('id').primaryKey(),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => chitraLearningCampaigns.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    responseText: text('response_text').notNull().default(''),
+    fileUrl: text('file_url').notNull().default(''),
+    status: text('status').notNull().default('submitted'),
+    submittedAt: timestamp('submitted_at').notNull().defaultNow(),
+    reviewedAt: timestamp('reviewed_at'),
+    reviewedByEmployeeId: integer('reviewed_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    score: integer('score'),
+    feedback: text('feedback').notNull().default(''),
+  }
+)
 
 export const chitraLearningAuditLogs = pgTable('hero_chitralearning_audit_logs', {
   id: serial('id').primaryKey(),
@@ -2435,9 +2450,9 @@ export const checklistTemplateRevisions = pgTable(
   (table) => ({
     templateRevisionUnique: uniqueIndex('hero_checklist_template_revisions_template_rev_uq').on(
       table.templateId,
-      table.revisionNumber,
+      table.revisionNumber
     ),
-  }),
+  })
 )
 
 export const checklistTemplateRevisionItems = pgTable(
@@ -2458,9 +2473,9 @@ export const checklistTemplateRevisionItems = pgTable(
   (table) => ({
     revisionOrderUnique: uniqueIndex('hero_checklist_template_revision_items_revision_order_uq').on(
       table.revisionId,
-      table.orderIndex,
+      table.orderIndex
     ),
-  }),
+  })
 )
 
 export const dailyChecklists = pgTable('hero_daily_checklists', {
@@ -2468,9 +2483,12 @@ export const dailyChecklists = pgTable('hero_daily_checklists', {
   templateId: integer('template_id').references(() => checklistTemplates.id, {
     onDelete: 'set null',
   }),
-  templateRevisionId: integer('template_revision_id').references(() => checklistTemplateRevisions.id, {
-    onDelete: 'set null',
-  }),
+  templateRevisionId: integer('template_revision_id').references(
+    () => checklistTemplateRevisions.id,
+    {
+      onDelete: 'set null',
+    }
+  ),
   titleSnapshot: text('title_snapshot').notNull(),
   descriptionSnapshot: text('description_snapshot').notNull().default(''),
   area: text('area').notNull().default(''),
@@ -2484,7 +2502,7 @@ export const dailyChecklists = pgTable('hero_daily_checklists', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+})
 
 export const dailyChecklistAnswers = pgTable(
   'hero_daily_checklist_answers',
@@ -2507,10 +2525,10 @@ export const dailyChecklistAnswers = pgTable(
   (table) => ({
     checklistItemUnique: uniqueIndex('hero_daily_checklist_answers_checklist_item_uq').on(
       table.checklistId,
-      table.revisionItemId,
+      table.revisionItemId
     ),
-  }),
-);
+  })
+)
 
 // ============================================================================
 // HIRADC & Risk Management
@@ -2541,7 +2559,9 @@ export const hiradcEntries = pgTable(
   'hero_hiradc_entries',
   {
     id: serial('id').primaryKey(),
-    registerId: integer('register_id').references(() => hiradcRegisters.id, { onDelete: 'cascade' }),
+    registerId: integer('register_id').references(() => hiradcRegisters.id, {
+      onDelete: 'cascade',
+    }),
     orderIndex: integer('order_index').notNull().default(0),
 
     department: text('department').notNull().default(''),
@@ -2586,9 +2606,9 @@ export const hiradcEntries = pgTable(
   (table) => ({
     hiradcEntriesRegisterIdx: uniqueIndex('hero_hiradc_entries_register_order_uq').on(
       table.registerId,
-      table.orderIndex,
+      table.orderIndex
     ),
-  }),
+  })
 )
 
 export const hiradcImports = pgTable('hero_hiradc_imports', {
@@ -2654,7 +2674,9 @@ export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
   investigationStatus: text('investigation_status').notNull().default('Open'),
   incidentDate: timestamp('incident_date').notNull(),
-  picEmployeeId: integer('pic_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  picEmployeeId: integer('pic_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   picName: text('pic_name').notNull().default(''),
   rootCauseAnalysis: text('root_cause_analysis').notNull().default(''),
   immediateCorrectiveAction: text('immediate_corrective_action').notNull().default(''),
@@ -2682,9 +2704,13 @@ export const hsePtwPermits = pgTable('hero_hse_ptw_permits', {
   ppe: jsonb('ppe').$type<string[]>().notNull().default([]),
   gasTestRequired: boolean('gas_test_required').notNull().default(false),
   isolationRequired: boolean('isolation_required').notNull().default(false),
-  hiradcEntryId: integer('hiradc_entry_id').references(() => hiradcEntries.id, { onDelete: 'set null' }),
+  hiradcEntryId: integer('hiradc_entry_id').references(() => hiradcEntries.id, {
+    onDelete: 'set null',
+  }),
   attachments: jsonb('attachments').$type<string[]>().notNull().default([]),
-  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -2702,7 +2728,9 @@ export const hseCorrectiveActions = pgTable('hero_hse_corrective_actions', {
   status: text('status').notNull().default('Open'),
   closeOutNote: text('close_out_note').notNull().default(''),
   evidenceUrls: jsonb('evidence_urls').$type<string[]>().notNull().default([]),
-  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   closedAt: timestamp('closed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -2716,7 +2744,7 @@ export const hcRecruitments = pgTable('hero_hc_recruitments', {
   location: text('location').notNull().default(''),
   totalRequested: integer('total_requested').notNull().default(1),
   status: text('status').notNull().default('Sourcing'), // Sourcing, Psikotes, Interview, Offering, Medical Checkup, Selesai
-  
+
   // Public Form & Open/Close Settings
   isPublic: boolean('is_public').notNull().default(false),
   startDate: timestamp('start_date'),
@@ -2725,8 +2753,14 @@ export const hcRecruitments = pgTable('hero_hc_recruitments', {
   requirements: text('requirements').notNull().default(''),
   qualifications: jsonb('qualifications').$type<string[]>(), // Array of checked qualification strings
   mandatoryFields: jsonb('mandatory_fields').$type<string[]>(), // Array of mandatory field names for public form
-  scoringCriteria: jsonb('scoring_criteria').$type<Array<{ id: string; label: string; weight: number; description?: string }>>(),
-  knockoutCriteria: jsonb('knockout_criteria').$type<Array<{ id: string; label: string; enabled: boolean; description?: string }>>(),
+  scoringCriteria:
+    jsonb('scoring_criteria').$type<
+      Array<{ id: string; label: string; weight: number; description?: string }>
+    >(),
+  knockoutCriteria:
+    jsonb('knockout_criteria').$type<
+      Array<{ id: string; label: string; enabled: boolean; description?: string }>
+    >(),
   emailTemplateId: integer('email_template_id'), // Reference to hcEmailTemplates (optional override)
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2761,27 +2795,43 @@ export const hcLeaveTypes = pgTable('hero_hc_leave_types', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
-export const hcLeaveBalances = pgTable('hero_hc_leave_balances', {
-  id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
-  leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
-  year: integer('year').notNull(),
-  totalDays: integer('total_days').notNull().default(0),
-  usedDays: integer('used_days').notNull().default(0),
-  carryOverDays: integer('carry_over_days').notNull().default(0),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => ({
-  uniqueEmployeeTypeYear: uniqueIndex('unique_leave_balance_emp_type_year').on(t.employeeId, t.leaveTypeId, t.year),
-}))
+export const hcLeaveBalances = pgTable(
+  'hero_hc_leave_balances',
+  {
+    id: serial('id').primaryKey(),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    leaveTypeId: integer('leave_type_id')
+      .notNull()
+      .references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
+    year: integer('year').notNull(),
+    totalDays: integer('total_days').notNull().default(0),
+    usedDays: integer('used_days').notNull().default(0),
+    carryOverDays: integer('carry_over_days').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueEmployeeTypeYear: uniqueIndex('unique_leave_balance_emp_type_year').on(
+      t.employeeId,
+      t.leaveTypeId,
+      t.year
+    ),
+  })
+)
 
 export const hcLeaveRequests = pgTable('hero_hc_leave_requests', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
   approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
     onDelete: 'set null',
   }),
-  leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
+  leaveTypeId: integer('leave_type_id')
+    .notNull()
+    .references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
   totalDays: integer('total_days').notNull().default(1),
@@ -2801,7 +2851,9 @@ export const hcOnboardingTemplates = pgTable('hero_hc_onboarding_templates', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
-  departmentId: integer('department_id').references(() => hrDepartments.id, { onDelete: 'set null' }),
+  departmentId: integer('department_id').references(() => hrDepartments.id, {
+    onDelete: 'set null',
+  }),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -2809,7 +2861,9 @@ export const hcOnboardingTemplates = pgTable('hero_hc_onboarding_templates', {
 
 export const hcOnboardingTemplateTasks = pgTable('hero_hc_onboarding_template_tasks', {
   id: serial('id').primaryKey(),
-  templateId: integer('template_id').notNull().references(() => hcOnboardingTemplates.id, { onDelete: 'cascade' }),
+  templateId: integer('template_id')
+    .notNull()
+    .references(() => hcOnboardingTemplates.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
@@ -2821,8 +2875,12 @@ export const hcOnboardingTemplateTasks = pgTable('hero_hc_onboarding_template_ta
 
 export const hcOnboardingRecords = pgTable('hero_hc_onboarding_records', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
-  templateId: integer('template_id').references(() => hcOnboardingTemplates.id, { onDelete: 'set null' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  templateId: integer('template_id').references(() => hcOnboardingTemplates.id, {
+    onDelete: 'set null',
+  }),
   startDate: date('start_date').notNull(),
   probationEndDate: date('probation_end_date'),
   status: text('status').notNull().default('in_progress'), // in_progress, completed, extended, terminated
@@ -2834,7 +2892,9 @@ export const hcOnboardingRecords = pgTable('hero_hc_onboarding_records', {
 
 export const hcOnboardingTasks = pgTable('hero_hc_onboarding_tasks', {
   id: serial('id').primaryKey(),
-  recordId: integer('record_id').notNull().references(() => hcOnboardingRecords.id, { onDelete: 'cascade' }),
+  recordId: integer('record_id')
+    .notNull()
+    .references(() => hcOnboardingRecords.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
@@ -2851,8 +2911,10 @@ export const hcOnboardingTasks = pgTable('hero_hc_onboarding_tasks', {
 
 export const hcCandidates = pgTable('hero_hc_candidates', {
   id: serial('id').primaryKey(),
-  recruitmentId: integer('recruitment_id').references(() => hcRecruitments.id, { onDelete: 'set null' }),
-  
+  recruitmentId: integer('recruitment_id').references(() => hcRecruitments.id, {
+    onDelete: 'set null',
+  }),
+
   // Personal Info
   fullName: text('full_name').notNull(),
   email: text('email').notNull().default(''),
@@ -2860,24 +2922,35 @@ export const hcCandidates = pgTable('hero_hc_candidates', {
   dateOfBirth: timestamp('date_of_birth'),
   address: text('address').notNull().default(''),
   gender: text('gender').notNull().default(''),
-  
+
   // Nested Structured Data
-  workExperience: jsonb('work_experience').$type<Array<{ company: string; role: string; yearIn: string; yearOut: string; description: string }>>(),
-  education: jsonb('education').$type<Array<{ level: string; institution: string; major: string; yearIn: string; yearOut: string }>>(),
+  workExperience:
+    jsonb('work_experience').$type<
+      Array<{ company: string; role: string; yearIn: string; yearOut: string; description: string }>
+    >(),
+  education:
+    jsonb('education').$type<
+      Array<{ level: string; institution: string; major: string; yearIn: string; yearOut: string }>
+    >(),
   drivingLicenses: jsonb('driving_licenses').$type<string[]>(), // Array of strings e.g. ["SIM A", "SIM C"]
-  certificates: jsonb('certificates').$type<Array<{ name: string; year: string; publisher: string }>>(),
+  certificates:
+    jsonb('certificates').$type<Array<{ name: string; year: string; publisher: string }>>(),
   achievements: text('achievements').notNull().default(''),
-  
+
   // Files and Status
   cvUrl: text('cv_url').notNull().default(''),
   source: text('source').notNull().default(''),
   currentStage: text('current_stage').notNull().default('Sourcing'),
   rating: integer('rating'),
-  
+
   // AI Assessment
   aiScore: integer('ai_score'),
   aiSummary: text('ai_summary').notNull().default(''),
-  aiDetails: jsonb('ai_details').$type<{ breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }>; recommendation?: string }>(),
+  aiDetails: jsonb('ai_details').$type<{
+    breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>
+    knockout?: Array<{ criterion: string; passed: boolean; reason: string }>
+    recommendation?: string
+  }>(),
   aiAssessmentDate: timestamp('ai_assessment_date'),
 
   notes: text('notes').notNull().default(''),
@@ -2906,7 +2979,9 @@ export const hcCandidates = pgTable('hero_hc_candidates', {
 
 export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {
   id: serial('id').primaryKey(),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' }),
   stage: text('stage').notNull(),
   enteredAt: timestamp('entered_at').notNull().defaultNow(),
   exitedAt: timestamp('exited_at'),
@@ -2919,7 +2994,9 @@ export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {
 
 export const hcCandidateInterviews = pgTable('hero_hc_candidate_interviews', {
   id: serial('id').primaryKey(),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' }),
   scheduledAt: timestamp('scheduled_at').notNull(),
   durationMinutes: integer('duration_minutes').notNull().default(60),
   interviewType: text('interview_type').notNull().default('Online'), // Online, Offline
@@ -2934,8 +3011,12 @@ export const hcCandidateInterviews = pgTable('hero_hc_candidate_interviews', {
 
 export const hcCandidatePanelEvaluations = pgTable('hero_hc_candidate_panel_evaluations', {
   id: serial('id').primaryKey(),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
-  interviewId: integer('interview_id').references(() => hcCandidateInterviews.id, { onDelete: 'set null' }),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  interviewId: integer('interview_id').references(() => hcCandidateInterviews.id, {
+    onDelete: 'set null',
+  }),
   panelistName: text('panelist_name').notNull(),
   panelistRole: text('panelist_role').notNull().default(''),
   technicalScore: integer('technical_score').notNull().default(0),
@@ -2954,7 +3035,9 @@ export const hcCandidatePanelEvaluations = pgTable('hero_hc_candidate_panel_eval
 
 export const hcCandidateMcu = pgTable('hero_hc_candidate_mcu', {
   id: serial('id').primaryKey(),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' }),
   klinikName: text('klinik_name').notNull(),
   klinikEmail: text('klinik_email').notNull(),
   paketMcu: text('paket_mcu').notNull(),
@@ -2972,20 +3055,45 @@ export const hcCandidateMcu = pgTable('hero_hc_candidate_mcu', {
 
 export const hcCandidateOfferings = pgTable('hero_hc_candidate_offerings', {
   id: serial('id').primaryKey(),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }).unique(),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' })
+    .unique(),
   position: text('position').notNull().default(''),
   directSupervisor: text('direct_supervisor').notNull().default(''),
   salary: text('salary').notNull().default(''),
   contractDurationMonths: integer('contract_duration_months').notNull().default(12),
   startDate: date('start_date'),
-  outpatientBenefit: text('outpatient_benefit').notNull().default('Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-'),
-  inpatientBenefit: text('inpatient_benefit').notNull().default('Penusahaan akan memberikan biaya penggatan/Pengobatan sepengetahuan bagi karyawan beserta istri & 3 (tiga) anak yang sah secara hukum, apabila telah ditanggung menjadi tanggungan karyawan tetap'),
-  maternityBenefit: text('maternity_benefit').notNull().default('Penusahaan akan memberikan bantuan sebesar Rp 8.000.000,-. Dan apabila dilakukan operasi caesar perusahaan akan mengganti biaya peralatan sebesar Rp 15.000.000, setelah ditanggung menjadi tanggungan karyawan tetap'),
-  accidentInsurance: text('accident_insurance').notNull().default('Penusahaan akan menanggung premi asuransi sepengetahuannya'),
-  bpjsEmployment: text('bpjs_employment').notNull().default('Wajib berdasarkan Peraturan Pemerintah'),
+  outpatientBenefit: text('outpatient_benefit')
+    .notNull()
+    .default('Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-'),
+  inpatientBenefit: text('inpatient_benefit')
+    .notNull()
+    .default(
+      'Penusahaan akan memberikan biaya penggatan/Pengobatan sepengetahuan bagi karyawan beserta istri & 3 (tiga) anak yang sah secara hukum, apabila telah ditanggung menjadi tanggungan karyawan tetap'
+    ),
+  maternityBenefit: text('maternity_benefit')
+    .notNull()
+    .default(
+      'Penusahaan akan memberikan bantuan sebesar Rp 8.000.000,-. Dan apabila dilakukan operasi caesar perusahaan akan mengganti biaya peralatan sebesar Rp 15.000.000, setelah ditanggung menjadi tanggungan karyawan tetap'
+    ),
+  accidentInsurance: text('accident_insurance')
+    .notNull()
+    .default('Penusahaan akan menanggung premi asuransi sepengetahuannya'),
+  bpjsEmployment: text('bpjs_employment')
+    .notNull()
+    .default('Wajib berdasarkan Peraturan Pemerintah'),
   bpjsHealth: text('bpjs_health').notNull().default('Wajib berdasarkan Peraturan Pemerintah'),
-  thr: text('thr').notNull().default('Penusahaan akan memberikan THR setahun upah, dan apabila Saudara belum mencapai masa kerja 1 (satu) tahun tetapi sudah lebih dari 1 (satu) bulan, maka akan dihitung secara proporsional.'),
-  otherTerms: text('other_terms').notNull().default('Ketentuan-ketentuan lain yang tidak secara khusus diatur dalam penawaran diatas (Biaya Perjalanan Dinas, Bantuan dan fasilitas lain dan perusahaan) akan tunduk pada peraturan/perjanjian karyawan yang berlaku. Pokok-pokok Musyawarah serta tetapkan pelaksanaan perusahaan'),
+  thr: text('thr')
+    .notNull()
+    .default(
+      'Penusahaan akan memberikan THR setahun upah, dan apabila Saudara belum mencapai masa kerja 1 (satu) tahun tetapi sudah lebih dari 1 (satu) bulan, maka akan dihitung secara proporsional.'
+    ),
+  otherTerms: text('other_terms')
+    .notNull()
+    .default(
+      'Ketentuan-ketentuan lain yang tidak secara khusus diatur dalam penawaran diatas (Biaya Perjalanan Dinas, Bantuan dan fasilitas lain dan perusahaan) akan tunduk pada peraturan/perjanjian karyawan yang berlaku. Pokok-pokok Musyawarah serta tetapkan pelaksanaan perusahaan'
+    ),
   signatoryName: text('signatory_name').notNull().default(''),
   signatoryTitle: text('signatory_title').notNull().default(''),
   signatureUrl: text('signature_url').notNull().default(''),
@@ -3003,7 +3111,9 @@ export const hcCandidateOfferings = pgTable('hero_hc_candidate_offerings', {
 
 export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
   approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
     onDelete: 'set null',
   }),
@@ -3023,7 +3133,9 @@ export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {
 
 export const hcClearanceItems = pgTable('hero_hc_clearance_items', {
   id: serial('id').primaryKey(),
-  offboardingId: integer('offboarding_id').notNull().references(() => hcOffboardingRequests.id, { onDelete: 'cascade' }),
+  offboardingId: integer('offboarding_id')
+    .notNull()
+    .references(() => hcOffboardingRequests.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
   category: text('category').notNull(), // IT, Finance, Warehouse, HR, HSE, Department
   title: text('title').notNull(),
@@ -3062,17 +3174,25 @@ export const hcLetters = pgTable('hero_hc_letters', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
-export const hcLetterSequences = pgTable('hero_hc_letter_sequences', {
-  id: serial('id').primaryKey(),
-  letterType: text('letter_type').notNull(),
-  year: integer('year').notNull(),
-  month: integer('month').notNull(),
-  lastSequence: integer('last_sequence').notNull().default(0),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => ({
-  uniqueTypeYearMonth: uniqueIndex('unique_letter_seq_type_year_month').on(t.letterType, t.year, t.month),
-}))
+export const hcLetterSequences = pgTable(
+  'hero_hc_letter_sequences',
+  {
+    id: serial('id').primaryKey(),
+    letterType: text('letter_type').notNull(),
+    year: integer('year').notNull(),
+    month: integer('month').notNull(),
+    lastSequence: integer('last_sequence').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueTypeYearMonth: uniqueIndex('unique_letter_seq_type_year_month').on(
+      t.letterType,
+      t.year,
+      t.month
+    ),
+  })
+)
 
 // ─── HC Performance Management ────────────────────────────────────────────
 
@@ -3089,30 +3209,40 @@ export const hcPerformanceCycles = pgTable('hero_hc_performance_cycles', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
-export const hcPerformanceReviews = pgTable('hero_hc_performance_reviews', {
-  id: serial('id').primaryKey(),
-  cycleId: integer('cycle_id').notNull().references(() => hcPerformanceCycles.id, { onDelete: 'cascade' }),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
-  reviewerId: integer('reviewer_id').references(() => employees.id, { onDelete: 'set null' }),
-  overallScore: decimal('overall_score', { precision: 5, scale: 2 }),
-  overallRating: text('overall_rating').notNull().default(''), // Exceeds, Meets, Below, Unsatisfactory
-  strengths: text('strengths').notNull().default(''),
-  improvements: text('improvements').notNull().default(''),
-  comments: text('comments').notNull().default(''),
-  employeeComments: text('employee_comments').notNull().default(''),
-  status: text('status').notNull().default('draft'), // draft, submitted, reviewed, acknowledged
-  submittedAt: timestamp('submitted_at'),
-  reviewedAt: timestamp('reviewed_at'),
-  acknowledgedAt: timestamp('acknowledged_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => ({
-  uniqueCycleEmployee: uniqueIndex('unique_perf_review_cycle_emp').on(t.cycleId, t.employeeId),
-}))
+export const hcPerformanceReviews = pgTable(
+  'hero_hc_performance_reviews',
+  {
+    id: serial('id').primaryKey(),
+    cycleId: integer('cycle_id')
+      .notNull()
+      .references(() => hcPerformanceCycles.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    reviewerId: integer('reviewer_id').references(() => employees.id, { onDelete: 'set null' }),
+    overallScore: decimal('overall_score', { precision: 5, scale: 2 }),
+    overallRating: text('overall_rating').notNull().default(''), // Exceeds, Meets, Below, Unsatisfactory
+    strengths: text('strengths').notNull().default(''),
+    improvements: text('improvements').notNull().default(''),
+    comments: text('comments').notNull().default(''),
+    employeeComments: text('employee_comments').notNull().default(''),
+    status: text('status').notNull().default('draft'), // draft, submitted, reviewed, acknowledged
+    submittedAt: timestamp('submitted_at'),
+    reviewedAt: timestamp('reviewed_at'),
+    acknowledgedAt: timestamp('acknowledged_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueCycleEmployee: uniqueIndex('unique_perf_review_cycle_emp').on(t.cycleId, t.employeeId),
+  })
+)
 
 export const hcPerformanceKpis = pgTable('hero_hc_performance_kpis', {
   id: serial('id').primaryKey(),
-  reviewId: integer('review_id').notNull().references(() => hcPerformanceReviews.id, { onDelete: 'cascade' }),
+  reviewId: integer('review_id')
+    .notNull()
+    .references(() => hcPerformanceReviews.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
   kpiName: text('kpi_name').notNull(),
   kpiDescription: text('kpi_description').notNull().default(''),
@@ -3141,8 +3271,12 @@ export const hcViolationCategories = pgTable('hero_hc_violation_categories', {
 
 export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
-  violationCategoryId: integer('violation_category_id').references(() => hcViolationCategories.id, { onDelete: 'set null' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  violationCategoryId: integer('violation_category_id').references(() => hcViolationCategories.id, {
+    onDelete: 'set null',
+  }),
   spLevel: integer('sp_level').notNull().default(1), // 1=SP1, 2=SP2, 3=SP3
   letterNumber: text('letter_number').notNull().default(''),
   violationDate: date('violation_date').notNull(),
@@ -3167,10 +3301,12 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   contractLength: text('contract_length').notNull().default(''),
   todayDate: date('today_date').notNull(),
   hireDate: date('hire_date').notNull(),
-  
+
   // Performance
-  performanceActivities: jsonb('performance_activities').$type<Array<{ activity: string, achievement: string, remark: string }>>().default([]),
-  
+  performanceActivities: jsonb('performance_activities')
+    .$type<Array<{ activity: string; achievement: string; remark: string }>>()
+    .default([]),
+
   // Competency Achievement (Below/Meet/Exceed)
   compDisciplineAch: text('comp_discipline_ach').notNull().default(''),
   compDisciplineRemark: text('comp_discipline_remark').notNull().default(''),
@@ -3184,13 +3320,13 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   compCustomerRemark: text('comp_customer_remark').notNull().default(''),
   compTeamworkAch: text('comp_teamwork_ach').notNull().default(''),
   compTeamworkRemark: text('comp_teamwork_remark').notNull().default(''),
-  
+
   // Recommendation
   recommendation: text('recommendation').notNull().default(''), // confirm_permanent, contract_extended, terminate_probation, contract_ended
   contractExtendedMonths: integer('contract_extended_months'),
   contractEndDate: text('contract_end_date'),
   permanentDate: text('permanent_date'),
-  
+
   // Signatories
   leaderName: text('leader_name').notNull().default(''),
   leaderSignatureDataUrl: text('leader_signature_data_url'),
@@ -3200,7 +3336,7 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   nextSuperiorName: text('next_superior_name').notNull().default(''),
 
   letterIssuance: text('letter_issuance').notNull().default(''), // permanent_confirmation, contract_extension, unsuccessful_probation, end_of_contract
-  
+
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -3208,10 +3344,14 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
 
 export const hcContractReviewApprovals = pgTable('hero_hc_contract_review_approvals', {
   id: serial('id').primaryKey(),
-  reviewId: integer('review_id').notNull().references(() => hcEmployeeContractReviews.id, { onDelete: 'cascade' }),
+  reviewId: integer('review_id')
+    .notNull()
+    .references(() => hcEmployeeContractReviews.id, { onDelete: 'cascade' }),
   stepOrder: integer('step_order').notNull(),
   approvalToken: text('approval_token').notNull().unique(),
-  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   approverName: text('approver_name').notNull(),
   approverEmail: text('approver_email').notNull().default(''),
   approverRole: text('approver_role').notNull(),
@@ -3235,7 +3375,9 @@ export const hcContractReviewReminders = pgTable('hero_hc_contract_review_remind
   recipientName: text('recipient_name').notNull(),
   recipientRole: text('recipient_role').notNull(),
   sentAt: timestamp('sent_at').notNull().defaultNow(),
-  reviewId: integer('review_id').references(() => hcEmployeeContractReviews.id, { onDelete: 'set null' }),
+  reviewId: integer('review_id').references(() => hcEmployeeContractReviews.id, {
+    onDelete: 'set null',
+  }),
 })
 
 export const hcContractReviewSettings = pgTable('hero_hc_contract_review_settings', {
@@ -3270,8 +3412,12 @@ export const hcOnlineTestGroups = pgTable('hero_hc_online_test_groups', {
 
 export const hcOnlineTestGroupItems = pgTable('hero_hc_online_test_group_items', {
   id: serial('id').primaryKey(),
-  groupId: integer('group_id').notNull().references(() => hcOnlineTestGroups.id, { onDelete: 'cascade' }),
-  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  groupId: integer('group_id')
+    .notNull()
+    .references(() => hcOnlineTestGroups.id, { onDelete: 'cascade' }),
+  testId: integer('test_id')
+    .notNull()
+    .references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
 })
 
@@ -3289,7 +3435,9 @@ export const hcOnlineTests = pgTable('hero_hc_online_tests', {
 
 export const hcOnlineTestQuestions = pgTable('hero_hc_online_test_questions', {
   id: serial('id').primaryKey(),
-  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  testId: integer('test_id')
+    .notNull()
+    .references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
   questionType: text('question_type').notNull(), // "multiple_choice", "essay"
   questionText: text('question_text').notNull(),
   imageUrl: text('image_url').notNull().default(''),
@@ -3302,8 +3450,12 @@ export const hcOnlineTestQuestions = pgTable('hero_hc_online_test_questions', {
 
 export const hcOnlineTestAssignments = pgTable('hero_hc_online_test_assignments', {
   id: serial('id').primaryKey(),
-  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
-  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  testId: integer('test_id')
+    .notNull()
+    .references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  candidateId: integer('candidate_id')
+    .notNull()
+    .references(() => hcCandidates.id, { onDelete: 'cascade' }),
   accessKey: text('access_key').notNull().unique(), // Unique UUID or secure random string
   expiresAt: timestamp('expires_at').notNull(),
   scheduledAt: timestamp('scheduled_at'),
@@ -3320,8 +3472,12 @@ export const hcOnlineTestAssignments = pgTable('hero_hc_online_test_assignments'
 
 export const hcOnlineTestAnswers = pgTable('hero_hc_online_test_answers', {
   id: serial('id').primaryKey(),
-  assignmentId: integer('assignment_id').notNull().references(() => hcOnlineTestAssignments.id, { onDelete: 'cascade' }),
-  questionId: integer('question_id').notNull().references(() => hcOnlineTestQuestions.id, { onDelete: 'cascade' }),
+  assignmentId: integer('assignment_id')
+    .notNull()
+    .references(() => hcOnlineTestAssignments.id, { onDelete: 'cascade' }),
+  questionId: integer('question_id')
+    .notNull()
+    .references(() => hcOnlineTestQuestions.id, { onDelete: 'cascade' }),
   answerText: text('answer_text').notNull(),
   isCorrect: boolean('is_correct'),
   pointsAwarded: integer('points_awarded').notNull().default(0),
@@ -3344,7 +3500,9 @@ export const hcMcuClinics = pgTable('hero_hc_mcu_clinics', {
 
 export const hcRecruitmentBatches = pgTable('hero_hc_recruitment_batches', {
   id: serial('id').primaryKey(),
-  recruitmentId: integer('recruitment_id').notNull().references(() => hcRecruitments.id, { onDelete: 'cascade' }),
+  recruitmentId: integer('recruitment_id')
+    .notNull()
+    .references(() => hcRecruitments.id, { onDelete: 'cascade' }),
   batchName: text('batch_name').notNull(),
   batchType: text('batch_type').notNull(), // psikotes_1, psikotes_2, interview, mcu
   scheduledAt: timestamp('scheduled_at').notNull(),
@@ -3352,28 +3510,33 @@ export const hcRecruitmentBatches = pgTable('hero_hc_recruitment_batches', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const sioCertifications = pgTable('hero_sio_certifications', {
-  id: serial('id').primaryKey(),
-  employeeId: integer('employee_id')
-    .notNull()
-    .references(() => employees.id, { onDelete: 'cascade' }),
-  certType: text('cert_type').notNull(),
-  certNumber: text('cert_number'),
-  certName: text('cert_name').notNull(),
-  issuingBody: text('issuing_body'),
-  certDate: date('cert_date'),
-  expiryDate: date('expiry_date'),
-  status: text('status').notNull(),
-  notes: text('notes'),
-  lastSyncFrom: text('last_sync_from').notNull().default('manual'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-},
-(table) => ({
-  employeeCertUnique: uniqueIndex('hero_sio_certifications_employee_cert_uq').on(
-    table.employeeId, table.certType, table.certName
-  ),
-}))
+export const sioCertifications = pgTable(
+  'hero_sio_certifications',
+  {
+    id: serial('id').primaryKey(),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    certType: text('cert_type').notNull(),
+    certNumber: text('cert_number'),
+    certName: text('cert_name').notNull(),
+    issuingBody: text('issuing_body'),
+    certDate: date('cert_date'),
+    expiryDate: date('expiry_date'),
+    status: text('status').notNull(),
+    notes: text('notes'),
+    lastSyncFrom: text('last_sync_from').notNull().default('manual'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeCertUnique: uniqueIndex('hero_sio_certifications_employee_cert_uq').on(
+      table.employeeId,
+      table.certType,
+      table.certName
+    ),
+  })
+)
 
 export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
   id: serial('id').primaryKey(),
@@ -3414,7 +3577,9 @@ export const broadcasts = pgTable('hero_broadcasts', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   createdBy: text('created_by'), // authUserId
-  categoryId: integer('category_id').references(() => broadcastCategories.id, { onDelete: 'set null' }),
+  categoryId: integer('category_id').references(() => broadcastCategories.id, {
+    onDelete: 'set null',
+  }),
 })
 
 export const broadcastInteractions = pgTable('hero_broadcast_interactions', {
@@ -3504,24 +3669,28 @@ export const employeeMcuMetrics = pgTable('hero_employee_mcu_metrics', {
 export const apdRequests = pgTable('hero_apd_requests', {
   id: serial('id').primaryKey(),
   requestNumber: text('request_number').notNull().unique(),
-  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
-  siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  siteId: integer('site_id')
+    .notNull()
+    .references(() => sites.id, { onDelete: 'cascade' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
   status: text('status').notNull().default('pending'),
   notes: text('notes').notNull().default(''),
   signatureUrl: text('signature_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
+})
 
 export const apdRequestItems = pgTable('hero_apd_request_items', {
   id: serial('id').primaryKey(),
-  requestId: integer('request_id').notNull().references(() => apdRequests.id, { onDelete: 'cascade' }),
+  requestId: integer('request_id')
+    .notNull()
+    .references(() => apdRequests.id, { onDelete: 'cascade' }),
   itemType: text('item_type').notNull(),
   requestType: text('request_type').notNull(), // 'baru' or 'pergantian'
   photoUrl: text('photo_url'),
   quantity: integer('quantity').notNull().default(1),
   notes: text('notes').notNull().default(''),
-});
-
-
+})

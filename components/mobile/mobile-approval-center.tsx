@@ -2,7 +2,7 @@ import { approveApprovalGroupAction, reviewApprovalAction } from "@/app/dashboar
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea";
 import type { getApprovalCenterData } from "@/lib/approval-workspace";
 import Link from "next/link";
 
