@@ -2,13 +2,15 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { useActionState, useMemo, useState } from 'react'
-import { Bell, ExternalLink, Plus } from 'lucide-react'
+import { useActionState, useMemo, useState, useTransition, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { Bell, ExternalLink, Plus, X, ArrowUp, ArrowDown } from 'lucide-react'
 
 import {
   markWorkflowStudioInvestigatedAction,
   saveWorkflowStudioApprovalAction,
   resendWorkflowStudioReminderAction,
+  toggleWorkflowStatusAction,
 } from '@/app/dashboard/workflow-studio/actions'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -81,6 +83,112 @@ function toDateTimeLocal(value: string | null | undefined) {
   return date.toISOString().slice(0, 16)
 }
 
+function StatusDropdown({ templateKey, transactionType, currentStatus }: { templateKey: string; transactionType: string; currentStatus: string }) {
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+  const [status, setStatus] = useState(currentStatus)
+
+  useEffect(() => { setStatus(currentStatus) }, [currentStatus])
+
+  function handleChange(value: string) {
+    const fd = new FormData()
+    fd.set('templateKey', templateKey)
+    fd.set('transactionType', transactionType)
+    fd.set('newStatus', value)
+    startTransition(async () => {
+      await toggleWorkflowStatusAction(actionInitialState, fd)
+      setStatus(value === 'true' ? 'Active' : 'Nonactive')
+      router.refresh()
+    })
+  }
+
+  return (
+    <select
+      value={status === 'Active' ? 'true' : 'false'}
+      onChange={(e) => handleChange(e.target.value)}
+      disabled={isPending}
+      className="border-border/70 bg-muted/30 h-7 rounded-md border px-1.5 text-xs font-medium disabled:opacity-50"
+    >
+      <option value="true">Active</option>
+      <option value="false">Nonactive</option>
+    </select>
+  )
+}
+
+type SearchableOption = { id: number; name: string; jobTitle?: string | null; siteId?: number | null }
+
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: SearchableOption[]
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const selected = options.find((o) => o.id.toString() === value)
+  const filtered = query
+    ? options.filter((o) => `${o.name} ${o.jobTitle ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+    : options
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="border-border/70 bg-muted/30 h-8 w-full rounded-md border px-2 text-left text-xs truncate"
+      >
+        {selected ? `${selected.name}${selected.jobTitle ? ` - ${selected.jobTitle}` : ''}` : (placeholder ?? 'Kosong')}
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
+          <input
+            type="text"
+            placeholder="Cari karyawan..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="border-border/70 h-8 w-full border-b px-2 text-xs outline-none"
+            autoFocus
+          />
+          <div className="max-h-48 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); setQuery('') }}
+              className="text-muted-foreground hover:bg-muted h-7 w-full px-2 text-left text-xs"
+            >
+              Kosong
+            </button>
+            {filtered.map((emp) => (
+              <button
+                key={emp.id}
+                type="button"
+                onClick={() => { onChange(emp.id.toString()); setOpen(false); setQuery('') }}
+                className={`hover:bg-muted h-7 w-full px-2 text-left text-xs ${value === emp.id.toString() ? 'bg-primary/10 font-medium' : ''}`}
+              >
+                {emp.name}{emp.jobTitle ? ` - ${emp.jobTitle}` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WorkflowBuilderDialog({
   data,
   initial,
@@ -94,8 +202,160 @@ function WorkflowBuilderDialog({
   const [selectedMenuKey, setSelectedMenuKey] = useState<string>(initial?.id ?? data.builderOptions.menus[0]?.key ?? '')
   const selectedMenu =
     data.builderOptions.menus.find((menu) => menu.key === selectedMenuKey) ?? data.builderOptions.menus[0]
-  const selectedSiteId = initial?.siteId?.toString() ?? data.builderOptions.sites[0]?.id?.toString() ?? ''
   const employeeOptions = data.builderOptions.employees
+  const allSites = data.builderOptions.sites
+  const csSections = data.builderOptions.csSections ?? []
+
+  const csEmployees = useMemo(
+    () => employeeOptions.filter((e) => {
+      const dept = (e.department ?? '').toLowerCase()
+      return dept === 'central services' || dept === 'central service' || dept === 'central services'
+    }),
+    [employeeOptions]
+  )
+
+  type ApprovalStep = { id: string; label: string; type: 'section' | 'employee' }
+  type SiteData = { key: string; siteId: string; values: Record<string, string> }
+
+  function isSectionStep(label: string) {
+    const norm = label.toLowerCase().replace(/[^a-z]/g, '')
+    return norm === 'section'
+  }
+
+  const [approvalSteps, setApprovalSteps] = useState<ApprovalStep[]>(() => {
+    const defaults: ApprovalStep[] = [
+      { id: 'step-0', label: 'Section', type: 'section' },
+      { id: 'step-1', label: 'Leader', type: 'employee' },
+      { id: 'step-2', label: 'PJO (Head Lokasi)', type: 'employee' },
+      { id: 'step-3', label: 'Section Head', type: 'employee' },
+      { id: 'step-4', label: 'Department Head', type: 'employee' },
+    ]
+    if (initial?.globalSteps && initial.globalSteps.length > 0) {
+      return initial.globalSteps.map((gs, i) => ({
+        id: `step-${i}`,
+        label: gs.label ?? '',
+        type: (isSectionStep(gs.label ?? '') ? 'section' : 'employee') as 'section' | 'employee',
+      }))
+    }
+    return defaults
+  })
+
+  const [siteData, setSiteData] = useState<SiteData[]>(() => {
+    const steps = initial?.globalSteps && initial.globalSteps.length > 0
+      ? initial.globalSteps.map((gs, i) => ({ id: `step-${i}`, label: gs.label ?? '', type: (isSectionStep(gs.label ?? '') ? 'section' : 'employee') as 'section' | 'employee' }))
+      : [
+          { id: 'step-0', label: 'Section', type: 'section' as const },
+          { id: 'step-1', label: 'Leader', type: 'employee' as const },
+          { id: 'step-2', label: 'PJO (Head Lokasi)', type: 'employee' as const },
+          { id: 'step-3', label: 'Section Head', type: 'employee' as const },
+          { id: 'step-4', label: 'Department Head', type: 'employee' as const },
+        ]
+
+    const labelToStepId: Record<string, string> = {}
+    for (const s of steps) {
+      const norm = s.label.toLowerCase().replace(/[^a-z]/g, '')
+      if (norm === 'leader') labelToStepId['leader'] = s.id
+      if (norm.includes('pjo') || norm.includes('headlokasi')) labelToStepId['pjo'] = s.id
+      if (norm === 'sectionhead') labelToStepId['sectionHead'] = s.id
+      else if (norm === 'section') labelToStepId['section'] = s.id
+      if (norm === 'departmenthead') labelToStepId['department'] = s.id
+    }
+
+    if (initial?.siteApprovals && initial.siteApprovals.length > 0) {
+      return initial.siteApprovals.map((sa, i) => {
+        const values: Record<string, string> = {}
+        if (sa.sectionId != null && labelToStepId['section']) values[labelToStepId['section']] = String(sa.sectionId)
+        if (sa.leaderId != null && labelToStepId['leader']) values[labelToStepId['leader']] = String(sa.leaderId)
+        if (sa.pjoId != null && labelToStepId['pjo']) values[labelToStepId['pjo']] = String(sa.pjoId)
+        if (sa.sectionHeadId != null && labelToStepId['sectionHead']) values[labelToStepId['sectionHead']] = String(sa.sectionHeadId)
+        if (sa.departmentHeadId != null && labelToStepId['department']) values[labelToStepId['department']] = String(sa.departmentHeadId)
+        return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '', values }
+      })
+    }
+    return []
+  })
+
+  const [pendingSiteId, setPendingSiteId] = useState('')
+  const [formStatus, setFormStatus] = useState(initial?.status === 'Nonactive' ? 'false' : 'true')
+  const [formEffectiveFrom, setFormEffectiveFrom] = useState(toDateTimeLocal(initial?.effectiveFrom))
+  const [formEffectiveTo, setFormEffectiveTo] = useState(toDateTimeLocal(initial?.effectiveTo))
+
+  useEffect(() => {
+    if (initial) {
+      setFormStatus(initial.status === 'Nonactive' ? 'false' : 'true')
+      setFormEffectiveFrom(toDateTimeLocal(initial.effectiveFrom))
+      setFormEffectiveTo(toDateTimeLocal(initial.effectiveTo))
+    }
+  }, [initial])
+
+  const usedSiteIds = new Set(siteData.map((s) => s.siteId))
+  const availableSites = allSites.filter((site) => !usedSiteIds.has(site.id.toString()))
+
+  function addStep() {
+    setApprovalSteps((prev) => [...prev, { id: `step-${Date.now()}`, label: '', type: 'employee' }])
+  }
+
+  function removeStep(id: string) {
+    setApprovalSteps((prev) => prev.filter((s) => s.id !== id))
+    setSiteData((prev) =>
+      prev.map((site) => {
+        const newValues = { ...site.values }
+        delete newValues[id]
+        return { ...site, values: newValues }
+      })
+    )
+  }
+
+  function updateStepLabel(id: string, label: string) {
+    setApprovalSteps((prev) => prev.map((s) => (s.id === id ? { ...s, label } : s)))
+  }
+
+  function moveStep(id: string, dir: -1 | 1) {
+    setApprovalSteps((prev) => {
+      const idx = prev.findIndex((s) => s.id === id)
+      if (idx < 0) return prev
+      const newIdx = idx + dir
+      if (newIdx < 0 || newIdx >= prev.length) return prev
+      const copy = [...prev]
+      ;[copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]]
+      return copy
+    })
+  }
+
+  function addSite() {
+    if (!pendingSiteId) return
+    const firstSite = siteData[0]
+    const site = allSites.find((s) => s.id.toString() === pendingSiteId)
+    const pjoStepId = approvalSteps.find((s) => s.label.toLowerCase().includes('pjo'))?.id
+    const values: Record<string, string> = {}
+    for (const step of approvalSteps) {
+      values[step.id] = firstSite?.values[step.id] ?? ''
+    }
+    if (pjoStepId && site?.headEmployeeId) {
+      values[pjoStepId] = site.headEmployeeId.toString()
+    }
+    setSiteData((prev) => [...prev, { key: `site-${Date.now()}`, siteId: pendingSiteId, values }])
+    setPendingSiteId('')
+  }
+
+  function removeSiteRow(key: string) {
+    setSiteData((prev) => prev.filter((s) => s.key !== key))
+  }
+
+  function updateSiteValue(siteKey: string, stepId: string, employeeId: string) {
+    setSiteData((prev) =>
+      prev.map((site) =>
+        site.key === siteKey ? { ...site, values: { ...site.values, [stepId]: employeeId } } : site
+      )
+    )
+  }
+
+  function fillDownColumn(stepId: string) {
+    const firstValue = siteData[0]?.values[stepId] ?? ''
+    setSiteData((prev) =>
+      prev.map((site) => ({ ...site, values: { ...site.values, [stepId]: firstValue } }))
+    )
+  }
 
   return (
     <Dialog>
@@ -106,11 +366,11 @@ function WorkflowBuilderDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Buat Approval Workflow</DialogTitle>
           <DialogDescription>
-            Satu kombinasi aktif per form/site. Jika sudah ada, sistem akan menolak duplikat.
+            Definisikan langkah approval, lalu atur siapa yang approve per site.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,6 +378,8 @@ function WorkflowBuilderDialog({
           {initial?.matrixId ? <input type="hidden" name="matrixId" value={initial.matrixId} /> : null}
           <input type="hidden" name="templateKey" value={selectedMenu?.templateKey ?? ''} />
           <input type="hidden" name="transactionType" value={selectedMenu?.transactionType ?? ''} />
+          <input type="hidden" name="approvalSteps" value={JSON.stringify(approvalSteps)} />
+          <input type="hidden" name="siteApprovals" value={JSON.stringify(siteData)} />
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm font-medium">
@@ -141,21 +403,6 @@ function WorkflowBuilderDialog({
               <Input name="activityName" defaultValue={initial?.name ?? selectedMenu?.label ?? ''} required />
             </label>
             <label className="space-y-1.5 text-sm font-medium">
-              Site
-              <select
-                name="siteId"
-                defaultValue={selectedSiteId}
-                className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm"
-                required
-              >
-                {data.builderOptions.sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
               Mode
               <select name="mode" defaultValue={initial?.mode ?? 'sequential'} className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm">
                 <option value="sequential">Sequential</option>
@@ -165,54 +412,160 @@ function WorkflowBuilderDialog({
             </label>
             <label className="space-y-1.5 text-sm font-medium">
               Effective From
-              <Input name="effectiveFrom" type="datetime-local" defaultValue={toDateTimeLocal(initial?.effectiveFrom)} />
+              <Input name="effectiveFrom" type="datetime-local" value={formEffectiveFrom} onChange={(e) => setFormEffectiveFrom(e.target.value)} />
             </label>
             <label className="space-y-1.5 text-sm font-medium">
               Effective To
-              <Input name="effectiveTo" type="datetime-local" defaultValue={toDateTimeLocal(initial?.effectiveTo)} />
+              <Input name="effectiveTo" type="datetime-local" value={formEffectiveTo} onChange={(e) => setFormEffectiveTo(e.target.value)} />
             </label>
             <label className="space-y-1.5 text-sm font-medium">
               Status
-              <select name="isActive" defaultValue={initial?.status === 'Nonactive' ? 'false' : 'true'} className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm">
+              <select name="isActive" value={formStatus} onChange={(e) => setFormStatus(e.target.value)} className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm">
                 <option value="true">Active</option>
                 <option value="false">Nonactive</option>
               </select>
             </label>
           </div>
 
-          <section className="rounded-lg border bg-white p-3">
-            <h3 className="mb-3 font-display text-base font-semibold">Setting Approval</h3>
-            <div className="grid gap-3 md:grid-cols-4">
-              {[
-                ['leaderId', 'Leader'],
-                ['pjoId', 'PJO'],
-                ['sectionHeadId', 'Section Head'],
-                ['departmentHeadId', 'Department Head'],
-              ].map(([name, label]) => (
-                <label key={name} className="space-y-1.5 text-sm font-medium">
-                  {label}
+          <section className="rounded-lg border bg-white p-3 space-y-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-display text-base font-semibold">Langkah Approval</h3>
+                <Button type="button" size="sm" variant="outline" onClick={addStep} className="h-8 px-2 text-xs">
+                  <Plus className="size-3" /> Tambah Langkah
+                </Button>
+              </div>
+              <p className="text-muted-foreground mb-2 text-xs">Atur urutan langkah approval. Isi nama kolom, lalu geser posisi dengan panah. Urutan ini berlaku untuk semua site.</p>
+              {approvalSteps.length > 0 ? (
+                <div className="space-y-1.5">
+                  {approvalSteps.map((step, idx) => (
+                    <div key={step.id} className="flex items-center gap-2">
+                      <span className="w-5 text-center text-xs font-medium text-muted-foreground">{idx + 1}.</span>
+                      <Input
+                        placeholder="Nama langkah (misal: HSE Team, Safety Officer)"
+                        value={step.label}
+                        onChange={(e) => {
+                          updateStepLabel(step.id, e.target.value)
+                          const isSec = isSectionStep(e.target.value)
+                          setApprovalSteps((prev) => prev.map((s) => s.id === step.id ? { ...s, type: isSec ? 'section' : 'employee' } : s))
+                        }}
+                        className="h-8 flex-1 text-xs"
+                      />
+                      <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={idx === 0} className="h-7 w-7 p-0">
+                        <ArrowUp className="size-3" />
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={idx === approvalSteps.length - 1} className="h-7 w-7 p-0">
+                        <ArrowDown className="size-3" />
+                      </Button>
+                      <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">Klik "Tambah Langkah" untuk menambah kolom approval baru.</p>
+              )}
+            </div>
+
+            <div className="border-t pt-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-display text-base font-semibold">Pengaturan per Site</h3>
+                <div className="flex items-center gap-2">
                   <select
-                    name={name}
-                    defaultValue={
-                      name === 'leaderId'
-                        ? initial?.leaderId?.toString() ?? ''
-                        : name === 'pjoId'
-                          ? initial?.pjoId?.toString() ?? ''
-                          : name === 'sectionHeadId'
-                            ? initial?.sectionHeadId?.toString() ?? ''
-                            : initial?.departmentHeadId?.toString() ?? ''
-                    }
-                    className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm"
+                    value={pendingSiteId}
+                    onChange={(e) => setPendingSiteId(e.target.value)}
+                    className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm"
                   >
-                    <option value="">Kosong</option>
-                    {employeeOptions.map((employee) => (
-                      <option key={employee.id} value={employee.id}>
-                        {employee.name} {employee.jobTitle ? `- ${employee.jobTitle}` : ''}
-                      </option>
+                    <option value="">Pilih site...</option>
+                    {availableSites.map((site) => (
+                      <option key={site.id} value={site.id.toString()}>{site.name}</option>
                     ))}
                   </select>
-                </label>
-              ))}
+                  <Button type="button" size="sm" variant="outline" onClick={addSite} disabled={!pendingSiteId} className="h-8 px-2">
+                    <Plus className="size-3" /> Tambah
+                  </Button>
+                </div>
+              </div>
+
+              {siteData.length > 0 && approvalSteps.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs font-medium text-muted-foreground">
+                        <th className="pb-2 pr-3">Site</th>
+                        {approvalSteps.map((step) => (
+                          <th key={step.id} className="pb-2 pr-3">
+                            <div className="flex items-center gap-1">
+                              <span>{step.label || '(Kosong)'}</span>
+                              {siteData.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => fillDownColumn(step.id)}
+                                  title="Isi semua dari baris pertama"
+                                  className="text-muted-foreground hover:text-foreground ml-1 inline-flex items-center rounded border px-1 py-0.5 text-[10px] leading-none"
+                                >
+                                  ↓ Isi
+                                </button>
+                              )}
+                            </div>
+                          </th>
+                        ))}
+                        <th className="pb-2 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {siteData.map((siteRow) => {
+                        const site = allSites.find((s) => s.id.toString() === siteRow.siteId)
+                        return (
+                          <tr key={siteRow.key} className="border-b last:border-0">
+                            <td className="py-2 pr-3 font-medium whitespace-nowrap">{site?.name ?? siteRow.siteId}</td>
+                            {approvalSteps.map((step) => (
+                              <td key={step.id} className="py-2 pr-3 min-w-[180px]">
+                                <SearchableSelect
+                                  value={siteRow.values[step.id] ?? ''}
+                                  onChange={(v) => {
+                                    if (step.type === 'section' && v) {
+                                      const sec = csSections.find((s) => s.id.toString() === v)
+                                      const shStepId = approvalSteps.find((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'sectionhead')?.id
+                                      setSiteData((prev) => prev.map((site) => {
+                                        if (site.key !== siteRow.key) return site
+                                        const newValues = { ...site.values, [step.id]: v }
+                                        if (shStepId && sec?.headEmployeeId) {
+                                          newValues[shStepId] = sec.headEmployeeId.toString()
+                                        }
+                                        return { ...site, values: newValues }
+                                      }))
+                                    } else {
+                                      updateSiteValue(siteRow.key, step.id, v)
+                                    }
+                                  }}
+                                  options={
+                                    step.type === 'section'
+                                      ? csSections
+                                      : (step.label.toLowerCase().includes('leader') || step.label.toLowerCase().includes('pjo'))
+                                        ? csEmployees
+                                        : employeeOptions
+                                  }
+                                />
+                              </td>
+                            ))}
+                            <td className="py-2">
+                              <button type="button" onClick={() => removeSiteRow(siteRow.key)} className="text-muted-foreground hover:text-destructive">
+                                <X className="size-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-muted-foreground py-4 text-center text-sm">
+                  {approvalSteps.length === 0 ? 'Tambahkan langkah approval terlebih dahulu.' : 'Pilih site untuk menambahkan approval configuration.'}
+                </p>
+              )}
             </div>
           </section>
 
@@ -349,7 +702,9 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                     <TableCell>{item.pending}</TableCell>
                     <TableCell>{item.complete}</TableCell>
                     <TableCell>{item.cancel}</TableCell>
-                    <TableCell><AdminStatusBadge value={item.status} /></TableCell>
+                    <TableCell>
+                      <StatusDropdown templateKey={item.templateKey} transactionType={item.transactionType} currentStatus={item.status} />
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">{item.stepCount} step</Badge>

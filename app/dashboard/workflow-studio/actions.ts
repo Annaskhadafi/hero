@@ -16,6 +16,7 @@ import {
   orgChartNodes,
   orgChartStructures,
   reminderJobs,
+  sites,
   workflowBranches,
   workflowNotificationRules,
   workflowReminderRules,
@@ -34,6 +35,21 @@ type WorkflowStudioActionState = {
   existingMatrixId?: number
 }
 
+const approvalStepSchema = z.object({
+  id: z.string(),
+  label: z.string().trim().min(1),
+})
+
+const siteApprovalEntrySchema = z.object({
+  siteId: z.coerce.number().int().positive(),
+  values: z.record(z.string(), z.coerce.number().int().positive().optional()),
+})
+
+const globalStepSchema = z.object({
+  label: z.string().trim().min(1),
+  employeeId: z.coerce.number().int().positive(),
+})
+
 const approvalBuilderSchema = z.object({
   matrixId: z.coerce.number().int().positive().optional(),
   menuKey: z.string().trim().min(1),
@@ -41,15 +57,12 @@ const approvalBuilderSchema = z.object({
   transactionType: z.string().trim().min(1).max(100),
   activityName: z.string().trim().min(1).max(160),
   mode: z.string().trim().min(1).max(80).default('sequential'),
-  siteId: z.coerce.number().int().positive(),
+  approvalSteps: z.string().trim().min(1),
+  siteApprovals: z.string().trim().min(1),
   effectiveFrom: z.string().trim().optional(),
   effectiveTo: z.string().trim().optional(),
   notes: z.string().trim().max(1000).optional(),
   isActive: z.enum(['true', 'false']).default('true'),
-  leaderId: z.coerce.number().int().positive().optional(),
-  pjoId: z.coerce.number().int().positive().optional(),
-  sectionHeadId: z.coerce.number().int().positive().optional(),
-  departmentHeadId: z.coerce.number().int().positive().optional(),
   beforeDueHours: z.coerce.number().int().min(1).max(240).default(2),
   overdueHours: z.coerce.number().int().min(0).max(240).default(0),
 })
@@ -115,14 +128,30 @@ export async function saveWorkflowStudioApprovalAction(
     }
 
     const payload = parsed.data
-    const selectedApprovers = [
-      { role: 'Leader', employeeId: payload.leaderId },
-      { role: 'PJO', employeeId: payload.pjoId },
-      { role: 'Section Head', employeeId: payload.sectionHeadId },
-      { role: 'Department Head', employeeId: payload.departmentHeadId },
-    ].filter((item): item is { role: string; employeeId: number } => Boolean(item.employeeId))
 
-    if (selectedApprovers.length === 0) {
+    let parsedSteps: z.infer<typeof approvalStepSchema>[] = []
+    let parsedSiteEntries: z.infer<typeof siteApprovalEntrySchema>[] = []
+
+    try {
+      const rawSteps = JSON.parse(payload.approvalSteps)
+      const stepsResult = approvalStepSchema.array().safeParse(rawSteps)
+      if (stepsResult.success) parsedSteps = stepsResult.data
+    } catch { /* ignore */ }
+
+    try {
+      const rawSites = JSON.parse(payload.siteApprovals)
+      const sitesResult = siteApprovalEntrySchema.array().safeParse(rawSites)
+      if (sitesResult.success) parsedSiteEntries = sitesResult.data
+    } catch { /* ignore */ }
+
+    if (parsedSteps.length === 0 || parsedSiteEntries.length === 0) {
+      return { status: 'error', message: 'Minimal satu langkah approval dan satu site wajib diisi.' }
+    }
+
+    const allEmployeeIds = parsedSiteEntries.flatMap((entry) =>
+      Object.values(entry.values).filter((id): id is number => id != null && id > 0)
+    )
+    if (allEmployeeIds.length === 0) {
       return { status: 'error', message: 'Minimal satu approver wajib dipilih.' }
     }
 
@@ -131,38 +160,56 @@ export async function saveWorkflowStudioApprovalAction(
       .from(employees)
       .where(eq(employees.isActive, true))
     const activeApproverIds = new Set(activeApprovers.map((employee) => employee.id))
-    if (selectedApprovers.some((approver) => !activeApproverIds.has(approver.employeeId))) {
+    if (allEmployeeIds.some((id) => !activeApproverIds.has(id))) {
       return { status: 'error', message: 'Approver harus karyawan aktif.' }
     }
 
     if (payload.isActive === 'true') {
-      const duplicates = await db
-        .select({ id: approvalMatrices.id, name: approvalMatrices.name })
-        .from(approvalMatrices)
-        .where(
-          and(
-            eq(approvalMatrices.isActive, true),
-            eq(approvalMatrices.transactionType, payload.transactionType),
-            eq(approvalMatrices.siteId, payload.siteId),
-            eq(approvalMatrices.activityType, '')
-          )
-        )
-      const duplicate = duplicates.find((row) => row.id !== payload.matrixId)
+      const siteRows = await db.select({ id: sites.id, name: sites.name }).from(sites)
+      const siteMap = new Map(siteRows.map((s) => [s.id, s.name]))
 
-      if (duplicate) {
-        return {
-          status: 'error',
-          message: `Workflow aktif sudah ada: ${duplicate.name}. Edit existing, jangan buat duplikat.`,
-          existingMatrixId: duplicate.id,
+      for (const entry of parsedSiteEntries) {
+        const duplicates = await db
+          .select({ id: approvalMatrices.id, name: approvalMatrices.name })
+          .from(approvalMatrices)
+          .where(
+            and(
+              eq(approvalMatrices.isActive, true),
+              eq(approvalMatrices.transactionType, payload.transactionType),
+              eq(approvalMatrices.siteId, entry.siteId),
+              eq(approvalMatrices.activityType, '')
+            )
+          )
+        const duplicate = duplicates.find((row) => row.id !== payload.matrixId)
+
+        if (duplicate) {
+          const siteName = siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`
+          return {
+            status: 'error',
+            message: `Workflow aktif sudah ada untuk site ${siteName}: ${duplicate.name}. Edit existing, jangan buat duplikat.`,
+            existingMatrixId: duplicate.id,
+          }
         }
       }
     }
 
     const session = await getServerSession()
     const now = new Date()
-    const effectiveFrom = parseOptionalDate(payload.effectiveFrom) ?? now
+    const formEffectiveFrom = parseOptionalDate(payload.effectiveFrom)
     const effectiveTo = parseOptionalDate(payload.effectiveTo)
     const templateCodeBase = slug(payload.templateKey || payload.menuKey)
+
+    let existingMatrixEffectiveFrom: Date | null = null
+    if (payload.matrixId) {
+      const [existing] = await db
+        .select({ effectiveFrom: approvalMatrices.effectiveFrom })
+        .from(approvalMatrices)
+        .where(eq(approvalMatrices.id, payload.matrixId))
+        .limit(1)
+      existingMatrixEffectiveFrom = existing?.effectiveFrom ?? null
+    }
+
+    const effectiveFrom = formEffectiveFrom ?? existingMatrixEffectiveFrom ?? now
 
     await db.transaction(async (tx) => {
       const [workflow] = await tx
@@ -234,96 +281,89 @@ export async function saveWorkflowStudioApprovalAction(
         })
         .returning()
 
-      const [matrix] = payload.matrixId
-        ? await tx
-            .update(approvalMatrices)
-            .set({
-              name: payload.activityName,
-              structureId: structure.id,
-              transactionType: payload.transactionType,
-              siteId: payload.siteId,
-              activityType: '',
-              priority: 'any',
-              description: payload.notes ?? '',
-              effectiveFrom,
-              effectiveTo,
-              isActive: payload.isActive === 'true',
-              updatedAt: now,
-            })
-            .where(eq(approvalMatrices.id, payload.matrixId))
-            .returning()
-        : await tx
-            .insert(approvalMatrices)
-            .values({
-              name: payload.activityName,
-              structureId: structure.id,
-              transactionType: payload.transactionType,
-              siteId: payload.siteId,
-              activityType: '',
-              priority: 'any',
-              description: payload.notes ?? '',
-              effectiveFrom,
-              effectiveTo,
-              isActive: payload.isActive === 'true',
-              updatedAt: now,
-            })
-            .returning()
-
-      if (!matrix) {
-        throw new Error('Approval matrix tidak ditemukan untuk diedit.')
-      }
-
       if (payload.matrixId) {
         await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, payload.matrixId))
+        await tx.delete(approvalMatrices).where(eq(approvalMatrices.id, payload.matrixId))
       }
 
-      for (const [index, approver] of selectedApprovers.entries()) {
-        const employeeName =
-          activeApprovers.find((employee) => employee.id === approver.employeeId)?.name ?? approver.role
-        const [node] = await tx
-          .insert(orgChartNodes)
+      for (const entry of parsedSiteEntries) {
+        const allApprovers = parsedSteps
+          .map((step) => ({ role: step.label, employeeId: entry.values[step.id] }))
+          .filter((a): a is { role: string; employeeId: number } => a.employeeId != null && a.employeeId > 0)
+
+        if (allApprovers.length === 0) continue
+
+        const sectionStep = parsedSteps.find((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'section')
+        const sectionId = sectionStep ? entry.values[sectionStep.id] ?? null : null
+
+        const [matrix] = await tx
+          .insert(approvalMatrices)
           .values({
+            name: payload.activityName,
             structureId: structure.id,
-            employeeId: approver.employeeId,
-            nodeCode: `${payload.templateKey}-${slug(approver.role)}-${approver.employeeId}`,
-            nodeType: 'employee',
-            approvalRole: approver.role,
-            canApprove: true,
-            canDelegate: true,
-            slaHours: 24,
-            label: `${approver.role} - ${employeeName}`,
-            sortOrder: index + 1,
-            isActive: true,
+            transactionType: payload.transactionType,
+            siteId: entry.siteId,
+            sectionId: sectionId,
+            activityType: '',
+            priority: 'any',
+            description: payload.notes ?? '',
+            effectiveFrom,
+            effectiveTo,
+            isActive: payload.isActive === 'true',
             updatedAt: now,
           })
           .returning()
 
-        const [step] = await tx
-          .insert(approvalMatrixSteps)
-          .values({
-            matrixId: matrix.id,
+        if (!matrix) continue
+
+        for (const [index, approver] of allApprovers.entries()) {
+          const employeeName =
+            activeApprovers.find((employee) => employee.id === approver.employeeId)?.name ?? approver.role
+          const [node] = await tx
+            .insert(orgChartNodes)
+            .values({
+              structureId: structure.id,
+              employeeId: approver.employeeId,
+              nodeCode: `${payload.templateKey}-${slug(approver.role)}-${approver.employeeId}-${entry.siteId}`,
+              nodeType: 'employee',
+              approvalRole: approver.role,
+              canApprove: true,
+              canDelegate: true,
+              slaHours: 24,
+              label: `${approver.role} - ${employeeName}`,
+              sortOrder: index + 1,
+              isActive: true,
+              updatedAt: now,
+            })
+            .returning()
+
+          const [step] = await tx
+            .insert(approvalMatrixSteps)
+            .values({
+              matrixId: matrix.id,
+              stepOrder: index + 1,
+              label: approver.role,
+              nodeId: node.id,
+              approvalMode: payload.mode,
+              slaHours: 24,
+              canDelegate: true,
+              isRequired: true,
+              updatedAt: now,
+            })
+            .returning()
+
+          await tx.insert(workflowStepRules).values({
+            workflowVersionId: version.id,
+            branchId: branch.id,
+            approvalMatrixStepId: step.id,
             stepOrder: index + 1,
             label: approver.role,
-            nodeId: node.id,
             approvalMode: payload.mode,
-            slaHours: 24,
-            canDelegate: true,
+            assignmentSource: 'matrix',
             isRequired: true,
             updatedAt: now,
           })
-          .returning()
-
-        await tx.insert(workflowStepRules).values({
-          workflowVersionId: version.id,
-          branchId: branch.id,
-          approvalMatrixStepId: step.id,
-          stepOrder: index + 1,
-          label: approver.role,
-          approvalMode: payload.mode,
-          assignmentSource: 'matrix',
-          isRequired: true,
-          updatedAt: now,
-        })
+        }
       }
 
       const emailEvents = ['submitted', 'approved', 'returned_rejected', 'reminder', 'overdue']
@@ -406,6 +446,81 @@ export async function saveWorkflowStudioApprovalAction(
     return {
       status: 'error',
       message: error instanceof Error ? error.message : 'Workflow approval gagal disimpan.',
+    }
+  }
+}
+
+export async function toggleWorkflowStatusAction(
+  _state: WorkflowStudioActionState,
+  formData: FormData
+): Promise<WorkflowStudioActionState> {
+  try {
+    await requireWorkflowStudioEdit()
+
+    const templateKey = String(formData.get('templateKey') ?? '').trim()
+    const transactionType = String(formData.get('transactionType') ?? '').trim()
+    const newStatus = String(formData.get('newStatus') ?? '').trim()
+    if (!templateKey || !transactionType || (newStatus !== 'true' && newStatus !== 'false')) {
+      return { status: 'error', message: 'Parameter tidak valid.' }
+    }
+
+    const isActive = newStatus === 'true'
+
+    const [workflow] = await db
+      .select({ id: workflowTemplates.id })
+      .from(workflowTemplates)
+      .where(eq(workflowTemplates.templateKey, templateKey))
+      .limit(1)
+
+    if (!workflow) {
+      return { status: 'error', message: 'Workflow tidak ditemukan.' }
+    }
+
+    const now = new Date()
+    const effectiveFrom = isActive ? now : undefined
+
+    await db.update(workflowTemplates).set({ isActive, updatedAt: now }).where(eq(workflowTemplates.id, workflow.id))
+
+    const versions = await db
+      .select({ id: workflowTemplateVersions.id })
+      .from(workflowTemplateVersions)
+      .where(eq(workflowTemplateVersions.workflowTemplateId, workflow.id))
+
+    for (const version of versions) {
+      await db
+        .update(workflowTemplateVersions)
+        .set({
+          publishStatus: isActive ? 'published' : 'draft',
+          ...(effectiveFrom ? { effectiveFrom } : {}),
+        })
+        .where(eq(workflowTemplateVersions.id, version.id))
+    }
+
+    await db
+      .update(approvalMatrices)
+      .set({
+        isActive,
+        updatedAt: now,
+        ...(effectiveFrom ? { effectiveFrom } : {}),
+      })
+      .where(eq(approvalMatrices.transactionType, transactionType))
+
+    const session = await getServerSession()
+    await logAuditEvent({
+      actorEmail: session?.user?.email ?? undefined,
+      action: 'workflow_studio.saved',
+      entityType: 'workflow_studio',
+      entityLabel: templateKey,
+      description: `Workflow ${templateKey} diubah ke ${isActive ? 'Active' : 'Nonactive'}.`,
+    })
+
+    revalidatePath('/dashboard/workflow-studio')
+    return { status: 'success', message: `Workflow berhasil diubah ke ${isActive ? 'Active' : 'Nonactive'}.` }
+  } catch (error) {
+    console.error('[workflow-studio] toggle status failed:', error)
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal mengubah status workflow.',
     }
   }
 }

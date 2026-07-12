@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, lt, lte, sql, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, lt, lte, sql, isNull, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   activities,
@@ -20,6 +20,8 @@ import {
   formTemplates,
   formValidationRules,
   inboxItems,
+  masterDepartments,
+  masterSections,
   notificationDeliveries,
   notificationEvents,
   orgChartNodes,
@@ -3064,7 +3066,7 @@ export async function getDailyActivityTemplateFormData() {
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
-    db.select({ id: sites.id, name: sites.name }).from(sites).orderBy(asc(sites.name)),
+    db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites).orderBy(asc(sites.name)),
   ])
 
   return {
@@ -3302,7 +3304,7 @@ export async function getWorkflowStudioConsoleData() {
       .from(auditLogs)
       .orderBy(desc(auditLogs.createdAt))
       .limit(120),
-    db.select({ id: sites.id, name: sites.name }).from(sites).orderBy(asc(sites.name)),
+    db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites).orderBy(asc(sites.name)),
     db
       .select({
         id: employees.id,
@@ -3390,6 +3392,35 @@ export async function getWorkflowStudioConsoleData() {
       pjoId: approverByRole.pjo ?? null,
       sectionHeadId: approverByRole.section_head ?? null,
       departmentHeadId: approverByRole.department_head ?? null,
+      siteApprovals: relatedMatrices.map((matrix) => {
+        const steps = matrixSteps.filter((s) => s.matrixId === matrix.id)
+        const approversByRole: Record<string, number | null> = {}
+        for (const step of steps) {
+          const node = nodeRows.find((n) => n.id === step.nodeId)
+          approversByRole[normalizeStatus(step.label)] = node?.employeeId ?? null
+        }
+        return {
+          siteId: matrix.siteId,
+          sectionId: matrix.sectionId ?? null,
+          leaderId: approversByRole.leader ?? null,
+          pjoId: approversByRole.pjo ?? null,
+          sectionHeadId: approversByRole.section_head ?? null,
+          departmentHeadId: approversByRole.department_head ?? null,
+        }
+      }),
+      globalSteps: (() => {
+        if (relatedMatrices.length === 0) return []
+        const firstMatrixSteps = matrixSteps
+          .filter((s) => s.matrixId === relatedMatrices[0].id)
+          .sort((a, b) => a.stepOrder - b.stepOrder)
+        const standardRoles = new Set(['leader', 'pjo', 'section_head', 'department_head'])
+        return firstMatrixSteps
+          .filter((step) => !standardRoles.has(normalizeStatus(step.label)))
+          .map((step) => {
+            const node = nodeRows.find((n) => n.id === step.nodeId)
+            return { label: step.label, employeeId: node?.employeeId ?? null }
+          })
+      })(),
     }
   })
 
@@ -3442,6 +3473,67 @@ export async function getWorkflowStudioConsoleData() {
       lastAction: dateIso(submission.completedAt ?? submission.cancelledAt ?? lastApproval?.reviewedAt ?? submission.updatedAt),
     }
   })
+
+  const csSiteRows = await db
+    .selectDistinct({ siteId: employees.siteId })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isActive, true),
+        isNotNull(employees.siteId),
+        or(
+          eq(employees.department, 'Central Services'),
+          eq(employees.department, 'Central Service'),
+          eq(employees.department, 'CENTRAL SERVICES')
+        )
+      )
+    )
+
+  const csDeptRow = await db
+    .select({ id: masterDepartments.id })
+    .from(masterDepartments)
+    .where(or(eq(masterDepartments.name, 'Central Services'), eq(masterDepartments.name, 'Central Service')))
+    .limit(1)
+
+  const csDeptId = csDeptRow[0]?.id ?? null
+
+  const csSectionsForDept = csDeptId
+    ? await db
+        .select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId })
+        .from(masterSections)
+        .where(and(eq(masterSections.departmentId, csDeptId), eq(masterSections.isActive, true)))
+    : []
+
+  const siteSectionRows = csDeptId
+    ? await db
+        .select({
+          siteId: employees.siteId,
+          sectionId: employees.sectionId,
+        })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.isActive, true),
+            isNotNull(employees.siteId),
+            isNotNull(employees.sectionId),
+            or(
+              eq(employees.department, 'Central Services'),
+              eq(employees.department, 'Central Service'),
+              eq(employees.department, 'CENTRAL SERVICES')
+            )
+          )
+        )
+    : []
+
+  const siteSectionMap: Record<number, number[]> = {}
+  for (const row of siteSectionRows) {
+    if (row.siteId && row.sectionId) {
+      if (!siteSectionMap[row.siteId]) siteSectionMap[row.siteId] = []
+      if (!siteSectionMap[row.siteId].includes(row.sectionId)) {
+        siteSectionMap[row.siteId].push(row.sectionId)
+      }
+    }
+  }
 
   return {
     metrics: {
@@ -3517,6 +3609,19 @@ export async function getWorkflowStudioConsoleData() {
       })),
       sites: siteRows,
       employees: employeeRows,
+      departments: await db
+        .select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId })
+        .from(masterDepartments)
+        .where(eq(masterDepartments.isActive, true))
+        .orderBy(asc(masterDepartments.name)),
+      sections: await db
+        .select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId, departmentId: masterSections.departmentId })
+        .from(masterSections)
+        .where(eq(masterSections.isActive, true))
+        .orderBy(asc(masterSections.name)),
+      centralServiceSiteIds: csSiteRows.map((r) => r.siteId).filter((id): id is number => id !== null),
+      csSections: csSectionsForDept,
+      siteSectionMap,
     },
   }
 }
