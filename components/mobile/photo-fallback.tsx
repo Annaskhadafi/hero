@@ -13,6 +13,7 @@ interface PhotoFallbackProps {
   eventType: 'checked-in' | 'checked-out'
   latitude: number
   longitude: number
+  accuracy: number
   onSuccess: (record: { id: number; eventType: string; eventTime: string }) => void
   onError?: (error: string) => void
 }
@@ -29,6 +30,7 @@ export function PhotoFallback({
   eventType,
   latitude,
   longitude,
+  accuracy,
   onSuccess,
   onError,
 }: PhotoFallbackProps) {
@@ -153,6 +155,7 @@ export function PhotoFallback({
       formData.append('photo', blob, `fallback-${clientRequestId}.jpg`)
       formData.append('latitude', latitude.toString())
       formData.append('longitude', longitude.toString())
+      formData.append('accuracy', accuracy.toString())
       formData.append('confidenceScore', '0')
       formData.append('deviceType', 'mobile')
       formData.append('clientRequestId', clientRequestId)

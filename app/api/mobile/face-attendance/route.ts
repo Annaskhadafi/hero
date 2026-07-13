@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
     const photo = formData.get('photo') as File | null
     const latitudeRaw = formData.get('latitude')
     const longitudeRaw = formData.get('longitude')
+    const accuracyRaw = formData.get('accuracy')
     const confidenceScoreRaw = formData.get('confidenceScore')
     const deviceType = formData.get('deviceType') as string | null
     const clientRequestId = formData.get('clientRequestId') as string | null
@@ -155,6 +156,18 @@ export async function POST(request: NextRequest) {
         'VALIDATION_ERROR',
         'longitude must be a number between -180 and 180.',
         'longitude'
+      )
+    }
+
+    const accuracy = accuracyRaw === null || accuracyRaw.toString().trim() === ''
+      ? null
+      : parseFloat(accuracyRaw.toString())
+    if (accuracy !== null && (isNaN(accuracy) || accuracy < 0 || accuracy > 100000)) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'accuracy must be a number between 0 and 100000 meters.',
+        'accuracy'
       )
     }
 
@@ -265,6 +278,7 @@ export async function POST(request: NextRequest) {
 
     // GPS flag — mark when GPS data is unavailable
     const gpsFlag = latitude === 0 && longitude === 0 ? '[gps-unavailable] ' : ''
+    const accuracyNote = accuracy === null ? '' : ` | GPS ${Math.round(accuracy)}m accuracy`
 
     const [insertedRecord] = await db
       .insert(attendanceRecords)
@@ -275,8 +289,8 @@ export async function POST(request: NextRequest) {
         eventTime,
         status: isPhotoFallback ? 'needs-review' : 'verified',
         locationNote: isPhotoFallback
-          ? `${gpsFlag}photo-fallback`
-          : `${gpsFlag}${deviceType.trim()}`,
+          ? `${gpsFlag}photo-fallback${accuracyNote}`
+          : `${gpsFlag}${deviceType.trim()}${accuracyNote}`,
         photoUrl,
         latitude: latitude.toString(),
         longitude: longitude.toString(),

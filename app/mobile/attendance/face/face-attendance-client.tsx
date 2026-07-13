@@ -38,6 +38,12 @@ interface Props {
 
 const MAX_VERIFICATION_FAILURES = 3
 
+type GpsPosition = {
+  latitude: number
+  longitude: number
+  accuracy: number
+}
+
 export function FaceAttendanceClientPage({
   employeeId,
   siteId,
@@ -54,23 +60,55 @@ export function FaceAttendanceClientPage({
     eventTime: string
   } | null>(null)
   const [failureCount, setFailureCount] = useState(0)
+  const [fallbackGps, setFallbackGps] = useState<GpsPosition | null>(null)
 
-  const gpsRef = useRef<{ latitude: number; longitude: number }>({ latitude: 0, longitude: 0 })
   const clientRequestIdRef = useRef<string>('')
 
-  useEffect(() => {
-    if (navigator.geolocation) {
+  const readCurrentGps = useCallback(() => {
+    return new Promise<GpsPosition>((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('GPS tidak tersedia di perangkat ini.'))
+        return
+      }
+
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          gpsRef.current = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
+        (position) => {
+          const nextPosition = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          }
+          resolve(nextPosition)
         },
-        () => {
-          gpsRef.current = { latitude: 0, longitude: 0 }
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
+        () => reject(new Error('Izin GPS belum aktif atau lokasi belum tersedia.')),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       )
-    }
+    })
   }, [])
+
+  useEffect(() => {
+    void readCurrentGps().catch(() => undefined)
+  }, [readCurrentGps])
+
+  useEffect(() => {
+    if (flowState !== 'fallback' || !eventType) return
+
+    let active = true
+    setFallbackGps(null)
+    void readCurrentGps()
+      .then((position) => {
+        if (active) setFallbackGps(position)
+      })
+      .catch((error: Error) => {
+        if (!active) return
+        setErrorMessage(error.message)
+        setFlowState('error')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [eventType, flowState, readCurrentGps])
 
   const startFlow = useCallback(
     (type: EventType) => {
@@ -100,6 +138,7 @@ export function FaceAttendanceClientPage({
       setFlowState('verifying')
 
       try {
+        const gps = await readCurrentGps()
         const response = await fetch('/api/mobile/face-verification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -108,8 +147,9 @@ export function FaceAttendanceClientPage({
             embedding,
             siteId,
             eventType,
-            latitude: gpsRef.current.latitude,
-            longitude: gpsRef.current.longitude,
+            latitude: gps.latitude,
+            longitude: gps.longitude,
+            accuracy: gps.accuracy,
             clientRequestId: clientRequestIdRef.current,
           }),
         })
@@ -145,7 +185,7 @@ export function FaceAttendanceClientPage({
         setFlowState('error')
       }
     },
-    [employeeId, siteId, eventType, failureCount]
+    [employeeId, siteId, eventType, failureCount, readCurrentGps]
   )
 
   const resetFlow = useCallback(() => {
@@ -154,6 +194,7 @@ export function FaceAttendanceClientPage({
     setErrorMessage('')
     setSuccessRecord(null)
     setFailureCount(0)
+    setFallbackGps(null)
   }, [])
 
   const retryCapture = useCallback(() => {
@@ -279,14 +320,15 @@ export function FaceAttendanceClientPage({
         </div>
       )}
 
-      {flowState === 'fallback' && eventType && (
+      {flowState === 'fallback' && eventType && fallbackGps && (
         <div className="flex flex-1 flex-col items-center gap-4">
           <PhotoFallback
             employeeId={employeeId}
             siteId={siteId}
             eventType={eventType}
-            latitude={gpsRef.current.latitude}
-            longitude={gpsRef.current.longitude}
+            latitude={fallbackGps.latitude}
+            longitude={fallbackGps.longitude}
+            accuracy={fallbackGps.accuracy}
             onSuccess={(r) => {
               setSuccessRecord(r)
               setFlowState('success')
@@ -303,6 +345,13 @@ export function FaceAttendanceClientPage({
           >
             Batal
           </button>
+        </div>
+      )}
+
+      {flowState === 'fallback' && eventType && !fallbackGps && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <Loader2 className="size-8 animate-spin text-blue-600" />
+          <p className="text-sm font-bold text-slate-600">Mengambil lokasi GPS...</p>
         </div>
       )}
 

@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
   getEmployeeContactById,
@@ -1005,6 +1006,65 @@ export async function getTodayAttendanceLogs() {
   )
 
   return { success: true, employee, logs: logsWithPhotoPreview }
+}
+
+export async function getLiveAttendanceMapData() {
+  const [employee, access] = await Promise.all([
+    getCurrentEmployee(),
+    getCurrentMenuPermission('attendance_live_map'),
+  ])
+
+  if (!employee || !access.canView) {
+    return { success: false as const, reason: 'forbidden' as const, records: [], scope: 'own' as const }
+  }
+
+  const attendanceWindow = getAttendanceQueryWindow()
+  const conditions = [
+    gte(attendanceRecords.eventTime, attendanceWindow.start),
+    lte(attendanceRecords.eventTime, attendanceWindow.end),
+  ]
+
+  if (!hasGlobalDataAccess(access)) {
+    conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+  }
+
+  const records = await db
+    .select({
+      id: attendanceRecords.id,
+      employeeId: attendanceRecords.employeeId,
+      employeeName: employees.name,
+      employeeJobTitle: employees.jobTitle,
+      siteId: attendanceRecords.siteId,
+      siteName: sites.name,
+      siteLocation: sites.location,
+      siteRadiusMeters: sites.geoRadiusMeters,
+      eventType: attendanceRecords.eventType,
+      eventTime: attendanceRecords.eventTime,
+      status: attendanceRecords.status,
+      locationNote: attendanceRecords.locationNote,
+      latitude: attendanceRecords.latitude,
+      longitude: attendanceRecords.longitude,
+      gpsValid: sql<boolean>`(${attendanceRecords.latitude} is not null and ${attendanceRecords.longitude} is not null)`,
+    })
+    .from(attendanceRecords)
+    .innerJoin(employees, eq(attendanceRecords.employeeId, employees.id))
+    .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
+    .where(and(...conditions))
+    .orderBy(desc(attendanceRecords.eventTime))
+    .limit(500)
+
+  return {
+    success: true as const,
+    scope: hasGlobalDataAccess(access) ? ('global' as const) : ('site' as const),
+    generatedAt: new Date().toISOString(),
+    records: records.map((record) => ({
+      ...record,
+      eventTime: record.eventTime.toISOString(),
+      siteName: record.siteName ?? `Site ${record.siteId}`,
+      siteLocation: record.siteLocation ?? '',
+      siteRadiusMeters: record.siteRadiusMeters ?? 500,
+    })),
+  }
 }
 
 export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {

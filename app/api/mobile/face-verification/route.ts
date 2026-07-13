@@ -24,6 +24,7 @@ type FaceVerificationPayload = {
   eventType?: unknown
   latitude?: unknown
   longitude?: unknown
+  accuracy?: unknown
   clientRequestId?: unknown
 }
 
@@ -64,8 +65,17 @@ export async function POST(request: NextRequest) {
       return errorResponse(400, 'VALIDATION_ERROR', 'Request body must be a JSON object.')
     }
 
-    const { employeeId, embedding, photo, siteId, eventType, latitude, longitude, clientRequestId } =
-      body
+    const {
+      employeeId,
+      embedding,
+      photo,
+      siteId,
+      eventType,
+      latitude,
+      longitude,
+      accuracy,
+      clientRequestId,
+    } = body
 
     // 2. Required fields validation
     if (employeeId === undefined || employeeId === null) {
@@ -143,6 +153,19 @@ export async function POST(request: NextRequest) {
         'VALIDATION_ERROR',
         'longitude must be a number between -180 and 180.',
         'longitude'
+      )
+    }
+
+    const accuracyMeters = accuracy === undefined || accuracy === null ? null : Number(accuracy)
+    if (
+      accuracyMeters !== null &&
+      (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > 100000)
+    ) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'accuracy must be a number between 0 and 100000 meters.',
+        'accuracy'
       )
     }
 
@@ -300,6 +323,7 @@ export async function POST(request: NextRequest) {
     // 10. Verified — create attendance record
     const eventTime = new Date()
     const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
+    const accuracyNote = accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
 
     const [insertedRecord] = await db
       .insert(attendanceRecords)
@@ -309,7 +333,7 @@ export async function POST(request: NextRequest) {
         eventType: eventType,
         eventTime,
         status: 'verified',
-        locationNote: `${gpsFlag}face-recognition`,
+        locationNote: `${gpsFlag}face-recognition${accuracyNote}`,
         confidenceScore: similarity.toFixed(3),
         deviceType: 'mobile',
         clientRequestId: clientRequestId.trim(),

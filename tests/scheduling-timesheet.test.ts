@@ -611,4 +611,40 @@ describe('scheduling timesheet workflow', () => {
     expect(source).toContain('attendanceHolidayCellClass')
     expect(source).toContain('!name.toLowerCase().includes("cuti bersama")')
   })
+
+  it('exposes scoped live attendance map with GPS activity controls', () => {
+    const actionSource = fs.readFileSync(path.join(process.cwd(), 'app/actions/attendance.ts'), 'utf8')
+    const mapSource = fs.readFileSync(
+      path.join(process.cwd(), 'components/attendance/live-attendance-map.tsx'),
+      'utf8'
+    )
+    const menuSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
+    expect(actionSource).toContain("getCurrentMenuPermission('attendance_live_map')")
+    expect(actionSource).toContain('hasGlobalDataAccess(access)')
+    expect(mapSource).toContain('tile.openstreetmap.org')
+    expect(mapSource).toContain('setInterval(() => void refresh(), 30000)')
+    expect(mapSource).toContain('const MAP_ZOOM = 7')
+    expect(mapSource).toContain('onPointerMove={handleMapPointerMove}')
+    expect(mapSource).toContain('setPointerCapture')
+    expect(menuSource).toContain("url: '/dashboard/attendance/live-map'")
+  })
+
+  it('refreshes GPS before face attendance and persists accuracy for map markers', () => {
+    const clientSource = fs.readFileSync(
+      path.join(process.cwd(), 'app/mobile/attendance/face/face-attendance-client.tsx'),
+      'utf8'
+    )
+    const verificationSource = fs.readFileSync(
+      path.join(process.cwd(), 'app/api/mobile/face-verification/route.ts'),
+      'utf8'
+    )
+    const fallbackSource = fs.readFileSync(
+      path.join(process.cwd(), 'components/mobile/photo-fallback.tsx'),
+      'utf8'
+    )
+    expect(clientSource).toContain('const gps = await readCurrentGps()')
+    expect(clientSource).toContain('accuracy: gps.accuracy')
+    expect(verificationSource).toContain('GPS ${Math.round(accuracyMeters)}m accuracy')
+    expect(fallbackSource).toContain("formData.append('accuracy', accuracy.toString())")
+  })
 })

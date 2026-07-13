@@ -83,6 +83,14 @@ import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance
 import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
 import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
 import { exportRowsToFile, MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import {
@@ -4730,17 +4738,17 @@ export function SchedulingTimesheetWorkspace({
             </>
           }
         >
-          <table className="w-full min-w-[760px] text-sm">
-            <thead>
-              <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                <th className="px-4 py-3 font-medium">Site</th>
-                <th className="px-4 py-3 font-medium">History Bulan</th>
-                <th className="px-4 py-3 font-medium">Attendance</th>
-                <th className="px-4 py-3 font-medium">Periode Terbaru</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="min-w-[760px]">
+            <TableHeader>
+              <TableRow className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                <TableHead className="px-4 py-3 font-medium">Site</TableHead>
+                <TableHead className="px-4 py-3 font-medium">History Bulan</TableHead>
+                <TableHead className="px-4 py-3 font-medium">Attendance</TableHead>
+                <TableHead className="px-4 py-3 font-medium">Periode Terbaru</TableHead>
+                <TableHead className="px-4 py-3 text-right font-medium">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {payrollHistorySiteRows.map((siteRow) => {
                 const latest = siteRow.history[0]
                 const savedCount = siteRow.history.filter(
@@ -4751,22 +4759,22 @@ export function SchedulingTimesheetWorkspace({
                 const months = [...new Set(siteRow.history.map(({ plan }) => plan.period.slice(5, 7)))]
                 return (
                   <React.Fragment key={`payroll-site-${siteRow.siteId}`}>
-                    <tr
+                    <TableRow
                       data-filter-year={years.join('|')}
                       data-filter-month={months.join('|')}
                       className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                     >
-                      <td className="px-4 py-3 font-semibold">{siteRow.siteName}</td>
-                      <td className="px-4 py-3">{siteRow.history.length} bulan</td>
-                      <td className="px-4 py-3">
+                      <TableCell className="px-4 py-3 font-semibold">{siteRow.siteName}</TableCell>
+                      <TableCell className="px-4 py-3">{siteRow.history.length} bulan</TableCell>
+                      <TableCell className="px-4 py-3">
                         <Badge variant={savedCount ? 'default' : 'secondary'}>
                           {savedCount}/{siteRow.history.length} tersimpan
                         </Badge>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 tabular-nums">
                         {latest ? formatMonthPeriod(latest.plan.period) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-right">
                         <Button
                           size="sm"
                           variant="outline"
@@ -4783,11 +4791,11 @@ export function SchedulingTimesheetWorkspace({
                             className={cn('size-4 transition-transform', isOpen && 'rotate-90')}
                           />
                         </Button>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                     {isOpen ? (
-                      <tr data-table-detail-row="true">
-                        <td colSpan={5} className="bg-surface-container-low/40 px-4 py-3">
+                      <TableRow data-table-detail-row="true">
+                        <TableCell colSpan={5} className="bg-surface-container-low/40 px-4 py-3">
                           <div className="overflow-hidden rounded-lg border bg-white">
                             <div className="text-muted-foreground grid grid-cols-[1fr_140px_160px_48px] gap-3 bg-surface-container-low px-3 py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
                               <span>Bulan</span>
@@ -4828,21 +4836,21 @@ export function SchedulingTimesheetWorkspace({
                               </div>
                             ))}
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ) : null}
                   </React.Fragment>
                 )
               })}
               {!payrollHistorySiteRows.length ? (
-                <tr>
-                  <td colSpan={5} className="text-muted-foreground px-4 py-12 text-center">
+                <TableRow>
+                  <TableCell colSpan={5} className="text-muted-foreground px-4 py-12 text-center">
                     Belum ada data Attendance untuk diproses ke payroll.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : null}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </MinimalTableShell>
       ) : null}
 
@@ -6920,45 +6928,45 @@ export function SchedulingTimesheetWorkspace({
                 </Button>
               }
             >
-              <table className="w-full min-w-[860px] text-sm">
-                <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                    <th className="px-4 py-3 font-medium">Site</th>
-                    <th className="px-4 py-3 font-medium">Bulan</th>
-                    <th className="px-4 py-3 font-medium">Schedule</th>
-                    <th className="px-4 py-3 font-medium">Attendance</th>
-                    <th className="px-4 py-3 font-medium">Terakhir diubah</th>
-                    <th className="px-4 py-3 text-right font-medium">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table className="min-w-[860px]">
+                <TableHeader>
+                  <TableRow className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                    <TableHead className="px-4 py-3 font-medium">Site</TableHead>
+                    <TableHead className="px-4 py-3 font-medium">Bulan</TableHead>
+                    <TableHead className="px-4 py-3 font-medium">Schedule</TableHead>
+                    <TableHead className="px-4 py-3 font-medium">Attendance</TableHead>
+                    <TableHead className="px-4 py-3 font-medium">Terakhir diubah</TableHead>
+                    <TableHead className="px-4 py-3 text-right font-medium">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {attendanceHistoryRows.map(({ plan, site: historySite, status }) => (
-                    <tr
+                    <TableRow
                       key={`${plan.siteId}-${plan.period}`}
                       data-filter-site={historySite?.name ?? ''}
                       data-filter-period={plan.period}
                       className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                     >
-                      <td className="px-4 py-3 font-semibold">
+                      <TableCell className="px-4 py-3 font-semibold">
                         {historySite?.name ?? `Site ${plan.siteId}`}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">{formatMonthPeriod(plan.period)}</td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 tabular-nums">{formatMonthPeriod(plan.period)}</TableCell>
+                      <TableCell className="px-4 py-3">
                         <Badge>Aktif</Badge>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <Badge
                           variant={status?.attendanceStatus === 'saved' ? 'default' : 'secondary'}
                         >
                           {status?.attendanceStatus === 'saved' ? 'Tersimpan' : 'Belum diisi'}
                         </Badge>
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3">
+                      </TableCell>
+                      <TableCell className="text-muted-foreground px-4 py-3">
                         {status?.lastSavedAt
                           ? new Date(status.lastSavedAt).toLocaleString('id-ID')
                           : '-'}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <div className="flex justify-end gap-2">
                           <Button
                             size="icon"
@@ -7009,18 +7017,18 @@ export function SchedulingTimesheetWorkspace({
                             <Trash2 className="size-4" />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
                   {!attendanceHistoryRows.length ? (
-                    <tr>
-                      <td colSpan={6} className="text-muted-foreground px-4 py-12 text-center">
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-muted-foreground px-4 py-12 text-center">
                         Belum ada Schedule V2 aktif. Buat dan aktifkan schedule terlebih dahulu.
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : null}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </MinimalTableShell>
 
             <Dialog open={attendanceCreateOpen} onOpenChange={setAttendanceCreateOpen}>
@@ -8081,53 +8089,53 @@ function SummaryTable({
   return (
     <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
       <div className="overflow-auto">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead>
-            <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+        <Table className="min-w-[760px]">
+          <TableHeader>
+            <TableRow className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
               {columns.map((column) => (
-                <th key={column} className="px-4 py-2.5 font-medium">
+                <TableHead key={column} className="px-4 py-2.5 font-medium">
                   {column}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row, index) => (
               <React.Fragment key={index}>
                 {sections?.[index] && sections[index] !== sections[index - 1] ? (
-                  <tr className="bg-surface-container-low/70 border-border/40 border-t">
-                    <td
+                  <TableRow className="bg-surface-container-low/70 border-border/40 border-t">
+                    <TableCell
                       colSpan={columns.length}
                       className="text-foreground px-4 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase"
                     >
                       {sections[index]}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : null}
-                <tr className="border-border/30 hover:bg-surface-container-low/40 border-t transition">
+                <TableRow className="border-border/30 hover:bg-surface-container-low/40 border-t transition">
                   {row.map((cell, cellIndex) => (
-                    <td
+                    <TableCell
                       key={cellIndex}
                       className={`px-4 py-3 ${cellIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
                     >
                       {cell}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               </React.Fragment>
             ))}
             {rows.length === 0 ? (
-              <tr>
-                <td
+              <TableRow>
+                <TableCell
                   colSpan={columns.length}
                   className="text-muted-foreground px-4 py-8 text-center text-sm"
                 >
                   Belum ada data.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : null}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </Card>
   )
