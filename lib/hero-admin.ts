@@ -574,22 +574,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Roster & Timesheet',
-    title: 'Roster & Schedule',
-    url: '/dashboard/scheduling-timesheet/schedule',
-    iconName: 'clock',
-    resource: 'scheduling_timesheet_schedule',
-    sortOrder: 3,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Roster & Timesheet',
     title: 'Schedule v2',
     url: '/dashboard/scheduling-timesheet/schedule-v2',
     iconName: 'clock',
     resource: 'scheduling_timesheet_schedule_v2',
-    sortOrder: 4,
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -600,7 +589,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/scheduling-timesheet/field-break',
     iconName: 'list-details',
     resource: 'scheduling_timesheet_field_break',
-    sortOrder: 5,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -611,7 +600,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/scheduling-timesheet/payroll',
     iconName: 'report',
     resource: 'scheduling_timesheet_payroll',
-    sortOrder: 6,
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1513,12 +1502,14 @@ const DEPRECATED_MENU_RESOURCES = [
   'hc_surat_keterangan',
   'hc_technical_engineer',
   'hc_certificate',
+  'scheduling_timesheet_schedule',
 ]
 const DEPRECATED_MENU_URLS = [
   '/dashboard/slow-moving',
   '/dashboard/hc/surat-keterangan',
   '/dashboard/hc/technical-engineer',
   '/dashboard/hc/certificate',
+  '/dashboard/scheduling-timesheet/schedule',
 ]
 
 const PORTAL_CHITRA_APP_SEEDS = [
@@ -1781,8 +1772,10 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: '',
     ccEmail: '',
     subject: 'Request enrollment {{employeeName}} - {{courseTitle}}',
-    htmlContent: '<p>{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course <strong>{{courseTitle}}</strong>.</p><p><a href="{{approvalUrl}}">Review enrollment</a></p>',
-    textContent: '{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course {{courseTitle}}. Review: {{approvalUrl}}',
+    htmlContent:
+      '<p>{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course <strong>{{courseTitle}}</strong>.</p><p><a href="{{approvalUrl}}">Review enrollment</a></p>',
+    textContent:
+      '{{employeeName}} ({{employeeSn}}) dari section {{employeeSection}} meminta enrollment ke course {{courseTitle}}. Review: {{approvalUrl}}',
     isActive: true,
   },
   {
@@ -5812,13 +5805,31 @@ export async function getSchedulingTimesheetOptions() {
   ])
 
   const kimperMap = new Map<number, { isLV: boolean; isTH: boolean; sioNames: string[] }>()
-  
+
   // Set up Fuse instances for fuzzy matching TH (Heavy equipment)
-  const thKeywords = ['forklift', 'loader', 'tyrehandler', 'tyre handler', 'heavy', 'excavator', 'dozer', 'grader', 'crane', 'buldozer', 'bulldozer', 'compactor', 'vibro', 'roller']
-  const thFuse = new Fuse(thKeywords.map(k => ({ keyword: k })), {
-    keys: ['keyword'],
-    threshold: 0.4,
-  })
+  const thKeywords = [
+    'forklift',
+    'loader',
+    'tyrehandler',
+    'tyre handler',
+    'heavy',
+    'excavator',
+    'dozer',
+    'grader',
+    'crane',
+    'buldozer',
+    'bulldozer',
+    'compactor',
+    'vibro',
+    'roller',
+  ]
+  const thFuse = new Fuse(
+    thKeywords.map((k) => ({ keyword: k })),
+    {
+      keys: ['keyword'],
+      threshold: 0.4,
+    }
+  )
 
   // We can also use simple regex for LV since it's short, or a strict match
   const isLV = (name: string) => /\b(lv|light vehicle|sim a|sim b)\b/i.test(name)
@@ -5826,7 +5837,10 @@ export async function getSchedulingTimesheetOptions() {
   const allRecords = [
     ...sioCertificationsRows.map((r) => {
       let combinedName = r.certName || ''
-      if (r.certType && r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()) {
+      if (
+        r.certType &&
+        r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()
+      ) {
         combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
       }
       return {
@@ -5839,20 +5853,23 @@ export async function getSchedulingTimesheetOptions() {
   for (const record of allRecords) {
     const name = record.name.toLowerCase()
     const state = kimperMap.get(record.employeeId) || { isLV: false, isTH: false, sioNames: [] }
-    
+
     if (record.name && record.name.trim() !== 'undefined') {
       state.sioNames.push(record.name)
     }
-    
+
     // Check LV first
     if (isLV(name)) {
       state.isLV = true
     }
-    
+
     // Also check TH using Fuse
     const words = name.split(/[\s,/-]+/)
-    const thFuse = new Fuse(thKeywords.map(kw => ({ kw })), { keys: ['kw'], threshold: 0.3 })
-    
+    const thFuse = new Fuse(
+      thKeywords.map((kw) => ({ kw })),
+      { keys: ['kw'], threshold: 0.3 }
+    )
+
     let matchedTH = false
     for (const w of words) {
       if (thFuse.search(w).length > 0) {
@@ -5871,7 +5888,7 @@ export async function getSchedulingTimesheetOptions() {
     if (matchedTH) {
       state.isTH = true
     }
-    
+
     kimperMap.set(record.employeeId, state)
   }
 
@@ -5883,7 +5900,8 @@ export async function getSchedulingTimesheetOptions() {
   const schedulingAccess = await getCurrentMenuPermission('scheduling_timesheet')
   const hasGlobalSchedulingScope = hasGlobalDataAccess(schedulingAccess)
   const canSeeSchedulingSite = (siteId: number | null) =>
-    hasGlobalSchedulingScope || (currentEmployee?.siteId != null && siteId === currentEmployee.siteId)
+    hasGlobalSchedulingScope ||
+    (currentEmployee?.siteId != null && siteId === currentEmployee.siteId)
 
   const serializedV1Plans = savedPlans.map((plan) => ({
     siteId: plan.siteId,
@@ -5937,122 +5955,138 @@ export async function getSchedulingTimesheetOptions() {
   return {
     currentEmployeeSiteId: currentEmployee?.siteId ?? null,
     currentEmployeeName: currentEmployee?.name ?? authSession?.user?.name ?? 'User Management',
-    employees: employeeRows.filter((employee) => canSeeSchedulingSite(employee.siteId)).map((employee) => ({
-      id: employee.id,
-      name: employee.name,
-      email: employee.email ?? '',
-      employeeSn: employee.employeeSn ?? '',
-      role: employee.jobTitle || employee.role || '',
-      department: employee.department ?? null,
-      section: employee.section ?? null,
-      siteId: employee.siteId,
-      locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
-      kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
-      kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
-      sio: kimperMap.get(employee.id)?.sioNames 
-        ? Array.from(new Set(kimperMap.get(employee.id)!.sioNames)).join(', ') 
-        : null,
-    })),
+    employees: employeeRows
+      .filter((employee) => canSeeSchedulingSite(employee.siteId))
+      .map((employee) => ({
+        id: employee.id,
+        name: employee.name,
+        email: employee.email ?? '',
+        employeeSn: employee.employeeSn ?? '',
+        role: employee.jobTitle || employee.role || '',
+        department: employee.department ?? null,
+        section: employee.section ?? null,
+        siteId: employee.siteId,
+        locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+        kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
+        kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
+        sio: kimperMap.get(employee.id)?.sioNames
+          ? Array.from(new Set(kimperMap.get(employee.id)!.sioNames)).join(', ')
+          : null,
+      })),
     sites: siteRows.filter((site) => canSeeSchedulingSite(site.id)),
     savedPlans: serializedV1Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
     activeSavedPlans: activeSavedPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
     savedPlansV2: serializedV2Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
-    fieldBreakPlans: fieldBreakPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)).map((plan) => ({
-      siteId: plan.siteId,
-      period: plan.period,
-      employeeId: plan.employeeId,
-      employeeName: plan.employeeName,
-      sectionName: plan.sectionName,
-      rosterSection: plan.rosterSection,
-      onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
-      dayCount: plan.dayCount ?? null,
-      fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
-      fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
-      source: plan.source === 'auto' ? 'auto' : 'manual',
-      isLocked: Boolean(plan.isLocked),
-      notes: plan.notes ?? '',
-      updatedAt: plan.updatedAt.toISOString(),
-    })),
-    attendanceRecords: attendanceRows.filter((record) => canSeeSchedulingSite(record.siteId)).map((record) => ({
-      employeeId: record.employeeId,
-      siteId: record.siteId,
-      eventType: record.eventType,
-      eventTime: record.eventTime.toISOString(),
-      status: record.status,
-      locationNote: record.locationNote,
-      photoUrl: record.photoUrl,
-      latitude: record.latitude,
-      longitude: record.longitude,
-    })),
-    attendanceOverrides: attendanceOverrides.filter((override) => canSeeSchedulingSite(override.siteId)).map((override) => ({
-      siteId: override.siteId,
-      period: override.period,
-      employeeId: override.employeeId,
-      day: override.day,
-      status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
-        ? override.status
-        : 'empty',
-      clockIn: override.clockIn,
-      clockOut: override.clockOut,
-      note: override.note,
-      source: ['manual', 'excel', 'attendance'].includes(override.source)
-        ? override.source
-        : 'manual',
-      updatedAt: override.updatedAt.toISOString(),
-    })),
-    schedulingConfigs: schedulingConfigs.filter((config) => canSeeSchedulingSite(config.siteId)).map((config) => ({
-      siteId: config.siteId,
-      scheduleType: config.scheduleType,
-      rosterType: config.rosterType,
-      msaType: config.msaType,
-      mealsType: config.mealsType,
-      overtimeType: config.overtimeType,
-      fieldBreakConfig: config.fieldBreakConfig,
-      allowanceVariables: config.allowanceVariables,
-      overtimeVariables: config.overtimeVariables,
-      updatedAt: config.updatedAt.toISOString(),
-    })),
-    schedulingStatuses: schedulingStatuses.filter((status) => canSeeSchedulingSite(status.siteId)).map((status) => ({
-      siteId: status.siteId,
-      period: status.period,
-      scheduleStatus: status.scheduleStatus,
-      attendanceStatus: status.attendanceStatus,
-      importStatus: status.importStatus,
-      conflictCount: status.conflictCount,
-      lastGeneratedAt: status.lastGeneratedAt?.toISOString() ?? null,
-      lastSavedAt: status.lastSavedAt?.toISOString() ?? null,
-      lastImportedAt: status.lastImportedAt?.toISOString() ?? null,
-      finalizedAt: status.finalizedAt?.toISOString() ?? null,
-      metadata: status.metadata,
-      updatedAt: status.updatedAt.toISOString(),
-    })),
-    importPreviews: importPreviews.filter((preview) => canSeeSchedulingSite(preview.siteId)).map((preview) => ({
-      id: preview.id,
-      siteId: preview.siteId,
-      period: preview.period,
-      filename: preview.filename,
-      status: preview.status,
-      matchedCount: preview.matchedCount,
-      unmatchedCount: preview.unmatchedCount,
-      cellCount: preview.cellCount,
-      conflictCount: preview.conflictCount,
-      previewRows: preview.previewRows,
-      conflicts: preview.conflicts,
-      createdAt: preview.createdAt.toISOString(),
-      appliedAt: preview.appliedAt?.toISOString() ?? null,
-    })),
-    activities: activitiesRows.filter((activity) => {
-      const employee = employeeRows.find((row) => row.id === activity.employeeId)
-      return canSeeSchedulingSite(employee?.siteId ?? null)
-    }).map((activity) => ({
-      id: activity.id,
-      employeeId: activity.employeeId,
-      activityCode: activity.activityCode,
-      title: activity.title,
-      startTime: activity.startTime.toISOString(),
-      endTime: activity.endTime.toISOString(),
-      status: activity.status,
-    })),
+    fieldBreakPlans: fieldBreakPlans
+      .filter((plan) => canSeeSchedulingSite(plan.siteId))
+      .map((plan) => ({
+        siteId: plan.siteId,
+        period: plan.period,
+        employeeId: plan.employeeId,
+        employeeName: plan.employeeName,
+        sectionName: plan.sectionName,
+        rosterSection: plan.rosterSection,
+        onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
+        dayCount: plan.dayCount ?? null,
+        fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
+        fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
+        source: plan.source === 'auto' ? 'auto' : 'manual',
+        isLocked: Boolean(plan.isLocked),
+        notes: plan.notes ?? '',
+        updatedAt: plan.updatedAt.toISOString(),
+      })),
+    attendanceRecords: attendanceRows
+      .filter((record) => canSeeSchedulingSite(record.siteId))
+      .map((record) => ({
+        employeeId: record.employeeId,
+        siteId: record.siteId,
+        eventType: record.eventType,
+        eventTime: record.eventTime.toISOString(),
+        status: record.status,
+        locationNote: record.locationNote,
+        photoUrl: record.photoUrl,
+        latitude: record.latitude,
+        longitude: record.longitude,
+      })),
+    attendanceOverrides: attendanceOverrides
+      .filter((override) => canSeeSchedulingSite(override.siteId))
+      .map((override) => ({
+        siteId: override.siteId,
+        period: override.period,
+        employeeId: override.employeeId,
+        day: override.day,
+        status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
+          ? override.status
+          : 'empty',
+        clockIn: override.clockIn,
+        clockOut: override.clockOut,
+        note: override.note,
+        source: ['manual', 'excel', 'attendance'].includes(override.source)
+          ? override.source
+          : 'manual',
+        updatedAt: override.updatedAt.toISOString(),
+      })),
+    schedulingConfigs: schedulingConfigs
+      .filter((config) => canSeeSchedulingSite(config.siteId))
+      .map((config) => ({
+        siteId: config.siteId,
+        scheduleType: config.scheduleType,
+        rosterType: config.rosterType,
+        msaType: config.msaType,
+        mealsType: config.mealsType,
+        overtimeType: config.overtimeType,
+        fieldBreakConfig: config.fieldBreakConfig,
+        allowanceVariables: config.allowanceVariables,
+        overtimeVariables: config.overtimeVariables,
+        updatedAt: config.updatedAt.toISOString(),
+      })),
+    schedulingStatuses: schedulingStatuses
+      .filter((status) => canSeeSchedulingSite(status.siteId))
+      .map((status) => ({
+        siteId: status.siteId,
+        period: status.period,
+        scheduleStatus: status.scheduleStatus,
+        attendanceStatus: status.attendanceStatus,
+        importStatus: status.importStatus,
+        conflictCount: status.conflictCount,
+        lastGeneratedAt: status.lastGeneratedAt?.toISOString() ?? null,
+        lastSavedAt: status.lastSavedAt?.toISOString() ?? null,
+        lastImportedAt: status.lastImportedAt?.toISOString() ?? null,
+        finalizedAt: status.finalizedAt?.toISOString() ?? null,
+        metadata: status.metadata,
+        updatedAt: status.updatedAt.toISOString(),
+      })),
+    importPreviews: importPreviews
+      .filter((preview) => canSeeSchedulingSite(preview.siteId))
+      .map((preview) => ({
+        id: preview.id,
+        siteId: preview.siteId,
+        period: preview.period,
+        filename: preview.filename,
+        status: preview.status,
+        matchedCount: preview.matchedCount,
+        unmatchedCount: preview.unmatchedCount,
+        cellCount: preview.cellCount,
+        conflictCount: preview.conflictCount,
+        previewRows: preview.previewRows,
+        conflicts: preview.conflicts,
+        createdAt: preview.createdAt.toISOString(),
+        appliedAt: preview.appliedAt?.toISOString() ?? null,
+      })),
+    activities: activitiesRows
+      .filter((activity) => {
+        const employee = employeeRows.find((row) => row.id === activity.employeeId)
+        return canSeeSchedulingSite(employee?.siteId ?? null)
+      })
+      .map((activity) => ({
+        id: activity.id,
+        employeeId: activity.employeeId,
+        activityCode: activity.activityCode,
+        title: activity.title,
+        startTime: activity.startTime.toISOString(),
+        endTime: activity.endTime.toISOString(),
+        status: activity.status,
+      })),
   }
 }
 

@@ -13,8 +13,13 @@ import {
   ChevronRight,
   Clock3,
   Download,
+  Eye,
+  FileSpreadsheet,
+  FileText,
   History,
+  Pencil,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Settings2,
@@ -77,6 +82,7 @@ import { AttendanceRealBulkToolbar } from '@/components/timesheet/attendance-rea
 import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance-import-preview-dialog'
 import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
 import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
+import { exportRowsToFile, MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import {
@@ -124,7 +130,15 @@ function getFieldBreakTimelineDays(period: string, view: FieldBreakTimelineView)
   const month = Number(monthStr)
   if (!year || !month) return []
   const startMonth =
-    view === 'quarter' ? Math.floor((month - 1) / 3) * 3 + 1 : view === 'semester' ? (month <= 6 ? 1 : 7) : view === 'year' ? 1 : month
+    view === 'quarter'
+      ? Math.floor((month - 1) / 3) * 3 + 1
+      : view === 'semester'
+        ? month <= 6
+          ? 1
+          : 7
+        : view === 'year'
+          ? 1
+          : month
   const totalMonths = view === 'month' ? 1 : view === 'quarter' ? 3 : view === 'semester' ? 6 : 12
   const days: Array<{ date: string; day: number; month: string; weekday: string }> = []
   for (let offset = 0; offset < totalMonths; offset++) {
@@ -139,7 +153,9 @@ function getFieldBreakTimelineDays(period: string, view: FieldBreakTimelineView)
         date: `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
         day,
         month: monthLabel,
-        weekday: new Intl.DateTimeFormat('id-ID', { weekday: 'narrow', timeZone: 'UTC' }).format(current),
+        weekday: new Intl.DateTimeFormat('id-ID', { weekday: 'narrow', timeZone: 'UTC' }).format(
+          current
+        ),
       })
     }
   }
@@ -454,24 +470,6 @@ const defaultOvertimeVariables: OvertimeVariable[] = [
   })),
 ]
 
-const overtimeRules = [
-  {
-    roster: 'Rooster Kerja 5 : 2',
-    work: 'Hari masuk dihitung 5 jam dasar',
-    off: 'Libur/OFF tidak dihitung jam dasar',
-  },
-  {
-    roster: 'Rooster Kerja 6 : 1',
-    work: 'Hari masuk dihitung 5 jam dasar',
-    off: 'Backup otomatis masuk list pengganti',
-  },
-  {
-    roster: 'Rooster Kerja Vale Sorowako',
-    work: 'Status cell sama: ?, OFF, FB, Sakit, Emergency, Libur',
-    off: 'Nilai overtime siap disambung ke setting variabel',
-  },
-]
-
 function normalizeLocation(value: string) {
   return value
     .toLowerCase()
@@ -598,6 +596,12 @@ function rosterSectionLabel(section: string) {
   return 'Crew Office'
 }
 
+function payrollSectionLabel(section: string) {
+  if (section === 'Service Operation') return 'Serviceman Crew'
+  if (section === 'Repair Retread') return 'Repairman Crew'
+  return 'Office Crew'
+}
+
 function calculateOvertimeFromVariables(
   schedule: ScheduleCode[],
   period: string,
@@ -669,6 +673,15 @@ function formatShortDate(value: string) {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
     .format(date)
     .replace(/ /g, '-')
+}
+
+function formatMonthPeriod(value: string) {
+  const date = new Date(`${value}-01T00:00:00Z`)
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+        date
+      )
 }
 
 function attendanceKey(employeeId: number, day: number) {
@@ -946,7 +959,8 @@ export function SchedulingTimesheetWorkspace({
   const [fieldBreakSearch, setFieldBreakSearch] = useState('')
   const [fieldBreakSectionFilter, setFieldBreakSectionFilter] = useState('all')
   const [fieldBreakSourceFilter, setFieldBreakSourceFilter] = useState('all')
-  const [fieldBreakTimelineView, setFieldBreakTimelineView] = useState<FieldBreakTimelineView>('month')
+  const [fieldBreakTimelineView, setFieldBreakTimelineView] =
+    useState<FieldBreakTimelineView>('month')
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition()
 
   useEffect(() => {
@@ -956,18 +970,14 @@ export function SchedulingTimesheetWorkspace({
   useEffect(() => {
     if (mode !== 'field-break') return
     const refreshIfCurrentPeriod = (message?: { siteId?: number; period?: string }) => {
-      if (
-        message?.siteId != null &&
-        String(message.siteId) !== fieldBreakSiteId
-      ) {
+      if (message?.siteId != null && String(message.siteId) !== fieldBreakSiteId) {
         return
       }
       if (message?.period && message.period !== period) return
       router.refresh()
     }
-    const channel = typeof BroadcastChannel === 'undefined'
-      ? null
-      : new BroadcastChannel('hero-field-break-sync')
+    const channel =
+      typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('hero-field-break-sync')
     if (channel) channel.onmessage = (event) => refreshIfCurrentPeriod(event.data)
     const interval = window.setInterval(() => refreshIfCurrentPeriod(), 10000)
     return () => {
@@ -1051,6 +1061,18 @@ export function SchedulingTimesheetWorkspace({
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false)
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false)
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
+  const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(false)
+  const [payrollWorkspaceOpen, setPayrollWorkspaceOpen] = useState(false)
+  const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime'>('allowance')
+  const [openPayrollHistorySiteId, setOpenPayrollHistorySiteId] = useState<number | null>(null)
+  const [attendanceCreateOpen, setAttendanceCreateOpen] = useState(false)
+  const [attendanceCreateSiteId, setAttendanceCreateSiteId] = useState('')
+  const [attendanceCreatePeriod, setAttendanceCreatePeriod] = useState(currentMonthPeriod)
+  const [attendanceResetTarget, setAttendanceResetTarget] = useState<{
+    siteId: number
+    period: string
+    recreate: boolean
+  } | null>(null)
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -1099,6 +1121,75 @@ export function SchedulingTimesheetWorkspace({
       String(plan.siteId) === siteId &&
       plan.period === period
   )
+  const attendanceSiteRows = useMemo(
+    () =>
+      sites
+        .map((item) => ({
+          site: item,
+          plan: savedPlans.find(
+            (plan) =>
+              !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+              plan.siteId === item.id &&
+              plan.period === period &&
+              plan.sourceVersion === 'v2'
+          ),
+        }))
+        .sort(
+          (left, right) =>
+            Number(Boolean(right.plan)) - Number(Boolean(left.plan)) ||
+            left.site.name.localeCompare(right.site.name)
+        ),
+    [deletedSchedulePlanKeys, period, savedPlans, sites]
+  )
+  const selectedAttendancePlan =
+    mode === 'attendance'
+      ? attendanceSiteRows.find((item) => String(item.site.id) === siteId)?.plan
+      : null
+  const attendanceHistoryRows = useMemo(
+    () =>
+      savedPlans
+        .filter(
+          (plan) =>
+            !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+            plan.sourceVersion === 'v2'
+        )
+        .map((plan) => ({
+          plan,
+          site: sites.find((item) => item.id === plan.siteId),
+          status: schedulingStatuses.find(
+            (item) => item.siteId === plan.siteId && item.period === plan.period
+          ),
+        }))
+        .sort(
+          (left, right) =>
+            right.plan.period.localeCompare(left.plan.period) ||
+            (left.site?.name ?? '').localeCompare(right.site?.name ?? '')
+        ),
+    [deletedSchedulePlanKeys, savedPlans, schedulingStatuses, sites]
+  )
+  const payrollHistorySiteRows = useMemo(() => {
+    const grouped = new Map<number, typeof attendanceHistoryRows>()
+    for (const item of attendanceHistoryRows) {
+      const history = grouped.get(item.plan.siteId) ?? []
+      history.push(item)
+      grouped.set(item.plan.siteId, history)
+    }
+    return [...grouped.entries()]
+      .map(([historySiteId, history]) => ({
+        siteId: historySiteId,
+        siteName: history[0]?.site?.name ?? `Site ${historySiteId}`,
+        history,
+      }))
+      .sort((left, right) => left.siteName.localeCompare(right.siteName))
+  }, [attendanceHistoryRows])
+  const payrollHistoryYears = useMemo(
+    () => [...new Set(attendanceHistoryRows.map(({ plan }) => plan.period.slice(0, 4)))].sort().reverse(),
+    [attendanceHistoryRows]
+  )
+  const payrollHistoryMonths = useMemo(
+    () => [...new Set(attendanceHistoryRows.map(({ plan }) => plan.period.slice(5, 7)))].sort(),
+    [attendanceHistoryRows]
+  )
   const currentStatus =
     schedulingStatuses.find(
       (status) => String(status.siteId) === siteId && status.period === period
@@ -1115,6 +1206,57 @@ export function SchedulingTimesheetWorkspace({
       description: 'Period finalized. Reopen before editing.',
     })
     return false
+  }
+
+  function openAttendanceWorkspace(nextSiteId: number, nextPeriod: string) {
+    setSiteId(String(nextSiteId))
+    setPeriod(nextPeriod)
+    setAttendanceWorkspaceOpen(true)
+  }
+
+  function openPayrollWorkspace(nextSiteId: number, nextPeriod: string) {
+    setSiteId(String(nextSiteId))
+    setPeriod(nextPeriod)
+    setPayrollDetailTab('allowance')
+    setPayrollWorkspaceOpen(true)
+  }
+
+  function createAttendanceWorkspace() {
+    const numericSiteId = Number(attendanceCreateSiteId)
+    const matchingPlan = attendanceHistoryRows.find(
+      (item) => item.plan.siteId === numericSiteId && item.plan.period === attendanceCreatePeriod
+    )
+    if (!matchingPlan) {
+      toast.error('Schedule V2 aktif belum tersedia untuk site dan bulan ini.')
+      return
+    }
+    setAttendanceCreateOpen(false)
+    openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+  }
+
+  function clearAttendanceWorkspace() {
+    const target = attendanceResetTarget
+    if (!target) return
+    startSavingAttendance(async () => {
+      try {
+        await clearAttendanceRealOverridesAction({
+          siteId: target.siteId,
+          period: target.period,
+          source: 'all',
+        })
+        setAttendanceResetTarget(null)
+        toast.success(
+          target.recreate ? 'Attendance dikosongkan. Silakan isi ulang.' : 'Attendance dihapus.'
+        )
+        if (target.recreate) openAttendanceWorkspace(target.siteId, target.period)
+        else setAttendanceWorkspaceOpen(false)
+        router.refresh()
+      } catch (error) {
+        toast.error('Gagal menghapus attendance', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
   }
   const attendanceByCell = useMemo(() => {
     const map = new Map<
@@ -1817,11 +1959,13 @@ export function SchedulingTimesheetWorkspace({
       rows.map((row) => {
         const savedPlan = savedFieldBreakByEmployee.get(row.employee.id)
         const draft = fieldBreakDrafts[row.employee.id]
-        const lastFieldBreakDate = lastFieldBreakByEmployee.get(row.employee.id) ?? savedPlan?.onSiteDate ?? ''
+        const lastFieldBreakDate =
+          lastFieldBreakByEmployee.get(row.employee.id) ?? savedPlan?.onSiteDate ?? ''
         const onSiteDate = draft?.onSiteDate ?? lastFieldBreakDate
         const savedNextFieldBreak = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? ''
         const hasValidSavedNextFieldBreak = Boolean(
-          savedNextFieldBreak && (!lastFieldBreakDate || savedNextFieldBreak >= addDays(lastFieldBreakDate, 90))
+          savedNextFieldBreak &&
+          (!lastFieldBreakDate || savedNextFieldBreak >= addDays(lastFieldBreakDate, 90))
         )
         const fieldBreakDate = hasValidSavedNextFieldBreak
           ? savedNextFieldBreak
@@ -1835,9 +1979,17 @@ export function SchedulingTimesheetWorkspace({
             : fieldBreakDate
               ? addDays(fieldBreakDate, siteConfig.fieldBreakBreakDays - 1)
               : ''
-        const dayCountValue = lastFieldBreakDate && fieldBreakDate
-          ? Math.max(1, Math.round((new Date(`${fieldBreakDate}T00:00:00Z`).getTime() - new Date(`${lastFieldBreakDate}T00:00:00Z`).getTime()) / 86400000))
-          : null
+        const dayCountValue =
+          lastFieldBreakDate && fieldBreakDate
+            ? Math.max(
+                1,
+                Math.round(
+                  (new Date(`${fieldBreakDate}T00:00:00Z`).getTime() -
+                    new Date(`${lastFieldBreakDate}T00:00:00Z`).getTime()) /
+                    86400000
+                )
+              )
+            : null
         const source = draft?.source ?? savedPlan?.source ?? 'manual'
         const isLocked = draft?.isLocked ?? savedPlan?.isLocked ?? false
         const notes = draft?.notes ?? savedPlan?.notes ?? ''
@@ -1855,7 +2007,13 @@ export function SchedulingTimesheetWorkspace({
           savedAt: savedPlan?.updatedAt ?? null,
         }
       }),
-    [rows, savedFieldBreakByEmployee, fieldBreakDrafts, lastFieldBreakByEmployee, siteConfig.fieldBreakBreakDays]
+    [
+      rows,
+      savedFieldBreakByEmployee,
+      fieldBreakDrafts,
+      lastFieldBreakByEmployee,
+      siteConfig.fieldBreakBreakDays,
+    ]
   )
   const fieldBreakTimelineByEmployee = useMemo(() => {
     const map = new Map<number, SavedFieldBreakPlan[]>()
@@ -2276,13 +2434,18 @@ export function SchedulingTimesheetWorkspace({
         setFieldBreakPlans((current) => {
           const next = [...current]
           for (const plan of generated.plans) {
-             const newPlan = { ...plan, siteId: numericSiteId, updatedAt: new Date().toISOString() }
-             const existingIdx = next.findIndex(p => p.employeeId === plan.employeeId && p.period === plan.period && p.siteId === numericSiteId)
-             if (existingIdx >= 0) {
-                next[existingIdx] = { ...next[existingIdx], ...newPlan }
-             } else {
-                next.push(newPlan as any)
-             }
+            const newPlan = { ...plan, siteId: numericSiteId, updatedAt: new Date().toISOString() }
+            const existingIdx = next.findIndex(
+              (p) =>
+                p.employeeId === plan.employeeId &&
+                p.period === plan.period &&
+                p.siteId === numericSiteId
+            )
+            if (existingIdx >= 0) {
+              next[existingIdx] = { ...next[existingIdx], ...newPlan }
+            } else {
+              next.push(newPlan as any)
+            }
           }
           return next
         })
@@ -2950,36 +3113,64 @@ export function SchedulingTimesheetWorkspace({
     tableRows = rows,
     columns,
     exportRows,
+    iconOnly = false,
+    excelInsteadOfCsv = false,
   }: {
     tabTitle: string
     tableRows?: typeof rows
     columns?: string[]
     exportRows?: Array<Array<string | number>>
+    iconOnly?: boolean
+    excelInsteadOfCsv?: boolean
   }) {
     const excelColumns = columns ?? rosterExportColumns()
     const excelRows = exportRows ?? rosterExportRows(tableRows)
 
     return (
-      <div className="flex flex-wrap gap-2">
+      <div className={cn('flex flex-wrap gap-1', excelInsteadOfCsv && 'flex-row-reverse')}>
         <Button
-          size="sm"
+          size={iconOnly ? 'icon' : 'sm'}
           variant="outline"
           disabled={tableRows.length === 0 && excelRows.length === 0}
+          aria-label={`Export PDF ${tabTitle}`}
+          title={`Export PDF ${tabTitle}`}
           onClick={() =>
             columns && exportRows
               ? exportSummaryPdf(tabTitle, excelColumns, excelRows)
               : exportRosterPdf(tabTitle, tableRows)
           }
         >
-          <Download className="mr-2 size-4" /> Export PDF
+          {iconOnly ? (
+            <FileText className="size-4" />
+          ) : (
+            <Download className="mr-2 size-4" />
+          )}
+          {iconOnly ? <span className="sr-only">Export PDF</span> : 'Export PDF'}
         </Button>
         <Button
-          size="sm"
+          size={iconOnly ? 'icon' : 'sm'}
           variant="outline"
           disabled={excelRows.length === 0}
-          onClick={() => exportCsv(tabTitle, excelColumns, excelRows)}
+          onClick={() =>
+            excelInsteadOfCsv
+              ? exportRowsToFile({ columns: excelColumns, rows: excelRows, fileName: tabTitle })
+              : exportCsv(tabTitle, excelColumns, excelRows)
+          }
+          aria-label={`Export ${excelInsteadOfCsv ? 'Excel' : 'CSV'} ${tabTitle}`}
+          title={`Export ${excelInsteadOfCsv ? 'Excel' : 'CSV'} ${tabTitle}`}
         >
-          <Download className="mr-2 size-4" /> Export CSV
+          {excelInsteadOfCsv ? (
+            <FileSpreadsheet className="size-4" />
+          ) : (
+            <Download className={cn('size-4', !iconOnly && 'mr-2')} />
+          )}
+          {iconOnly ? (
+            <span className="sr-only">Export {excelInsteadOfCsv ? 'Excel' : 'CSV'}</span>
+          ) : excelInsteadOfCsv ? (
+            'Export Excel'
+          ) : (
+            'Export CSV'
+          )}
         </Button>
       </div>
     )
@@ -3918,9 +4109,96 @@ export function SchedulingTimesheetWorkspace({
   const selectedAttendanceValue = selectedAttendanceCell
     ? getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
     : null
-  const attendanceOvertimeRows =
+  function calculatePayrollOvertime(
+    schedule: ScheduleCode[],
+    day: number,
+    clockIn: string,
+    clockOut: string,
+    staff: boolean
+  ) {
+    if (staff || siteConfig.overtimeType === 'none' || !clockIn || !clockOut) return 0
+    const clockInMinutes = minutesFromTime(clockIn)
+    const clockOutMinutes = minutesFromTime(clockOut)
+    if (clockInMinutes == null || clockOutMinutes == null) return 0
+    const totalHours =
+      (clockOutMinutes >= clockInMinutes
+        ? clockOutMinutes - clockInMinutes
+        : clockOutMinutes + 1440 - clockInMinutes) / 60
+    const dayType = classifyOvertimeDay(
+      schedule,
+      period,
+      day - 1,
+      siteConfig.rosterType,
+      holidays
+    )
+    const configured = overtimeVariables.find(
+      (item) =>
+        item.roster === siteConfig.rosterType &&
+        item.dayType === dayType &&
+        item.totalHours === totalHours
+    )
+    return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 5))
+  }
+
+  const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
+          const staff = isStaffRole(row.employee.role)
+          let msaDays = 0
+          let mealsDays = 0
+          let overtime = 0
+          for (const day of days) {
+            const cell = getAttendanceCell(row.employee.id, day)
+            const scheduleCode = row.schedule[day - 1]
+            const rosterWorkDay = scheduleCode !== 'OFF' && scheduleCode !== 'Libur'
+            const present = cell.status === 'present'
+            const holiday = isHoliday(period, day, holidays)
+            const fieldBreakDay =
+              fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
+            if (present && rosterWorkDay && !holiday) msaDays += 1
+            if (
+              present &&
+              !holiday &&
+              ((siteConfig.mealsType === 'workday' && rosterWorkDay) ||
+                (siteConfig.mealsType === 'field-break' && fieldBreakDay))
+            )
+              mealsDays += 1
+            if (present)
+              overtime += calculatePayrollOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff
+              )
+          }
+          const msaRate =
+            siteConfig.msaType === 'none'
+              ? 0
+              : siteConfig.msaType === 'same-all'
+                ? rate.msaNonStaff
+                : staff
+                  ? rate.msaStaff
+                  : rate.msaNonStaff
+          const mealsRate =
+            siteConfig.mealsType === 'none'
+              ? 0
+              : staff
+                ? rate.mealsStaff
+                : rate.mealsNonStaff
+          return {
+            ...row,
+            msaDays,
+            msa: msaDays * msaRate,
+            meals: mealsDays * mealsRate,
+            overtime: roundOvertimeHours(overtime),
+          }
+        })
+      : rows
+
+  const attendanceOvertimeRows =
+    mode === 'payroll'
+      ? payrollRows.map((row) => {
           const baseHours = row.schedule.reduce((sum, code, index) => {
             if (hoursFromCode(code) <= 0) return sum
             return isHoliday(period, index + 1, holidays) ? sum : sum + 5
@@ -3934,17 +4212,27 @@ export function SchedulingTimesheetWorkspace({
             ...row,
             attendanceTotalHours: calculated.totalHours,
             attendanceBaseHours: calculated.baseHours,
-            attendanceOvertime: calculated.overtime,
+            attendanceOvertime: row.overtime,
           }
         })
       : []
+  const groupedPayrollRows = [...payrollRows].sort(
+    (left, right) =>
+      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      left.employee.name.localeCompare(right.employee.name)
+  )
+  const groupedAttendanceOvertimeRows = [...attendanceOvertimeRows].sort(
+    (left, right) =>
+      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      left.employee.name.localeCompare(right.employee.name)
+  )
 
   function buildPayrollSnapshot() {
     let totalMsa = 0
     let totalMeals = 0
     let totalTlk = 0
     let totalOvertimeHours = 0
-    const items = rows.flatMap((row) => {
+    const items = payrollRows.flatMap((row) => {
       const staff = isStaffRole(row.employee.role)
       return days.map((day) => {
         const cell = getAttendanceCell(row.employee.id, day)
@@ -3952,13 +4240,14 @@ export function SchedulingTimesheetWorkspace({
         const holiday = holidaysByDay.get(day)
         const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
         const isWorkDay = !isRosterOff
-        const isAbsent =
-          cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
-        const isEmptyWorkDay = isWorkDay && !holiday && cell.status === 'empty'
         const isFieldBreakDay = fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
-        const noAllowance =
-          isAbsent || isEmptyWorkDay || (isFieldBreakDay && cell.status !== 'present')
-        const msaAmount = noAllowance
+        const eligibleMsa = isWorkDay && !holiday && cell.status === 'present'
+        const eligibleMeals =
+          !holiday &&
+          cell.status === 'present' &&
+          ((siteConfig.mealsType === 'workday' && isWorkDay) ||
+            (siteConfig.mealsType === 'field-break' && isFieldBreakDay))
+        const msaAmount = !eligibleMsa
           ? 0
           : siteConfig.msaType === 'none'
             ? 0
@@ -3967,7 +4256,7 @@ export function SchedulingTimesheetWorkspace({
               : staff
                 ? rate.msaStaff
                 : rate.msaNonStaff
-        const mealsAmount = noAllowance
+        const mealsAmount = !eligibleMeals
           ? 0
           : siteConfig.mealsType === 'none'
             ? 0
@@ -3975,20 +4264,20 @@ export function SchedulingTimesheetWorkspace({
               ? rate.mealsStaff
               : rate.mealsNonStaff
         const tlkAmount =
-          noAllowance || !siteConfig.lokasiKhususEnabled
+          !eligibleMsa || !siteConfig.lokasiKhususEnabled
             ? 0
             : staff
               ? siteConfig.lokasiKhususRateStaff
               : siteConfig.lokasiKhususRateNonStaff
-        const ci = cell.clockIn
-          ? Number(cell.clockIn.split(':')[0]) * 60 + Number(cell.clockIn.split(':')[1])
-          : null
-        const co = cell.clockOut
-          ? Number(cell.clockOut.split(':')[0]) * 60 + Number(cell.clockOut.split(':')[1])
-          : null
         const overtimeHours =
-          !staff && cell.status === 'present' && ci != null && co != null
-            ? roundOvertimeHours(Math.max(0, (co >= ci ? co - ci : co + 1440 - ci) / 60 - 5))
+          cell.status === 'present'
+            ? calculatePayrollOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff
+              )
             : 0
 
         totalMsa += msaAmount
@@ -4014,7 +4303,7 @@ export function SchedulingTimesheetWorkspace({
     })
 
     return {
-      employeeCount: rows.length,
+      employeeCount: payrollRows.length,
       totalMsa,
       totalMeals,
       totalTlk,
@@ -4056,7 +4345,7 @@ export function SchedulingTimesheetWorkspace({
 
   return (
     <div className="space-y-4">
-      {isFinalized ? (
+      {isFinalized && (mode !== 'payroll' || payrollWorkspaceOpen) ? (
         <div className="flex items-center gap-2.5 rounded-[0.9rem] bg-slate-900 px-4 py-3 text-sm font-medium text-white">
           <Lock className="size-4 shrink-0" />
           <span>
@@ -4065,13 +4354,19 @@ export function SchedulingTimesheetWorkspace({
           </span>
         </div>
       ) : null}
-      {isSubmittedToHr ? (
+      {isSubmittedToHr && (mode !== 'payroll' || payrollWorkspaceOpen) ? (
         <div className="flex items-center gap-2.5 rounded-[0.9rem] bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
           <Clock3 className="size-4 shrink-0" />
           Periode sedang direview HR. Editing dikunci sampai HR approve atau return.
         </div>
       ) : null}
-      {mode !== 'setup' && mode !== 'schedule' && mode !== 'field-break' ? (
+      {!([
+        'setup',
+        'schedule',
+        'field-break',
+        'attendance',
+        'payroll',
+      ] as SchedulingTimesheetMode[]).includes(mode) ? (
         <Card className="surface-module-card rounded-[1rem] border-0 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
@@ -4082,7 +4377,7 @@ export function SchedulingTimesheetWorkspace({
                 <p className="font-display text-foreground text-base font-semibold">
                   {mode === 'overview' && 'Ringkasan Site'}
                   {mode === 'schedule' && 'Parameter Jadwal'}
-                  {mode === 'attendance' && 'Sync Log'}
+                  {mode === 'attendance' && 'Attendance'}
                   {mode === 'field-break' && 'Field Break'}
                   {mode === 'payroll' && 'MSA + Overtime'}
                 </p>
@@ -4396,18 +4691,194 @@ export function SchedulingTimesheetWorkspace({
         </Card>
       ) : null}
 
-      {mode === 'payroll' ? (
+      {mode === 'payroll' && !payrollWorkspaceOpen ? (
+        <MinimalTableShell
+          label="Payroll Timesheet"
+          title="Payroll Timesheet"
+          description="Daftar payroll berdasarkan site dan bulan yang tersedia di Attendance."
+          searchPlaceholder="Cari site atau bulan..."
+          showImport={false}
+          dateFilter={false}
+          filters={
+            <>
+              <select
+                data-table-filter-key="year"
+                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
+                aria-label="Filter tahun payroll"
+              >
+                <option value="">Semua tahun</option>
+                {payrollHistoryYears.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <select
+                data-table-filter-key="month"
+                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
+                aria-label="Filter bulan payroll"
+              >
+                <option value="">Semua bulan</option>
+                {payrollHistoryMonths.map((month) => (
+                  <option key={month} value={month}>
+                    {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(
+                      new Date(2000, Number(month) - 1, 1)
+                    )}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+        >
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                <th className="px-4 py-3 font-medium">Site</th>
+                <th className="px-4 py-3 font-medium">History Bulan</th>
+                <th className="px-4 py-3 font-medium">Attendance</th>
+                <th className="px-4 py-3 font-medium">Periode Terbaru</th>
+                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payrollHistorySiteRows.map((siteRow) => {
+                const latest = siteRow.history[0]
+                const savedCount = siteRow.history.filter(
+                  ({ status }) => status?.attendanceStatus === 'saved'
+                ).length
+                const isOpen = openPayrollHistorySiteId === siteRow.siteId
+                const years = [...new Set(siteRow.history.map(({ plan }) => plan.period.slice(0, 4)))]
+                const months = [...new Set(siteRow.history.map(({ plan }) => plan.period.slice(5, 7)))]
+                return (
+                  <React.Fragment key={`payroll-site-${siteRow.siteId}`}>
+                    <tr
+                      data-filter-year={years.join('|')}
+                      data-filter-month={months.join('|')}
+                      className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
+                    >
+                      <td className="px-4 py-3 font-semibold">{siteRow.siteName}</td>
+                      <td className="px-4 py-3">{siteRow.history.length} bulan</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={savedCount ? 'default' : 'secondary'}>
+                          {savedCount}/{siteRow.history.length} tersimpan
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {latest ? formatMonthPeriod(latest.plan.period) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setOpenPayrollHistorySiteId(isOpen ? null : siteRow.siteId)
+                          }
+                          aria-expanded={isOpen}
+                          aria-label={`History payroll ${siteRow.siteName}`}
+                          title={`History payroll ${siteRow.siteName}`}
+                        >
+                          <History className="size-4" />
+                          <span className="text-xs">{siteRow.history.length}</span>
+                          <ChevronRight
+                            className={cn('size-4 transition-transform', isOpen && 'rotate-90')}
+                          />
+                        </Button>
+                      </td>
+                    </tr>
+                    {isOpen ? (
+                      <tr data-table-detail-row="true">
+                        <td colSpan={5} className="bg-surface-container-low/40 px-4 py-3">
+                          <div className="overflow-hidden rounded-lg border bg-white">
+                            <div className="text-muted-foreground grid grid-cols-[1fr_140px_160px_48px] gap-3 bg-surface-container-low px-3 py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
+                              <span>Bulan</span>
+                              <span>Attendance</span>
+                              <span>Terakhir diubah</span>
+                              <span className="text-right">Aksi</span>
+                            </div>
+                            {siteRow.history.map(({ plan, status }) => (
+                              <div
+                                key={`payroll-history-${plan.siteId}-${plan.period}`}
+                                className="border-border/40 grid grid-cols-[1fr_140px_160px_48px] items-center gap-3 border-t px-3 py-2.5"
+                              >
+                                <span className="font-medium">{formatMonthPeriod(plan.period)}</span>
+                                <Badge
+                                  variant={
+                                    status?.attendanceStatus === 'saved' ? 'default' : 'secondary'
+                                  }
+                                  className="w-fit"
+                                >
+                                  {status?.attendanceStatus === 'saved'
+                                    ? 'Tersimpan'
+                                    : 'Belum diisi'}
+                                </Badge>
+                                <span className="text-muted-foreground text-xs">
+                                  {status?.lastSavedAt
+                                    ? new Date(status.lastSavedAt).toLocaleString('id-ID')
+                                    : '-'}
+                                </span>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openPayrollWorkspace(plan.siteId, plan.period)}
+                                  aria-label={`Lihat payroll ${siteRow.siteName} ${formatMonthPeriod(plan.period)}`}
+                                  title="Lihat payroll"
+                                >
+                                  <Eye className="size-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
+                )
+              })}
+              {!payrollHistorySiteRows.length ? (
+                <tr>
+                  <td colSpan={5} className="text-muted-foreground px-4 py-12 text-center">
+                    Belum ada data Attendance untuk diproses ke payroll.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </MinimalTableShell>
+      ) : null}
+
+      {mode === 'payroll' && payrollWorkspaceOpen ? (
+        <div className="flex min-h-10 items-center gap-2 px-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setPayrollWorkspaceOpen(false)}
+            aria-label="Kembali ke list payroll"
+            title="Kembali ke list payroll"
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <p className="text-foreground min-w-0 truncate text-sm font-semibold">
+            {site?.name ?? 'Site'} <span className="text-muted-foreground font-normal">/</span>{' '}
+            {formatMonthPeriod(period)}
+          </p>
+          <span className="text-muted-foreground ml-auto hidden text-xs sm:inline">
+            Schedule V2 + Attendance
+          </span>
+        </div>
+      ) : null}
+
+      {mode === 'payroll' && payrollWorkspaceOpen ? (
         <div className="grid gap-3 md:grid-cols-4">
           {[
             { label: 'Karyawan', value: rows.length, Icon: CalendarDays },
             {
               label: 'Total jam schedule',
-              value: rows.reduce((sum, row) => sum + row.totalHours, 0),
+              value: payrollRows.reduce((sum, row) => sum + row.totalHours, 0),
               Icon: Clock3,
             },
             {
               label: 'Estimasi MSA + Meals',
-              value: money(rows.reduce((sum, row) => sum + row.msa + row.meals, 0)),
+              value: money(payrollRows.reduce((sum, row) => sum + row.msa + row.meals, 0)),
               Icon: Calculator,
             },
             { label: 'Backup list', value: backupAssignments.length, Icon: Settings2 },
@@ -5389,929 +5860,1232 @@ export function SchedulingTimesheetWorkspace({
       ) : null}
 
       {mode === 'attendance' ? (
-        <section className="space-y-3">
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">Sync Log</p>
-                <p className="text-muted-foreground text-xs">
-                  Log sinkronisasi attendance dari face/location, manual edit, dan import Excel.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Import button with loading + success state */}
-                <Button
-                  asChild
-                  size="sm"
-                  variant={lastImportSuccess ? 'default' : 'outline'}
-                  disabled={isFinalized || isImportingExcel}
-                  className={
-                    lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''
-                  }
-                >
-                  <Label className="h-9 cursor-pointer px-3">
-                    {isImportingExcel ? (
-                      <>
-                        <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
-                      </>
-                    ) : lastImportSuccess ? (
-                      <>
-                        <Check className="mr-2 size-4" /> Berhasil ({lastImportSuccess.matched}{' '}
-                        matched)
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 size-4" /> Import Excel
-                      </>
-                    )}
-                    <Input
-                      disabled={isFinalized || isImportingExcel}
-                      className="hidden"
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      onChange={(event) => {
-                        void importAttendanceExcel(event.target.files?.[0] ?? null)
-                        event.currentTarget.value = ''
-                      }}
-                    />
-                  </Label>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void downloadAttendanceTemplate()}
-                >
-                  <Download className="mr-2 size-4" /> Template Excel
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isSavingAttendance || siteId === 'all' || isFinalized}
-                  onClick={() => setClearExcelImportDialogOpen(true)}
-                >
-                  <Trash2 className="mr-2 size-4" /> Delete Excel Import
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={
-                    !isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized
-                  }
-                  onClick={saveAttendanceReal}
-                >
-                  <Save className="mr-2 size-4" />{' '}
-                  {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
-                </Button>
-                <TabExportActions
-                  tabTitle="Sync Log"
-                  columns={[
-                    'Nama',
-                    'Masuk',
-                    'Belum',
-                    'Sakit',
-                    'Izin',
-                    'Alpha',
-                    'Manual',
-                    'Excel',
-                    'FaceLoc',
-                  ]}
-                  exportRows={rows.map((row) => {
-                    const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
-                    const statuses = cells.map((cell) => cell.status)
-                    return [
-                      row.employee.name,
-                      statuses.filter((status) => status === 'present').length,
-                      statuses.filter((status) => status === 'empty').length,
-                      statuses.filter((status) => status === 'sick').length,
-                      statuses.filter((status) => status === 'leave').length,
-                      statuses.filter((status) => status === 'absent').length,
-                      cells.filter((cell) => cell.source === 'manual').length,
-                      cells.filter((cell) => cell.source === 'excel').length,
-                      cells.filter((cell) => cell.source === 'attendance').length,
-                    ]
-                  })}
-                />
-              </div>
-            </div>
-          </Card>
-          {lastImportSuccess ? (
-            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-              <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
-                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
-                  <Check className="size-3.5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-emerald-900">
-                    Import berhasil — {lastImportSuccess.matched} karyawan matched
-                  </p>
-                  <p className="text-xs text-emerald-700">
-                    {lastImportSuccess.filename}
-                    {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0
-                      ? ` · ${lastImportSuccess.unmatchedNames.length} karyawan tidak cocok`
-                      : ' · Semua karyawan teridentifikasi'}
-                  </p>
-                </div>
-                <button
-                  className="shrink-0 rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
-                  onClick={() => setLastImportSuccess(null)}
-                  aria-label="Tutup"
-                >
-                  ✕
-                </button>
-              </div>
-              {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0 ? (
-                <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="mb-2 text-xs font-semibold text-amber-900">
-                    {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan di
-                    sistem:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {lastImportSuccess.unmatchedNames.map((name) => (
-                      <span
-                        key={name}
-                        className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+        attendanceWorkspaceOpen ? (
+          <section className="space-y-3">
+            {selectedAttendancePlan ? (
+              <section className="space-y-3">
+                <Card className="surface-module-card border-border/60 overflow-hidden rounded-xl border bg-white p-0">
+                  <div className="bg-white">
+                    <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+                      <div>
+                        <p className="font-display text-foreground text-base font-semibold">
+                          Attendance · {site?.name ?? 'Site'} · {formatMonthPeriod(period)}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          Edit data attendance untuk site dan bulan yang dipilih dari tabel riwayat.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setAttendanceWorkspaceOpen(false)}
                       >
-                        {name}
+                        <ChevronLeft className="size-4" /> Kembali ke list
+                      </Button>
+                    </div>
+                    <div className="border-border/60 flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Import button with loading + success state */}
+                        <Button
+                          asChild
+                          size="sm"
+                          variant={lastImportSuccess ? 'default' : 'outline'}
+                          disabled={isFinalized || isImportingExcel}
+                          className={
+                            lastImportSuccess
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : ''
+                          }
+                        >
+                          <Label className="h-9 cursor-pointer px-3">
+                            {isImportingExcel ? (
+                              <>
+                                <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
+                              </>
+                            ) : lastImportSuccess ? (
+                              <>
+                                <Check className="mr-2 size-4" /> Berhasil (
+                                {lastImportSuccess.matched} matched)
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 size-4" /> Import Excel
+                              </>
+                            )}
+                            <Input
+                              disabled={isFinalized || isImportingExcel}
+                              className="hidden"
+                              type="file"
+                              accept=".xlsx,.xls,.csv"
+                              onChange={(event) => {
+                                void importAttendanceExcel(event.target.files?.[0] ?? null)
+                                event.currentTarget.value = ''
+                              }}
+                            />
+                          </Label>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void downloadAttendanceTemplate()}
+                        >
+                          <Download className="mr-2 size-4" /> Template Excel
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
+                          disabled={isSavingAttendance || siteId === 'all' || isFinalized}
+                          onClick={() => setClearExcelImportDialogOpen(true)}
+                        >
+                          <Trash2 className="mr-2 size-4" /> Hapus import
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-foreground text-background hover:bg-foreground/90"
+                          disabled={
+                            !isAttendanceDirty ||
+                            isSavingAttendance ||
+                            siteId === 'all' ||
+                            isFinalized
+                          }
+                          onClick={saveAttendanceReal}
+                        >
+                          <Save className="mr-2 size-4" />{' '}
+                          {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
+                        </Button>
+                        <TabExportActions
+                          tabTitle="Attendance"
+                          columns={[
+                            'Nama',
+                            'Masuk',
+                            'Belum',
+                            'Sakit',
+                            'Izin',
+                            'Alpha',
+                            'Manual',
+                            'Excel',
+                            'FaceLoc',
+                          ]}
+                          exportRows={rows.map((row) => {
+                            const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                            const statuses = cells.map((cell) => cell.status)
+                            return [
+                              row.employee.name,
+                              statuses.filter((status) => status === 'present').length,
+                              statuses.filter((status) => status === 'empty').length,
+                              statuses.filter((status) => status === 'sick').length,
+                              statuses.filter((status) => status === 'leave').length,
+                              statuses.filter((status) => status === 'absent').length,
+                              cells.filter((cell) => cell.source === 'manual').length,
+                              cells.filter((cell) => cell.source === 'excel').length,
+                              cells.filter((cell) => cell.source === 'attendance').length,
+                            ]
+                          })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+                {lastImportSuccess ? (
+                  <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+                    <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+                      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
+                        <Check className="size-3.5" />
                       </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-emerald-900">
+                          Import berhasil — {lastImportSuccess.matched} karyawan matched
+                        </p>
+                        <p className="text-xs text-emerald-700">
+                          {lastImportSuccess.filename}
+                          {lastImportSuccess.unmatchedNames &&
+                          lastImportSuccess.unmatchedNames.length > 0
+                            ? ` · ${lastImportSuccess.unmatchedNames.length} karyawan tidak cocok`
+                            : ' · Semua karyawan teridentifikasi'}
+                        </p>
+                      </div>
+                      <button
+                        className="shrink-0 rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
+                        onClick={() => setLastImportSuccess(null)}
+                        aria-label="Tutup"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {lastImportSuccess.unmatchedNames &&
+                    lastImportSuccess.unmatchedNames.length > 0 ? (
+                      <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="mb-2 text-xs font-semibold text-amber-900">
+                          {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan
+                          di sistem:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {lastImportSuccess.unmatchedNames.map((name) => (
+                            <span
+                              key={name}
+                              className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-[11px] text-amber-700">
+                          Pastikan nama di Excel sama persis dengan nama di Data Induk Karyawan,
+                          atau tambahkan alias di menu Setup.
+                        </p>
+                      </div>
+                    ) : null}
+                  </Card>
+                ) : null}
+                {holidays.length ? (
+                  <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">
+                    {holidays.map((holiday) => (
+                      <Badge
+                        key={`attendance-${holiday.date}`}
+                        variant="secondary"
+                        title={holiday.localName || holiday.name}
+                      >
+                        {holiday.day}: {holiday.localName || holiday.name}
+                      </Badge>
                     ))}
+                  </Card>
+                ) : null}
+                {attendanceImportPreview || attendanceSavedAt || isAttendanceDirty ? (
+                  <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-[0.8rem] px-3 py-2 text-xs">
+                    {isAttendanceDirty ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-200">
+                        Belum tersimpan
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                        Tersimpan
+                      </span>
+                    )}
+                    {attendanceSavedAt ? (
+                      <span className="text-muted-foreground">
+                        Last save: {new Date(attendanceSavedAt).toLocaleString('id-ID')}
+                      </span>
+                    ) : null}
+                    {attendanceImportPreview ? (
+                      <span className="text-muted-foreground">
+                        Preview: {attendanceImportPreview.matchedCount} matched ·{' '}
+                        {attendanceImportPreview.cellCount} cells ·{' '}
+                        {attendanceImportPreview.conflictCount} conflicts
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="mt-2 text-[11px] text-amber-700">
-                    Pastikan nama di Excel sama persis dengan nama di Data Induk Karyawan, atau
-                    tambahkan alias di menu Setup.
-                  </p>
-                </div>
-              ) : null}
-            </Card>
-          ) : null}
-          {holidays.length ? (
-            <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">
-              {holidays.map((holiday) => (
-                <Badge
-                  key={`attendance-${holiday.date}`}
-                  variant="secondary"
-                  title={holiday.localName || holiday.name}
-                >
-                  {holiday.day}: {holiday.localName || holiday.name}
-                </Badge>
-              ))}
-            </Card>
-          ) : null}
-          {attendanceImportPreview || attendanceSavedAt || isAttendanceDirty ? (
-            <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-[0.8rem] px-3 py-2 text-xs">
-              {isAttendanceDirty ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-200">
-                  Belum tersimpan
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                  Tersimpan
-                </span>
-              )}
-              {attendanceSavedAt ? (
-                <span className="text-muted-foreground">
-                  Last save: {new Date(attendanceSavedAt).toLocaleString('id-ID')}
-                </span>
-              ) : null}
-              {attendanceImportPreview ? (
-                <span className="text-muted-foreground">
-                  Preview: {attendanceImportPreview.matchedCount} matched ·{' '}
-                  {attendanceImportPreview.cellCount} cells ·{' '}
-                  {attendanceImportPreview.conflictCount} conflicts
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-sm font-semibold">
-                  <History className="mr-1.5 inline size-4" />
-                  Import History
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan ini.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void refreshAttendanceImportHistory()}
-              >
-                Refresh
-              </Button>
-            </div>
-            <div className="divide-border/30 divide-y">
-              {attendanceImportHistory.slice(0, 5).map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
-                >
-                  <div>
-                    <p className="font-medium">{item.filename}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {item.templateKind} · {item.sheetName || 'auto'} ·{' '}
-                      {new Date(item.createdAt).toLocaleString('id-ID')}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{item.status}</Badge>
-                    <span className="text-muted-foreground">
-                      {item.matchedCount} matched · {item.unmatchedCount} fix · {item.conflictCount}{' '}
-                      conflict
-                    </span>
+                ) : null}
+                <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+                  <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+                    <div>
+                      <p className="font-display text-foreground text-sm font-semibold">
+                        <History className="mr-1.5 inline size-4" />
+                        Import History
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan
+                        ini.
+                      </p>
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={isSavingAttendance || isFinalized || item.status !== 'applied'}
-                      onClick={() => rollbackAttendanceImport(item.id)}
+                      onClick={() => void refreshAttendanceImportHistory()}
                     >
-                      <Undo2 className="mr-2 size-4" />
-                      Rollback
+                      Refresh
                     </Button>
                   </div>
-                </div>
-              ))}
-              {!attendanceImportHistory.length ? (
-                <div className="text-muted-foreground px-4 py-6 text-center text-sm">
-                  Belum ada import history.
-                </div>
-              ) : null}
-            </div>
-          </Card>
-          {attendanceConflicts.length && !conflictsDismissed ? (
-            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
-                <div>
-                  <p className="font-semibold text-amber-900">
-                    {attendanceConflicts.length} Attendance Conflict
-                  </p>
-                  <p className="text-xs text-amber-700">
-                    Hadir di hari OFF/FB/Sakit/Libur — perlu resolusi.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowConflictsOnly((value) => !value)}
-                  >
-                    {showConflictsOnly ? 'Tampilkan semua' : 'Hanya konflik'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={isFinalized}
-                    onClick={clearAllAttendanceConflicts}
-                  >
-                    Clear semua attendance
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={isFinalized}
-                    onClick={markAllConflictSchedulesWorking}
-                  >
-                    Pakai attendance (mark working)
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setConflictsDismissed(true)}>
-                    Tutup
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                {attendanceConflicts.slice(0, 12).map((conflict) => (
-                  <div
-                    key={`${conflict.employeeId}-${conflict.day}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-50 p-2 text-sm"
-                  >
-                    <span>
-                      {conflict.employeeName} · day {conflict.day} · {conflict.scheduleCode} ·{' '}
-                      {attendanceStatusLabel(conflict.currentCell.status)}
-                    </span>
-                    <span className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isFinalized}
-                        onClick={() => clearAttendanceConflict(conflict.employeeId, conflict.day)}
+                  <div className="divide-border/30 divide-y">
+                    {attendanceImportHistory.slice(0, 5).map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
                       >
-                        Clear attendance
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isFinalized}
-                        onClick={() =>
-                          markConflictScheduleWorking(conflict.employeeId, conflict.day)
-                        }
-                      >
-                        Mark schedule working
-                      </Button>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ) : null}
-          <AttendanceRealBulkToolbar
-            enabled={multiSelectAttendance}
-            selectedCount={selectedAttendanceKeys.length}
-            onToggle={() => setMultiSelectAttendance((value) => !value)}
-            onSetPresent={() =>
-              applyBulkAttendance({ status: 'present', clockIn: '08:00', clockOut: '17:00' })
-            }
-            onSetSick={() => applyBulkAttendance({ status: 'sick', clockIn: '', clockOut: '' })}
-            onSetLeave={() => applyBulkAttendance({ status: 'leave', clockIn: '', clockOut: '' })}
-            onSetEmpty={() =>
-              applyBulkAttendance({ status: 'empty', clockIn: '', clockOut: '', note: '' })
-            }
-            onClear={clearAttendanceSelection}
-          />
-          {/* Switch View: Attendance / MSA / Meals / OVT */}
-          <div className="bg-surface-container-low flex items-center gap-1.5 rounded-[0.8rem] p-1">
-            {(
-              [
-                { key: 'attendance', label: 'Attendance' },
-                { key: 'lokasi', label: 'Lokasi Khusus' },
-                { key: 'msa', label: 'MSA' },
-                { key: 'meals', label: 'Meals' },
-                { key: 'ovt', label: 'Overtime' },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setAttendanceView(tab.key)}
-                className={`rounded-[0.6rem] px-3.5 py-1.5 text-xs font-semibold transition ${
-                  attendanceView === tab.key
-                    ? 'bg-foreground text-background shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-container-lowest'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div className="grid gap-3 md:grid-cols-5">
-            {[
-              [
-                'Masuk',
-                attendanceStats.present,
-                'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
-              ],
-              ['-', attendanceStats.empty, 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'],
-              ['Sakit', attendanceStats.sick, 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'],
-              ['Izin', attendanceStats.leave, 'bg-sky-50 text-sky-800 ring-1 ring-sky-200'],
-              ['Alpha', attendanceStats.absent, 'bg-rose-50 text-rose-800 ring-1 ring-rose-200'],
-            ].map(([label, value, className]) => (
-              <Card key={String(label)} className={`rounded-[1rem] border-0 p-4 ${className}`}>
-                <p className="text-xs font-semibold tracking-[0.14em] uppercase opacity-75">
-                  {label}
-                </p>
-                <p className="font-display mt-2 text-2xl font-semibold">{String(value)}</p>
-              </Card>
-            ))}
-          </div>
-          {/* Face Attendance Source Summary Bar (Req 7.1, 7.2, 7.5) */}
-          <AttendanceSummaryBar
-            faceDays={attendanceSourceStats.faceDays}
-            excelDays={attendanceSourceStats.excelDays}
-            manualDays={attendanceSourceStats.manualDays}
-            totalFilledDays={attendanceSourceStats.totalFilledDays}
-            facePercentage={attendanceSourceStats.facePercentage}
-          />
-          <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0">
-            {isImportingExcel ? (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-sm">
-                <RefreshCw className="text-primary size-8 animate-spin" />
-                <p className="text-foreground text-sm font-semibold">Memproses file Excel...</p>
-                <p className="text-muted-foreground text-xs">
-                  Mencocokkan nama karyawan dengan Fuse.js
-                </p>
-              </div>
-            ) : null}
-            {/* View title */}
-            {attendanceView !== 'attendance' ? (
-              <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
-                <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                  {attendanceView === 'msa' &&
-                    `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                  {attendanceView === 'lokasi' &&
-                    `TUNJANGAN LOKASI KHUSUS — ${siteConfig.lokasiKhususEnabled ? `Staff: Rp ${siteConfig.lokasiKhususRateStaff.toLocaleString('id-ID')}/hari | Non Staff: Rp ${siteConfig.lokasiKhususRateNonStaff.toLocaleString('id-ID')}/hari` : 'Tidak aktif'}`}
-                  {attendanceView === 'meals' &&
-                    `MEALS SUMMARY — Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')} (${siteConfig.mealsType})`}
-                  {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                </p>
-              </div>
-            ) : null}
-            <div className="max-w-full overflow-x-auto overflow-y-visible">
-              <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
-                <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left tracking-[0.12em] uppercase">
-                    <th className="bg-surface-container-low sticky left-0 z-30 w-[220px] min-w-[220px] px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
-                      Nama
-                    </th>
-                    {days.map((day) => {
-                      const holiday = holidaysByDay.get(day)
-                      const holidayName = holiday?.localName ?? holiday?.name
-                      return (
-                        <th
-                          key={day}
-                          title={holidayName}
-                          className={`w-[52px] min-w-[52px] px-1 py-3 text-center ${holiday ? 'bg-amber-100/70 ring-1 ring-amber-300 ring-inset' : ''}`}
-                        >
-                          {day}
-                          <br />
-                          <span className="tracking-normal normal-case">
-                            {weekdayLabel(period, day)}
+                        <div>
+                          <p className="font-medium">{item.filename}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {item.templateKind} · {item.sheetName || 'auto'} ·{' '}
+                            {new Date(item.createdAt).toLocaleString('id-ID')}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{item.status}</Badge>
+                          <span className="text-muted-foreground">
+                            {item.matchedCount} matched · {item.unmatchedCount} fix ·{' '}
+                            {item.conflictCount} conflict
                           </span>
-                          {holiday ? (
-                            <Badge
-                              variant="secondary"
-                              className="mt-1 px-1 text-[9px]"
-                              title={holidayName}
-                            >
-                              Libur
-                            </Badge>
-                          ) : null}
-                        </th>
-                      )
-                    })}
-                    {attendanceView !== 'attendance' ? (
-                      <th className="w-[80px] min-w-[80px] px-2 py-3 text-right">Total</th>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              isSavingAttendance || isFinalized || item.status !== 'applied'
+                            }
+                            onClick={() => rollbackAttendanceImport(item.id)}
+                          >
+                            <Undo2 className="mr-2 size-4" />
+                            Rollback
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {!attendanceImportHistory.length ? (
+                      <div className="text-muted-foreground px-4 py-6 text-center text-sm">
+                        Belum ada import history.
+                      </div>
                     ) : null}
+                  </div>
+                </Card>
+                {attendanceConflicts.length && !conflictsDismissed ? (
+                  <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
+                      <div>
+                        <p className="font-semibold text-amber-900">
+                          {attendanceConflicts.length} Attendance Conflict
+                        </p>
+                        <p className="text-xs text-amber-700">
+                          Hadir di hari OFF/FB/Sakit/Libur — perlu resolusi.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowConflictsOnly((value) => !value)}
+                        >
+                          {showConflictsOnly ? 'Tampilkan semua' : 'Hanya konflik'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isFinalized}
+                          onClick={clearAllAttendanceConflicts}
+                        >
+                          Clear semua attendance
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={isFinalized}
+                          onClick={markAllConflictSchedulesWorking}
+                        >
+                          Pakai attendance (mark working)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setConflictsDismissed(true)}
+                        >
+                          Tutup
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {attendanceConflicts.slice(0, 12).map((conflict) => (
+                        <div
+                          key={`${conflict.employeeId}-${conflict.day}`}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-50 p-2 text-sm"
+                        >
+                          <span>
+                            {conflict.employeeName} · day {conflict.day} · {conflict.scheduleCode} ·{' '}
+                            {attendanceStatusLabel(conflict.currentCell.status)}
+                          </span>
+                          <span className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isFinalized}
+                              onClick={() =>
+                                clearAttendanceConflict(conflict.employeeId, conflict.day)
+                              }
+                            >
+                              Clear attendance
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isFinalized}
+                              onClick={() =>
+                                markConflictScheduleWorking(conflict.employeeId, conflict.day)
+                              }
+                            >
+                              Mark schedule working
+                            </Button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                ) : null}
+                <AttendanceRealBulkToolbar
+                  enabled={multiSelectAttendance}
+                  selectedCount={selectedAttendanceKeys.length}
+                  onToggle={() => setMultiSelectAttendance((value) => !value)}
+                  onSetPresent={() =>
+                    applyBulkAttendance({
+                      status: 'present',
+                      clockIn: '08:00',
+                      clockOut: '17:00',
+                    })
+                  }
+                  onSetSick={() =>
+                    applyBulkAttendance({ status: 'sick', clockIn: '', clockOut: '' })
+                  }
+                  onSetLeave={() =>
+                    applyBulkAttendance({ status: 'leave', clockIn: '', clockOut: '' })
+                  }
+                  onSetEmpty={() =>
+                    applyBulkAttendance({ status: 'empty', clockIn: '', clockOut: '', note: '' })
+                  }
+                  onClear={clearAttendanceSelection}
+                />
+                {/* Switch View: Attendance / MSA / Meals / OVT */}
+                <div className="bg-surface-container-low flex items-center gap-1.5 rounded-[0.8rem] p-1">
+                  {(
+                    [
+                      { key: 'attendance', label: 'Attendance' },
+                      { key: 'lokasi', label: 'Lokasi Khusus' },
+                      { key: 'msa', label: 'MSA' },
+                      { key: 'meals', label: 'Meals' },
+                      { key: 'ovt', label: 'Overtime' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setAttendanceView(tab.key)}
+                      className={`rounded-[0.6rem] px-3.5 py-1.5 text-xs font-semibold transition ${
+                        attendanceView === tab.key
+                          ? 'bg-foreground text-background shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-surface-container-lowest'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[
+                    [
+                      'Masuk',
+                      attendanceStats.present,
+                      'border-emerald-200 bg-emerald-50 text-emerald-800',
+                    ],
+                    ['-', attendanceStats.empty, 'border-slate-200 bg-slate-50 text-slate-600'],
+                    ['Sakit', attendanceStats.sick, 'border-amber-200 bg-amber-50 text-amber-800'],
+                    ['Izin', attendanceStats.leave, 'border-sky-200 bg-sky-50 text-sky-800'],
+                    ['Alpha', attendanceStats.absent, 'border-rose-200 bg-rose-50 text-rose-800'],
+                  ].map(([label, value, className]) => (
+                    <div
+                      key={String(label)}
+                      className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${className}`}
+                    >
+                      <p className="text-xs font-semibold tracking-[0.14em] uppercase opacity-75">
+                        {label}
+                      </p>
+                      <p className="font-display text-xl font-semibold tabular-nums">
+                        {String(value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {/* Face Attendance Source Summary Bar (Req 7.1, 7.2, 7.5) */}
+                <AttendanceSummaryBar
+                  faceDays={attendanceSourceStats.faceDays}
+                  excelDays={attendanceSourceStats.excelDays}
+                  manualDays={attendanceSourceStats.manualDays}
+                  totalFilledDays={attendanceSourceStats.totalFilledDays}
+                  facePercentage={attendanceSourceStats.facePercentage}
+                />
+                <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0">
+                  {isImportingExcel ? (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white">
+                      <RefreshCw className="text-primary size-8 animate-spin" />
+                      <p className="text-foreground text-sm font-semibold">
+                        Memproses file Excel...
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Mencocokkan nama karyawan dengan Fuse.js
+                      </p>
+                    </div>
+                  ) : null}
+                  {/* View title */}
+                  {attendanceView !== 'attendance' ? (
+                    <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
+                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                        {attendanceView === 'msa' &&
+                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'lokasi' &&
+                          `TUNJANGAN LOKASI KHUSUS — ${siteConfig.lokasiKhususEnabled ? `Staff: Rp ${siteConfig.lokasiKhususRateStaff.toLocaleString('id-ID')}/hari | Non Staff: Rp ${siteConfig.lokasiKhususRateNonStaff.toLocaleString('id-ID')}/hari` : 'Tidak aktif'}`}
+                        {attendanceView === 'meals' &&
+                          `MEALS SUMMARY — Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')} (${siteConfig.mealsType})`}
+                        {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="max-w-full overflow-x-auto overflow-y-visible">
+                    <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
+                      <thead>
+                        <tr className="bg-surface-container-low text-muted-foreground text-left tracking-[0.12em] uppercase">
+                          <th className="bg-surface-container-low sticky left-0 z-30 w-[220px] min-w-[220px] px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
+                            Nama
+                          </th>
+                          {days.map((day) => {
+                            const holiday = holidaysByDay.get(day)
+                            const holidayName = holiday?.localName ?? holiday?.name
+                            return (
+                              <th
+                                key={day}
+                                title={holidayName}
+                                className={`w-[52px] min-w-[52px] px-1 py-3 text-center ${holiday ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
+                              >
+                                {day}
+                                <br />
+                                <span className="tracking-normal normal-case">
+                                  {weekdayLabel(period, day)}
+                                </span>
+                                {holiday ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="mt-1 px-1 text-[9px]"
+                                    title={holidayName}
+                                  >
+                                    Libur
+                                  </Badge>
+                                ) : null}
+                              </th>
+                            )
+                          })}
+                          {attendanceView !== 'attendance' ? (
+                            <th className="w-[80px] min-w-[80px] px-2 py-3 text-right">Total</th>
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          // Group by Department > Section
+                          const grouped = new Map<
+                            string,
+                            Map<string, typeof displayedAttendanceRows>
+                          >()
+                          for (const row of displayedAttendanceRows) {
+                            const dept = row.employee.department || 'Tanpa Departemen'
+                            const section = row.employee.section || row.employee.role || 'Umum'
+                            if (!grouped.has(dept)) grouped.set(dept, new Map())
+                            const deptMap = grouped.get(dept)!
+                            if (!deptMap.has(section)) deptMap.set(section, [])
+                            deptMap.get(section)!.push(row)
+                          }
+                          return Array.from(grouped.entries()).map(([dept, sections]) => (
+                            <React.Fragment key={dept}>
+                              <tr className="bg-slate-100">
+                                <td
+                                  colSpan={days.length + 1}
+                                  className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
+                                >
+                                  {dept}
+                                </td>
+                              </tr>
+                              {Array.from(sections.entries()).map(([section, sectionRows]) => (
+                                <React.Fragment key={`${dept}-${section}`}>
+                                  <tr className="bg-surface-container-low">
+                                    <td
+                                      colSpan={days.length + 1}
+                                      className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
+                                    >
+                                      {section}{' '}
+                                      <span className="font-normal">({sectionRows.length})</span>
+                                    </td>
+                                  </tr>
+                                  {sectionRows.map((row) => (
+                                    <tr
+                                      key={row.employee.id}
+                                      className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                    >
+                                      <td
+                                        className={`text-foreground sticky left-0 z-20 min-w-[220px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <div>
+                                            {row.employee.name}
+                                            <p className="text-muted-foreground text-[10px] font-normal">
+                                              {row.employee.section || row.employee.role}
+                                            </p>
+                                          </div>
+                                          <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                            <button
+                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              title="Generate Overtime Record PDF"
+                                              onClick={() =>
+                                                generateEmployeeOvertimePdf(row.employee)
+                                              }
+                                            >
+                                              OT
+                                            </button>
+                                            <button
+                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              title="Generate Site Allowance PDF"
+                                              onClick={() =>
+                                                generateEmployeeAllowancePdf(row.employee)
+                                              }
+                                            >
+                                              MSA
+                                            </button>
+                                            <button
+                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              title="Generate Daily Activity PDF"
+                                              onClick={() =>
+                                                generateEmployeeDailyActivityPdf(row.employee)
+                                              }
+                                            >
+                                              DA
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      {days.map((day) => {
+                                        const cell = getAttendanceCell(row.employee.id, day)
+                                        const scheduleCode = row.schedule[day - 1] as string
+                                        const holiday = holidaysByDay.get(day)
+                                        const holidayName = holiday?.localName ?? holiday?.name
+                                        const isHolidayDay = Boolean(holiday)
+                                        const isOff =
+                                          scheduleCode === 'OFF' ||
+                                          scheduleCode === 'FB' ||
+                                          scheduleCode === 'Libur' ||
+                                          scheduleCode === 'Sakit'
+                                        const staff = isStaffRole(row.employee.role)
+
+                                        // MSA/Meals/OVT view
+                                        if (attendanceView !== 'attendance') {
+                                          let cellValue: string | number = ''
+                                          let cellBg = ''
+                                          // Check if this day is in a Field Break period (14+ days no attendance)
+                                          const isFieldBreakDay =
+                                            fieldBreakDaysByEmployee
+                                              .get(row.employee.id)
+                                              ?.has(day) ?? false
+
+                                          // Logika tunjangan:
+                                          // - OFF roster / Libur nasional = dapat (tidak perlu absen)
+                                          // - Hadir (present) = dapat
+                                          // - Izin/Sakit/Alpha = tidak dapat
+                                          // - Hari kerja kosong (bukan libur nasional) = tidak dapat
+                                          // - Field Break period = tidak dapat
+                                          const isRosterOff =
+                                            scheduleCode === 'OFF' || scheduleCode === 'Libur'
+                                          const isNationalHoliday = Boolean(isHolidayDay)
+                                          const isWorkDay = !isRosterOff
+                                          const isAbsent =
+                                            cell.status === 'leave' ||
+                                            cell.status === 'sick' ||
+                                            cell.status === 'absent'
+                                          // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
+                                          // 'off' status = manual OFF, treated like roster OFF (not empty workday)
+                                          const isEmptyWorkDay =
+                                            isWorkDay &&
+                                            !isNationalHoliday &&
+                                            cell.status === 'empty'
+                                          const noAllowance = isAbsent || isEmptyWorkDay
+                                          const absentLabel =
+                                            cell.status === 'leave'
+                                              ? 'Izin'
+                                              : cell.status === 'sick'
+                                                ? 'Sakit'
+                                                : cell.status === 'absent'
+                                                  ? 'Alpha'
+                                                  : '-'
+
+                                          if (attendanceView === 'msa') {
+                                            if (isFieldBreakDay && cell.status !== 'present') {
+                                              cellValue = 'FB'
+                                              cellBg = 'bg-purple-50 text-purple-700'
+                                            } else if (noAllowance) {
+                                              cellValue = absentLabel
+                                              cellBg = 'bg-rose-50 text-rose-700'
+                                            } else {
+                                              const msaRate =
+                                                siteConfig.msaType === 'none'
+                                                  ? 0
+                                                  : siteConfig.msaType === 'same-all'
+                                                    ? rate.msaNonStaff
+                                                    : staff
+                                                      ? rate.msaStaff
+                                                      : rate.msaNonStaff
+                                              cellValue = msaRate
+                                              cellBg = isNationalHoliday
+                                                ? 'bg-amber-50 text-foreground'
+                                                : isRosterOff
+                                                  ? 'bg-slate-50 text-foreground'
+                                                  : msaRate > 0
+                                                    ? 'bg-white text-foreground'
+                                                    : 'bg-slate-50 text-muted-foreground'
+                                            }
+                                          } else if (attendanceView === 'lokasi') {
+                                            if (!siteConfig.lokasiKhususEnabled) {
+                                              cellValue = '-'
+                                              cellBg = 'bg-slate-50 text-muted-foreground'
+                                            } else if (
+                                              isFieldBreakDay &&
+                                              cell.status !== 'present'
+                                            ) {
+                                              cellValue = 'FB'
+                                              cellBg = 'bg-purple-50 text-purple-700'
+                                            } else if (noAllowance) {
+                                              cellValue = absentLabel
+                                              cellBg = 'bg-rose-50 text-rose-700'
+                                            } else {
+                                              cellValue = staff
+                                                ? siteConfig.lokasiKhususRateStaff
+                                                : siteConfig.lokasiKhususRateNonStaff
+                                              cellBg = isNationalHoliday
+                                                ? 'bg-amber-50 text-foreground'
+                                                : isRosterOff
+                                                  ? 'bg-slate-50 text-foreground'
+                                                  : 'bg-white text-foreground'
+                                            }
+                                          } else if (attendanceView === 'meals') {
+                                            if (isFieldBreakDay && cell.status !== 'present') {
+                                              cellValue = 'FB'
+                                              cellBg = 'bg-purple-50 text-purple-700'
+                                            } else if (noAllowance) {
+                                              cellValue = absentLabel
+                                              cellBg = 'bg-rose-50 text-rose-700'
+                                            } else {
+                                              const mealsRate =
+                                                siteConfig.mealsType === 'none'
+                                                  ? 0
+                                                  : staff
+                                                    ? rate.mealsStaff
+                                                    : rate.mealsNonStaff
+                                              cellValue = mealsRate
+                                              cellBg = isNationalHoliday
+                                                ? 'bg-amber-50 text-foreground'
+                                                : isRosterOff
+                                                  ? 'bg-slate-50 text-foreground'
+                                                  : mealsRate > 0
+                                                    ? 'bg-white text-foreground'
+                                                    : 'bg-slate-50 text-muted-foreground'
+                                            }
+                                          } else if (attendanceView === 'ovt') {
+                                            // Overtime hanya untuk Non Staff
+                                            if (staff) {
+                                              cellValue = '-'
+                                              cellBg = 'bg-slate-50 text-muted-foreground'
+                                            } else if (isOff || cell.status !== 'present') {
+                                              cellValue = isOff ? scheduleCode : ''
+                                              cellBg = isOff
+                                                ? 'bg-rose-50 text-rose-700'
+                                                : isHolidayDay
+                                                  ? 'bg-amber-50 text-amber-700'
+                                                  : ''
+                                            } else {
+                                              const clockInMin = cell.clockIn
+                                                ? Number(cell.clockIn.split(':')[0]) * 60 +
+                                                  Number(cell.clockIn.split(':')[1])
+                                                : null
+                                              const clockOutMin = cell.clockOut
+                                                ? Number(cell.clockOut.split(':')[0]) * 60 +
+                                                  Number(cell.clockOut.split(':')[1])
+                                                : null
+                                              if (clockInMin != null && clockOutMin != null) {
+                                                const worked =
+                                                  (clockOutMin >= clockInMin
+                                                    ? clockOutMin - clockInMin
+                                                    : clockOutMin + 1440 - clockInMin) / 60
+                                                const ot = roundOvertimeHours(
+                                                  Math.max(0, worked - 5)
+                                                )
+                                                cellValue = ot > 0 ? ot : ''
+                                                cellBg =
+                                                  ot > 0
+                                                    ? 'bg-white text-foreground font-semibold'
+                                                    : ''
+                                              }
+                                            }
+                                          }
+
+                                          return (
+                                            <td
+                                              key={day}
+                                              className={`w-[52px] min-w-[52px] px-0.5 py-1.5 text-center text-[10px] ${cellBg} ${isHolidayDay ? 'bg-amber-50' : ''}`}
+                                              title={
+                                                holidayName || `${scheduleCode} · ${cell.status}`
+                                              }
+                                            >
+                                              {cellValue}
+                                            </td>
+                                          )
+                                        }
+                                        // Normal attendance view
+                                        const isSelected = selectedAttendanceKeys.includes(
+                                          attendanceKey(row.employee.id, day)
+                                        )
+                                        const isConflict =
+                                          cell.status === 'present' &&
+                                          ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
+                                        return (
+                                          <td
+                                            key={day}
+                                            className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
+                                            title={holidayName}
+                                          >
+                                            <button
+                                              className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${cell.isLatePending ? 'bg-purple-100 text-purple-950 ring-1 ring-purple-300' : isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                              onClick={() =>
+                                                multiSelectAttendance
+                                                  ? toggleAttendanceSelection(row.employee.id, day)
+                                                  : setSelectedAttendanceCell({
+                                                      employeeId: row.employee.id,
+                                                      day,
+                                                    })
+                                              }
+                                              onDoubleClick={() =>
+                                                cycleAttendanceCell(row.employee.id, day)
+                                              }
+                                              title={
+                                                isConflict
+                                                  ? `Conflict schedule ${scheduleCode} vs attendance masuk`
+                                                  : holidayName ||
+                                                    cell.note ||
+                                                    attendanceStatusLabel(cell.status)
+                                              }
+                                            >
+                                              {isConflict ? (
+                                                <span className="absolute top-1 right-1 text-[10px]">
+                                                  !
+                                                </span>
+                                              ) : null}
+                                              {isHolidayDay ? (
+                                                <span className="absolute top-1 right-1 text-[9px]">
+                                                  L
+                                                </span>
+                                              ) : null}
+                                              <span>
+                                                {cell.isLatePending
+                                                  ? 'Late'
+                                                  : attendanceStatusLabel(cell.status)}
+                                              </span>
+                                              {cell.clockIn || cell.clockOut ? (
+                                                <span className="mt-1 block font-mono text-[10px]">
+                                                  {cell.clockIn || '--:--'}-
+                                                  {cell.clockOut || '--:--'}
+                                                </span>
+                                              ) : null}
+                                              {cell.status !== 'empty' && cell.source ? (
+                                                <span className="absolute right-1 bottom-1">
+                                                  <AttendanceSourceIndicator
+                                                    source={cell.source}
+                                                    timestamp={
+                                                      cell.clockIn
+                                                        ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
+                                                        : undefined
+                                                    }
+                                                  />
+                                                </span>
+                                              ) : null}
+                                              {(() => {
+                                                const activityKey = `${row.employee.id}-${period}-${day}`
+                                                const dayActivities =
+                                                  activitiesByEmployeeDay.get(activityKey) || []
+                                                if (dayActivities.length === 0) return null
+                                                return (
+                                                  <div
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setSelectedActivityCell({
+                                                        employeeId: row.employee.id,
+                                                        day,
+                                                      })
+                                                    }}
+                                                    className="absolute bottom-1 left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
+                                                    title={`${dayActivities.length} aktivitas`}
+                                                  >
+                                                    {dayActivities.length}
+                                                  </div>
+                                                )
+                                              })()}
+                                            </button>
+                                          </td>
+                                        )
+                                      })}
+                                      {/* Total column for MSA/Meals/OVT views */}
+                                      {attendanceView !== 'attendance'
+                                        ? (() => {
+                                            const staff = isStaffRole(row.employee.role)
+                                            let total = 0
+                                            for (const day of days) {
+                                              const cell = getAttendanceCell(row.employee.id, day)
+                                              const code = row.schedule[day - 1] as string
+                                              const isOff2 =
+                                                code === 'OFF' ||
+                                                code === 'FB' ||
+                                                code === 'Libur' ||
+                                                code === 'Sakit'
+                                              const hol = holidaysByDay.get(day)
+
+                                              // Logika tunjangan summary:
+                                              // - OFF roster / Libur nasional = dapat
+                                              // - Hadir (present) = dapat
+                                              // - Izin/Sakit/Alpha/Empty hari kerja = tidak dapat
+                                              // - Field Break = tidak dapat
+                                              const isRosterOff2 =
+                                                code === 'OFF' || code === 'Libur'
+                                              const isNationalHoliday2 = Boolean(hol)
+                                              const isWorkDay2 = !isRosterOff2
+                                              const isAbsent2 =
+                                                cell.status === 'leave' ||
+                                                cell.status === 'sick' ||
+                                                cell.status === 'absent'
+                                              const isEmptyWorkDay2 =
+                                                isWorkDay2 &&
+                                                !isNationalHoliday2 &&
+                                                cell.status === 'empty'
+                                              const noAllowance2 = isAbsent2 || isEmptyWorkDay2
+
+                                              if (attendanceView === 'lokasi') {
+                                                if (siteConfig.lokasiKhususEnabled) {
+                                                  const isFbPeriodLokasi =
+                                                    fieldBreakDaysByEmployee
+                                                      .get(row.employee.id)
+                                                      ?.has(day) ?? false
+                                                  if (!isFbPeriodLokasi && !noAllowance2) {
+                                                    const isStaffSummary = isStaffRole(
+                                                      row.employee.role
+                                                    )
+                                                    total += isStaffSummary
+                                                      ? siteConfig.lokasiKhususRateStaff
+                                                      : siteConfig.lokasiKhususRateNonStaff
+                                                  }
+                                                }
+                                                continue
+                                              }
+
+                                              // Skip Field Break days for MSA/Meals
+                                              const isFbPeriod =
+                                                fieldBreakDaysByEmployee
+                                                  .get(row.employee.id)
+                                                  ?.has(day) ?? false
+                                              if (
+                                                isFbPeriod &&
+                                                (attendanceView === 'msa' ||
+                                                  attendanceView === 'meals')
+                                              )
+                                                continue
+
+                                              // Skip if no allowance (izin/sakit/alpha/empty workday)
+                                              if (
+                                                noAllowance2 &&
+                                                (attendanceView === 'msa' ||
+                                                  attendanceView === 'meals')
+                                              )
+                                                continue
+
+                                              // OVT: only count present days
+                                              if (
+                                                attendanceView === 'ovt' &&
+                                                (isOff2 || hol || cell.status !== 'present')
+                                              )
+                                                continue
+                                              if (attendanceView === 'msa') {
+                                                total +=
+                                                  siteConfig.msaType === 'none'
+                                                    ? 0
+                                                    : siteConfig.msaType === 'same-all'
+                                                      ? rate.msaNonStaff
+                                                      : staff
+                                                        ? rate.msaStaff
+                                                        : rate.msaNonStaff
+                                              } else if (attendanceView === 'meals') {
+                                                total +=
+                                                  siteConfig.mealsType === 'none'
+                                                    ? 0
+                                                    : staff
+                                                      ? rate.mealsStaff
+                                                      : rate.mealsNonStaff
+                                              } else {
+                                                // OVT only for non-staff
+                                                if (!staff) {
+                                                  const ci = cell.clockIn
+                                                    ? Number(cell.clockIn.split(':')[0]) * 60 +
+                                                      Number(cell.clockIn.split(':')[1])
+                                                    : null
+                                                  const co = cell.clockOut
+                                                    ? Number(cell.clockOut.split(':')[0]) * 60 +
+                                                      Number(cell.clockOut.split(':')[1])
+                                                    : null
+                                                  if (ci != null && co != null) {
+                                                    const w =
+                                                      (co >= ci ? co - ci : co + 1440 - ci) / 60
+                                                    total += Math.max(0, w - 5)
+                                                  }
+                                                }
+                                              }
+                                            }
+                                            return (
+                                              <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
+                                                {attendanceView === 'ovt'
+                                                  ? roundOvertimeHours(total)
+                                                  : `Rp ${total.toLocaleString('id-ID')}`}
+                                              </td>
+                                            )
+                                          })()
+                                        : null}
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
+                              ))}
+                            </React.Fragment>
+                          ))
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+                <div className="bg-surface-container-low text-muted-foreground rounded-[0.8rem] px-4 py-3 text-xs">
+                  <span className="text-foreground font-semibold">Input manual cepat:</span> Klik
+                  cell untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin → Alpha
+                  → -. Excel mendukung kolom{' '}
+                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+                    Nama
+                  </code>
+                  ,{' '}
+                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+                    D1..D31
+                  </code>
+                  ,{' '}
+                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+                    Masuk 1
+                  </code>
+                  ,{' '}
+                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+                    Pulang 1
+                  </code>
+                  .
+                </div>
+              </section>
+            ) : (
+              <Card className="surface-module-card rounded-[1.1rem] border-0 p-8 text-center">
+                <CalendarDays className="text-muted-foreground mx-auto size-8" aria-hidden="true" />
+                <p className="font-display text-foreground mt-3 text-lg font-semibold">
+                  Schedule V2 belum aktif
+                </p>
+                <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
+                  Aktifkan Schedule V2 untuk periode ini terlebih dahulu agar attendance dapat
+                  diisi.
+                </p>
+              </Card>
+            )}
+          </section>
+        ) : (
+          <>
+            <MinimalTableShell
+              label="Attendance"
+              title="Attendance"
+              description="Kelola attendance per site dan bulan dari Schedule V2 yang sudah aktif."
+              searchPlaceholder="Cari site atau bulan..."
+              showImport={false}
+              dateFilter={false}
+              filters={
+                <>
+                  <select
+                    data-table-filter-key="site"
+                    className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
+                  >
+                    <option value="">Semua site</option>
+                    {sites.map((item) => (
+                      <option key={item.id} value={item.name}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    type="month"
+                    data-table-filter-key="period"
+                    className="h-9 w-[160px]"
+                    aria-label="Filter bulan"
+                  />
+                </>
+              }
+              primaryAction={
+                <Button
+                  size="dense"
+                  onClick={() => {
+                    setAttendanceCreateSiteId(String(attendanceHistoryRows[0]?.plan.siteId ?? ''))
+                    setAttendanceCreatePeriod(currentMonthPeriod)
+                    setAttendanceCreateOpen(true)
+                  }}
+                >
+                  <CalendarDays className="size-4" /> Tambah Attendance
+                </Button>
+              }
+            >
+              <table className="w-full min-w-[860px] text-sm">
+                <thead>
+                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                    <th className="px-4 py-3 font-medium">Site</th>
+                    <th className="px-4 py-3 font-medium">Bulan</th>
+                    <th className="px-4 py-3 font-medium">Schedule</th>
+                    <th className="px-4 py-3 font-medium">Attendance</th>
+                    <th className="px-4 py-3 font-medium">Terakhir diubah</th>
+                    <th className="px-4 py-3 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Group by Department > Section
-                    const grouped = new Map<string, Map<string, typeof displayedAttendanceRows>>()
-                    for (const row of displayedAttendanceRows) {
-                      const dept = row.employee.department || 'Tanpa Departemen'
-                      const section = row.employee.section || row.employee.role || 'Umum'
-                      if (!grouped.has(dept)) grouped.set(dept, new Map())
-                      const deptMap = grouped.get(dept)!
-                      if (!deptMap.has(section)) deptMap.set(section, [])
-                      deptMap.get(section)!.push(row)
-                    }
-                    return Array.from(grouped.entries()).map(([dept, sections]) => (
-                      <React.Fragment key={dept}>
-                        <tr className="bg-slate-100">
-                          <td
-                            colSpan={days.length + 1}
-                            className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
+                  {attendanceHistoryRows.map(({ plan, site: historySite, status }) => (
+                    <tr
+                      key={`${plan.siteId}-${plan.period}`}
+                      data-filter-site={historySite?.name ?? ''}
+                      data-filter-period={plan.period}
+                      className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
+                    >
+                      <td className="px-4 py-3 font-semibold">
+                        {historySite?.name ?? `Site ${plan.siteId}`}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">{formatMonthPeriod(plan.period)}</td>
+                      <td className="px-4 py-3">
+                        <Badge>Aktif</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant={status?.attendanceStatus === 'saved' ? 'default' : 'secondary'}
+                        >
+                          {status?.attendanceStatus === 'saved' ? 'Tersimpan' : 'Belum diisi'}
+                        </Badge>
+                      </td>
+                      <td className="text-muted-foreground px-4 py-3">
+                        {status?.lastSavedAt
+                          ? new Date(status.lastSavedAt).toLocaleString('id-ID')
+                          : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
+                            aria-label="Lihat attendance"
+                            title="Lihat attendance"
                           >
-                            {dept}
-                          </td>
-                        </tr>
-                        {Array.from(sections.entries()).map(([section, sectionRows]) => (
-                          <React.Fragment key={`${dept}-${section}`}>
-                            <tr className="bg-surface-container-low/60">
-                              <td
-                                colSpan={days.length + 1}
-                                className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
-                              >
-                                {section}{' '}
-                                <span className="font-normal">({sectionRows.length})</span>
-                              </td>
-                            </tr>
-                            {sectionRows.map((row) => (
-                              <tr
-                                key={row.employee.id}
-                                className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50/40' : ''}`}
-                              >
-                                <td
-                                  className={`text-foreground sticky left-0 z-20 min-w-[220px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50/40' : 'bg-white'}`}
-                                >
-                                  <div className="flex items-center justify-between gap-1">
-                                    <div>
-                                      {row.employee.name}
-                                      <p className="text-muted-foreground text-[10px] font-normal">
-                                        {row.employee.section || row.employee.role}
-                                      </p>
-                                    </div>
-                                    <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
-                                      <button
-                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                        title="Generate Overtime Record PDF"
-                                        onClick={() => generateEmployeeOvertimePdf(row.employee)}
-                                      >
-                                        OT
-                                      </button>
-                                      <button
-                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                        title="Generate Site Allowance PDF"
-                                        onClick={() => generateEmployeeAllowancePdf(row.employee)}
-                                      >
-                                        MSA
-                                      </button>
-                                      <button
-                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                        title="Generate Daily Activity PDF"
-                                        onClick={() =>
-                                          generateEmployeeDailyActivityPdf(row.employee)
-                                        }
-                                      >
-                                        DA
-                                      </button>
-                                    </div>
-                                  </div>
-                                </td>
-                                {days.map((day) => {
-                                  const cell = getAttendanceCell(row.employee.id, day)
-                                  const scheduleCode = row.schedule[day - 1] as string
-                                  const holiday = holidaysByDay.get(day)
-                                  const holidayName = holiday?.localName ?? holiday?.name
-                                  const isHolidayDay = Boolean(holiday)
-                                  const isOff =
-                                    scheduleCode === 'OFF' ||
-                                    scheduleCode === 'FB' ||
-                                    scheduleCode === 'Libur' ||
-                                    scheduleCode === 'Sakit'
-                                  const staff = isStaffRole(row.employee.role)
-
-                                  // MSA/Meals/OVT view
-                                  if (attendanceView !== 'attendance') {
-                                    let cellValue: string | number = ''
-                                    let cellBg = ''
-                                    // Check if this day is in a Field Break period (14+ days no attendance)
-                                    const isFieldBreakDay =
-                                      fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ??
-                                      false
-
-                                    // Logika tunjangan:
-                                    // - OFF roster / Libur nasional = dapat (tidak perlu absen)
-                                    // - Hadir (present) = dapat
-                                    // - Izin/Sakit/Alpha = tidak dapat
-                                    // - Hari kerja kosong (bukan libur nasional) = tidak dapat
-                                    // - Field Break period = tidak dapat
-                                    const isRosterOff =
-                                      scheduleCode === 'OFF' || scheduleCode === 'Libur'
-                                    const isNationalHoliday = Boolean(isHolidayDay)
-                                    const isWorkDay = !isRosterOff
-                                    const isAbsent =
-                                      cell.status === 'leave' ||
-                                      cell.status === 'sick' ||
-                                      cell.status === 'absent'
-                                    // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
-                                    // 'off' status = manual OFF, treated like roster OFF (not empty workday)
-                                    const isEmptyWorkDay =
-                                      isWorkDay && !isNationalHoliday && cell.status === 'empty'
-                                    const noAllowance = isAbsent || isEmptyWorkDay
-                                    const absentLabel =
-                                      cell.status === 'leave'
-                                        ? 'Izin'
-                                        : cell.status === 'sick'
-                                          ? 'Sakit'
-                                          : cell.status === 'absent'
-                                            ? 'Alpha'
-                                            : '-'
-
-                                    if (attendanceView === 'msa') {
-                                      if (isFieldBreakDay && cell.status !== 'present') {
-                                        cellValue = 'FB'
-                                        cellBg = 'bg-purple-50 text-purple-700'
-                                      } else if (noAllowance) {
-                                        cellValue = absentLabel
-                                        cellBg = 'bg-rose-50 text-rose-700'
-                                      } else {
-                                        const msaRate =
-                                          siteConfig.msaType === 'none'
-                                            ? 0
-                                            : siteConfig.msaType === 'same-all'
-                                              ? rate.msaNonStaff
-                                              : staff
-                                                ? rate.msaStaff
-                                                : rate.msaNonStaff
-                                        cellValue = msaRate
-                                        cellBg = isNationalHoliday
-                                          ? 'bg-amber-50 text-foreground'
-                                          : isRosterOff
-                                            ? 'bg-slate-50 text-foreground'
-                                            : msaRate > 0
-                                              ? 'bg-white text-foreground'
-                                              : 'bg-slate-50 text-muted-foreground'
-                                      }
-                                    } else if (attendanceView === 'lokasi') {
-                                      if (!siteConfig.lokasiKhususEnabled) {
-                                        cellValue = '-'
-                                        cellBg = 'bg-slate-50 text-muted-foreground'
-                                      } else if (isFieldBreakDay && cell.status !== 'present') {
-                                        cellValue = 'FB'
-                                        cellBg = 'bg-purple-50 text-purple-700'
-                                      } else if (noAllowance) {
-                                        cellValue = absentLabel
-                                        cellBg = 'bg-rose-50 text-rose-700'
-                                      } else {
-                                        cellValue = staff
-                                          ? siteConfig.lokasiKhususRateStaff
-                                          : siteConfig.lokasiKhususRateNonStaff
-                                        cellBg = isNationalHoliday
-                                          ? 'bg-amber-50 text-foreground'
-                                          : isRosterOff
-                                            ? 'bg-slate-50 text-foreground'
-                                            : 'bg-white text-foreground'
-                                      }
-                                    } else if (attendanceView === 'meals') {
-                                      if (isFieldBreakDay && cell.status !== 'present') {
-                                        cellValue = 'FB'
-                                        cellBg = 'bg-purple-50 text-purple-700'
-                                      } else if (noAllowance) {
-                                        cellValue = absentLabel
-                                        cellBg = 'bg-rose-50 text-rose-700'
-                                      } else {
-                                        const mealsRate =
-                                          siteConfig.mealsType === 'none'
-                                            ? 0
-                                            : staff
-                                              ? rate.mealsStaff
-                                              : rate.mealsNonStaff
-                                        cellValue = mealsRate
-                                        cellBg = isNationalHoliday
-                                          ? 'bg-amber-50 text-foreground'
-                                          : isRosterOff
-                                            ? 'bg-slate-50 text-foreground'
-                                            : mealsRate > 0
-                                              ? 'bg-white text-foreground'
-                                              : 'bg-slate-50 text-muted-foreground'
-                                      }
-                                    } else if (attendanceView === 'ovt') {
-                                      // Overtime hanya untuk Non Staff
-                                      if (staff) {
-                                        cellValue = '-'
-                                        cellBg = 'bg-slate-50 text-muted-foreground'
-                                      } else if (isOff || cell.status !== 'present') {
-                                        cellValue = isOff ? scheduleCode : ''
-                                        cellBg = isOff
-                                          ? 'bg-rose-50 text-rose-700'
-                                          : isHolidayDay
-                                            ? 'bg-amber-50 text-amber-700'
-                                            : ''
-                                      } else {
-                                        const clockInMin = cell.clockIn
-                                          ? Number(cell.clockIn.split(':')[0]) * 60 +
-                                            Number(cell.clockIn.split(':')[1])
-                                          : null
-                                        const clockOutMin = cell.clockOut
-                                          ? Number(cell.clockOut.split(':')[0]) * 60 +
-                                            Number(cell.clockOut.split(':')[1])
-                                          : null
-                                        if (clockInMin != null && clockOutMin != null) {
-                                          const worked =
-                                            (clockOutMin >= clockInMin
-                                              ? clockOutMin - clockInMin
-                                              : clockOutMin + 1440 - clockInMin) / 60
-                                          const ot = roundOvertimeHours(Math.max(0, worked - 5))
-                                          cellValue = ot > 0 ? ot : ''
-                                          cellBg =
-                                            ot > 0 ? 'bg-white text-foreground font-semibold' : ''
-                                        }
-                                      }
-                                    }
-
-                                    return (
-                                      <td
-                                        key={day}
-                                        className={`w-[52px] min-w-[52px] px-0.5 py-1.5 text-center text-[10px] ${cellBg} ${isHolidayDay ? 'bg-amber-50' : ''}`}
-                                        title={holidayName || `${scheduleCode} · ${cell.status}`}
-                                      >
-                                        {cellValue}
-                                      </td>
-                                    )
-                                  }
-                                  // Normal attendance view
-                                  const isSelected = selectedAttendanceKeys.includes(
-                                    attendanceKey(row.employee.id, day)
-                                  )
-                                  const isConflict =
-                                    cell.status === 'present' &&
-                                    ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
-                                  return (
-                                    <td
-                                      key={day}
-                                      className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
-                                      title={holidayName}
-                                    >
-                                      <button
-                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${cell.isLatePending ? 'bg-purple-100 text-purple-950 ring-1 ring-purple-300' : isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
-                                        onClick={() =>
-                                          multiSelectAttendance
-                                            ? toggleAttendanceSelection(row.employee.id, day)
-                                            : setSelectedAttendanceCell({
-                                                employeeId: row.employee.id,
-                                                day,
-                                              })
-                                        }
-                                        onDoubleClick={() =>
-                                          cycleAttendanceCell(row.employee.id, day)
-                                        }
-                                        title={
-                                          isConflict
-                                            ? `Conflict schedule ${scheduleCode} vs attendance masuk`
-                                            : holidayName ||
-                                              cell.note ||
-                                              attendanceStatusLabel(cell.status)
-                                        }
-                                      >
-                                        {isConflict ? (
-                                          <span className="absolute top-1 right-1 text-[10px]">
-                                            !
-                                          </span>
-                                        ) : null}
-                                        {isHolidayDay ? (
-                                          <span className="absolute top-1 right-1 text-[9px]">
-                                            L
-                                          </span>
-                                        ) : null}
-                                        <span>
-                                          {cell.isLatePending
-                                            ? 'Late'
-                                            : attendanceStatusLabel(cell.status)}
-                                        </span>
-                                        {cell.clockIn || cell.clockOut ? (
-                                          <span className="mt-1 block font-mono text-[10px]">
-                                            {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
-                                          </span>
-                                        ) : null}
-                                        {cell.status !== 'empty' && cell.source ? (
-                                          <span className="absolute right-1 bottom-1">
-                                            <AttendanceSourceIndicator
-                                              source={cell.source}
-                                              timestamp={
-                                                cell.clockIn
-                                                  ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
-                                                  : undefined
-                                              }
-                                            />
-                                          </span>
-                                        ) : null}
-                                        {(() => {
-                                          const activityKey = `${row.employee.id}-${period}-${day}`
-                                          const dayActivities =
-                                            activitiesByEmployeeDay.get(activityKey) || []
-                                          if (dayActivities.length === 0) return null
-                                          return (
-                                            <div
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                setSelectedActivityCell({
-                                                  employeeId: row.employee.id,
-                                                  day,
-                                                })
-                                              }}
-                                              className="absolute bottom-1 left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
-                                              title={`${dayActivities.length} aktivitas`}
-                                            >
-                                              {dayActivities.length}
-                                            </div>
-                                          )
-                                        })()}
-                                      </button>
-                                    </td>
-                                  )
-                                })}
-                                {/* Total column for MSA/Meals/OVT views */}
-                                {attendanceView !== 'attendance'
-                                  ? (() => {
-                                      const staff = isStaffRole(row.employee.role)
-                                      let total = 0
-                                      for (const day of days) {
-                                        const cell = getAttendanceCell(row.employee.id, day)
-                                        const code = row.schedule[day - 1] as string
-                                        const isOff2 =
-                                          code === 'OFF' ||
-                                          code === 'FB' ||
-                                          code === 'Libur' ||
-                                          code === 'Sakit'
-                                        const hol = holidaysByDay.get(day)
-
-                                        // Logika tunjangan summary:
-                                        // - OFF roster / Libur nasional = dapat
-                                        // - Hadir (present) = dapat
-                                        // - Izin/Sakit/Alpha/Empty hari kerja = tidak dapat
-                                        // - Field Break = tidak dapat
-                                        const isRosterOff2 = code === 'OFF' || code === 'Libur'
-                                        const isNationalHoliday2 = Boolean(hol)
-                                        const isWorkDay2 = !isRosterOff2
-                                        const isAbsent2 =
-                                          cell.status === 'leave' ||
-                                          cell.status === 'sick' ||
-                                          cell.status === 'absent'
-                                        const isEmptyWorkDay2 =
-                                          isWorkDay2 &&
-                                          !isNationalHoliday2 &&
-                                          cell.status === 'empty'
-                                        const noAllowance2 = isAbsent2 || isEmptyWorkDay2
-
-                                        if (attendanceView === 'lokasi') {
-                                          if (siteConfig.lokasiKhususEnabled) {
-                                            const isFbPeriodLokasi =
-                                              fieldBreakDaysByEmployee
-                                                .get(row.employee.id)
-                                                ?.has(day) ?? false
-                                            if (!isFbPeriodLokasi && !noAllowance2) {
-                                              const isStaffSummary = isStaffRole(row.employee.role)
-                                              total += isStaffSummary
-                                                ? siteConfig.lokasiKhususRateStaff
-                                                : siteConfig.lokasiKhususRateNonStaff
-                                            }
-                                          }
-                                          continue
-                                        }
-
-                                        // Skip Field Break days for MSA/Meals
-                                        const isFbPeriod =
-                                          fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ??
-                                          false
-                                        if (
-                                          isFbPeriod &&
-                                          (attendanceView === 'msa' || attendanceView === 'meals')
-                                        )
-                                          continue
-
-                                        // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                        if (
-                                          noAllowance2 &&
-                                          (attendanceView === 'msa' || attendanceView === 'meals')
-                                        )
-                                          continue
-
-                                        // OVT: only count present days
-                                        if (
-                                          attendanceView === 'ovt' &&
-                                          (isOff2 || hol || cell.status !== 'present')
-                                        )
-                                          continue
-                                        if (attendanceView === 'msa') {
-                                          total +=
-                                            siteConfig.msaType === 'none'
-                                              ? 0
-                                              : siteConfig.msaType === 'same-all'
-                                                ? rate.msaNonStaff
-                                                : staff
-                                                  ? rate.msaStaff
-                                                  : rate.msaNonStaff
-                                        } else if (attendanceView === 'meals') {
-                                          total +=
-                                            siteConfig.mealsType === 'none'
-                                              ? 0
-                                              : staff
-                                                ? rate.mealsStaff
-                                                : rate.mealsNonStaff
-                                        } else {
-                                          // OVT only for non-staff
-                                          if (!staff) {
-                                            const ci = cell.clockIn
-                                              ? Number(cell.clockIn.split(':')[0]) * 60 +
-                                                Number(cell.clockIn.split(':')[1])
-                                              : null
-                                            const co = cell.clockOut
-                                              ? Number(cell.clockOut.split(':')[0]) * 60 +
-                                                Number(cell.clockOut.split(':')[1])
-                                              : null
-                                            if (ci != null && co != null) {
-                                              const w = (co >= ci ? co - ci : co + 1440 - ci) / 60
-                                              total += Math.max(0, w - 5)
-                                            }
-                                          }
-                                        }
-                                      }
-                                      return (
-                                        <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
-                                          {attendanceView === 'ovt'
-                                            ? roundOvertimeHours(total)
-                                            : `Rp ${total.toLocaleString('id-ID')}`}
-                                        </td>
-                                      )
-                                    })()
-                                  : null}
-                              </tr>
-                            ))}
-                          </React.Fragment>
-                        ))}
-                      </React.Fragment>
-                    ))
-                  })()}
+                            <Eye className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
+                            aria-label="Edit attendance"
+                            title="Edit attendance"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() =>
+                              setAttendanceResetTarget({
+                                siteId: plan.siteId,
+                                period: plan.period,
+                                recreate: true,
+                              })
+                            }
+                            aria-label="Buat ulang attendance"
+                            title="Buat ulang attendance"
+                          >
+                            <RotateCcw className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() =>
+                              setAttendanceResetTarget({
+                                siteId: plan.siteId,
+                                period: plan.period,
+                                recreate: false,
+                              })
+                            }
+                            aria-label="Hapus attendance"
+                            title="Hapus attendance"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!attendanceHistoryRows.length ? (
+                    <tr>
+                      <td colSpan={6} className="text-muted-foreground px-4 py-12 text-center">
+                        Belum ada Schedule V2 aktif. Buat dan aktifkan schedule terlebih dahulu.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
-            </div>
-          </Card>
-          <div className="bg-surface-container-low text-muted-foreground rounded-[0.8rem] px-4 py-3 text-xs">
-            <span className="text-foreground font-semibold">Input manual cepat:</span> Klik cell
-            untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin → Alpha → -. Excel
-            mendukung kolom{' '}
-            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">Nama</code>,{' '}
-            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-              D1..D31
-            </code>
-            ,{' '}
-            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-              Masuk 1
-            </code>
-            ,{' '}
-            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-              Pulang 1
-            </code>
-            .
-          </div>
-        </section>
+            </MinimalTableShell>
+
+            <Dialog open={attendanceCreateOpen} onOpenChange={setAttendanceCreateOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Tambah Attendance</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-2">
+                  <div className="space-y-2">
+                    <Label>Site</Label>
+                    <NativeSelect
+                      value={attendanceCreateSiteId}
+                      onValueChange={setAttendanceCreateSiteId}
+                      options={sites.map((item) => ({ value: String(item.id), label: item.name }))}
+                      placeholder="Pilih site"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bulan</Label>
+                    <Input
+                      type="month"
+                      value={attendanceCreatePeriod}
+                      onChange={(event) => setAttendanceCreatePeriod(event.target.value)}
+                    />
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Attendance hanya dapat dibuat jika Schedule V2 untuk site dan bulan tersebut
+                    sudah aktif.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setAttendanceCreateOpen(false)}>
+                    Batal
+                  </Button>
+                  <Button onClick={createAttendanceWorkspace}>Buka form attendance</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <AlertDialog
+              open={Boolean(attendanceResetTarget)}
+              onOpenChange={(open) => !open && setAttendanceResetTarget(null)}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {attendanceResetTarget?.recreate
+                      ? 'Buat ulang attendance?'
+                      : 'Hapus attendance?'}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Data attendance manual dan Excel untuk site serta bulan ini akan dihapus.
+                    Schedule V2 tetap aman.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={clearAttendanceWorkspace}>
+                    {attendanceResetTarget?.recreate ? 'Hapus dan buat ulang' : 'Hapus attendance'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </>
+        )
       ) : null}
 
       {mode === 'field-break' ? (
@@ -6327,7 +7101,7 @@ export function SchedulingTimesheetWorkspace({
                 Field Break {currentFieldBreakSite ? `- ${currentFieldBreakSite.name}` : ''}
               </DialogTitle>
             </DialogHeader>
-            <section className="space-y-3">
+            <section className="min-w-0 space-y-3">
               <div className="sticky top-0 z-20 -mx-1 rounded-[1rem] bg-white/95 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px]">
@@ -6477,7 +7251,9 @@ export function SchedulingTimesheetWorkspace({
                   <div className="flex shrink-0 flex-nowrap gap-2">
                     <NativeSelect
                       value={fieldBreakTimelineView}
-                      onValueChange={(value) => setFieldBreakTimelineView(value as FieldBreakTimelineView)}
+                      onValueChange={(value) =>
+                        setFieldBreakTimelineView(value as FieldBreakTimelineView)
+                      }
                       className="h-9 w-[118px] shrink-0 bg-white text-[13px]"
                       options={[
                         { value: 'month', label: 'Per bulan' },
@@ -6526,11 +7302,14 @@ export function SchedulingTimesheetWorkspace({
                     ) : null}
                   </div>
                 </div>
-                <div className="max-h-[58vh] overflow-auto">
-                  <table className="w-max min-w-full text-sm">
+                <div className="relative max-h-[58vh] max-w-full overflow-x-auto overflow-y-auto">
+                  <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
                     <thead>
                       <tr className="bg-surface-container-low text-muted-foreground sticky top-0 z-10 text-left text-[11px] tracking-[0.12em] uppercase">
-                        <th className="bg-surface-container-low sticky left-0 z-20 px-4 py-3 font-medium">
+                        <th
+                          className="bg-surface-container-low border-border/60 sticky left-0 z-40 min-w-[220px] border-r px-4 py-3 font-medium"
+                          style={{ left: 0 }}
+                        >
                           Nama
                         </th>
                         <th className="px-4 py-3 font-medium">Section / Group</th>
@@ -6543,7 +7322,7 @@ export function SchedulingTimesheetWorkspace({
                         {fieldBreakTimelineDays.map((timelineDay) => (
                           <th
                             key={timelineDay.date}
-                            className="border-border min-w-[38px] border-r px-1 py-2 text-center text-[10px] font-semibold"
+                            className="border-border min-w-[38px] border-r px-1 py-2 text-center text-[10px] font-semibold whitespace-nowrap"
                           >
                             <div className="text-muted-foreground/80">{timelineDay.month}</div>
                             <div className="mt-1 tabular-nums">{timelineDay.day}</div>
@@ -6558,7 +7337,10 @@ export function SchedulingTimesheetWorkspace({
                           key={row.employee.id}
                           className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                         >
-                          <td className="sticky left-0 z-10 bg-white px-4 py-3 font-semibold shadow-[8px_0_18px_rgba(15,23,42,0.04)]">
+                          <td
+                            className="border-border/60 sticky left-0 z-30 min-w-[220px] border-r bg-white px-4 py-3 font-semibold shadow-[10px_0_18px_-16px_rgba(15,23,42,0.18)]"
+                            style={{ left: 0 }}
+                          >
                             <div className="max-w-[220px] truncate">{row.employee.name}</div>
                           </td>
                           <td className="px-4 py-3">
@@ -6581,7 +7363,11 @@ export function SchedulingTimesheetWorkspace({
                               type="date"
                               className="h-9 w-[150px]"
                               value={row.fieldBreakDate}
-                              min={row.lastFieldBreakDate ? addDays(row.lastFieldBreakDate, 90) : undefined}
+                              min={
+                                row.lastFieldBreakDate
+                                  ? addDays(row.lastFieldBreakDate, 90)
+                                  : undefined
+                              }
                               onChange={(event) =>
                                 updateFieldBreakDraft(
                                   row.employee.id,
@@ -6654,17 +7440,29 @@ export function SchedulingTimesheetWorkspace({
                           </td>
                           {fieldBreakTimelineDays.map((timelineDay) => {
                             const isBreak =
-                              (row.fieldBreakDate && row.fieldBreakEndDate && timelineDay.date >= row.fieldBreakDate && timelineDay.date <= row.fieldBreakEndDate) ||
+                              (row.fieldBreakDate &&
+                                row.fieldBreakEndDate &&
+                                timelineDay.date >= row.fieldBreakDate &&
+                                timelineDay.date <= row.fieldBreakEndDate) ||
                               (fieldBreakTimelineByEmployee.get(row.employee.id) ?? []).some(
-                                (plan) => plan.fieldBreakDate && timelineDay.date >= plan.fieldBreakDate && timelineDay.date <= (plan.fieldBreakEndDate || plan.fieldBreakDate)
+                                (plan) =>
+                                  plan.fieldBreakDate &&
+                                  timelineDay.date >= plan.fieldBreakDate &&
+                                  timelineDay.date <=
+                                    (plan.fieldBreakEndDate || plan.fieldBreakDate)
                               )
                             return (
                               <td
                                 key={timelineDay.date}
                                 title={isBreak ? 'Field Break' : timelineDay.date}
-                                className={cn('border-border h-[52px] min-w-[38px] border-r p-0', isBreak && 'bg-amber-100')}
+                                className={cn(
+                                  'border-border h-[52px] min-w-[38px] border-r p-0',
+                                  isBreak && 'bg-amber-100'
+                                )}
                               >
-                                {isBreak ? <div className="bg-amber-400 mx-auto h-2 w-5 rounded-full opacity-70" /> : null}
+                                {isBreak ? (
+                                  <div className="mx-auto h-2 w-5 rounded-full bg-amber-400 opacity-70" />
+                                ) : null}
                               </td>
                             )
                           })}
@@ -6672,7 +7470,10 @@ export function SchedulingTimesheetWorkspace({
                       ))}
                       {filteredFieldBreakRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8 + fieldBreakTimelineDays.length} className="px-4 py-12 text-center">
+                          <td
+                            colSpan={8 + fieldBreakTimelineDays.length}
+                            className="px-4 py-12 text-center"
+                          >
                             <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                               <span className="bg-surface-container-low text-muted-foreground grid size-10 place-items-center rounded-xl">
                                 <Users className="size-4" />
@@ -6703,21 +7504,32 @@ export function SchedulingTimesheetWorkspace({
         </Dialog>
       ) : null}
 
-      {mode === 'payroll' ? (
-        <section className="space-y-4">
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">
-                  Rekap MSA + Meals
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Allowance per karyawan berdasarkan hari kerja dan field break.
-                </p>
-              </div>
+      {mode === 'payroll' && payrollWorkspaceOpen ? (
+        <div className="border-border/60 flex items-center gap-1 rounded-xl border bg-white p-1.5 shadow-none">
+          <Button
+            size="sm"
+            variant={payrollDetailTab === 'allowance' ? 'secondary' : 'ghost'}
+            onClick={() => setPayrollDetailTab('allowance')}
+            aria-pressed={payrollDetailTab === 'allowance'}
+          >
+            MSA + Meals
+          </Button>
+          <Button
+            size="sm"
+            variant={payrollDetailTab === 'overtime' ? 'secondary' : 'ghost'}
+            onClick={() => setPayrollDetailTab('overtime')}
+            aria-pressed={payrollDetailTab === 'overtime'}
+          >
+            Overtime
+          </Button>
+          <div className="ml-auto flex items-center gap-1">
+            {payrollDetailTab === 'allowance' ? (
               <TabExportActions
                 tabTitle="MSA Meals"
+                iconOnly
+                excelInsteadOfCsv
                 columns={[
+                  'Section',
                   'Employee',
                   'Jabatan',
                   'Staff',
@@ -6727,7 +7539,8 @@ export function SchedulingTimesheetWorkspace({
                   'Meals',
                   'Total',
                 ]}
-                exportRows={rows.map((row) => [
+                exportRows={groupedPayrollRows.map((row) => [
+                  payrollSectionLabel(row.rosterSection),
                   row.employee.name,
                   row.employee.role,
                   row.staff ? 'Staff' : 'Non Staff',
@@ -6738,19 +7551,53 @@ export function SchedulingTimesheetWorkspace({
                   money(row.msa + row.meals),
                 ])}
               />
-              <Button
-                size="sm"
-                disabled={isSavingPayroll || rows.length === 0 || isFinalized}
-                onClick={savePayrollSnapshot}
-              >
-                <Save className="mr-2 size-4" />
-                {isSavingPayroll ? 'Menyimpan...' : 'Generate Payroll'}
-              </Button>
-            </div>
-          </Card>
+            ) : (
+              <TabExportActions
+                tabTitle="Overtime"
+                iconOnly
+                excelInsteadOfCsv
+                columns={[
+                  'Section',
+                  'Employee',
+                  'Jabatan',
+                  'Jam Attendance Real',
+                  'Jam Dasar',
+                  'Overtime',
+                  'Roster',
+                ]}
+                exportRows={groupedAttendanceOvertimeRows.map((row) => [
+                  payrollSectionLabel(row.rosterSection),
+                  row.employee.name,
+                  row.employee.role,
+                  row.attendanceTotalHours,
+                  row.attendanceBaseHours,
+                  row.attendanceOvertime,
+                  roster,
+                ])}
+              />
+            )}
+            <Button
+              size="icon"
+              disabled={isSavingPayroll || payrollRows.length === 0 || isFinalized}
+              onClick={savePayrollSnapshot}
+              aria-label={isSavingPayroll ? 'Menyimpan payroll' : 'Generate payroll'}
+              title={isSavingPayroll ? 'Menyimpan payroll' : 'Generate payroll'}
+            >
+              <Save className="size-4" />
+              <span className="sr-only">
+                {isSavingPayroll ? 'Menyimpan payroll' : 'Generate payroll'}
+              </span>
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {mode === 'payroll' && payrollWorkspaceOpen && payrollDetailTab === 'allowance' ? (
+        <section className="space-y-3">
           <SummaryTable
             columns={['Employee', 'Jabatan', 'Staff', 'Hari MSA', 'FB', 'MSA', 'Meals', 'Total']}
-            rows={rows.map((row) => [
+            sections={groupedPayrollRows.map((row) => payrollSectionLabel(row.rosterSection))}
+            rows={groupedPayrollRows.map((row) => [
               row.employee.name,
               row.employee.role,
               row.staff ? 'Staff' : 'Non Staff',
@@ -6764,42 +7611,8 @@ export function SchedulingTimesheetWorkspace({
         </section>
       ) : null}
 
-      {mode === 'payroll' ? (
-        <section className="space-y-4">
-          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <p className="font-display text-foreground text-base font-semibold">
-                  Rekap Overtime
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Dihitung dari Attendance Real: jam pulang − jam masuk vs jam dasar schedule.
-                  {attendanceOvertimeRows.every((r) => r.attendanceTotalHours === 0)
-                    ? ' ⚠️ Belum ada data attendance — import dulu di tab Attendance.'
-                    : ''}
-                </p>
-              </div>
-              <TabExportActions
-                tabTitle="Overtime"
-                columns={[
-                  'Employee',
-                  'Jabatan',
-                  'Jam Attendance Real',
-                  'Jam Dasar',
-                  'Overtime',
-                  'Roster',
-                ]}
-                exportRows={attendanceOvertimeRows.map((row) => [
-                  row.employee.name,
-                  row.employee.role,
-                  row.attendanceTotalHours,
-                  row.attendanceBaseHours,
-                  row.attendanceOvertime,
-                  roster,
-                ])}
-              />
-            </div>
-          </Card>
+      {mode === 'payroll' && payrollWorkspaceOpen && payrollDetailTab === 'overtime' ? (
+        <section className="space-y-3">
           <SummaryTable
             columns={[
               'Employee',
@@ -6809,7 +7622,10 @@ export function SchedulingTimesheetWorkspace({
               'Overtime',
               'Roster',
             ]}
-            rows={attendanceOvertimeRows.map((row) => [
+            sections={groupedAttendanceOvertimeRows.map((row) =>
+              payrollSectionLabel(row.rosterSection)
+            )}
+            rows={groupedAttendanceOvertimeRows.map((row) => [
               row.employee.name,
               row.employee.role,
               row.attendanceTotalHours,
@@ -6818,19 +7634,6 @@ export function SchedulingTimesheetWorkspace({
               roster,
             ])}
           />
-          <div className="grid gap-3 lg:grid-cols-3">
-            {overtimeRules.map((rule) => (
-              <Card key={rule.roster} className="surface-module-card rounded-[1rem] border-0 p-4">
-                <p className="font-display text-foreground text-sm font-semibold">{rule.roster}</p>
-                <p className="text-muted-foreground mt-2 text-xs">
-                  <span className="text-foreground font-medium">Hari kerja:</span> {rule.work}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  <span className="text-foreground font-medium">Hari libur:</span> {rule.off}
-                </p>
-              </Card>
-            ))}
-          </div>
         </section>
       ) : null}
 
@@ -7212,7 +8015,8 @@ export function SchedulingTimesheetWorkspace({
             <Alert>
               <CheckCircle2 className="h-4 w-4" />
               <AlertDescription>
-                Schedule V2 aktif, attendance aktual, conflict, dan payroll snapshot akan divalidasi sebelum dikirim.
+                Schedule V2 aktif, attendance aktual, conflict, dan payroll snapshot akan divalidasi
+                sebelum dikirim.
               </AlertDescription>
             </Alert>
             <Input
@@ -7268,9 +8072,11 @@ export function SchedulingTimesheetWorkspace({
 function SummaryTable({
   columns,
   rows,
+  sections,
 }: {
   columns: string[]
   rows: Array<Array<string | number>>
+  sections?: string[]
 }) {
   return (
     <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
@@ -7287,19 +8093,28 @@ function SummaryTable({
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr
-                key={index}
-                className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
-              >
-                {row.map((cell, cellIndex) => (
-                  <td
-                    key={cellIndex}
-                    className={`px-4 py-3 ${cellIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
-                  >
-                    {cell}
-                  </td>
-                ))}
-              </tr>
+              <React.Fragment key={index}>
+                {sections?.[index] && sections[index] !== sections[index - 1] ? (
+                  <tr className="bg-surface-container-low/70 border-border/40 border-t">
+                    <td
+                      colSpan={columns.length}
+                      className="text-foreground px-4 py-2 text-[11px] font-semibold tracking-[0.12em] uppercase"
+                    >
+                      {sections[index]}
+                    </td>
+                  </tr>
+                ) : null}
+                <tr className="border-border/30 hover:bg-surface-container-low/40 border-t transition">
+                  {row.map((cell, cellIndex) => (
+                    <td
+                      key={cellIndex}
+                      className={`px-4 py-3 ${cellIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              </React.Fragment>
             ))}
             {rows.length === 0 ? (
               <tr>

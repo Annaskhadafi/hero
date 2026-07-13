@@ -2,9 +2,6 @@
 
 import { FileSpreadsheet, Pencil, ScanFace } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-
 export interface AttendanceSummaryBarProps {
   faceDays: number
   excelDays: number
@@ -21,44 +18,44 @@ export function AttendanceSummaryBar({
   facePercentage,
 }: AttendanceSummaryBarProps) {
   return (
-    <Card className="flex flex-wrap items-center gap-3 p-3 text-xs">
-      <div className="flex items-center gap-1.5">
-        <ScanFace className="h-3.5 w-3.5 text-blue-600" />
-        <span>Face:</span>
-        <Badge variant="secondary" className="px-1.5 py-0 text-xs">
-          {faceDays}
-        </Badge>
-        <span className="text-muted-foreground">({facePercentage.toFixed(1)}%)</span>
-      </div>
-
-      <span className="text-muted-foreground">|</span>
-
-      <div className="flex items-center gap-1.5">
-        <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" />
-        <span>Excel:</span>
-        <Badge variant="secondary" className="px-1.5 py-0 text-xs">
-          {excelDays}
-        </Badge>
-      </div>
-
-      <span className="text-muted-foreground">|</span>
-
-      <div className="flex items-center gap-1.5">
-        <Pencil className="h-3.5 w-3.5 text-orange-500" />
-        <span>Manual:</span>
-        <Badge variant="secondary" className="px-1.5 py-0 text-xs">
-          {manualDays}
-        </Badge>
-      </div>
-
-      <span className="text-muted-foreground">|</span>
-
-      <div className="flex items-center gap-1.5">
-        <span className="font-medium">Total:</span>
-        <Badge variant="outline" className="px-1.5 py-0 text-xs">
-          {totalFilledDays}
-        </Badge>
-      </div>
-    </Card>
+    <div className="border-border/60 grid grid-cols-2 overflow-hidden rounded-xl border bg-white text-xs sm:grid-cols-4">
+      {[
+        {
+          label: 'Face',
+          value: faceDays,
+          detail: `${facePercentage.toFixed(1)}%`,
+          Icon: ScanFace,
+          tone: 'text-sky-700 bg-sky-50',
+        },
+        {
+          label: 'Excel',
+          value: excelDays,
+          Icon: FileSpreadsheet,
+          tone: 'text-emerald-700 bg-emerald-50',
+        },
+        { label: 'Manual', value: manualDays, Icon: Pencil, tone: 'text-amber-700 bg-amber-50' },
+        { label: 'Total terisi', value: totalFilledDays, tone: 'text-slate-700 bg-slate-100' },
+      ].map(({ label, value, detail, Icon, tone }) => (
+        <div
+          key={label}
+          className="border-border/60 flex items-center gap-2 px-3 py-2.5 sm:border-r sm:last:border-r-0"
+        >
+          {Icon ? (
+            <span className={`grid size-7 place-items-center rounded-lg ${tone}`}>
+              <Icon className="size-3.5" />
+            </span>
+          ) : null}
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-[10px] font-semibold tracking-[0.1em] uppercase">
+              {label}
+            </p>
+            <div className="flex items-baseline gap-1">
+              <span className="text-foreground font-semibold tabular-nums">{value}</span>
+              {detail ? <span className="text-muted-foreground text-[11px]">{detail}</span> : null}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

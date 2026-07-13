@@ -256,4 +256,34 @@ describe('scheduling timesheet V2', () => {
     expect(loader).toContain('canSeeSchedulingSite')
     expect(loader).toContain('hasGlobalSchedulingScope')
   })
+
+  it('shows payroll as an attendance-backed list before opening its detail', () => {
+    const workspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+
+    expect(workspace).toContain("mode === 'payroll' && !payrollWorkspaceOpen")
+    expect(workspace).toContain('attendanceHistoryRows.map')
+    expect(workspace).toContain('openPayrollWorkspace(plan.siteId, plan.period)')
+    expect(workspace).toContain('Schedule V2 + Attendance')
+    expect(workspace).toContain("payrollDetailTab === 'allowance'")
+    expect(workspace).toContain("payrollDetailTab === 'overtime'")
+    expect(workspace).toContain('excelInsteadOfCsv')
+    expect(workspace).toContain('payrollHistorySiteRows.map')
+    expect(workspace).toContain('data-table-filter-key="year"')
+    expect(workspace).toContain('data-table-filter-key="month"')
+    expect(workspace).toContain('data-table-detail-row="true"')
+    expect(workspace).toContain("return 'Serviceman Crew'")
+    expect(workspace).toContain("return 'Repairman Crew'")
+    expect(workspace).toContain("return 'Office Crew'")
+    expect(workspace).toContain('sections={groupedPayrollRows.map')
+    expect(workspace).toContain('sections={groupedAttendanceOvertimeRows.map')
+    expect(workspace).toContain("'Section',\n                  'Employee'")
+    expect(workspace).toContain('payrollSectionLabel(row.rosterSection),\n                  row.employee.name')
+    expect(workspace).toContain("const eligibleMsa = isWorkDay && !holiday && cell.status === 'present'")
+    expect(workspace).toContain("siteConfig.mealsType === 'field-break' && isFieldBreakDay")
+    expect(workspace).toContain('calculatePayrollOvertime')
+    expect(workspace).not.toContain('Rooster Kerja 5 : 2')
+  })
 })

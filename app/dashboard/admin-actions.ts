@@ -516,16 +516,29 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
 
 async function syncFieldBreakPlansFromV2Rows(
   tx: any,
-  input: { siteId: number; period: string; rows: ScheduleV2Row[]; savedByUserId: string | null; now: Date }
+  input: {
+    siteId: number
+    period: string
+    rows: ScheduleV2Row[]
+    savedByUserId: string | null
+    now: Date
+  }
 ) {
   const employeeIds = input.rows.map((row) => row.employeeId)
   const employeeRows = employeeIds.length
     ? await tx
-        .select({ id: employees.id, name: employees.name, section: employees.section, role: employees.role })
+        .select({
+          id: employees.id,
+          name: employees.name,
+          section: employees.section,
+          role: employees.role,
+        })
         .from(employees)
         .where(inArray(employees.id, employeeIds))
     : []
-  const employeeById = new Map(employeeRows.map((employee: typeof employeeRows[number]) => [employee.id, employee]))
+  const employeeById = new Map(
+    employeeRows.map((employee: (typeof employeeRows)[number]) => [employee.id, employee])
+  )
 
   for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
     const employee = employeeById.get(range.employeeId)
@@ -572,7 +585,12 @@ async function syncV2ScheduleFromFieldBreakPlans(
   input: {
     siteId: number
     period: string
-    plans: Array<{ period?: string; employeeId: number; fieldBreakDate: string | null; fieldBreakEndDate?: string | null }>
+    plans: Array<{
+      period?: string
+      employeeId: number
+      fieldBreakDate: string | null
+      fieldBreakEndDate?: string | null
+    }>
     savedByUserId: string | null
     now: Date
   }
@@ -600,9 +618,11 @@ async function syncV2ScheduleFromFieldBreakPlans(
       fieldBreakDate: plan.fieldBreakDate,
       fieldBreakEndDate: plan.fieldBreakEndDate ?? null,
     }))
-  const currentRows = (scheduleV2.status === 'active' && scheduleV2.activeSchedule.length
-    ? scheduleV2.activeSchedule
-    : scheduleV2.draftSchedule) as ScheduleV2Row[]
+  const currentRows = (
+    scheduleV2.status === 'active' && scheduleV2.activeSchedule.length
+      ? scheduleV2.activeSchedule
+      : scheduleV2.draftSchedule
+  ) as ScheduleV2Row[]
   const rows = replaceFieldBreakPlansInSchedule(currentRows, plans, input.period)
   await tx
     .update(timesheetSchedulingPlansV2)
@@ -887,7 +907,7 @@ export async function deleteSchedulingTimesheetPlanAction(
   })
 
   revalidatePath('/dashboard/scheduling-timesheet')
-  revalidatePath('/dashboard/scheduling-timesheet/schedule')
+  revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
 
   return { ok: true }
 }
@@ -934,11 +954,18 @@ export async function saveTimesheetFieldBreakPlansAction(
     if (
       plan.onSiteDate &&
       plan.fieldBreakDate &&
-      plan.fieldBreakDate < new Date(new Date(`${plan.onSiteDate}T00:00:00Z`).getTime() + 90 * 86400000).toISOString().slice(0, 10)
+      plan.fieldBreakDate <
+        new Date(new Date(`${plan.onSiteDate}T00:00:00Z`).getTime() + 90 * 86400000)
+          .toISOString()
+          .slice(0, 10)
     ) {
       throw new Error('Jeda Next Field Break minimal 90 hari dari Last Field Break.')
     }
-    if (plan.fieldBreakDate && plan.fieldBreakEndDate && plan.fieldBreakEndDate < plan.fieldBreakDate) {
+    if (
+      plan.fieldBreakDate &&
+      plan.fieldBreakEndDate &&
+      plan.fieldBreakEndDate < plan.fieldBreakDate
+    ) {
       throw new Error('Selesai Field Break tidak boleh sebelum Next Field Break.')
     }
   }
@@ -1278,6 +1305,7 @@ export async function saveAttendanceRealOverridesAction(
     description: `Saved attendance overrides (${payload.overrides.length} cells).`,
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
 
   return { ok: true, savedCount: validOverrides.length }
 }
@@ -1866,6 +1894,7 @@ export async function applyAttendanceImportPreviewAction(
     description: `Applied attendance import (${writableRows.length} cells, mode ${payload.mode}).`,
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
   return { ok: true, savedCount: writableRows.length, rows: writableRows }
 }
 
@@ -2005,6 +2034,7 @@ export async function rollbackAttendanceImportPreviewAction(
     description: 'Rolled back attendance import batch.',
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
   return { ok: true }
 }
 
@@ -2129,6 +2159,7 @@ export async function discardAttendanceImportPreviewAction(
     description: 'Discarded attendance import preview.',
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
   return { ok: true }
 }
 
@@ -2192,6 +2223,7 @@ export async function clearAttendanceRealOverridesAction(
     description: `Cleared ${payload.source} attendance overrides.`,
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
   return { ok: true }
 }
 

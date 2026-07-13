@@ -8,8 +8,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
-  Coffee,
-  FileSpreadsheet,
   Lock,
   Users,
 } from 'lucide-react'
@@ -231,53 +229,6 @@ export function SchedulingOverviewDashboard({
         />
       </div>
 
-      {/* Quick actions */}
-      <Card className="surface-module-card rounded-[1.1rem] border-0 p-4">
-        <div className="mb-3">
-          <p className="font-display text-foreground text-base font-semibold">Alur kerja</p>
-          <p className="text-muted-foreground text-sm">
-            Ikuti urutan kiri ke kanan setiap periode.
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          <QuickAction
-            step="1"
-            label="Setup"
-            description="Konfigurasi site & profil"
-            href="/dashboard/scheduling-timesheet/setup"
-            icon={<Users className="size-4" />}
-          />
-          <QuickAction
-            step="2"
-            label="Schedule"
-            description="Generate & save roster"
-            href="/dashboard/scheduling-timesheet/schedule"
-            icon={<CalendarDays className="size-4" />}
-          />
-          <QuickAction
-            step="3"
-            label="Attendance"
-            description="Import / input kehadiran"
-            href="/dashboard/scheduling-timesheet/attendance"
-            icon={<ClipboardList className="size-4" />}
-          />
-          <QuickAction
-            step="4"
-            label="Field Break"
-            description="Rotasi on-site & FB"
-            href="/dashboard/scheduling-timesheet/field-break"
-            icon={<Coffee className="size-4" />}
-          />
-          <QuickAction
-            step="5"
-            label="MSA + OT"
-            description="Rekap payroll"
-            href="/dashboard/scheduling-timesheet/payroll"
-            icon={<FileSpreadsheet className="size-4" />}
-          />
-        </div>
-      </Card>
-
       {/* Site status table */}
       <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-4">
         <MinimalTableShell
@@ -291,7 +242,17 @@ export function SchedulingOverviewDashboard({
               <TableMultiFilter
                 label="schedule"
                 filterKey="schedule"
-                options={["none", "draft", "saved", "applied", "ready", "submitted_to_hr", "returned", "finalized", "locked"].map((status) => ({
+                options={[
+                  'none',
+                  'draft',
+                  'saved',
+                  'applied',
+                  'ready',
+                  'submitted_to_hr',
+                  'returned',
+                  'finalized',
+                  'locked',
+                ].map((status) => ({
                   value: status,
                   label: statusLabel(status),
                 }))}
@@ -299,7 +260,18 @@ export function SchedulingOverviewDashboard({
               <TableMultiFilter
                 label="attendance"
                 filterKey="attendance"
-                options={["none", "draft", "saved", "applied", "ready", "submitted_to_hr", "returned", "finalized", "locked", "review"].map((status) => ({
+                options={[
+                  'none',
+                  'draft',
+                  'saved',
+                  'applied',
+                  'ready',
+                  'submitted_to_hr',
+                  'returned',
+                  'finalized',
+                  'locked',
+                  'review',
+                ].map((status) => ({
                   value: status,
                   label: statusLabel(status),
                 }))}
@@ -307,12 +279,45 @@ export function SchedulingOverviewDashboard({
             </>
           }
           scorecards={[
-            { label: "Site", value: kpi.totalSites, description: `${employees.length} karyawan aktif`, icon: <Users className="size-4 text-primary" />, tone: "info" },
-            { label: "Schedule siap", value: `${kpi.scheduleReady}/${kpi.totalSites}`, description: "Tersimpan di Schedule Tetap", icon: <CheckCircle2 className="size-4 text-emerald-700" />, tone: "success" },
-            { label: "Attendance siap", value: `${kpi.attendanceReady}/${kpi.totalSites}`, description: "Sudah di-save periode ini", icon: <ClipboardList className="size-4 text-amber-700" />, tone: kpi.attendanceReady === kpi.totalSites ? "success" : "warning" },
-            { label: "Conflicts", value: kpi.conflicts, description: kpi.finalizedCount > 0 ? `${kpi.finalizedCount} site finalized` : "Perlu review", icon: <AlertCircle className="size-4 text-amber-700" />, tone: kpi.conflicts > 0 ? "warning" : "default" },
+            {
+              label: 'Site',
+              value: kpi.totalSites,
+              description: `${employees.length} karyawan aktif`,
+              icon: <Users className="text-primary size-4" />,
+              tone: 'info',
+            },
+            {
+              label: 'Schedule siap',
+              value: `${kpi.scheduleReady}/${kpi.totalSites}`,
+              description: 'Tersimpan di Schedule Tetap',
+              icon: <CheckCircle2 className="size-4 text-emerald-700" />,
+              tone: 'success',
+            },
+            {
+              label: 'Attendance siap',
+              value: `${kpi.attendanceReady}/${kpi.totalSites}`,
+              description: 'Sudah di-save periode ini',
+              icon: <ClipboardList className="size-4 text-amber-700" />,
+              tone: kpi.attendanceReady === kpi.totalSites ? 'success' : 'warning',
+            },
+            {
+              label: 'Conflicts',
+              value: kpi.conflicts,
+              description:
+                kpi.finalizedCount > 0 ? `${kpi.finalizedCount} site finalized` : 'Perlu review',
+              icon: <AlertCircle className="size-4 text-amber-700" />,
+              tone: kpi.conflicts > 0 ? 'warning' : 'default',
+            },
           ]}
-          columnOptions={["Site", "Karyawan", "Tipe", "Schedule", "Attendance", "Last activity", "Aksi"].map((column, index) => ({ key: column, label: column, required: index === 0 }))}
+          columnOptions={[
+            'Site',
+            'Karyawan',
+            'Tipe',
+            'Schedule',
+            'Attendance',
+            'Last activity',
+            'Aksi',
+          ].map((column, index) => ({ key: column, label: column, required: index === 0 }))}
           tableViewportClassName="max-h-[72vh]"
           showImport={false}
         >
@@ -337,7 +342,8 @@ export function SchedulingOverviewDashboard({
                 const attendanceStatus = status?.attendanceStatus ?? 'none'
                 const scheduleTone = statusTone(scheduleStatus)
                 const attendanceTone = statusTone(attendanceStatus)
-                const lastActivity = status?.lastImportedAt || status?.lastSavedAt || status?.finalizedAt
+                const lastActivity =
+                  status?.lastImportedAt || status?.lastSavedAt || status?.finalizedAt
                 return (
                   <TableRow
                     key={site.id}
@@ -346,10 +352,12 @@ export function SchedulingOverviewDashboard({
                     data-filter-attendance={attendanceStatus}
                   >
                     <TableCell>
-                      <p className="font-semibold text-foreground">{site.name}</p>
-                      {site.customerName !== site.name ? <p className="text-xs text-muted-foreground">{site.customerName}</p> : null}
+                      <p className="text-foreground font-semibold">{site.name}</p>
+                      {site.customerName !== site.name ? (
+                        <p className="text-muted-foreground text-xs">{site.customerName}</p>
+                      ) : null}
                     </TableCell>
-                    <TableCell className="tabular-nums text-foreground">{empCount}</TableCell>
+                    <TableCell className="text-foreground tabular-nums">{empCount}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {config?.scheduleType === 'shift' ? 'Shift DS/NS' : 'Office'}
                       <span className="mx-1.5">·</span>
@@ -378,7 +386,7 @@ export function SchedulingOverviewDashboard({
                     </TableCell>
                     <TableCell>
                       <Button asChild type="button" variant="ghost" size="dense">
-                        <Link href="/dashboard/scheduling-timesheet/schedule">
+                        <Link href="/dashboard/scheduling-timesheet/schedule-v2">
                           Buka <ArrowRight className="size-3" />
                         </Link>
                       </Button>
@@ -388,7 +396,7 @@ export function SchedulingOverviewDashboard({
               })}
               {sites.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-muted-foreground h-24 text-center">
                     Tidak ada site yang cocok dengan pencarian.
                   </TableCell>
                 </TableRow>
@@ -433,43 +441,6 @@ function MetricCard({
       <p className="font-display text-foreground mt-3 text-2xl font-semibold">{value}</p>
       <p className="text-muted-foreground mt-1 text-xs">{hint}</p>
     </Card>
-  )
-}
-
-function QuickAction({
-  step,
-  label,
-  description,
-  href,
-  icon,
-}: {
-  step: string
-  label: string
-  description: string
-  href: string
-  icon: React.ReactNode
-}) {
-  return (
-    <Link
-      href={href}
-      className="group bg-surface-container-low hover:bg-surface-container-lowest hover:ring-border flex flex-col gap-2 rounded-[0.9rem] p-3 ring-1 ring-transparent transition"
-    >
-      <div className="flex items-center justify-between">
-        <span className="bg-surface-container-lowest text-primary grid size-8 place-items-center rounded-full shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-          {icon}
-        </span>
-        <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.18em] uppercase">
-          Step {step}
-        </span>
-      </div>
-      <div>
-        <p className="text-foreground font-semibold">{label}</p>
-        <p className="text-muted-foreground text-xs">{description}</p>
-      </div>
-      <span className="text-primary inline-flex items-center gap-1 text-xs font-medium opacity-0 transition group-hover:opacity-100">
-        Buka <ArrowRight className="size-3" />
-      </span>
-    </Link>
   )
 }
 

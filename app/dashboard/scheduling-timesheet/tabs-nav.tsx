@@ -7,7 +7,6 @@ import {
   ClipboardList,
   Coffee,
   FileSpreadsheet,
-  FileText,
   LayoutDashboard,
   Users,
 } from 'lucide-react'
@@ -33,28 +32,16 @@ const tabs = [
     hint: 'Rotasi FB',
   },
   {
-    label: 'Roster & Schedule',
-    href: '/dashboard/scheduling-timesheet/schedule',
-    icon: CalendarDays,
-    hint: 'Roster draft & tetap',
-  },
-  {
     label: 'Schedule V2',
     href: '/dashboard/scheduling-timesheet/schedule-v2',
     icon: CalendarDays,
     hint: 'Manual grid tanpa auto-generate',
   },
   {
-    label: 'Sync Log',
+    label: 'Attendance',
     href: '/dashboard/scheduling-timesheet/attendance',
     icon: ClipboardList,
     hint: 'Face/location, manual, Excel',
-  },
-  {
-    label: 'Exceptions',
-    href: '/dashboard/scheduling-timesheet/permission',
-    icon: FileText,
-    hint: 'Sakit, urgent, izin manual',
   },
   {
     label: 'Payroll Timesheet',
@@ -71,7 +58,6 @@ export function SchedulingTabs() {
     if (href === '/dashboard/scheduling-timesheet') {
       return pathname === href
     }
-    if (href === '/dashboard/scheduling-timesheet/schedule') return pathname === href
     return pathname?.startsWith(href)
   }
 
