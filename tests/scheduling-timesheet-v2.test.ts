@@ -4,6 +4,9 @@ import * as XLSX from 'xlsx'
 
 import {
   applyScheduleV2Code,
+  applyFieldBreakPlansToSchedule,
+  getFieldBreakScheduleRanges,
+  replaceFieldBreakPlansInSchedule,
   createEmptyScheduleV2,
   cycleScheduleV2Code,
   getScheduleV2DayCount,
@@ -12,6 +15,7 @@ import {
   mergeActiveSchedulePlans,
 } from '@/lib/timesheet/schedule-v2'
 import { mergeScheduleV2Import, parseScheduleV2Import } from '@/lib/timesheet/schedule-v2-import'
+import { addDaysIso } from '@/lib/timesheet/field-break-generator'
 
 describe('scheduling timesheet V2', () => {
   it.each([
@@ -47,6 +51,67 @@ describe('scheduling timesheet V2', () => {
     expect(rows[0].schedule[21]).toBe('DS')
     rows = applyScheduleV2Code(rows, 10, 29, '', false)
     expect(rows[0].schedule[28]).toBe('')
+  })
+
+  it('fills field break dates when a new schedule is created', () => {
+    const rows = applyFieldBreakPlansToSchedule(
+      [{ employeeId: 10, schedule: Array(31).fill('DS') }],
+      [{ employeeId: 10, fieldBreakDate: '2026-07-10', fieldBreakEndDate: '2026-07-23' }],
+      '2026-07'
+    )
+    expect(rows[0].schedule.slice(9, 23)).toEqual(Array(14).fill('FB'))
+    expect(rows[0].schedule[23]).toBe('DS')
+  })
+
+  it('keeps the Field Break plan and Schedule V2 grid in sync', () => {
+    const rows = replaceFieldBreakPlansInSchedule(
+      [{ employeeId: 10, schedule: Array(31).fill('DS') }],
+      [{ employeeId: 10, fieldBreakDate: '2026-07-10', fieldBreakEndDate: '2026-07-23' }],
+      '2026-07'
+    )
+    expect(getFieldBreakScheduleRanges(rows, '2026-07')).toEqual([
+      { employeeId: 10, fieldBreakDate: '2026-07-10', fieldBreakEndDate: '2026-07-23' },
+    ])
+  })
+
+  it('rejects stale backward Field Break dates and revalidates the Field Break page', () => {
+    const fieldBreakWorkspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+    const actions = fs.readFileSync(path.join(process.cwd(), 'app/dashboard/admin-actions.ts'), 'utf8')
+    expect(fieldBreakWorkspace).toContain('hasValidSavedNextFieldBreak')
+    expect(fieldBreakWorkspace).toContain('next.fieldBreakDate < addDays(row.lastFieldBreakDate, 90)')
+    expect(actions).toContain("revalidatePath('/dashboard/scheduling-timesheet/field-break')")
+    expect(actions).toContain('Jeda Next Field Break minimal 90 hari dari Last Field Break.')
+  })
+
+  it('keeps a 90-day Field Break gap across time zones', () => {
+    expect(addDaysIso('2026-07-31', 90)).toBe('2026-10-29')
+  })
+
+  it('uses horizontal Field Break filters with previous and next month controls', () => {
+    const fieldBreakWorkspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+    expect(fieldBreakWorkspace).toContain('aria-label="Bulan sebelumnya"')
+    expect(fieldBreakWorkspace).toContain('aria-label="Bulan berikutnya"')
+    expect(fieldBreakWorkspace).toContain('flex shrink-0 flex-nowrap gap-2')
+  })
+
+  it('refreshes Field Break after Schedule V2 updates in another tab', () => {
+    const fieldBreakWorkspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+    const scheduleWorkspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet/schedule-v2-workspace.tsx'),
+      'utf8'
+    )
+    expect(fieldBreakWorkspace).toContain("new BroadcastChannel('hero-field-break-sync')")
+    expect(fieldBreakWorkspace).toContain('window.setInterval(() => refreshIfCurrentPeriod(), 10000)')
+    expect(scheduleWorkspace).toContain('announceFieldBreakSync(editorPlan.siteId, editorPlan.period)')
   })
 
   it('reports progress and validates complete activation', () => {

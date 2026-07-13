@@ -13,6 +13,18 @@ export type ScheduleV2Row = {
   positionOnSite?: string
 }
 
+export type FieldBreakSchedulePlan = {
+  employeeId: number
+  fieldBreakDate?: string | null
+  fieldBreakEndDate?: string | null
+}
+
+export type FieldBreakScheduleRange = {
+  employeeId: number
+  fieldBreakDate: string | null
+  fieldBreakEndDate: string | null
+}
+
 export function getScheduleV2DayCount(period: string) {
   const [year, month] = period.split('-').map(Number)
   return new Date(year, month, 0).getDate()
@@ -65,6 +77,73 @@ export function applyScheduleV2Code(
       schedule[targetDay - 1] = code
     }
     return { ...row, schedule }
+  })
+}
+
+export function applyFieldBreakPlansToSchedule(
+  rows: ScheduleV2Row[],
+  plans: FieldBreakSchedulePlan[],
+  period: string
+) {
+  const dayCount = getScheduleV2DayCount(period)
+  const breaksByEmployee = new Map<number, FieldBreakSchedulePlan[]>()
+  for (const plan of plans) {
+    if (!plan.fieldBreakDate) continue
+    breaksByEmployee.set(plan.employeeId, [...(breaksByEmployee.get(plan.employeeId) ?? []), plan])
+  }
+
+  return rows.map((row) => {
+    const schedule = [...row.schedule]
+    for (const plan of breaksByEmployee.get(row.employeeId) ?? []) {
+      const from = plan.fieldBreakDate ?? ''
+      const to = plan.fieldBreakEndDate || from
+      for (let day = 1; day <= dayCount; day++) {
+        const date = `${period}-${String(day).padStart(2, '0')}`
+        if (date >= from && date <= to) schedule[day - 1] = 'FB'
+      }
+    }
+    return { ...row, schedule }
+  })
+}
+
+export function replaceFieldBreakPlansInSchedule(
+  rows: ScheduleV2Row[],
+  plans: FieldBreakSchedulePlan[],
+  period: string
+) {
+  return applyFieldBreakPlansToSchedule(
+    rows.map((row) =>
+      plans.some((plan) => plan.employeeId === row.employeeId)
+        ? { ...row, schedule: row.schedule.map((code) => (code === 'FB' ? '' : code)) }
+        : row
+    ),
+    plans,
+    period
+  )
+}
+
+export function getFieldBreakScheduleRanges(rows: ScheduleV2Row[], period: string) {
+  return rows.map<FieldBreakScheduleRange>((row) => {
+    let bestStart = -1
+    let bestEnd = -1
+    let start = -1
+
+    row.schedule.forEach((code, index) => {
+      if (code === 'FB' && start < 0) start = index
+      if (code !== 'FB' && start >= 0) {
+        if (index - start > bestEnd - bestStart) [bestStart, bestEnd] = [start, index - 1]
+        start = -1
+      }
+    })
+    if (start >= 0 && row.schedule.length - start > bestEnd - bestStart) {
+      [bestStart, bestEnd] = [start, row.schedule.length - 1]
+    }
+
+    return {
+      employeeId: row.employeeId,
+      fieldBreakDate: bestStart < 0 ? null : `${period}-${String(bestStart + 1).padStart(2, '0')}`,
+      fieldBreakEndDate: bestEnd < 0 ? null : `${period}-${String(bestEnd + 1).padStart(2, '0')}`,
+    }
   })
 }
 

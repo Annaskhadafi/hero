@@ -47,6 +47,7 @@ import {
 import { cn } from '@/lib/utils'
 import {
   applyScheduleV2Code,
+  applyFieldBreakPlansToSchedule,
   createEmptyScheduleV2,
   cycleScheduleV2Code,
   getScheduleV2DayCount,
@@ -134,6 +135,19 @@ type ScheduleV2Plan = {
 }
 
 type Holiday = { date: string; name: string; localName: string; day: number }
+type FieldBreakPlan = {
+  siteId: number
+  employeeId: number
+  fieldBreakDate: string
+  fieldBreakEndDate: string
+}
+
+function announceFieldBreakSync(siteId: number, period: string) {
+  if (typeof BroadcastChannel === 'undefined') return
+  const channel = new BroadcastChannel('hero-field-break-sync')
+  channel.postMessage({ siteId, period })
+  channel.close()
+}
 
 const toolOptions: Array<{ code: ScheduleV2Code; label: string }> = [
   { code: 'OFF', label: 'OFF' },
@@ -300,6 +314,7 @@ export function ScheduleV2Workspace({
   currentEmployeeName,
   access,
   configs,
+  fieldBreakPlans = [],
 }: {
   employees: Employee[]
   sites: Site[]
@@ -307,6 +322,7 @@ export function ScheduleV2Workspace({
   currentEmployeeName: string
   access: TableRbacAccess
   configs?: { siteId: number; scheduleType?: string | null }[]
+  fieldBreakPlans?: FieldBreakPlan[]
 }) {
   const router = useRouter()
   const [plans, setPlans] = useState(initialPlans)
@@ -699,6 +715,7 @@ export function ScheduleV2Workspace({
           setCreateOpen(false)
           openEditor(nextPlan)
           resetScheduleImport()
+          if (saved) announceFieldBreakSync(numericSiteId, period)
           toast.info(
             scheduleImport
               ? 'Schedule sudah ada. Data Excel diterapkan ke draft.'
@@ -715,7 +732,11 @@ export function ScheduleV2Workspace({
         const siteEmployees = employeesForSite(employees, numericSiteId)
         const now = new Date().toISOString()
         const siteConfig = configs?.find((c) => c.siteId === numericSiteId)
-        const baseRows = createPrefilledScheduleV2(siteEmployees, period, siteConfig?.scheduleType)
+        const baseRows = applyFieldBreakPlansToSchedule(
+          createPrefilledScheduleV2(siteEmployees, period, siteConfig?.scheduleType),
+          fieldBreakPlans.filter((plan) => plan.siteId === numericSiteId),
+          period
+        )
         const draftSchedule = scheduleImport
           ? mergeScheduleV2Import(baseRows, scheduleImport.rows)
           : baseRows
@@ -744,6 +765,7 @@ export function ScheduleV2Workspace({
         openEditor(plan)
         resetScheduleImport()
         router.refresh()
+        if (saved) announceFieldBreakSync(numericSiteId, period)
       } catch (error) {
         toast.error('Gagal membuat Schedule V2', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -771,6 +793,7 @@ export function ScheduleV2Workspace({
         updateLocalPlan({ draftSchedule: rows, updatedAt: result.updatedAt })
         toast.success('Draft Schedule V2 tersimpan')
         router.refresh()
+        announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
       } catch (error) {
         toast.error('Gagal menyimpan draft', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -797,6 +820,7 @@ export function ScheduleV2Workspace({
         })
         toast.success('Schedule V2 aktif untuk attendance dan payroll')
         router.refresh()
+        announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
       } catch (error) {
         toast.error('Schedule belum dapat diaktifkan', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -819,6 +843,7 @@ export function ScheduleV2Workspace({
         setDeleteTarget(null)
         toast.success('Schedule V2 dihapus')
         router.refresh()
+        announceFieldBreakSync(target.siteId, target.period)
       } catch (error) {
         toast.error('Gagal menghapus Schedule V2', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -1456,8 +1481,17 @@ export function ScheduleV2Workspace({
                     </Button>
                   ) : null}
                   {canEdit ? (
-                    <Button disabled={pending || !progress.complete} onClick={activatePlan}>
-                      <CheckCircle2 className="size-4" /> Aktifkan
+                    <Button
+                      disabled={pending || !progress.complete}
+                      title={
+                        progress.complete
+                          ? 'Aktifkan roster Schedule V2.'
+                          : `Lengkapi seluruh roster sebelum aktivasi (${progress.filled}/${progress.total} cell terisi).`
+                      }
+                      onClick={activatePlan}
+                    >
+                      <CheckCircle2 className="size-4" />{' '}
+                      {progress.complete ? 'Aktifkan' : `Lengkapi ${progress.filled}/${progress.total}`}
                     </Button>
                   ) : null}
                 </div>

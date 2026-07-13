@@ -159,8 +159,10 @@ import {
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   createEmptyScheduleV2,
+  getFieldBreakScheduleRanges,
   getScheduleV2DayCount,
   isCompleteScheduleV2,
+  replaceFieldBreakPlansInSchedule,
   type ScheduleV2Row,
 } from '@/lib/timesheet/schedule-v2'
 import {
@@ -470,6 +472,8 @@ export async function saveSchedulingTimesheetPlanAction(
   })
 
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/field-break')
+  revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
 
   return { ok: true }
 }
@@ -510,9 +514,116 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
   return activeEmployees.map((employee) => employee.id)
 }
 
+async function syncFieldBreakPlansFromV2Rows(
+  tx: any,
+  input: { siteId: number; period: string; rows: ScheduleV2Row[]; savedByUserId: string | null; now: Date }
+) {
+  const employeeIds = input.rows.map((row) => row.employeeId)
+  const employeeRows = employeeIds.length
+    ? await tx
+        .select({ id: employees.id, name: employees.name, section: employees.section, role: employees.role })
+        .from(employees)
+        .where(inArray(employees.id, employeeIds))
+    : []
+  const employeeById = new Map(employeeRows.map((employee: typeof employeeRows[number]) => [employee.id, employee]))
+
+  for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
+    const employee = employeeById.get(range.employeeId)
+    if (!employee) continue
+    await tx
+      .insert(timesheetFieldBreakPlans)
+      .values({
+        siteId: input.siteId,
+        period: input.period,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        sectionName: employee.section ?? '',
+        rosterSection: employee.section || employee.role || '',
+        onSiteDate: null,
+        dayCount: null,
+        fieldBreakDate: range.fieldBreakDate,
+        fieldBreakEndDate: range.fieldBreakEndDate,
+        source: 'manual',
+        isLocked: false,
+        notes: '',
+        savedByUserId: input.savedByUserId,
+        updatedAt: input.now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          timesheetFieldBreakPlans.siteId,
+          timesheetFieldBreakPlans.period,
+          timesheetFieldBreakPlans.employeeId,
+        ],
+        set: {
+          fieldBreakDate: range.fieldBreakDate,
+          fieldBreakEndDate: range.fieldBreakEndDate,
+          source: 'manual',
+          isLocked: false,
+          savedByUserId: input.savedByUserId,
+          updatedAt: input.now,
+        },
+      })
+  }
+}
+
+async function syncV2ScheduleFromFieldBreakPlans(
+  tx: any,
+  input: {
+    siteId: number
+    period: string
+    plans: Array<{ period?: string; employeeId: number; fieldBreakDate: string | null; fieldBreakEndDate?: string | null }>
+    savedByUserId: string | null
+    now: Date
+  }
+) {
+  const [scheduleV2] = await tx
+    .select({
+      status: timesheetSchedulingPlansV2.status,
+      draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+      activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+    })
+    .from(timesheetSchedulingPlansV2)
+    .where(
+      and(
+        eq(timesheetSchedulingPlansV2.siteId, input.siteId),
+        eq(timesheetSchedulingPlansV2.period, input.period)
+      )
+    )
+    .limit(1)
+  if (!scheduleV2) return
+
+  const plans = input.plans
+    .filter((plan) => (plan.period ?? input.period) === input.period)
+    .map((plan) => ({
+      employeeId: plan.employeeId,
+      fieldBreakDate: plan.fieldBreakDate,
+      fieldBreakEndDate: plan.fieldBreakEndDate ?? null,
+    }))
+  const currentRows = (scheduleV2.status === 'active' && scheduleV2.activeSchedule.length
+    ? scheduleV2.activeSchedule
+    : scheduleV2.draftSchedule) as ScheduleV2Row[]
+  const rows = replaceFieldBreakPlansInSchedule(currentRows, plans, input.period)
+  await tx
+    .update(timesheetSchedulingPlansV2)
+    .set({
+      draftSchedule: rows,
+      ...(scheduleV2.status === 'active' ? { activeSchedule: rows } : {}),
+      updatedByUserId: input.savedByUserId,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(timesheetSchedulingPlansV2.siteId, input.siteId),
+        eq(timesheetSchedulingPlansV2.period, input.period)
+      )
+    )
+}
+
 function revalidateSchedulingV2Paths() {
   revalidatePath('/dashboard/scheduling-timesheet')
   revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
+  revalidatePath('/dashboard/scheduling-timesheet/field-break')
   revalidatePath('/dashboard/scheduling-timesheet/attendance')
   revalidatePath('/dashboard/scheduling-timesheet/payroll')
 }
@@ -584,16 +695,27 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   const actorEmail = await getCurrentActorEmail()
   const actorUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
-  const [updated] = await db
-    .update(timesheetSchedulingPlansV2)
-    .set({ draftSchedule: payload.rows, updatedByUserId: actorUserId, updatedAt: now })
-    .where(
-      and(
-        eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
-        eq(timesheetSchedulingPlansV2.period, payload.period)
+  const updated = await db.transaction(async (tx) => {
+    const [updatedPlan] = await tx
+      .update(timesheetSchedulingPlansV2)
+      .set({ draftSchedule: payload.rows, updatedByUserId: actorUserId, updatedAt: now })
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
       )
-    )
-    .returning({ id: timesheetSchedulingPlansV2.id })
+      .returning({ id: timesheetSchedulingPlansV2.id })
+    if (!updatedPlan) throw new Error('Schedule V2 tidak ditemukan.')
+    await syncFieldBreakPlansFromV2Rows(tx, {
+      siteId: payload.siteId,
+      period: payload.period,
+      rows: payload.rows,
+      savedByUserId: actorUserId,
+      now,
+    })
+    return updatedPlan
+  })
   if (!updated) throw new Error('Schedule V2 tidak ditemukan.')
   await logAuditEvent({
     actorEmail,
@@ -639,6 +761,13 @@ export async function activateSchedulingTimesheetPlanV2Action(
       )
       .returning({ id: timesheetSchedulingPlansV2.id })
     if (!updated) throw new Error('Schedule V2 tidak ditemukan.')
+    await syncFieldBreakPlansFromV2Rows(tx, {
+      siteId: payload.siteId,
+      period: payload.period,
+      rows: payload.rows,
+      savedByUserId: actorUserId,
+      now,
+    })
     await tx
       .insert(timesheetSchedulingStatuses)
       .values({
@@ -801,6 +930,18 @@ export async function saveTimesheetFieldBreakPlansAction(
   input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>
 ) {
   const payload = saveTimesheetFieldBreakPlansSchema.parse(input)
+  for (const plan of payload.plans) {
+    if (
+      plan.onSiteDate &&
+      plan.fieldBreakDate &&
+      plan.fieldBreakDate < new Date(new Date(`${plan.onSiteDate}T00:00:00Z`).getTime() + 90 * 86400000).toISOString().slice(0, 10)
+    ) {
+      throw new Error('Jeda Next Field Break minimal 90 hari dari Last Field Break.')
+    }
+    if (plan.fieldBreakDate && plan.fieldBreakEndDate && plan.fieldBreakEndDate < plan.fieldBreakDate) {
+      throw new Error('Selesai Field Break tidak boleh sebelum Next Field Break.')
+    }
+  }
   await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
@@ -853,6 +994,14 @@ export async function saveTimesheetFieldBreakPlansAction(
         })
     }
 
+    await syncV2ScheduleFromFieldBreakPlans(tx, {
+      siteId: payload.siteId,
+      period: payload.period,
+      plans: payload.plans,
+      savedByUserId,
+      now,
+    })
+
     await tx
       .insert(timesheetSchedulingStatuses)
       .values({
@@ -877,6 +1026,8 @@ export async function saveTimesheetFieldBreakPlansAction(
     description: `Saved field break plans (${payload.plans.length} rows).`,
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/field-break')
+  revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
 
   return { ok: true }
 }

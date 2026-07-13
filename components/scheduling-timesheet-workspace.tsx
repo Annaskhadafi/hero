@@ -2,12 +2,15 @@
 
 import React, { useEffect, useMemo, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
+import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
   CalendarDays,
   Calculator,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Download,
   History,
@@ -84,6 +87,7 @@ import {
   type AttendanceCellStatus,
 } from '@/lib/timesheet/attendance-real'
 import {
+  addMonths,
   generateFieldBreakYearPlans,
   validateFieldBreakCapacity,
 } from '@/lib/timesheet/field-break-generator'
@@ -112,33 +116,34 @@ type SiteOption = {
   customerName: string
 }
 
-function getYearlyMonthWeeks(startPeriod: string) {
-  const [yearStr, monthStr] = startPeriod.split('-')
+type FieldBreakTimelineView = 'month' | 'quarter' | 'semester' | 'year'
+
+function getFieldBreakTimelineDays(period: string, view: FieldBreakTimelineView) {
+  const [yearStr, monthStr] = period.split('-')
   const year = Number(yearStr)
   const month = Number(monthStr)
-
-  const months = []
-  for (let i = 0; i < 12; i++) {
-    const y = year + Math.floor((month - 1 + i) / 12)
-    const m = ((month - 1 + i) % 12) + 1
-    const pStr = `${y}-${String(m).padStart(2, '0')}`
-    const endDay = new Date(y, m, 0).getDate()
-    
-    // Short label e.g., 'Jul 26'
-    const monthLabel = new Date(y, m - 1, 1).toLocaleString('id-ID', { month: 'short', year: '2-digit' })
-
-    months.push({
-      period: pStr,
-      label: monthLabel,
-      weeks: [
-        { start: `${pStr}-01`, end: `${pStr}-07`, label: 'M1' },
-        { start: `${pStr}-08`, end: `${pStr}-14`, label: 'M2' },
-        { start: `${pStr}-15`, end: `${pStr}-21`, label: 'M3' },
-        { start: `${pStr}-22`, end: `${pStr}-${String(endDay).padStart(2, '0')}`, label: 'M4' },
-      ]
-    })
+  if (!year || !month) return []
+  const startMonth =
+    view === 'quarter' ? Math.floor((month - 1) / 3) * 3 + 1 : view === 'semester' ? (month <= 6 ? 1 : 7) : view === 'year' ? 1 : month
+  const totalMonths = view === 'month' ? 1 : view === 'quarter' ? 3 : view === 'semester' ? 6 : 12
+  const days: Array<{ date: string; day: number; month: string; weekday: string }> = []
+  for (let offset = 0; offset < totalMonths; offset++) {
+    const date = new Date(Date.UTC(year, startMonth - 1 + offset, 1))
+    const y = date.getUTCFullYear()
+    const m = date.getUTCMonth() + 1
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
+    const monthLabel = new Intl.DateTimeFormat('id-ID', { month: 'short' }).format(date)
+    for (let day = 1; day <= lastDay; day++) {
+      const current = new Date(Date.UTC(y, m - 1, day))
+      days.push({
+        date: `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        day,
+        month: monthLabel,
+        weekday: new Intl.DateTimeFormat('id-ID', { weekday: 'narrow', timeZone: 'UTC' }).format(current),
+      })
+    }
   }
-  return months
+  return days
 }
 
 type SavedScheduleRow = {
@@ -651,9 +656,9 @@ function money(value: number) {
 
 function addDays(value: string, days: number) {
   if (!value) return ''
-  const date = new Date(`${value}T00:00:00`)
+  const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return ''
-  date.setDate(date.getDate() + days)
+  date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
 }
 
@@ -841,7 +846,7 @@ export function SchedulingTimesheetWorkspace({
   employees,
   sites,
   savedPlans = EMPTY_SAVED_PLANS,
-  fieldBreakPlans = EMPTY_FIELD_BREAK_PLANS,
+  fieldBreakPlans: initialFieldBreakPlans = EMPTY_FIELD_BREAK_PLANS,
   attendanceRecords = EMPTY_ATTENDANCE_RECORDS,
   attendanceOverrides = EMPTY_ATTENDANCE_OVERRIDES,
   schedulingConfigs = EMPTY_SCHEDULING_CONFIGS,
@@ -890,6 +895,7 @@ export function SchedulingTimesheetWorkspace({
     status: string
   }>
 }) {
+  const router = useRouter()
   const [period, setPeriod] = useState(currentMonthPeriod)
   const userDefaultSiteId = useMemo(() => {
     return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
@@ -936,10 +942,39 @@ export function SchedulingTimesheetWorkspace({
     null
   )
   const [fieldBreakDrafts, setFieldBreakDrafts] = useState<Record<number, FieldBreakDraft>>({})
+  const [fieldBreakPlans, setFieldBreakPlans] = useState(initialFieldBreakPlans)
   const [fieldBreakSearch, setFieldBreakSearch] = useState('')
   const [fieldBreakSectionFilter, setFieldBreakSectionFilter] = useState('all')
   const [fieldBreakSourceFilter, setFieldBreakSourceFilter] = useState('all')
+  const [fieldBreakTimelineView, setFieldBreakTimelineView] = useState<FieldBreakTimelineView>('month')
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition()
+
+  useEffect(() => {
+    setFieldBreakPlans(initialFieldBreakPlans)
+  }, [initialFieldBreakPlans])
+
+  useEffect(() => {
+    if (mode !== 'field-break') return
+    const refreshIfCurrentPeriod = (message?: { siteId?: number; period?: string }) => {
+      if (
+        message?.siteId != null &&
+        String(message.siteId) !== fieldBreakSiteId
+      ) {
+        return
+      }
+      if (message?.period && message.period !== period) return
+      router.refresh()
+    }
+    const channel = typeof BroadcastChannel === 'undefined'
+      ? null
+      : new BroadcastChannel('hero-field-break-sync')
+    if (channel) channel.onmessage = (event) => refreshIfCurrentPeriod(event.data)
+    const interval = window.setInterval(() => refreshIfCurrentPeriod(), 10000)
+    return () => {
+      window.clearInterval(interval)
+      channel?.close()
+    }
+  }, [fieldBreakSiteId, mode, period, router])
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({})
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({})
   const [setupVariableTab, setSetupVariableTab] = useState<'roster' | 'allowance' | 'overtime'>(
@@ -1762,21 +1797,54 @@ export function SchedulingTimesheetWorkspace({
       ),
     [fieldBreakPlans, fieldBreakSiteId, period]
   )
+  const lastFieldBreakByEmployee = useMemo(() => {
+    const latest = new Map<number, string>()
+    const numericSiteId = Number(fieldBreakSiteId)
+    for (const plan of savedPlans) {
+      if (plan.siteId !== numericSiteId) continue
+      for (const row of plan.fixedSchedule) {
+        row.schedule.forEach((code, index) => {
+          if (code !== 'FB') return
+          const date = `${plan.period}-${String(index + 1).padStart(2, '0')}`
+          if (date > (latest.get(row.employeeId) ?? '')) latest.set(row.employeeId, date)
+        })
+      }
+    }
+    return latest
+  }, [fieldBreakSiteId, savedPlans])
   const fieldBreakRows = useMemo(
     () =>
       rows.map((row) => {
         const savedPlan = savedFieldBreakByEmployee.get(row.employee.id)
         const draft = fieldBreakDrafts[row.employee.id]
-        const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? ''
-        const fieldBreakDate = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? ''
-        const fieldBreakEndDate = draft?.fieldBreakEndDate ?? savedPlan?.fieldBreakEndDate ?? ''
-        const dayCountValue = draft?.dayCount ?? savedPlan?.dayCount ?? null
+        const lastFieldBreakDate = lastFieldBreakByEmployee.get(row.employee.id) ?? savedPlan?.onSiteDate ?? ''
+        const onSiteDate = draft?.onSiteDate ?? lastFieldBreakDate
+        const savedNextFieldBreak = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? ''
+        const hasValidSavedNextFieldBreak = Boolean(
+          savedNextFieldBreak && (!lastFieldBreakDate || savedNextFieldBreak >= addDays(lastFieldBreakDate, 90))
+        )
+        const fieldBreakDate = hasValidSavedNextFieldBreak
+          ? savedNextFieldBreak
+          : lastFieldBreakDate
+            ? addDays(lastFieldBreakDate, 90)
+            : ''
+        const savedFieldBreakEnd = draft?.fieldBreakEndDate ?? savedPlan?.fieldBreakEndDate ?? ''
+        const fieldBreakEndDate =
+          hasValidSavedNextFieldBreak && savedFieldBreakEnd >= fieldBreakDate
+            ? savedFieldBreakEnd
+            : fieldBreakDate
+              ? addDays(fieldBreakDate, siteConfig.fieldBreakBreakDays - 1)
+              : ''
+        const dayCountValue = lastFieldBreakDate && fieldBreakDate
+          ? Math.max(1, Math.round((new Date(`${fieldBreakDate}T00:00:00Z`).getTime() - new Date(`${lastFieldBreakDate}T00:00:00Z`).getTime()) / 86400000))
+          : null
         const source = draft?.source ?? savedPlan?.source ?? 'manual'
         const isLocked = draft?.isLocked ?? savedPlan?.isLocked ?? false
         const notes = draft?.notes ?? savedPlan?.notes ?? ''
 
         return {
           ...row,
+          lastFieldBreakDate,
           onSiteDate,
           dayCount: dayCountValue,
           fieldBreakDate,
@@ -1787,8 +1855,16 @@ export function SchedulingTimesheetWorkspace({
           savedAt: savedPlan?.updatedAt ?? null,
         }
       }),
-    [rows, savedFieldBreakByEmployee, fieldBreakDrafts]
+    [rows, savedFieldBreakByEmployee, fieldBreakDrafts, lastFieldBreakByEmployee, siteConfig.fieldBreakBreakDays]
   )
+  const fieldBreakTimelineByEmployee = useMemo(() => {
+    const map = new Map<number, SavedFieldBreakPlan[]>()
+    for (const plan of fieldBreakPlans) {
+      if (String(plan.siteId) !== fieldBreakSiteId) continue
+      map.set(plan.employeeId, [...(map.get(plan.employeeId) ?? []), plan])
+    }
+    return map
+  }, [fieldBreakPlans, fieldBreakSiteId])
   const fieldBreakSections = useMemo(
     () =>
       Array.from(
@@ -1966,7 +2042,7 @@ export function SchedulingTimesheetWorkspace({
           rosterType: config.rosterType as SiteRosterType,
         },
       }))
-      setRoster(config.rosterType)
+      setRoster(config.rosterType ?? '5:2')
       setSiteScheduleTypes((current) => ({
         ...current,
         [nextSiteId]: config.scheduleType as SiteScheduleType,
@@ -2097,21 +2173,28 @@ export function SchedulingTimesheetWorkspace({
         [key]: key === 'dayCount' ? Number(value) || null : String(value),
         source: 'manual' as const,
       }
+      if (
+        key === 'fieldBreakDate' &&
+        row?.lastFieldBreakDate &&
+        next.fieldBreakDate &&
+        next.fieldBreakDate < addDays(row.lastFieldBreakDate, 90)
+      ) {
+        next.fieldBreakDate = addDays(row.lastFieldBreakDate, 90)
+      }
       const startTime = next.onSiteDate
-        ? new Date(`${next.onSiteDate}T00:00:00`).getTime()
+        ? new Date(`${next.onSiteDate}T00:00:00Z`).getTime()
         : Number.NaN
       const endTime = next.fieldBreakDate
-        ? new Date(`${next.fieldBreakDate}T00:00:00`).getTime()
+        ? new Date(`${next.fieldBreakDate}T00:00:00Z`).getTime()
         : Number.NaN
       const dayCountValue =
         Number.isFinite(startTime) && Number.isFinite(endTime)
           ? Math.max(1, Math.round((endTime - startTime) / 86400000))
           : null
       const breakEndDate =
-        next.fieldBreakEndDate ||
-        (next.fieldBreakDate
-          ? addDays(next.fieldBreakDate, siteConfig.fieldBreakBreakDays - 1)
-          : '')
+        key === 'fieldBreakDate'
+          ? addDays(next.fieldBreakDate ?? '', siteConfig.fieldBreakBreakDays - 1)
+          : next.fieldBreakEndDate || ''
 
       return {
         ...current,
@@ -3966,7 +4049,10 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  const yearlyMonths = useMemo(() => getYearlyMonthWeeks(period), [period])
+  const fieldBreakTimelineDays = useMemo(
+    () => getFieldBreakTimelineDays(period, fieldBreakTimelineView),
+    [period, fieldBreakTimelineView]
+  )
 
   return (
     <div className="space-y-4">
@@ -6266,12 +6352,35 @@ export function SchedulingTimesheetWorkspace({
                       <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                         Periode
                       </Label>
-                      <Input
-                        type="month"
-                        value={period}
-                        onChange={(event) => setPeriod(event.target.value)}
-                        className="h-10"
-                      />
+                      <div className="bg-surface-container-low flex h-10 items-center rounded-lg px-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          aria-label="Bulan sebelumnya"
+                          onClick={() => setPeriod(addMonths(`${period}-01`, -1).slice(0, 7))}
+                        >
+                          <ChevronLeft className="size-4" />
+                        </Button>
+                        <span className="min-w-0 flex-1 text-center text-sm font-semibold capitalize">
+                          {new Intl.DateTimeFormat('id-ID', {
+                            month: 'long',
+                            year: 'numeric',
+                            timeZone: 'UTC',
+                          }).format(new Date(`${period}-01T00:00:00Z`))}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          aria-label="Bulan berikutnya"
+                          onClick={() => setPeriod(addMonths(`${period}-01`, 1).slice(0, 7))}
+                        >
+                          <ChevronRight className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
@@ -6355,8 +6464,8 @@ export function SchedulingTimesheetWorkspace({
               ) : null}
 
               <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
-                <div className="bg-surface-container-low flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="relative w-full lg:max-w-[280px]">
+                <div className="bg-surface-container-low flex items-center justify-between gap-3 p-3">
+                  <div className="relative w-[220px] shrink-0">
                     <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
                       value={fieldBreakSearch}
@@ -6365,10 +6474,22 @@ export function SchedulingTimesheetWorkspace({
                       className="h-9 rounded-lg bg-white pl-9 text-[13px]"
                     />
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-nowrap gap-2">
+                    <NativeSelect
+                      value={fieldBreakTimelineView}
+                      onValueChange={(value) => setFieldBreakTimelineView(value as FieldBreakTimelineView)}
+                      className="h-9 w-[118px] shrink-0 bg-white text-[13px]"
+                      options={[
+                        { value: 'month', label: 'Per bulan' },
+                        { value: 'quarter', label: 'Per kuartal' },
+                        { value: 'semester', label: 'Per semester' },
+                        { value: 'year', label: 'Per tahun' },
+                      ]}
+                    />
                     <NativeSelect
                       value={fieldBreakSectionFilter}
                       onValueChange={setFieldBreakSectionFilter}
+                      className="h-9 w-[150px] shrink-0 bg-white text-[13px]"
                       options={[
                         { value: 'all', label: 'Semua section' },
                         ...fieldBreakSections.map((section) => ({
@@ -6380,6 +6501,7 @@ export function SchedulingTimesheetWorkspace({
                     <NativeSelect
                       value={fieldBreakSourceFilter}
                       onValueChange={setFieldBreakSourceFilter}
+                      className="h-9 w-[130px] shrink-0 bg-white text-[13px]"
                       options={[
                         { value: 'all', label: 'Semua status' },
                         { value: 'auto', label: 'Auto' },
@@ -6392,7 +6514,7 @@ export function SchedulingTimesheetWorkspace({
                     fieldBreakSourceFilter !== 'all' ? (
                       <Button
                         variant="ghost"
-                        className="h-9 rounded-lg px-3"
+                        className="h-9 shrink-0 rounded-lg px-3"
                         onClick={() => {
                           setFieldBreakSearch('')
                           setFieldBreakSectionFilter('all')
@@ -6412,23 +6534,20 @@ export function SchedulingTimesheetWorkspace({
                           Nama
                         </th>
                         <th className="px-4 py-3 font-medium">Section / Group</th>
-                        <th className="px-4 py-3 font-medium">Mulai On-Site</th>
-                        <th className="px-4 py-3 font-medium">Mulai FB</th>
-                        <th className="px-4 py-3 font-medium">Selesai FB</th>
-                        <th className="px-4 py-3 font-medium">Hari</th>
+                        <th className="px-4 py-3 font-medium">Last Field Break</th>
+                        <th className="px-4 py-3 font-medium">Next Field Break</th>
+                        <th className="px-4 py-3 font-medium">Selesai Field Break</th>
+                        <th className="px-4 py-3 font-medium">Jeda</th>
                         <th className="px-4 py-3 font-medium">Status</th>
                         <th className="border-border border-r px-4 py-3 font-medium">Catatan</th>
-                        {yearlyMonths.map((month) => (
+                        {fieldBreakTimelineDays.map((timelineDay) => (
                           <th
-                            key={month.period}
-                            className="border-border min-w-[160px] border-r px-0 py-2 text-center text-[11px] font-semibold"
+                            key={timelineDay.date}
+                            className="border-border min-w-[38px] border-r px-1 py-2 text-center text-[10px] font-semibold"
                           >
-                            <div className="text-muted-foreground/80">{month.label}</div>
-                            <div className="border-border mt-1 grid grid-cols-4 divide-x border-t pt-1 text-[10px] tabular-nums">
-                              {month.weeks.map((week, idx) => (
-                                <div key={idx} className="px-1">{week.label}</div>
-                              ))}
-                            </div>
+                            <div className="text-muted-foreground/80">{timelineDay.month}</div>
+                            <div className="mt-1 tabular-nums">{timelineDay.day}</div>
+                            <div className="text-muted-foreground/70">{timelineDay.weekday}</div>
                           </th>
                         ))}
                       </tr>
@@ -6452,14 +6571,9 @@ export function SchedulingTimesheetWorkspace({
                             <Input
                               type="date"
                               className="h-9 w-[150px]"
-                              value={row.onSiteDate}
-                              onChange={(event) =>
-                                updateFieldBreakDraft(
-                                  row.employee.id,
-                                  'onSiteDate',
-                                  event.target.value
-                                )
-                              }
+                              value={row.lastFieldBreakDate}
+                              readOnly
+                              title="Diambil otomatis dari roster aktif Schedule V2."
                             />
                           </td>
                           <td className="px-4 py-3">
@@ -6467,6 +6581,7 @@ export function SchedulingTimesheetWorkspace({
                               type="date"
                               className="h-9 w-[150px]"
                               value={row.fieldBreakDate}
+                              min={row.lastFieldBreakDate ? addDays(row.lastFieldBreakDate, 90) : undefined}
                               onChange={(event) =>
                                 updateFieldBreakDraft(
                                   row.employee.id,
@@ -6481,6 +6596,7 @@ export function SchedulingTimesheetWorkspace({
                               type="date"
                               className="h-9 w-[150px]"
                               value={row.fieldBreakEndDate}
+                              min={row.fieldBreakDate || undefined}
                               onChange={(event) =>
                                 updateFieldBreakDraft(
                                   row.employee.id,
@@ -6536,44 +6652,27 @@ export function SchedulingTimesheetWorkspace({
                               }
                             />
                           </td>
-                          {yearlyMonths.map((month) => (
-                            <td key={month.period} className="border-border min-w-[160px] border-r p-0">
-                              <div className="grid h-full grid-cols-4 divide-x border-transparent">
-                                {month.weeks.map((week, idx) => {
-                                  // Check if any plan for this employee intersects with this week
-                                  const employeeBreaks = fieldBreakPlans.filter((p) => p.employeeId === row.employee.id)
-                                  
-                                  // Also include the draft if it's currently active in the row
-                                  const currentDraftStart = row.fieldBreakDate
-                                  const currentDraftEnd = row.fieldBreakEndDate
-                                  const hasDraftBreak = currentDraftStart && currentDraftEnd && currentDraftStart <= week.end && currentDraftEnd >= week.start
-
-                                  const isBreak = hasDraftBreak || employeeBreaks.some(
-                                    (b) => b.fieldBreakDate && b.fieldBreakEndDate && b.fieldBreakDate <= week.end && b.fieldBreakEndDate >= week.start
-                                  )
-
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className={cn(
-                                        'flex min-h-[52px] items-center justify-center transition-colors',
-                                        isBreak ? 'bg-amber-100' : 'bg-transparent'
-                                      )}
-                                    >
-                                      {isBreak ? (
-                                        <div className="bg-amber-400 h-2 w-full max-w-[80%] rounded-full opacity-60" />
-                                      ) : null}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </td>
-                          ))}
+                          {fieldBreakTimelineDays.map((timelineDay) => {
+                            const isBreak =
+                              (row.fieldBreakDate && row.fieldBreakEndDate && timelineDay.date >= row.fieldBreakDate && timelineDay.date <= row.fieldBreakEndDate) ||
+                              (fieldBreakTimelineByEmployee.get(row.employee.id) ?? []).some(
+                                (plan) => plan.fieldBreakDate && timelineDay.date >= plan.fieldBreakDate && timelineDay.date <= (plan.fieldBreakEndDate || plan.fieldBreakDate)
+                              )
+                            return (
+                              <td
+                                key={timelineDay.date}
+                                title={isBreak ? 'Field Break' : timelineDay.date}
+                                className={cn('border-border h-[52px] min-w-[38px] border-r p-0', isBreak && 'bg-amber-100')}
+                              >
+                                {isBreak ? <div className="bg-amber-400 mx-auto h-2 w-5 rounded-full opacity-70" /> : null}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                       {filteredFieldBreakRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-12 text-center">
+                          <td colSpan={8 + fieldBreakTimelineDays.length} className="px-4 py-12 text-center">
                             <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                               <span className="bg-surface-container-low text-muted-foreground grid size-10 place-items-center rounded-xl">
                                 <Users className="size-4" />

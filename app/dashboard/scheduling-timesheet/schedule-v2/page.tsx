@@ -11,6 +11,7 @@ export default async function SchedulingTimesheetScheduleV2Page() {
       currentEmployeeName={options.currentEmployeeName}
       access={options.access}
       configs={options.schedulingConfigs}
+      fieldBreakPlans={options.fieldBreakPlans}
     />
   )
 }

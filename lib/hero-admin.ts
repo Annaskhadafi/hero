@@ -5968,7 +5968,7 @@ export async function getSchedulingTimesheetOptions() {
       dayCount: plan.dayCount ?? null,
       fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
       fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
-      source: plan.source ?? 'manual',
+      source: plan.source === 'auto' ? 'auto' : 'manual',
       isLocked: Boolean(plan.isLocked),
       notes: plan.notes ?? '',
       updatedAt: plan.updatedAt.toISOString(),
@@ -6168,7 +6168,7 @@ function serializeFieldBreakPlan(plan: typeof timesheetFieldBreakPlans.$inferSel
     dayCount: plan.dayCount ?? null,
     fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
     fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
-    source: plan.source ?? 'manual',
+    source: plan.source === 'auto' ? 'auto' : 'manual',
     isLocked: Boolean(plan.isLocked),
     notes: plan.notes ?? '',
     updatedAt: plan.updatedAt.toISOString(),
@@ -6236,7 +6236,30 @@ export async function getSchedulingTimesheetAttendanceOptions() {
 }
 
 export async function getSchedulingTimesheetFieldBreakOptions() {
-  return getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions()
+  return {
+    ...options,
+    fieldBreakRosterPlans: [
+      ...options.activeSavedPlans.filter((plan) => plan.sourceVersion !== 'v2'),
+      ...options.savedPlansV2.map((plan) => ({
+        siteId: plan.siteId,
+        period: plan.period,
+        siteScheduleType: 'shift',
+        draftSchedule: plan.draftSchedule.map((row) => ({
+          employeeId: row.employeeId,
+          schedule: [...row.schedule],
+        })),
+        fixedSchedule: (plan.status === 'active' && plan.activeSchedule.length
+          ? plan.activeSchedule
+          : plan.draftSchedule
+        ).map((row) => ({ employeeId: row.employeeId, schedule: [...row.schedule] })),
+        employeeProfiles: [],
+        fieldBreakConfig: null,
+        updatedAt: plan.updatedAt,
+        sourceVersion: 'v2' as const,
+      })),
+    ],
+  }
 }
 
 export async function getSchedulingTimesheetPayrollOptions() {
