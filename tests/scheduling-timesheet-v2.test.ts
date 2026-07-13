@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import * as XLSX from 'xlsx'
 
 import {
   applyScheduleV2Code,
@@ -10,6 +11,7 @@ import {
   isCompleteScheduleV2,
   mergeActiveSchedulePlans,
 } from '@/lib/timesheet/schedule-v2'
+import { mergeScheduleV2Import, parseScheduleV2Import } from '@/lib/timesheet/schedule-v2-import'
 
 describe('scheduling timesheet V2', () => {
   it.each([
@@ -71,6 +73,83 @@ describe('scheduling timesheet V2', () => {
     expect(mergeActiveSchedulePlans(v1, active, () => ({ ...v1[0], value: 'v2' }))).toEqual([
       { siteId: 1, period: '2026-07', value: 'v2' },
     ])
+  })
+
+  it('detects and imports the supplied roster by normalized employee name', () => {
+    const workbook = XLSX.readFile(path.join(process.cwd(), 'public/PPA BIB roster juli.xlsx'), {
+      cellDates: true,
+    })
+    const result = parseScheduleV2Import(
+      workbook.SheetNames.map((name) => ({
+        name,
+        rows: XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], {
+          header: 1,
+          raw: true,
+          defval: '',
+          blankrows: true,
+        }) as unknown[][],
+      })),
+      [
+        { id: 10, name: 'FADILLAH SYAWAL' },
+        { id: 11, name: 'MUHAMMAD FATIH FARHAN' },
+        { id: 12, name: 'RIZKY AJI SETIAWAN' },
+        { id: 13, name: 'MUHAMMAD IRPAN' },
+        { id: 14, name: 'AHYAR RIFANI' },
+        { id: 15, name: 'MUHAMMAD RIZKY RAMADAN' },
+        { id: 16, name: 'MUHAMMAD ZAKARIA' },
+        { id: 17, name: 'DEDY DARMAWAN' },
+        { id: 18, name: 'SAHLUL ALAMSYAH' },
+        { id: 19, name: 'AHMAD MAGFIRAH' },
+        { id: 20, name: 'MOH DANIF PRATAMA' },
+        { id: 21, name: 'FERRY SAPUTRA' },
+      ],
+      '2026-07'
+    )
+
+    expect(result.detectedPeriod).toBe('2026-05')
+    expect(result.period).toBe('2026-07')
+    expect(result.matchedNames).toHaveLength(12)
+    expect(result.rows.find((row) => row.employeeId === 10)?.schedule.slice(0, 7)).toEqual([
+      'DS',
+      'DS',
+      'DS',
+      'DS',
+      'DS',
+      'OFF',
+      'NS',
+    ])
+    expect(result.rows.find((row) => row.employeeId === 11)?.schedule.slice(0, 7)).toEqual([
+      'FB',
+      'FB',
+      'FB',
+      'FB',
+      'FB',
+      'DS',
+      'NS',
+    ])
+  })
+
+  it('supports flat Nama/Tanggal/Shift files without erasing existing defaults', () => {
+    const result = parseScheduleV2Import(
+      [
+        {
+          name: 'Data',
+          rows: [
+            ['Nama', 'Tanggal', 'Shift'],
+            ['Ahmad Magfirah', 1, 'DG'],
+            ['AHMAD-MAGFIRAH', 2, 'NG'],
+          ],
+        },
+      ],
+      [{ id: 20, name: 'AHMAD MAGFIRAH' }],
+      '2026-07'
+    )
+    const merged = mergeScheduleV2Import(
+      [{ employeeId: 20, schedule: Array(31).fill('OFF') }],
+      result.rows
+    )
+
+    expect(merged[0].schedule.slice(0, 3)).toEqual(['DS', 'NS', 'OFF'])
   })
 
   it('keeps holidays as visual markers and has no auto-generation control', () => {

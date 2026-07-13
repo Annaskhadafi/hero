@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition, Fragment } from 'react'
-import { CalendarDays, CheckCircle2, Eraser, Pencil, Plus, Save, Trash2, Forklift, Car, Printer } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Eraser, Pencil, Plus, Save, Trash2, Forklift, Car, Printer, Upload } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -54,6 +54,11 @@ import {
   type ScheduleV2Code,
   type ScheduleV2Row,
 } from '@/lib/timesheet/schedule-v2'
+import {
+  mergeScheduleV2Import,
+  parseScheduleV2Import,
+  type ScheduleV2ImportResult,
+} from '@/lib/timesheet/schedule-v2-import'
 import { isWeekend } from '@/lib/timesheet-scheduling'
 
 function isStaffRole(role?: string | null): boolean {
@@ -66,7 +71,11 @@ function isStaffRole(role?: string | null): boolean {
 
 function createPrefilledScheduleV2(employees: Employee[], period: string, scheduleType?: string | null) {
   const emptyRows = createEmptyScheduleV2(
-    employees.map((e) => e.id),
+    employees.map((employee) => ({
+      id: employee.id,
+      section: employee.section,
+      role: employee.role,
+    })),
     period
   )
   const isOffice = scheduleType === 'office'
@@ -290,6 +299,7 @@ export function ScheduleV2Workspace({
   initialPlans,
   currentEmployeeName,
   access,
+  configs,
 }: {
   employees: Employee[]
   sites: Site[]
@@ -308,6 +318,10 @@ export function ScheduleV2Workspace({
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [selectedTool, setSelectedTool] = useState<ScheduleV2Code | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ScheduleV2Plan | null>(null)
+  const [scheduleImport, setScheduleImport] = useState<ScheduleV2ImportResult | null>(null)
+  const [importFileName, setImportFileName] = useState('')
+  const [importInputKey, setImportInputKey] = useState(0)
+  const [importing, setImporting] = useState(false)
   const [pending, startTransition] = useTransition()
   const dragging = useRef(false)
   const visitedCells = useRef(new Set<string>())
@@ -387,7 +401,7 @@ export function ScheduleV2Workspace({
           ns++
           if (hasKimper) nightOperator++
           manpower++
-        } else if (code === 'IN' || code === 'FB') {
+        } else if (code === 'FB') {
           manpower++
         } else if (code === 'OFF') {
           off++
@@ -425,7 +439,7 @@ export function ScheduleV2Workspace({
         const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
         const totals = rosterSectionTotals(sectionRows, dayCount)
         const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
-        
+
         const bodyRows = sectionRows
           .map(
             (row) => `
@@ -558,18 +572,75 @@ export function ScheduleV2Workspace({
     setSelectedTool(null)
   }
 
+  function resetScheduleImport() {
+    setScheduleImport(null)
+    setImportFileName('')
+    setImportInputKey((current) => current + 1)
+  }
+
+  async function handleScheduleImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      resetScheduleImport()
+      return
+    }
+    if (!/\.xlsx?$/i.test(file.name)) {
+      toast.error('Gunakan file Excel .xlsx atau .xls')
+      resetScheduleImport()
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 10 MB')
+      resetScheduleImport()
+      return
+    }
+
+    setImporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
+      const sheets = workbook.SheetNames.map((name) => ({
+        name,
+        rows: XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[name], {
+          header: 1,
+          raw: true,
+          defval: '',
+          blankrows: true,
+        }) as unknown[][],
+      }))
+      const result = parseScheduleV2Import(
+        sheets,
+        employeesForSite(employees, Number(siteId)),
+        period
+      )
+      if (!result.importedCells) {
+        throw new Error('Tidak ada nama karyawan dan kode schedule yang cocok.')
+      }
+      setScheduleImport(result)
+      setImportFileName(file.name)
+      toast.success(`${result.matchedNames.length} karyawan terdeteksi dari Excel`)
+    } catch (error) {
+      resetScheduleImport()
+      toast.error('File Excel gagal diimport', {
+        description: error instanceof Error ? error.message : 'Format tidak dikenali',
+      })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function handleCellPointerDown(event: React.PointerEvent, employeeId: number, day: number) {
     if (!canEdit || selectedTool === null || event.button !== 0) return
     event.preventDefault()
     dragging.current = true
     visitedCells.current.clear()
-    
+
     setRows((current) => {
       const row = current.find((r) => r.employeeId === employeeId)
       const currentCode = row?.schedule[day - 1] ?? ''
       const targetTool = currentCode === selectedTool ? '' : selectedTool
       activePaintTool.current = targetTool
-      
+
       const key = `${employeeId}:${day}`
       visitedCells.current.add(key)
       return applyScheduleV2Code(current, employeeId, day, targetTool, selectedTool === 'OFF')
@@ -608,9 +679,31 @@ export function ScheduleV2Workspace({
           (plan) => plan.siteId === numericSiteId && plan.period === period
         )
         if (existing) {
+          const siteEmployees = employeesForSite(employees, numericSiteId)
+          const nextRows = scheduleImport
+            ? mergeScheduleV2Import(reconcileRows(existing, siteEmployees), scheduleImport.rows)
+            : reconcileRows(existing, siteEmployees)
+          const saved = scheduleImport
+            ? await saveSchedulingTimesheetPlanV2DraftAction({
+                siteId: numericSiteId,
+                period,
+                rows: nextRows,
+              })
+            : null
+          const nextPlan = {
+            ...existing,
+            draftSchedule: nextRows,
+            updatedAt: saved?.updatedAt ?? existing.updatedAt,
+          }
+          setPlans((current) => current.map((plan) => (plan.id === existing.id ? nextPlan : plan)))
           setCreateOpen(false)
-          openEditor(existing)
-          toast.info('Schedule site dan bulan ini sudah ada. Draft dibuka.')
+          openEditor(nextPlan)
+          resetScheduleImport()
+          toast.info(
+            scheduleImport
+              ? 'Schedule sudah ada. Data Excel diterapkan ke draft.'
+              : 'Schedule site dan bulan ini sudah ada. Draft dibuka.'
+          )
           return
         }
         if (result.existing) {
@@ -622,26 +715,34 @@ export function ScheduleV2Workspace({
         const siteEmployees = employeesForSite(employees, numericSiteId)
         const now = new Date().toISOString()
         const siteConfig = configs?.find((c) => c.siteId === numericSiteId)
-        
+        const baseRows = createPrefilledScheduleV2(siteEmployees, period, siteConfig?.scheduleType)
+        const draftSchedule = scheduleImport
+          ? mergeScheduleV2Import(baseRows, scheduleImport.rows)
+          : baseRows
+        const saved = scheduleImport
+          ? await saveSchedulingTimesheetPlanV2DraftAction({
+              siteId: numericSiteId,
+              period,
+              rows: draftSchedule,
+            })
+          : null
+
         const plan: ScheduleV2Plan = {
           id: result.id ?? Date.now(),
           siteId: numericSiteId,
           period,
           status: 'draft',
-          draftSchedule: createPrefilledScheduleV2(
-            siteEmployees,
-            period,
-            siteConfig?.scheduleType
-          ),
+          draftSchedule,
           activeSchedule: [],
           creatorName: currentEmployeeName,
           activatedAt: null,
           createdAt: now,
-          updatedAt: now,
+          updatedAt: saved?.updatedAt ?? now,
         }
         setPlans((current) => [plan, ...current])
         setCreateOpen(false)
         openEditor(plan)
+        resetScheduleImport()
         router.refresh()
       } catch (error) {
         toast.error('Gagal membuat Schedule V2', {
@@ -879,7 +980,7 @@ export function ScheduleV2Workspace({
       </MinimalTableShell>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Tambah Schedule V2</DialogTitle>
             <DialogDescription>
@@ -891,7 +992,10 @@ export function ScheduleV2Workspace({
               <Label>Site</Label>
               <select
                 value={siteId}
-                onChange={(event) => setSiteId(event.target.value)}
+                onChange={(event) => {
+                  setSiteId(event.target.value)
+                  resetScheduleImport()
+                }}
                 className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
               >
                 {sites.map((site) => (
@@ -906,8 +1010,57 @@ export function ScheduleV2Workspace({
               <Input
                 type="month"
                 value={period}
-                onChange={(event) => setPeriod(event.target.value)}
+                onChange={(event) => {
+                  setPeriod(event.target.value)
+                  resetScheduleImport()
+                }}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="schedule-v2-import">Import roster Excel (opsional)</Label>
+              <Input
+                key={importInputKey}
+                id="schedule-v2-import"
+                type="file"
+                accept=".xlsx,.xls"
+                disabled={importing || !siteId}
+                onChange={handleScheduleImport}
+              />
+              <p className="text-muted-foreground text-xs">
+                Sistem mencari tanggal, kode shift, dan mencocokkan karyawan berdasarkan NAMA.
+              </p>
+              {scheduleImport ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <Upload className="size-4" />
+                    {importFileName}
+                  </div>
+                  <p className="mt-1">
+                    {scheduleImport.matchedNames.length} karyawan · {scheduleImport.importedCells}{' '}
+                    cell · periode {formatPeriod(scheduleImport.period)}
+                  </p>
+                  {scheduleImport.detectedPeriod &&
+                  scheduleImport.detectedPeriod !== scheduleImport.period ? (
+                    <p className="mt-1 text-amber-800">
+                      Header Excel tertulis {formatPeriod(scheduleImport.detectedPeriod)}; import tetap
+                      memakai bulan yang dipilih: {formatPeriod(scheduleImport.period)}.
+                    </p>
+                  ) : null}
+                  {scheduleImport.unmatchedNames.length ? (
+                    <p className="mt-1 text-amber-800">
+                      Nama tidak cocok: {scheduleImport.unmatchedNames.slice(0, 5).join(', ')}
+                      {scheduleImport.unmatchedNames.length > 5
+                        ? ` +${scheduleImport.unmatchedNames.length - 5}`
+                        : ''}
+                    </p>
+                  ) : null}
+                  {scheduleImport.unknownCodes.length ? (
+                    <p className="mt-1 text-amber-800">
+                      Kode dilewati: {scheduleImport.unknownCodes.join(', ')}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label>Dibuat oleh</Label>
@@ -918,7 +1071,7 @@ export function ScheduleV2Workspace({
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               BATAL
             </Button>
-            <Button disabled={pending || !siteId || !period} onClick={createPlan}>
+            <Button disabled={pending || importing || !siteId || !period} onClick={createPlan}>
               {pending ? 'MEMBUAT...' : 'BUAT SCHEDULE'}
             </Button>
           </DialogFooter>

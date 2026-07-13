@@ -16,6 +16,7 @@
 - RBAC for all admin features
 
 ## History
+- 2026-07-13: Schedule V2 create dialog now imports variable Excel roster layouts into the selected schedule month, reports stale workbook period headers without overriding the selection, matches active site employees by normalized name/unique initials/unique one-character typos, maps known roster codes, and saves the imported grid directly as a draft.
 - 2026-06-24: Mobile Profile email now resolves from User Management (hero_employees) by authUserId before session email and saves email changes back to the same employee record plus auth user with duplicate-email guard.
 - 2026-06-24: Fixed Dokploy/Next build type error in HSE Tire Inspection create page by routing to result.id returned from createInspection instead of nonexistent result.inspectionId.
 - 2026-06-23: All HC tables migrated from hrEmployees → employees FKs: hcLeaveBalances, hcLeaveRequests, hcOnboardingRecords, hcOffboardingRequests, hcPerformanceReviews (employeeId+reviewerId), hcDisciplinaryActions, hcLeaderPerformance (leaderId+reviewerId) — 9 FKs total across 8 tables. Schema files updated. hr-counseling.ts raw SQL replaced with masterSections join. Mobile profile page hrEmployees query removed. No orphan data found — all IDs already exist in hero_employees with same values.
