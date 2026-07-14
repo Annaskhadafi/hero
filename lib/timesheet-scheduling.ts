@@ -1,4 +1,4 @@
-export type ScheduleCode = "IN" | "DS" | "NS" | "OFF" | "FB" | "Libur" | "Sakit" | "Emergency";
+export type ScheduleCode = "IN" | "DS" | "NS" | "OFF" | "FB" | "Libur" | "Sakit" | "Emergency" | "ST";
 export type OvertimeDayType = "work" | "off";
 export type RosterType = "5:2" | "6:1" | string;
 
@@ -30,7 +30,7 @@ export function isHoliday(period: string, day: number, holidays: HolidayLike[] =
 }
 
 export function hoursFromCode(code: ScheduleCode) {
-  return code === "IN" || code === "DS" || code === "NS" || code === "FB" ? 5 : 0;
+  return code === "IN" || code === "DS" || code === "NS" || code === "FB" || code === "ST" ? 5 : 0;
 }
 
 export function classifyOvertimeDay(schedule: ScheduleCode[], period: string, dayIndex: number, rosterType: RosterType, holidays: HolidayLike[] = []): OvertimeDayType {

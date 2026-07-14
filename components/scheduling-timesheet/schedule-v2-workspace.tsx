@@ -155,6 +155,7 @@ const toolOptions: Array<{ code: ScheduleV2Code; label: string }> = [
   { code: 'DS', label: 'DS' },
   { code: 'NS', label: 'NS' },
   { code: 'FB', label: 'FB' },
+  { code: 'ST', label: 'ST' },
   { code: '', label: 'Kosong' },
 ]
 
@@ -163,6 +164,7 @@ function codeClass(code: ScheduleV2Code) {
   if (code === 'DS') return 'bg-sky-100 text-sky-900 hover:bg-sky-200'
   if (code === 'NS') return 'bg-slate-800 text-white hover:bg-slate-900'
   if (code === 'FB') return 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+  if (code === 'ST') return 'bg-purple-100 text-purple-900 hover:bg-purple-200'
   return 'bg-white text-slate-300 hover:bg-slate-50'
 }
 

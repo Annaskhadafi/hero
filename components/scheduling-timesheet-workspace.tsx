@@ -193,9 +193,10 @@ type EmployeeScheduleProfile = {
   positionOnSite: string
   kimperLv: boolean
   kimperTh: boolean
+  isLokal?: boolean
 }
 
-type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'Libur' | 'Sakit' | 'Emergency'
+type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office' | 'hybrid'
 type SiteRosterType = '5:2' | '6:1' | 'vale'
 type DefaultShiftType = 'day-shift' | 'night-shift'
@@ -358,7 +359,7 @@ const rosterSectionStyles: Record<
   },
 }
 
-const codeCycle: ScheduleCode[] = ['IN', 'DS', 'NS', 'OFF', 'FB', 'Libur', 'Sakit', 'Emergency']
+const codeCycle: ScheduleCode[] = ['IN', 'DS', 'NS', 'OFF', 'FB', 'ST', 'Libur', 'Sakit', 'Emergency']
 const defaultSiteConfig: SiteSchedulingConfig = {
   scheduleType: 'office',
   rosterType: '5:2',
@@ -581,6 +582,7 @@ function codeClass(code: ScheduleCode) {
   if (code === 'NS') return 'bg-indigo-600 text-white hover:bg-indigo-700'
   if (code === 'OFF') return 'bg-rose-100 text-rose-700 hover:bg-rose-200'
   if (code === 'FB') return 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+  if (code === 'ST') return 'bg-purple-100 text-purple-900 hover:bg-purple-200'
   if (code === 'Libur') return 'bg-slate-100 text-slate-700'
   if (code === 'Sakit') return 'bg-fuchsia-100 text-fuchsia-800 hover:bg-fuchsia-200'
   return 'bg-pink-100 text-pink-800 hover:bg-pink-200'
@@ -954,6 +956,7 @@ export function SchedulingTimesheetWorkspace({
   const [profilePositionOnSite, setProfilePositionOnSite] = useState('')
   const [profileKimperLv, setProfileKimperLv] = useState(false)
   const [profileKimperTh, setProfileKimperTh] = useState(false)
+  const [profileIsLokal, setProfileIsLokal] = useState(false)
   const [permanentBase, setPermanentBase] = useState<Record<string, ScheduleCode>>({})
   const [permanentOverrides, setPermanentOverrides] = useState<Record<string, ScheduleCode>>({})
   const [scheduleSavedAt, setScheduleSavedAt] = useState<string | null>(null)
@@ -1608,7 +1611,7 @@ export function SchedulingTimesheetWorkspace({
         ).length
         const msaDays = schedule.filter(
           (code, index) =>
-            (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
+            (code === 'IN' || code === 'DS' || code === 'NS' || code === 'ST') &&
             !isHoliday(period, index + 1, holidays)
         ).length
         const fieldBreakDays = schedule.filter((code) => code === 'FB').length
@@ -1957,7 +1960,7 @@ export function SchedulingTimesheetWorkspace({
             ).length,
             msaDays: row.schedule.filter(
               (code, index) =>
-                (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB') &&
+                (code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB' || code === 'ST') &&
                 !isHoliday(period, index + 1, holidays)
             ).length,
             fieldBreakDays: row.schedule.filter((code) => code === 'FB').length,
@@ -2905,6 +2908,7 @@ export function SchedulingTimesheetWorkspace({
     )
     setProfileKimperLv(profile?.kimperLv ?? false)
     setProfileKimperTh(profile?.kimperTh ?? false)
+    setProfileIsLokal(profile?.isLokal ?? false)
     setLeaveFrom('')
     setLeaveTo('')
     setFieldBreakFrom('')
@@ -3279,6 +3283,7 @@ export function SchedulingTimesheetWorkspace({
         positionOnSite: profilePositionOnSite || defaultPositionOnSite(profileSection),
         kimperLv: profileKimperLv,
         kimperTh: profileKimperTh,
+        isLokal: profileIsLokal,
       },
     }))
 
@@ -4211,6 +4216,7 @@ export function SchedulingTimesheetWorkspace({
   const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
+          const profile = employeeProfiles[row.employee.id] ?? { isLokal: false }
           const staff = isStaffRole(row.employee.role)
           let msaDays = 0
           let mealsDays = 0
@@ -4223,7 +4229,8 @@ export function SchedulingTimesheetWorkspace({
             const holiday = isHoliday(period, day, holidays)
             const fieldBreakDay =
               fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
-            if (present && rosterWorkDay && !holiday) msaDays += 1
+            const presentOrST = present || (scheduleCode === 'ST' && cell.status === 'empty')
+            if (presentOrST && rosterWorkDay && !holiday && scheduleCode !== 'FB') msaDays += 1
             if (
               present &&
               !holiday &&
@@ -4240,20 +4247,19 @@ export function SchedulingTimesheetWorkspace({
                 staff
               )
           }
-          const msaRate =
-            siteConfig.msaType === 'none'
+          const msa =
+            siteConfig.msaType === 'none' || profile.isLokal
               ? 0
-              : siteConfig.msaType === 'same-all'
-                ? rate.msaNonStaff
-                : staff
-                  ? rate.msaStaff
-                  : rate.msaNonStaff
-          const mealsRate =
-            siteConfig.mealsType === 'none'
+              : msaDays *
+                (siteConfig.msaType === 'same-all'
+                  ? rate.msaNonStaff
+                  : staff
+                    ? rate.msaStaff
+                    : rate.msaNonStaff)
+          const meals =
+            siteConfig.mealsType === 'none' || profile.isLokal
               ? 0
-              : staff
-                ? rate.mealsStaff
-                : rate.mealsNonStaff
+              : mealsDays * (staff ? rate.mealsStaff : rate.mealsNonStaff)
           return {
             ...row,
             msaDays,
@@ -4309,7 +4315,7 @@ export function SchedulingTimesheetWorkspace({
         const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
         const isWorkDay = !isRosterOff
         const isFieldBreakDay = fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
-        const eligibleMsa = isWorkDay && !holiday && cell.status === 'present'
+        const eligibleMsa = isWorkDay && scheduleCode !== 'FB' && !holiday && (cell.status === 'present' || (scheduleCode === 'ST' && cell.status === 'empty'))
         const eligibleMeals =
           !holiday &&
           cell.status === 'present' &&
@@ -6552,8 +6558,9 @@ export function SchedulingTimesheetWorkspace({
                                           const isEmptyWorkDay =
                                             isWorkDay &&
                                             !isNationalHoliday &&
+                                            scheduleCode !== 'ST' &&
                                             cell.status === 'empty'
-                                          const noAllowance = isAbsent || isEmptyWorkDay
+                                          const noAllowance = isAbsent || isEmptyWorkDay || scheduleCode === 'FB'
                                           const absentLabel =
                                             cell.status === 'leave'
                                               ? 'Izin'
@@ -6571,15 +6578,16 @@ export function SchedulingTimesheetWorkspace({
                                               cellValue = absentLabel
                                               cellBg = 'bg-rose-50 text-rose-700'
                                             } else {
+                                              const profile = employeeProfiles[row.employee.id] ?? { isLokal: false }
                                               const msaRate =
-                                                siteConfig.msaType === 'none'
+                                                siteConfig.msaType === 'none' || profile.isLokal
                                                   ? 0
                                                   : siteConfig.msaType === 'same-all'
                                                     ? rate.msaNonStaff
                                                     : staff
                                                       ? rate.msaStaff
                                                       : rate.msaNonStaff
-                                              cellValue = msaRate
+                                              cellValue = msaRate > 0 ? msaRate : '-'
                                               cellBg = isNationalHoliday
                                                 ? 'bg-amber-50 text-foreground'
                                                 : isRosterOff
@@ -6791,13 +6799,7 @@ export function SchedulingTimesheetWorkspace({
                                                 code === 'Sakit'
                                               const hol = holidaysByDay.get(day)
 
-                                              // Logika tunjangan summary:
-                                              // - OFF roster / Libur nasional = dapat
-                                              // - Hadir (present) = dapat
-                                              // - Izin/Sakit/Alpha/Empty hari kerja = tidak dapat
-                                              // - Field Break = tidak dapat
-                                              const isRosterOff2 =
-                                                code === 'OFF' || code === 'Libur'
+                                              const isRosterOff2 = code === 'OFF' || code === 'Libur'
                                               const isNationalHoliday2 = Boolean(hol)
                                               const isWorkDay2 = !isRosterOff2
                                               const isAbsent2 =
@@ -6807,8 +6809,9 @@ export function SchedulingTimesheetWorkspace({
                                               const isEmptyWorkDay2 =
                                                 isWorkDay2 &&
                                                 !isNationalHoliday2 &&
+                                                code !== 'ST' &&
                                                 cell.status === 'empty'
-                                              const noAllowance2 = isAbsent2 || isEmptyWorkDay2
+                                              const noAllowance2 = isAbsent2 || isEmptyWorkDay2 || code === 'FB'
 
                                               if (attendanceView === 'lokasi') {
                                                 if (siteConfig.lokasiKhususEnabled) {
@@ -6855,8 +6858,9 @@ export function SchedulingTimesheetWorkspace({
                                               )
                                                 continue
                                               if (attendanceView === 'msa') {
+                                                const profile = employeeProfiles[row.employee.id] ?? { isLokal: false }
                                                 total +=
-                                                  siteConfig.msaType === 'none'
+                                                  siteConfig.msaType === 'none' || profile.isLokal
                                                     ? 0
                                                     : siteConfig.msaType === 'same-all'
                                                       ? rate.msaNonStaff
@@ -7861,6 +7865,17 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Lokal (Non-MSA)</Label>
+                <NativeSelect
+                  value={profileIsLokal ? 'yes' : 'no'}
+                  onValueChange={(value) => setProfileIsLokal(value === 'yes')}
+                  options={[
+                    { value: 'yes', label: 'Lokal' },
+                    { value: 'no', label: 'Non Lokal' },
+                  ]}
+                />
+              </div>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
@@ -7917,7 +7932,6 @@ export function SchedulingTimesheetWorkspace({
         </DialogContent>
       </Dialog>
 
-      {/* Activity Detail Dialog */}
       <Dialog
         open={selectedActivityCell !== null}
         onOpenChange={(open) => !open && setSelectedActivityCell(null)}

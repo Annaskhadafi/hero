@@ -478,7 +478,7 @@ export async function saveSchedulingTimesheetPlanAction(
   return { ok: true }
 }
 
-const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB'])
+const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST'])
 const scheduleV2RowSchema = z.object({
   employeeId: z.number().int().positive(),
   schedule: z.array(scheduleV2CodeSchema),

@@ -1,6 +1,6 @@
 import { isWeekend, isHoliday, type HolidayLike, normalizeRosterSection } from '@/lib/timesheet-scheduling'
 
-export const scheduleV2Codes = ['', 'OFF', 'DS', 'NS', 'FB'] as const
+export const scheduleV2Codes = ['', 'OFF', 'DS', 'NS', 'FB', 'ST'] as const
 
 export type ScheduleV2Code = (typeof scheduleV2Codes)[number]
 
