@@ -42,9 +42,7 @@ export function PrintButton() {
         
         const canvas = await html2canvas(page, {
           scale: 2, 
-          useCORS: true,
           logging: false,
-          allowTaint: true,
           // ignore styling that might cause issues
           onclone: (clonedDoc) => {
             const clonedPage = clonedDoc.querySelectorAll('.pdf-wrapper')[i] as HTMLElement
