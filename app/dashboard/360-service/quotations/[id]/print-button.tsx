@@ -62,12 +62,16 @@ export function PrintButton() {
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
       
-      // Get reference number if available from the page
+      // Get reference number if available from the page or use document title
       let fileName = "Quotation.pdf"
-      const refElement = document.querySelector('.text-slate-800.font-bold')
-      if (refElement && refElement.textContent && refElement.textContent.includes('Ref:')) {
-        const refNo = refElement.textContent.replace('Ref:', '').trim().replace(/\//g, '-')
-        fileName = `Quotation_${refNo}.pdf`
+      if (document.title && document.title !== "Quotation Preview") {
+        fileName = `${document.title}.pdf`
+      } else {
+        const refElement = document.querySelector('.text-slate-800.font-bold')
+        if (refElement && refElement.textContent && refElement.textContent.includes('Ref:')) {
+          const refNo = refElement.textContent.replace('Ref:', '').trim().replace(/\//g, '-')
+          fileName = `Quotation_${refNo}.pdf`
+        }
       }
       
       pdf.save(fileName)
