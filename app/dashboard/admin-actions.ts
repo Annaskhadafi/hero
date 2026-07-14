@@ -158,6 +158,10 @@ import {
 } from '@/lib/timesheet/attendance-import'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
+  validateSiteOvertimeConfig,
+  type SiteOvertimeConfig,
+} from '@/lib/timesheet/overtime-policy'
+import {
   createEmptyScheduleV2,
   getFieldBreakScheduleRanges,
   getScheduleV2DayCount,
@@ -381,7 +385,17 @@ const createActivitySchema = z.object({
   remarks: z.string().trim().min(3),
 })
 
-const scheduleCodeSchema = z.enum(['IN', 'DS', 'NS', 'OFF', 'FB', 'Libur', 'Sakit', 'Emergency'])
+const scheduleCodeSchema = z.enum([
+  'IN',
+  'DS',
+  'NS',
+  'OFF',
+  'FB',
+  'ST',
+  'Libur',
+  'Sakit',
+  'Emergency',
+])
 const schedulingPlanRowSchema = z.object({
   employeeId: z.number().int(),
   schedule: z.array(scheduleCodeSchema),
@@ -518,11 +532,7 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
   return activeEmployees.map((employee) => employee.id)
 }
 
-async function normalizeScheduleV2DraftRows(
-  siteId: number,
-  period: string,
-  rows: ScheduleV2Row[]
-) {
+async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows: ScheduleV2Row[]) {
   const activeEmployees = await getActiveScheduleEmployees(siteId)
   const allowedIds = new Set(activeEmployees.map((employee) => employee.id))
   if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
@@ -538,10 +548,7 @@ async function normalizeScheduleV2DraftRows(
     const existing = rowByEmployee.get(employee.id)
     return {
       employeeId: employee.id,
-      schedule: Array.from(
-        { length: dayCount },
-        (_, index) => existing?.schedule[index] ?? ''
-      ),
+      schedule: Array.from({ length: dayCount }, (_, index) => existing?.schedule[index] ?? ''),
       section: existing?.section,
       positionOnSite: existing?.positionOnSite,
       kimperLv: existing?.kimperLv,
@@ -944,9 +951,10 @@ export async function syncScheduleV2EmployeeAssignmentAction(
         .update(timesheetSchedulingPlansV2)
         .set({
           draftSchedule: addToRows((targetPlan.draftSchedule ?? []) as ScheduleV2Row[]),
-          activeSchedule: targetPlan.status === 'active'
-            ? addToRows((targetPlan.activeSchedule ?? []) as ScheduleV2Row[])
-            : targetPlan.activeSchedule,
+          activeSchedule:
+            targetPlan.status === 'active'
+              ? addToRows((targetPlan.activeSchedule ?? []) as ScheduleV2Row[])
+              : targetPlan.activeSchedule,
           updatedAt: now,
         })
         .where(eq(timesheetSchedulingPlansV2.id, targetPlan.id))
@@ -2543,6 +2551,58 @@ export async function clearAttendanceRealOverridesAction(
   return { ok: true }
 }
 
+const overtimeIntervalSchema = z.object({
+  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+})
+const overtimeDayRuleSchema = z.object({
+  dayShift: z.array(overtimeIntervalSchema).length(2),
+  nightShift: z.array(overtimeIntervalSchema).length(2),
+})
+const siteOvertimeConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    hariBiasa: overtimeDayRuleSchema,
+    hariLibur: overtimeDayRuleSchema,
+    hariKe6: overtimeDayRuleSchema,
+  })
+  .superRefine((value, context) => {
+    for (const message of validateSiteOvertimeConfig(value as SiteOvertimeConfig)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message })
+    }
+  })
+
+const employeeBenefitRuleSchema = z.object({
+  msa: z.boolean(),
+  meals: z.boolean(),
+  specialAllowance: z.boolean(),
+  specialAllowancePeriod: z.enum(['daily', 'monthly']),
+  specialAllowanceAmount: z.number().int().min(0).max(1_000_000_000),
+})
+const schedulingClockTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
+const schedulingFieldBreakConfigSchema = z
+  .object({
+    dayShiftClockIn: schedulingClockTimeSchema.optional(),
+    nightShiftClockIn: schedulingClockTimeSchema.optional(),
+    employeeBenefitConfig: z
+      .object({
+        local: employeeBenefitRuleSchema,
+        nonLocal: employeeBenefitRuleSchema,
+      })
+      .optional(),
+    quotationBillingConfig: z
+      .object({
+        countEmpty: z.boolean(),
+        countSick: z.boolean(),
+        countLeave: z.boolean(),
+        countAbsent: z.boolean(),
+      })
+      .optional(),
+  })
+  .passthrough()
+
 const saveSchedulingConfigSchema = z.object({
   siteId: z.number().int().positive(),
   scheduleType: z.enum(['office', 'shift', 'hybrid']),
@@ -2550,9 +2610,10 @@ const saveSchedulingConfigSchema = z.object({
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
   overtimeType: z.string().max(60),
-  fieldBreakConfig: z.unknown().optional().nullable(),
+  fieldBreakConfig: schedulingFieldBreakConfigSchema.optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
+  overtimeConfig: siteOvertimeConfigSchema,
 })
 
 export async function saveSchedulingConfigAction(
@@ -2586,6 +2647,7 @@ export async function saveSchedulingConfigAction(
         fieldBreakConfig: payload.fieldBreakConfig,
         allowanceVariables: payload.allowanceVariables,
         overtimeVariables: payload.overtimeVariables,
+        overtimeConfig: payload.overtimeConfig,
         savedByUserId,
         updatedAt: now,
       },

@@ -2,12 +2,23 @@
 
 import { db } from '@/db'
 import { attendanceRecords, employees, masterAttendanceShifts, sites } from '@/db/schema/hero'
-import { attendancePermissionRequests, timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
+import {
+  attendancePermissionRequests,
+  timesheetAttendanceRealOverrides,
+} from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
 import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import {
+  normalizeSiteAttendanceClockConfig,
+  resolveConfiguredShiftClockIn,
+} from '@/lib/timesheet/attendance-punctuality'
+import {
+  getSiteAttendanceClockConfig,
+  resolveSiteAttendancePunctuality,
+} from '@/lib/timesheet/site-attendance-punctuality'
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
@@ -259,6 +270,7 @@ function buildAttendanceNote(input: {
   attendanceContext: string
   overtimeMinutes: number
   operationalNote: string
+  punctualityNote?: string | null
 }) {
   const details = [
     input.shiftLabel
@@ -270,6 +282,7 @@ function buildAttendanceNote(input: {
       ? `Overtime: ${formatOvertimeLabel(input.overtimeMinutes)}`
       : null,
     input.operationalNote ? `Note: ${input.operationalNote}` : null,
+    input.punctualityNote || null,
   ].filter(Boolean)
 
   return [input.locationNote, ...details].join(' | ')
@@ -432,48 +445,55 @@ async function notifyAttendancePermissionBell(input: {
   })
 }
 
-async function getMobileAttendanceShiftOptions() {
-  const shifts = await db
-    .select({
-      code: masterAttendanceShifts.code,
-      label: masterAttendanceShifts.label,
-      startTime: masterAttendanceShifts.startTime,
-      endTime: masterAttendanceShifts.endTime,
-      windowLabel: masterAttendanceShifts.windowLabel,
-      helper: masterAttendanceShifts.helper,
-    })
-    .from(masterAttendanceShifts)
-    .where(eq(masterAttendanceShifts.isActive, true))
-    .orderBy(asc(masterAttendanceShifts.sortOrder), asc(masterAttendanceShifts.label))
+async function getMobileAttendanceShiftOptions(siteId?: number) {
+  const [shifts, siteClocks] = await Promise.all([
+    db
+      .select({
+        code: masterAttendanceShifts.code,
+        label: masterAttendanceShifts.label,
+        startTime: masterAttendanceShifts.startTime,
+        endTime: masterAttendanceShifts.endTime,
+        windowLabel: masterAttendanceShifts.windowLabel,
+        helper: masterAttendanceShifts.helper,
+      })
+      .from(masterAttendanceShifts)
+      .where(eq(masterAttendanceShifts.isActive, true))
+      .orderBy(asc(masterAttendanceShifts.sortOrder), asc(masterAttendanceShifts.label)),
+    siteId
+      ? getSiteAttendanceClockConfig(siteId)
+      : Promise.resolve(normalizeSiteAttendanceClockConfig(null)),
+  ])
 
   if (shifts.length === 0) {
     return [
       {
         value: 'day',
         label: 'Morning Shift',
-        window: '07:00 - 15:00',
+        window: `Jam masuk ${siteClocks.dayShiftClockIn}`,
         helper: 'Regular morning site operations.',
       },
     ]
   }
 
-  return shifts.map((shift) => ({
-    value: shift.code,
-    label: shift.label,
-    window:
-      shift.windowLabel.trim() ||
-      (shift.startTime && shift.endTime
-        ? `${shift.startTime} - ${shift.endTime}`
-        : 'As per assignment'),
-    helper: shift.helper,
-  }))
+  return shifts.map((shift) => {
+    const configuredStartTime = resolveConfiguredShiftClockIn(shift.code, siteClocks)
+    return {
+      value: shift.code,
+      label: shift.label,
+      window: configuredStartTime
+        ? `Jam masuk ${configuredStartTime}`
+        : shift.windowLabel.trim() ||
+          (shift.startTime && shift.endTime
+            ? `${shift.startTime} - ${shift.endTime}`
+            : 'As per assignment'),
+      helper: shift.helper,
+    }
+  })
 }
 
 export async function getAttendancePageData() {
-  const [employee, shiftOptions] = await Promise.all([
-    getCurrentEmployee(),
-    getMobileAttendanceShiftOptions(),
-  ])
+  const employee = await getCurrentEmployee()
+  const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
 
   if (!employee) {
     return {
@@ -567,6 +587,14 @@ export async function submitAttendance(formData: FormData) {
       return { success: false, error: 'Shift option is not available. Contact Master Data admin.' }
     }
 
+    const eventTime = new Date()
+    const punctuality = await resolveSiteAttendancePunctuality({
+      siteId: employee.siteId,
+      eventType,
+      eventTime,
+      shiftCode,
+    })
+
     const locationNote = buildAttendanceNote({
       locationNote: baseLocationNote,
       shiftLabel: selectedShift.label,
@@ -575,6 +603,7 @@ export async function submitAttendance(formData: FormData) {
       attendanceContext: getTrimmedFormValue(formData, 'attendanceContext'),
       overtimeMinutes,
       operationalNote: getTrimmedFormValue(formData, 'operationalNote').slice(0, 160),
+      punctualityNote: punctuality?.note,
     })
 
     const [record] = await db
@@ -583,7 +612,7 @@ export async function submitAttendance(formData: FormData) {
         employeeId: employee.id,
         siteId: employee.siteId,
         eventType,
-        eventTime: new Date(),
+        eventTime,
         status: 'pending',
         locationNote,
         photoUrl,
@@ -620,7 +649,8 @@ export async function submitAttendancePermission(formData: FormData) {
     const lateReason = getTrimmedFormValue(formData, 'lateReason')
     const returnTime = getTrimmedFormValue(formData, 'returnTime')
     const reason = getTrimmedFormValue(formData, 'reason')
-    const requestedDays = permissionType === 'sick' ? dateRangeDays(requestDate, endDate) : [requestDate]
+    const requestedDays =
+      permissionType === 'sick' ? dateRangeDays(requestDate, endDate) : [requestDate]
 
     if (requestedDays.length === 0) return { success: false, error: 'Tanggal izin tidak valid.' }
     if (!['sick', 'late'].includes(permissionType)) {
@@ -630,13 +660,23 @@ export async function submitAttendancePermission(formData: FormData) {
       return { success: false, error: 'Kategori sakit wajib dipilih.' }
     }
     if (permissionType === 'late' && (!lateReason || !returnTime)) {
-      return { success: false, error: 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.' }
+      return {
+        success: false,
+        error: 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.',
+      }
     }
 
     let photoUrl = ''
     const file = formData.get('file')
-    if (permissionType === 'sick' && requestedDays.length > 1 && !(file instanceof File && file.size > 0)) {
-      return { success: false, error: 'Sakit lebih dari 1 hari wajib lampirkan surat keterangan dokter.' }
+    if (
+      permissionType === 'sick' &&
+      requestedDays.length > 1 &&
+      !(file instanceof File && file.size > 0)
+    ) {
+      return {
+        success: false,
+        error: 'Sakit lebih dari 1 hari wajib lampirkan surat keterangan dokter.',
+      }
     }
     if (file instanceof File && file.size > 0) {
       const uploadResult = await uploadFile(formData)
@@ -690,14 +730,14 @@ export async function submitAttendancePermission(formData: FormData) {
     if (record.approvalSubmissionId) {
       await cancelLegacyApprovalSubmission(
         record.approvalSubmissionId,
-        'Attendance permission resubmitted from legacy form.',
+        'Attendance permission resubmitted from legacy form.'
       )
     }
 
     const permissionLabel = formatAttendancePermissionType(permissionType)
     const formattedRequestDate = formatAttendancePermissionRange(
       requestDate,
-      permissionType === 'sick' ? endDate : requestDate,
+      permissionType === 'sick' ? endDate : requestDate
     )
     const { submission } = await createLegacyApprovalRequest({
       templateKey: 'attendance-permission',
@@ -757,7 +797,7 @@ export async function submitAttendancePermission(formData: FormData) {
         new Set([
           ...(await getHumanCapitalRecipientEmails()),
           ...(await getOperationalApprovalRecipientEmails(employee.siteId)),
-        ]),
+        ])
       )
       await notifyAttendancePermissionBell({
         recipientEmails: bellRecipients,
@@ -777,7 +817,10 @@ export async function submitAttendancePermission(formData: FormData) {
 
     return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Izin gagal disimpan.',
+    }
   }
 }
 
@@ -786,7 +829,11 @@ async function getCurrentUserId() {
   return session?.user?.id ?? null
 }
 
-async function applyApprovedPermissionRequest(requestId: number, approverNote: string, approved: boolean) {
+async function applyApprovedPermissionRequest(
+  requestId: number,
+  approverNote: string,
+  approved: boolean
+) {
   await ensureSchedulingTimesheetTables()
   const [request] = await db
     .select()
@@ -842,9 +889,10 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
     return { success: true, message: 'Izin ditolak.' }
   }
 
-  const days = request.permissionType === 'sick'
-    ? dateRangeDays(String(request.startDate), String(request.endDate))
-    : [String(request.startDate)]
+  const days =
+    request.permissionType === 'sick'
+      ? dateRangeDays(String(request.startDate), String(request.endDate))
+      : [String(request.startDate)]
   const status = request.permissionType === 'sick' ? 'sick' : 'present'
 
   for (const requestDay of days) {
@@ -853,13 +901,17 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
     if (!period || !day) continue
     const note = [
       request.permissionType === 'sick' ? 'Izin Sakit' : 'Izin Terlambat',
-      request.permissionType === 'sick' ? `Kategori Sakit: ${request.sickCategory}` : `Alasan Terlambat: ${request.lateReason}`,
+      request.permissionType === 'sick'
+        ? `Kategori Sakit: ${request.sickCategory}`
+        : `Alasan Terlambat: ${request.lateReason}`,
       request.permissionType === 'late' ? `Jam Kembali/Masuk: ${request.returnTime}` : '',
       days.length > 1 ? `Rentang: ${request.startDate} s/d ${request.endDate}` : '',
       request.reason ? `Catatan: ${request.reason}` : '',
       request.attachmentUrl ? `Lampiran: ${request.attachmentUrl}` : '',
       approverNote ? `Approval Note: ${approverNote}` : '',
-    ].filter(Boolean).join(' | ')
+    ]
+      .filter(Boolean)
+      .join(' | ')
 
     await db
       .insert(timesheetAttendanceRealOverrides)
@@ -1015,7 +1067,12 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   ])
 
   if (!employee || !access.canView) {
-    return { success: false as const, reason: 'forbidden' as const, records: [], scope: 'own' as const }
+    return {
+      success: false as const,
+      reason: 'forbidden' as const,
+      records: [],
+      scope: 'own' as const,
+    }
   }
 
   const targetDate = dateStr ? new Date(dateStr) : undefined
@@ -1082,7 +1139,7 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
     .where(and(...siteConditions))
 
   const allSitesMap = new Map()
-  
+
   // Masukkan saved sites terlebih dahulu
   for (const s of savedSites) {
     allSitesMap.set(s.id, {
@@ -1097,16 +1154,16 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   // Tambahkan site dari records sebagai fallback jika belum ada di savedSites
   for (const r of records) {
     if (!r.siteId || allSitesMap.has(r.siteId)) continue
-    
+
     let lat = Number(r.siteGeoLatitude)
     let lng = Number(r.siteGeoLongitude)
-    
+
     // Jika Site belum pernah di-set kordinatnya, gunakan kordinat absen pertama sebagai titik awal
     if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
       lat = Number(r.latitude) || -2.5
       lng = Number(r.longitude) || 118
     }
-    
+
     allSitesMap.set(r.siteId, {
       id: r.siteId,
       name: r.siteName ?? `Site ${r.siteId}`,
@@ -1127,20 +1184,28 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
       siteLocation: record.siteLocation ?? '',
       siteRadiusMeters: record.siteRadiusMeters ?? 500,
     })),
-    sites: Array.from(allSitesMap.values())
+    sites: Array.from(allSitesMap.values()),
   }
 }
 
-export async function updateSiteRadiusFromMap(siteId: number, radius: number, lat?: number, lng?: number) {
+export async function updateSiteRadiusFromMap(
+  siteId: number,
+  radius: number,
+  lat?: number,
+  lng?: number
+) {
   const [employee, access] = await Promise.all([
     getCurrentEmployee(),
     getCurrentMenuPermission('attendance_live_map'),
   ])
 
   if (!employee || !hasGlobalDataAccess(access)) {
-    return { success: false, error: 'Anda tidak memiliki akses global untuk mengubah setting radius.' }
+    return {
+      success: false,
+      error: 'Anda tidak memiliki akses global untuk mengubah setting radius.',
+    }
   }
-  
+
   if (!radius || radius < 10) return { success: false, error: 'Radius tidak valid (minimal 10m).' }
 
   const payload: any = { geoRadiusMeters: radius }
@@ -1149,10 +1214,7 @@ export async function updateSiteRadiusFromMap(siteId: number, radius: number, la
     payload.geoLongitude = lng.toString()
   }
 
-  await db
-    .update(sites)
-    .set(payload)
-    .where(eq(sites.id, siteId))
+  await db.update(sites).set(payload).where(eq(sites.id, siteId))
 
   return { success: true, message: 'Pengaturan Site berhasil disimpan.' }
 }
@@ -1180,7 +1242,7 @@ export async function getSitesForMap() {
       name: sites.name,
       geoLatitude: sites.geoLatitude,
       geoLongitude: sites.geoLongitude,
-      geoRadiusMeters: sites.geoRadiusMeters
+      geoRadiusMeters: sites.geoRadiusMeters,
     })
     .from(sites)
     .where(and(...conditions))
@@ -1189,15 +1251,12 @@ export async function getSitesForMap() {
   return { success: true, sites: data }
 }
 
-
 export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {
   if (!ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
 
   await ensureSchedulingTimesheetTables()
 
-  await db
-    .delete(attendancePermissionRequests)
-    .where(inArray(attendancePermissionRequests.id, ids))
+  await db.delete(attendancePermissionRequests).where(inArray(attendancePermissionRequests.id, ids))
 
   revalidatePath('/dashboard/hc/permission')
   return { success: true, message: `${ids.length} data izin berhasil dihapus.` }

@@ -1,4 +1,5 @@
 import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
+import type { OvertimeCalculationResult } from '@/lib/timesheet/overtime-policy'
 
 type AttendanceDayData = {
   day: number
@@ -9,6 +10,10 @@ type AttendanceDayData = {
   scheduleCode: string
   isHoliday: boolean
   holidayName?: string
+  overtime?: OvertimeCalculationResult
+  msaAmount?: number
+  mealsAmount?: number
+  specialAllowanceAmount?: number
 }
 
 type OvertimeRecordInput = {
@@ -30,12 +35,6 @@ type SiteAllowanceInput = {
   section: string
   siteName: string
   days: AttendanceDayData[]
-  lokasiKhususRate: number
-  lokasiKhususRateStaff: number
-  lokasiKhususRateNonStaff: number
-  lokasiKhususEnabled: boolean
-  msaRate: number
-  mealsRate: number
 }
 
 function formatPeriodLabel(period: string) {
@@ -287,7 +286,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const isOff =
       day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
-    const ot = input.isNonStaff ? calcOvertimeHours(day.clockIn, day.clockOut) : 0
+    const overtime = input.isNonStaff ? day.overtime : undefined
+    const ot = input.isNonStaff
+      ? (overtime?.totalHours ?? calcOvertimeHours(day.clockIn, day.clockOut))
+      : 0
     totalOT += ot
 
     const bgColor = day.isHoliday
@@ -326,39 +328,48 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
     } else if (day.clockIn) {
+      const configuredWorkingIntervals =
+        overtime && overtime.source !== 'Legacy' ? overtime.workingIntervals : null
+      const workFrom = configuredWorkingIntervals
+        ? configuredWorkingIntervals.map((interval) => interval.start.replace(':', '.')).join('/')
+        : day.clockIn.replace(':', '.')
+      const workTo = configuredWorkingIntervals
+        ? configuredWorkingIntervals.map((interval) => interval.end.replace(':', '.')).join('/')
+        : day.clockOut
+          ? day.clockOut.replace(':', '.')
+          : ''
+      const eligibleIntervals = overtime?.intervals ?? []
+      const otFrom = eligibleIntervals.map((interval) => interval.start.replace(':', '.')).join('/')
+      const otTo = eligibleIntervals.map((interval) => interval.end.replace(':', '.')).join('/')
+
       drawCell(page, colX[2], y, cols[2], rowH, {
-        text: day.clockIn.replace(':', '.'),
+        text: workFrom,
         font,
         fontSize: 8,
         align: 'center',
         bgColor,
       })
       drawCell(page, colX[3], y, cols[3], rowH, {
-        text: '15.00',
+        text: workTo,
         font,
         fontSize: 8,
         align: 'center',
         bgColor,
       })
-      if (day.clockOut && ot > 0) {
-        drawCell(page, colX[4], y, cols[4], rowH, {
-          text: '15.00',
-          font,
-          fontSize: 8,
-          align: 'center',
-          bgColor,
-        })
-        drawCell(page, colX[5], y, cols[5], rowH, {
-          text: day.clockOut.replace(':', '.'),
-          font,
-          fontSize: 8,
-          align: 'center',
-          bgColor,
-        })
-      } else {
-        drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
-        drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-      }
+      drawCell(page, colX[4], y, cols[4], rowH, {
+        text: otFrom,
+        font,
+        fontSize: otFrom.length > 5 ? 6 : 8,
+        align: 'center',
+        bgColor,
+      })
+      drawCell(page, colX[5], y, cols[5], rowH, {
+        text: otTo,
+        font,
+        fontSize: otTo.length > 5 ? 6 : 8,
+        align: 'center',
+        bgColor,
+      })
     } else {
       drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
@@ -376,10 +387,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[7], y, cols[7], rowH, { bgColor })
 
     let remark = ''
-    if (day.isHoliday && day.holidayName) remark = day.holidayName
-    else if (day.status === 'sick') remark = 'SICK'
-    else if (day.status === 'leave') remark = 'IJIN'
-    else if (day.status === 'absent') remark = 'ALPA'
+    if (overtime?.splNumbers.length) remark = `SPL ${overtime.splNumbers.join(', ')}`
+    if (overtime?.unauthorizedMinutes) {
+      remark = remark ? `${remark} / Perlu SPL` : 'Perlu SPL'
+    }
+    if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName
+    else if (!remark && day.status === 'sick') remark = 'SICK'
+    else if (!remark && day.status === 'leave') remark = 'IJIN'
+    else if (!remark && day.status === 'absent') remark = 'ALPA'
     const rc =
       day.status === 'sick'
         ? rgb(0.7, 0.5, 0)
@@ -534,7 +549,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
 
   // Multi-line centered headers
   drawCell(page, colX[2], y - hH, cols[2], hH, { bgColor: headerBg, borderColor: tableBorder })
-  const h2a = 'TUNJANGAN LOKASI'
+  const h2a = 'TUNJANGAN KHUSUS'
   const h2b = 'KHUSUS'
   page.drawText(h2a, {
     x: colX[2] + (cols[2] - fontBold.widthOfTextAtSize(h2a, 7)) / 2,
@@ -650,8 +665,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       color: dayColor,
     })
 
-    // Tunjangan Lokasi Khusus — semua hari
-    const lokasiVal = input.lokasiKhususEnabled ? input.lokasiKhususRate : 0
+    const lokasiVal = day.specialAllowanceAmount ?? 0
     if (lokasiVal > 0) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: `Rp     ${formatMoney(lokasiVal)}`,
@@ -665,43 +679,43 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
     }
 
-    // MSA — semua hari dapat kecuali Field Break
-    if (!isFieldBreakDay) {
+    const msaAmount = day.msaAmount ?? 0
+    if (msaAmount > 0) {
       drawCell(page, colX[3], y, cols[3], rowH, {
-        text: `Rp     ${formatMoney(input.msaRate)}`,
+        text: `Rp     ${formatMoney(msaAmount)}`,
         font,
         fontSize: 8,
         align: 'left',
         bgColor,
       })
-      totalMsa += input.msaRate
+      totalMsa += msaAmount
     } else {
       drawCell(page, colX[3], y, cols[3], rowH, {
-        text: 'FB',
+        text: isFieldBreakDay ? 'FB' : '',
         font,
         fontSize: 7,
         align: 'center',
-        bgColor: rgb(0.95, 0.9, 1),
+        bgColor: isFieldBreakDay ? rgb(0.95, 0.9, 1) : bgColor,
       })
     }
 
-    // Meals — semua hari dapat kecuali Field Break
-    if (!isFieldBreakDay) {
+    const mealsAmount = day.mealsAmount ?? 0
+    if (mealsAmount > 0) {
       drawCell(page, colX[4], y, cols[4], rowH, {
-        text: `Rp     ${formatMoney(input.mealsRate)}`,
+        text: `Rp     ${formatMoney(mealsAmount)}`,
         font,
         fontSize: 8,
         align: 'left',
         bgColor,
       })
-      totalMeals += input.mealsRate
+      totalMeals += mealsAmount
     } else {
       drawCell(page, colX[4], y, cols[4], rowH, {
-        text: 'FB',
+        text: isFieldBreakDay ? 'FB' : '',
         font,
         fontSize: 7,
         align: 'center',
-        bgColor: rgb(0.95, 0.9, 1),
+        bgColor: isFieldBreakDay ? rgb(0.95, 0.9, 1) : bgColor,
       })
     }
 
@@ -781,8 +795,9 @@ export function buildAttendanceDayData(params: {
   getCell: (day: number) => { status: string; clockIn: string; clockOut: string }
   getScheduleCode: (day: number) => string
   holidays: Array<{ day?: number; date: string; localName?: string; name?: string }>
+  getOvertime?: (day: number) => OvertimeCalculationResult
 }): AttendanceDayData[] {
-  const { period, dayCount, getCell, getScheduleCode, holidays } = params
+  const { period, dayCount, getCell, getScheduleCode, holidays, getOvertime } = params
   const holidayByDay = new Map(holidays.map((h) => [h.day ?? Number(h.date.slice(-2)), h]))
 
   return Array.from({ length: dayCount }, (_, i) => {
@@ -798,6 +813,7 @@ export function buildAttendanceDayData(params: {
       scheduleCode: getScheduleCode(day),
       isHoliday: Boolean(holiday),
       holidayName: holiday?.localName ?? holiday?.name,
+      overtime: getOvertime?.(day),
     }
   })
 }

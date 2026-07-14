@@ -94,10 +94,14 @@ export function generateFieldBreakYearPlans(input: {
   startPeriod: string
   workMonths?: number
   breakDays?: number
+  workWeeks?: number
+  breakWeeks?: number
   existingPlans?: FieldBreakExistingPlan[]
 }) {
   const workMonths = input.workMonths ?? 3
-  const breakDays = input.breakDays ?? 14
+  const workWeeks = input.workWeeks ?? null
+  const breakDays = input.breakWeeks ? input.breakWeeks * 7 : input.breakDays ?? 14
+  const workDays = workWeeks ? workWeeks * 7 : workMonths * 30
   const periods = monthPeriods(input.startPeriod, 12)
   const firstDay = `${input.startPeriod}-01`
   const employees = [...input.employees].sort((a, b) =>
@@ -121,9 +125,13 @@ export function generateFieldBreakYearPlans(input: {
     let shiftedEnd = ''
 
     if (onSiteDate) {
-      const fieldBreakDate = addMonths(onSiteDate, workMonths)
+      const fieldBreakDate = workWeeks
+        ? addDaysIso(onSiteDate, workDays)
+        : addMonths(onSiteDate, workMonths)
       const fieldBreakEndDate = addDaysIso(fieldBreakDate, breakDays - 1)
-      const maxFieldBreakDate = addMonths(onSiteDate, 4)
+      const maxFieldBreakDate = workWeeks
+        ? addDaysIso(onSiteDate, (workWeeks + 4) * 7)
+        : addMonths(onSiteDate, 4)
 
       // ponytail: linear collision shift is enough for yearly site rosters; replace with interval scheduler if customer adds many hard constraints.
       shiftedStart = fieldBreakDate
@@ -151,7 +159,7 @@ export function generateFieldBreakYearPlans(input: {
           rosterSection: employee.rosterSection,
           period,
           onSiteDate: existing.onSiteDate ?? '',
-          dayCount: daysBetween(existing.onSiteDate, existing.fieldBreakDate) ?? workMonths * 30,
+          dayCount: daysBetween(existing.onSiteDate, existing.fieldBreakDate) ?? workDays,
           fieldBreakDate: existing.fieldBreakDate ?? '',
           fieldBreakEndDate: existing.fieldBreakEndDate ?? '',
           source: 'manual',
@@ -168,7 +176,7 @@ export function generateFieldBreakYearPlans(input: {
         rosterSection: employee.rosterSection,
         period,
         onSiteDate: onSiteDate ?? '',
-        dayCount: onSiteDate ? workMonths * 30 : null,
+        dayCount: onSiteDate ? workDays : null,
         fieldBreakDate: shiftedStart,
         fieldBreakEndDate: shiftedEnd,
         source: onSiteDate ? 'auto' : 'manual',

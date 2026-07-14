@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 
 import { type AttendanceSyncPayload, type QueuedFilePayload } from '@/lib/offline-sync'
+import { getPunctualityDetail } from '@/lib/timesheet/attendance-punctuality'
 import { cn } from '@/lib/utils'
 
 type AttendanceEmployee = {
@@ -377,7 +378,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         setFaceRecMessage('Verifikasi wajah gagal 2x. Lanjutkan dengan capture foto manual.')
       } else {
         setFaceRecMode('detecting')
-        setFaceRecMessage(`${message} (${nextAttempts}/2). Foto gagal dibuang. Tekan Verify Wajah untuk coba lagi.`)
+        setFaceRecMessage(
+          `${message} (${nextAttempts}/2). Foto gagal dibuang. Tekan Verify Wajah untuk coba lagi.`
+        )
       }
       return nextAttempts
     })
@@ -413,6 +416,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           photo,
           siteId: data.employee?.siteId || 1,
           eventType: nextType,
+          shiftCode: selectedShiftOption?.value,
           latitude: geo.latitude || '0',
           longitude: geo.longitude || '0',
           clientRequestId: crypto.randomUUID(),
@@ -471,7 +475,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       setCameraPermissionOpen(false)
       streamRef.current?.getTracks().forEach((track) => track.stop())
       const cameraTimeout = new Promise<never>((_, reject) => {
-        window.setTimeout(() => reject(new Error('Camera start timeout. Tap coba buka kamera lagi.')), 8000)
+        window.setTimeout(
+          () => reject(new Error('Camera start timeout. Tap coba buka kamera lagi.')),
+          8000
+        )
       })
       const stream = await Promise.race([
         navigator.mediaDevices.getUserMedia({
@@ -491,7 +498,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         await Promise.race([
           videoRef.current.play(),
           new Promise<never>((_, reject) => {
-            window.setTimeout(() => reject(new Error('Camera preview timeout. Tap coba buka kamera lagi.')), 5000)
+            window.setTimeout(
+              () => reject(new Error('Camera preview timeout. Tap coba buka kamera lagi.')),
+              5000
+            )
           }),
         ])
       }
@@ -502,7 +512,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       // Start face recognition if employee has face registered
       if (!data.employee?.faceRegisteredAt) {
         setFaceRecMode('fallback')
-        setFaceRecMessage('Wajah belum terdaftar di database production. Registrasi wajah dulu untuk mengaktifkan Face Recognition.')
+        setFaceRecMessage(
+          'Wajah belum terdaftar di database production. Registrasi wajah dulu untuk mengaktifkan Face Recognition.'
+        )
       } else {
         setFaceRecMode('detecting')
         setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')
@@ -698,8 +710,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           ...current.filter((log) => log.id !== record.id),
         ])
       }
+      const punctualityDetail = getPunctualityDetail(record?.locationNote)
       setSubmitMessage(
-        `${getEventLabel(nextType)} recorded. Website attendance record akan refresh.`
+        `${getEventLabel(nextType)} recorded.${punctualityDetail ? ` ${punctualityDetail.replace('Kehadiran: ', '')}.` : ''} Website attendance record akan refresh.`
       )
       startTransition(() => router.refresh())
     } catch (error) {
@@ -799,13 +812,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
                 <div className="flex size-14 items-center justify-center rounded-full bg-white/10 backdrop-blur-md">
                   <div className="size-6 animate-spin rounded-full border-2 border-[#cfe6f2] border-t-transparent" />
                 </div>
-                <p className="max-w-56 text-xs leading-5 font-black uppercase">Membuka kamera aman...</p>
+                <p className="max-w-56 text-xs leading-5 font-black uppercase">
+                  Membuka kamera aman...
+                </p>
               </div>
             )}
           </div>
         ) : null}
 
-        <div className={cn('absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_34%,rgba(0,0,0,0.22)_35%,rgba(0,0,0,0.36)_100%)]', isCameraUnavailable && 'opacity-20')} />
+        <div
+          className={cn(
+            'absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_34%,rgba(0,0,0,0.22)_35%,rgba(0,0,0,0.36)_100%)]',
+            isCameraUnavailable && 'opacity-20'
+          )}
+        />
         {!isCameraUnavailable && (
           <>
             <div className="absolute top-1/2 left-1/2 size-44 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#003f78]/70" />
@@ -817,7 +837,12 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           </>
         )}
 
-        <div className={cn('absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl', isCameraUnavailable && 'hidden')}>
+        <div
+          className={cn(
+            'absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl',
+            isCameraUnavailable && 'hidden'
+          )}
+        >
           {faceRecMode === 'loading' ? (
             <>
               <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
@@ -1114,7 +1139,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       {faceRecMode === 'success' && (
         <div className="rounded-[0.65rem] bg-[#dff2e8] px-4 py-3 text-center text-xs font-bold text-[#0f5132]">
-          ✓ Akun {data.employee?.name || 'Anda'} terkonfirmasi. Absensi berhasil direkam via face recognition.
+          ✓ Akun {data.employee?.name || 'Anda'} terkonfirmasi. Absensi berhasil direkam via face
+          recognition.
         </div>
       )}
 
@@ -1141,6 +1167,18 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
                   <p className="truncate text-[11px] font-semibold text-[#486275]">
                     {firstLocationLine(log.locationNote)}
                   </p>
+                  {getPunctualityDetail(log.locationNote) ? (
+                    <p
+                      className={cn(
+                        'mt-1 text-[10px] font-black',
+                        getPunctualityDetail(log.locationNote)?.includes('Terlambat')
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
+                      )}
+                    >
+                      {getPunctualityDetail(log.locationNote)?.replace('Kehadiran: ', '')}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <p className="text-xs font-black text-[#003461]">

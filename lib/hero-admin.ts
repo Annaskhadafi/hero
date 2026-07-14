@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
 import {
@@ -23,6 +23,8 @@ import {
   orgChartNodes,
   orgChartStructures,
   orgNodeAssignments,
+  overtimeCommandLetterItems,
+  overtimeCommandLetters,
   pointEvents,
   penaltyEvents,
   pointDisputes,
@@ -5704,6 +5706,7 @@ export async function getSchedulingTimesheetOptions() {
     activitiesRows,
     trainingRecordsRows,
     sioCertificationsRows,
+    approvedSplRows,
   ] = await Promise.all([
     db
       .select({
@@ -5711,12 +5714,16 @@ export async function getSchedulingTimesheetOptions() {
         name: employees.name,
         email: employees.email,
         employeeSn: employees.employeeSn,
+        manpower: employees.manpower,
+        pointOfHire: employees.pointOfHire,
+        workLocation: employees.workLocation,
         role: employees.role,
         jobTitle: employees.jobTitle,
         department: sql<string>`coalesce(${masterDepartments.name}, ${employees.department}, '')`,
         section: sql<string>`coalesce(${masterSections.name}, ${employees.section}, '')`,
         siteId: employees.siteId,
         siteName: sites.name,
+        siteLocation: sites.location,
       })
       .from(employees)
       .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
@@ -5813,6 +5820,30 @@ export async function getSchedulingTimesheetOptions() {
       })
       .from(sioCertifications)
       .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
+      .catch(() => []),
+    db
+      .select({
+        id: overtimeCommandLetters.id,
+        splNumber: overtimeCommandLetters.splNumber,
+        siteId: overtimeCommandLetters.siteId,
+        employeeId: overtimeCommandLetterItems.assignedEmployeeId,
+        plannedStartAt: overtimeCommandLetters.plannedStartAt,
+        plannedEndAt: overtimeCommandLetters.plannedEndAt,
+        status: overtimeCommandLetters.status,
+      })
+      .from(overtimeCommandLetters)
+      .innerJoin(
+        overtimeCommandLetterItems,
+        eq(overtimeCommandLetterItems.overtimeCommandLetterId, overtimeCommandLetters.id)
+      )
+      .where(
+        and(
+          inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed']),
+          isNotNull(overtimeCommandLetterItems.assignedEmployeeId),
+          isNotNull(overtimeCommandLetters.plannedStartAt),
+          isNotNull(overtimeCommandLetters.plannedEndAt)
+        )
+      )
       .catch(() => []),
   ])
 
@@ -5974,6 +6005,10 @@ export async function getSchedulingTimesheetOptions() {
         name: employee.name,
         email: employee.email ?? '',
         employeeSn: employee.employeeSn ?? '',
+        manpower: employee.manpower,
+        pointOfHire: employee.pointOfHire,
+        workLocation: employee.workLocation,
+        siteLocation: employee.siteLocation,
         role: employee.jobTitle || employee.role || '',
         department: employee.department ?? null,
         section: employee.section ?? null,
@@ -6002,7 +6037,7 @@ export async function getSchedulingTimesheetOptions() {
         dayCount: plan.dayCount ?? null,
         fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
         fieldBreakEndDate: plan.fieldBreakEndDate ? String(plan.fieldBreakEndDate) : '',
-        source: plan.source === 'auto' ? 'auto' : 'manual',
+        source: (plan.source === 'auto' ? 'auto' : 'manual') as 'auto' | 'manual',
         isLocked: Boolean(plan.isLocked),
         notes: plan.notes ?? '',
         updatedAt: plan.updatedAt.toISOString(),
@@ -6038,6 +6073,23 @@ export async function getSchedulingTimesheetOptions() {
           : 'manual',
         updatedAt: override.updatedAt.toISOString(),
       })),
+    approvedSplWindows: approvedSplRows
+      .filter(
+        (row) =>
+          row.employeeId != null &&
+          row.plannedStartAt != null &&
+          row.plannedEndAt != null &&
+          canSeeSchedulingSite(row.siteId)
+      )
+      .map((row) => ({
+        id: row.id,
+        splNumber: row.splNumber,
+        siteId: row.siteId,
+        employeeId: row.employeeId!,
+        plannedStartAt: row.plannedStartAt!.toISOString(),
+        plannedEndAt: row.plannedEndAt!.toISOString(),
+        status: row.status,
+      })),
     schedulingConfigs: schedulingConfigs
       .filter((config) => canSeeSchedulingSite(config.siteId))
       .map((config) => ({
@@ -6050,6 +6102,7 @@ export async function getSchedulingTimesheetOptions() {
         fieldBreakConfig: config.fieldBreakConfig,
         allowanceVariables: config.allowanceVariables,
         overtimeVariables: config.overtimeVariables,
+        overtimeConfig: config.overtimeConfig,
         updatedAt: config.updatedAt.toISOString(),
       })),
     schedulingStatuses: schedulingStatuses
@@ -6162,6 +6215,7 @@ function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$in
     fieldBreakConfig: config.fieldBreakConfig,
     allowanceVariables: config.allowanceVariables,
     overtimeVariables: config.overtimeVariables,
+    overtimeConfig: config.overtimeConfig,
     updatedAt: config.updatedAt.toISOString(),
   }
 }

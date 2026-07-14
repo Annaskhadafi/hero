@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { createQuotation, createCustomer, saveItemToMaster, updateQuotation, getFormHistory, deleteFormHistory } from "@/app/actions/service360"
+import { createQuotation, createCustomer, saveItemToMaster, updateQuotation, getFormHistory, deleteFormHistory, syncQuotationLabourAttendance } from "@/app/actions/service360"
 import { uploadFile } from "@/app/actions/upload"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -236,6 +236,7 @@ const router = useRouter()
       items: initialData?.items?.map((i: any, idx: number) => {
         const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
         const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
+        const quotationDescription = i.quotationItem.customDescription || i.item?.name || "";
         let inferredCategory = i.item?.category;
         if (!inferredCategory) {
           const desc = (i.quotationItem.customDescription || "").toLowerCase();
@@ -245,17 +246,20 @@ const router = useRouter()
           else if (desc.includes("tools")) inferredCategory = "Tools";
           else inferredCategory = "General";
         }
+        const matchedVirtualLabour = inferredCategory === "Labour Cost" && !i.quotationItem.itemId
+          ? items.find((item) => item.id >= 1000000 && quotationDescription.includes(`(${item.name})`))
+          : null;
         
         return {
         id: idx,
-        itemId: i.quotationItem.itemId,
+        itemId: i.quotationItem.itemId || matchedVirtualLabour?.id || null,
         category: inferredCategory,
         monthPeriod: i.quotationItem.monthPeriod || "",
         startDate: parsedPrimary.start, 
         endDate: parsedPrimary.end,
         extraDateRanges: parsedPrimary.extras,
         level: i.quotationItem.level || "",
-        customDescription: i.quotationItem.customDescription || i.item?.name || "",
+        customDescription: quotationDescription,
         quantity: Number(i.quotationItem.quantity) || 1,
         price: Number(i.quotationItem.price) || 0,
         isBackup: i.quotationItem.isBackup || false,
@@ -289,11 +293,18 @@ const router = useRouter()
   const fromName = watch("fromName") || ""
   const fromSignatureUrl = watch("fromSignatureUrl") || ""
   const subject = watch("subject") || ""
+  const canSyncAttendance = Boolean(
+    poPeriodStart && poPeriodEnd && formItems.some(
+      (item) => item.category === "Labour Cost" && item.itemId && item.itemId >= 1000000
+    )
+  )
 
   const [historyAttn, setHistoryAttn] = useState<string[]>([])
   const [historyCc, setHistoryCc] = useState<string[]>([])
   const [historyFrom, setHistoryFrom] = useState<string[]>([])
   const [historySubject, setHistorySubject] = useState<string[]>([])
+  const [syncAttendance, setSyncAttendance] = useState(false)
+  const [syncingAttendance, setSyncingAttendance] = useState(false)
   const dragSensors = useSensors(useSensor(PointerSensor))
 
   useEffect(() => {
@@ -343,10 +354,91 @@ const router = useRouter()
     }
   }
 
+  const syncLabourRows = async (
+    sourceItems: SelectedItem[],
+    announce = true,
+    periodStart = poPeriodStart,
+    periodEnd = poPeriodEnd
+  ) => {
+    const candidates = sourceItems.filter(
+      (item) => item.category === "Labour Cost" && item.itemId && item.itemId >= 1000000
+    )
+    if (!candidates.length || !periodStart || !periodEnd) {
+      if (announce) toast.warning("Pilih Labour Cost dan isi periode terlebih dahulu.")
+      return false
+    }
+
+    setSyncingAttendance(true)
+    try {
+      const result = await syncQuotationLabourAttendance({
+        items: candidates.map((item) => ({
+          rowId: item.id,
+          itemId: item.itemId!,
+          startDate: periodStart,
+          endDate: periodEnd,
+        })),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return false
+      }
+
+      const syncedByRow = new Map(result.items.map((item) => [item.rowId, item]))
+      let syncedCount = 0
+      let fieldBreakDays = 0
+      let omittedCount = 0
+      let removedCount = 0
+      const nextItems = sourceItems.flatMap<SelectedItem>((item) => {
+        const synced = syncedByRow.get(item.id)
+        if (!synced || synced.error) return [item]
+        if (synced.remove) {
+          removedCount += 1
+          return []
+        }
+        if (!synced.ranges.length) {
+          omittedCount += 1
+          return [{ ...item, startDate: "", endDate: "", extraDateRanges: [] }]
+        }
+        syncedCount += 1
+        fieldBreakDays += synced.fieldBreakDays
+        return [{
+          ...item,
+          startDate: synced.ranges[0].start,
+          endDate: synced.ranges[0].end,
+          extraDateRanges: synced.ranges.slice(1),
+        }]
+      })
+      setValue("items", nextItems, { shouldDirty: true })
+      if (announce) {
+        const details = [
+          removedCount > 0 ? `${removedCount} karyawan nonaktif dihapus` : "",
+          omittedCount > 0 ? `${omittedCount} karyawan tanpa hari attendance/OFF bernilai 0` : "",
+          fieldBreakDays > 0 ? `${fieldBreakDays} hari Field Break dikeluarkan` : "",
+        ].filter(Boolean)
+        toast.success(`${syncedCount} Labour Cost tersinkron${details.length ? `; ${details.join("; ")}.` : ". Hari OFF tetap dihitung."}`)
+      }
+      return syncedCount > 0 || omittedCount > 0 || removedCount > 0
+    } finally {
+      setSyncingAttendance(false)
+    }
+  }
+
+  const handleSyncAttendanceChange = (checked: boolean) => {
+    setSyncAttendance(checked)
+    if (checked) {
+      void syncLabourRows(formItems).then((synced) => {
+        if (!synced) setSyncAttendance(false)
+      })
+    }
+  }
+
   const handlePoPeriodChange = (start: string, end: string) => {
     setValue("poPeriodStart", start)
     setValue("poPeriodEnd", end)
-    setValue("items", formItems.map(item => ({ ...item, startDate: start, endDate: end })))
+    const nextItems = formItems.map(item => ({ ...item, startDate: start, endDate: end, extraDateRanges: [] }))
+    setValue("items", nextItems)
+    if (!start || !end) setSyncAttendance(false)
+    else if (syncAttendance) void syncLabourRows(nextItems, false, start, end)
   }
 
   const calculateDays = (start?: string, end?: string) => {
@@ -378,6 +470,11 @@ const router = useRouter()
 
   const getPrimaryProrate = (item: SelectedItem) => {
     if (isProrateEligible(item.category)) {
+      const hasPeriod = Boolean(
+        (item.startDate && item.endDate) ||
+        item.extraDateRanges?.some((range) => range.start && range.end)
+      )
+      if (item.category.toLowerCase().trim() === "labour cost" && !hasPeriod) return 0
       let totalProrate = 0;
       if (item.startDate && item.endDate) {
         const primaryDays = calculateDays(item.startDate, item.endDate)
@@ -429,7 +526,7 @@ const router = useRouter()
     const itemDef = items.find(i => i.id === itemId)
     if (!itemDef) return
 
-    setValue("items", [...formItems, {
+    const nextItems = [...formItems, {
         id: Date.now(),
         itemId,
         category: itemDef.category,
@@ -442,10 +539,16 @@ const router = useRouter()
           : itemDef.name,
         quantity: 1,
         price: Number(itemDef.price)
-      }])
+      }]
+    setValue("items", nextItems)
+    if (syncAttendance && itemDef.category === "Labour Cost") void syncLabourRows(nextItems, false)
   }
 
   const handleAddAllLabour = () => {
+    if (!poPeriodStart || !poPeriodEnd) {
+      toast.warning("Isi PO Period terlebih dahulu sebelum menambahkan Labour Cost.")
+      return
+    }
     if (!selectedProjectSite || selectedProjectSite === "manual") {
       alert("Please select a Site Location (Project) first from the Header Details.")
       return
@@ -454,7 +557,10 @@ const router = useRouter()
     const site = siteList?.find(s => s.id.toString() === selectedProjectSite)
     const projectName = site?.name || ""
 
-    const projectItems = items.filter(i => ['Labour Cost', 'Rental', 'Rental & Tools'].includes(i.category) && i.siteName === projectName)
+    const projectItems = items.filter(i =>
+      ['Labour Cost', 'Rental', 'Rental & Tools'].includes(i.category) &&
+      i.siteId === Number(selectedProjectSite)
+    )
 
     if (projectItems.length === 0) {
       alert(`No labour or rental items found for project: ${projectName}`)
@@ -477,7 +583,9 @@ const router = useRouter()
       price: Number(itemDef.price)
     }))
 
-    setValue("items", [...formItems, ...newItems])
+    const nextItems = [...formItems, ...newItems]
+    setValue("items", nextItems)
+    if (syncAttendance) void syncLabourRows(nextItems, false)
   }
 
   const updateItem = (id: number, field: keyof SelectedItem, value: any) => {
@@ -848,6 +956,23 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                 />
               </div>
               <div className="flex gap-2">
+                {canSyncAttendance && (
+                  <div className="flex min-w-[230px] items-center justify-between gap-3 rounded-md border border-teal-100 bg-teal-50/60 px-3 py-2">
+                    <div>
+                      <label htmlFor="sync-attendance" className="block cursor-pointer text-xs font-semibold text-teal-950">
+                        Sync Attendance
+                      </label>
+                      <p className="text-[10px] text-teal-700">FB dipisah, OFF tetap dihitung.</p>
+                    </div>
+                    <Switch
+                      id="sync-attendance"
+                      checked={syncAttendance}
+                      disabled={syncingAttendance}
+                      onCheckedChange={handleSyncAttendanceChange}
+                      aria-label="Sync Attendance untuk Labour Cost"
+                    />
+                  </div>
+                )}
                 <Button type="button" variant="secondary" onClick={handleAddAllLabour}>
                   + Add All Labour & Rental for Project
                 </Button>

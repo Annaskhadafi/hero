@@ -5,6 +5,7 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
+import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 
 // --- Photo Storage ---
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     const employeeIdRaw = formData.get('employeeId')
     const siteIdRaw = formData.get('siteId')
     const eventType = formData.get('eventType') as string | null
+    const shiftCode = formData.get('shiftCode') as string | null
     const photo = formData.get('photo') as File | null
     const latitudeRaw = formData.get('latitude')
     const longitudeRaw = formData.get('longitude')
@@ -159,9 +161,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const accuracy = accuracyRaw === null || accuracyRaw.toString().trim() === ''
-      ? null
-      : parseFloat(accuracyRaw.toString())
+    if (shiftCode && shiftCode.length > 40) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'shiftCode must be at most 40 characters.',
+        'shiftCode'
+      )
+    }
+
+    const accuracy =
+      accuracyRaw === null || accuracyRaw.toString().trim() === ''
+        ? null
+        : parseFloat(accuracyRaw.toString())
     if (accuracy !== null && (isNaN(accuracy) || accuracy < 0 || accuracy > 100000)) {
       return errorResponse(
         400,
@@ -241,6 +253,8 @@ export async function POST(request: NextRequest) {
             siteId: existing.siteId,
             eventType: existing.eventType,
             eventTime: existing.eventTime.toISOString(),
+            status: existing.status,
+            locationNote: existing.locationNote,
             photoUrl: existing.photoUrl,
             confidenceScore: existing.confidenceScore ? parseFloat(existing.confidenceScore) : null,
             alreadyExisted: true,
@@ -279,6 +293,23 @@ export async function POST(request: NextRequest) {
     // GPS flag — mark when GPS data is unavailable
     const gpsFlag = latitude === 0 && longitude === 0 ? '[gps-unavailable] ' : ''
     const accuracyNote = accuracy === null ? '' : ` | GPS ${Math.round(accuracy)}m accuracy`
+    const punctuality = await resolveSiteAttendancePunctuality({
+      siteId,
+      eventType: eventType.trim(),
+      eventTime,
+      shiftCode,
+    })
+    const locationNote = [
+      isPhotoFallback
+        ? `${gpsFlag}photo-fallback${accuracyNote}`
+        : `${gpsFlag}${deviceType.trim()}${accuracyNote}`,
+      punctuality
+        ? `Shift: ${punctuality.shiftCode.toUpperCase()} (masuk ${punctuality.scheduledClockIn})`
+        : null,
+      punctuality?.note,
+    ]
+      .filter(Boolean)
+      .join(' | ')
 
     const [insertedRecord] = await db
       .insert(attendanceRecords)
@@ -288,9 +319,7 @@ export async function POST(request: NextRequest) {
         eventType: eventType.trim(),
         eventTime,
         status: isPhotoFallback ? 'needs-review' : 'verified',
-        locationNote: isPhotoFallback
-          ? `${gpsFlag}photo-fallback${accuracyNote}`
-          : `${gpsFlag}${deviceType.trim()}${accuracyNote}`,
+        locationNote,
         photoUrl,
         latitude: latitude.toString(),
         longitude: longitude.toString(),
@@ -317,6 +346,8 @@ export async function POST(request: NextRequest) {
           siteId: insertedRecord.siteId,
           eventType: insertedRecord.eventType,
           eventTime: insertedRecord.eventTime.toISOString(),
+          status: insertedRecord.status,
+          locationNote: insertedRecord.locationNote,
           photoUrl: insertedRecord.photoUrl,
           confidenceScore: confidenceScore,
         },

@@ -1,6 +1,6 @@
 export type ScheduleCode = "IN" | "DS" | "NS" | "OFF" | "FB" | "Libur" | "Sakit" | "Emergency" | "ST";
 export type OvertimeDayType = "work" | "off";
-export type RosterType = "5:2" | "6:1" | string;
+export type RosterType = "5:2" | "6:1" | "13:1" | string;
 
 export type HolidayLike = {
   date: string;
@@ -29,6 +29,17 @@ export function isHoliday(period: string, day: number, holidays: HolidayLike[] =
   return holidays.some((holiday) => holiday.date === key || holiday.day === day);
 }
 
+export function isThirteenOneOffDay(period: string, day: number, cycleStart = '2026-01-01') {
+  const [year, month] = period.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const anchor = new Date(`${cycleStart}T00:00:00Z`).getTime();
+  const safeAnchor = Number.isFinite(anchor) ? anchor : Date.UTC(2026, 0, 1);
+  const elapsedDays = Math.floor((date.getTime() - safeAnchor) / (24 * 60 * 60 * 1000));
+  if (elapsedDays < 0) return false;
+  const cycleDay = ((elapsedDays % 14) + 14) % 14;
+  return cycleDay === 13;
+}
+
 export function hoursFromCode(code: ScheduleCode) {
   return code === "IN" || code === "DS" || code === "NS" || code === "FB" || code === "ST" ? 5 : 0;
 }
@@ -38,7 +49,7 @@ export function classifyOvertimeDay(schedule: ScheduleCode[], period: string, da
   const code = schedule[dayIndex];
   if (code === "OFF" || code === "Libur") return "off";
   if (isHoliday(period, day, holidays)) return "off";
-  if (rosterType !== "6:1" && isWeekend(period, day)) return "off";
+  if (rosterType !== "6:1" && rosterType !== "13:1" && isWeekend(period, day)) return "off";
 
   if (rosterType === "6:1") {
     let workingDaysSinceOff = 0;

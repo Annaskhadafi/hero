@@ -6,6 +6,7 @@ import { cosineSimilarity } from '@/lib/face-recognition/cosine-similarity'
 import { validateEmbedding } from '@/lib/face-recognition/embedding-validator'
 import { extractServerFaceEmbedding } from '@/lib/face-recognition/server-face-api'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
+import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 
 // --- Constants ---
@@ -22,6 +23,7 @@ type FaceVerificationPayload = {
   photo?: unknown
   siteId?: unknown
   eventType?: unknown
+  shiftCode?: unknown
   latitude?: unknown
   longitude?: unknown
   accuracy?: unknown
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
       photo,
       siteId,
       eventType,
+      shiftCode,
       latitude,
       longitude,
       accuracy,
@@ -81,7 +84,10 @@ export async function POST(request: NextRequest) {
     if (employeeId === undefined || employeeId === null) {
       return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
     }
-    if ((embedding === undefined || embedding === null) && (photo === undefined || photo === null)) {
+    if (
+      (embedding === undefined || embedding === null) &&
+      (photo === undefined || photo === null)
+    ) {
       return errorResponse(400, 'VALIDATION_ERROR', 'embedding or photo is required.', 'photo')
     }
     if (siteId === undefined || siteId === null) {
@@ -156,6 +162,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (shiftCode !== undefined && (typeof shiftCode !== 'string' || shiftCode.length > 40)) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'shiftCode must be at most 40 characters.',
+        'shiftCode'
+      )
+    }
+
     const accuracyMeters = accuracy === undefined || accuracy === null ? null : Number(accuracy)
     if (
       accuracyMeters !== null &&
@@ -202,7 +217,10 @@ export async function POST(request: NextRequest) {
       const extraction = await extractServerFaceEmbedding(buffer)
       if (!extraction) {
         return NextResponse.json(
-          { verified: false, error: { code: 'NO_FACE_DETECTED', message: 'Wajah tidak terdeteksi.' } },
+          {
+            verified: false,
+            error: { code: 'NO_FACE_DETECTED', message: 'Wajah tidak terdeteksi.' },
+          },
           { status: 200 }
         )
       }
@@ -215,7 +233,10 @@ export async function POST(request: NextRequest) {
             verified: false,
             similarityScore: null,
             detectionScore,
-            error: { code: 'LOW_FACE_DETECTION_SCORE', message: 'Kualitas deteksi wajah terlalu rendah.' },
+            error: {
+              code: 'LOW_FACE_DETECTION_SCORE',
+              message: 'Kualitas deteksi wajah terlalu rendah.',
+            },
           },
           { status: 200 }
         )
@@ -249,6 +270,8 @@ export async function POST(request: NextRequest) {
             id: existing.id,
             eventType: existing.eventType,
             eventTime: existing.eventTime.toISOString(),
+            status: existing.status,
+            locationNote: existing.locationNote,
           },
         },
         { status: 200 }
@@ -323,7 +346,23 @@ export async function POST(request: NextRequest) {
     // 10. Verified — create attendance record
     const eventTime = new Date()
     const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
-    const accuracyNote = accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
+    const accuracyNote =
+      accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
+    const punctuality = await resolveSiteAttendancePunctuality({
+      siteId: sId,
+      eventType,
+      eventTime,
+      shiftCode: typeof shiftCode === 'string' ? shiftCode : null,
+    })
+    const locationNote = [
+      `${gpsFlag}face-recognition${accuracyNote}`,
+      punctuality
+        ? `Shift: ${punctuality.shiftCode.toUpperCase()} (masuk ${punctuality.scheduledClockIn})`
+        : null,
+      punctuality?.note,
+    ]
+      .filter(Boolean)
+      .join(' | ')
 
     const [insertedRecord] = await db
       .insert(attendanceRecords)
@@ -333,7 +372,7 @@ export async function POST(request: NextRequest) {
         eventType: eventType,
         eventTime,
         status: 'verified',
-        locationNote: `${gpsFlag}face-recognition${accuracyNote}`,
+        locationNote,
         confidenceScore: similarity.toFixed(3),
         deviceType: 'mobile',
         clientRequestId: clientRequestId.trim(),
@@ -360,6 +399,8 @@ export async function POST(request: NextRequest) {
           id: insertedRecord.id,
           eventType: insertedRecord.eventType,
           eventTime: insertedRecord.eventTime.toISOString(),
+          status: insertedRecord.status,
+          locationNote: insertedRecord.locationNote,
         },
       },
       { status: 200 }

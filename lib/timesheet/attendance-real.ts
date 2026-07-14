@@ -11,9 +11,11 @@ export type AttendanceCell = {
 export function normalizeAttendanceStatus(value?: string | null): AttendanceCellStatus {
   const normalized = (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
   if (!normalized) return "empty";
+  if (normalized === "empty") return "empty";
+  if (normalized.includes("off") || normalized.includes("libur")) return "off";
   if (normalized.includes("sakit") || normalized.includes("sick")) return "sick";
   if (normalized.includes("izin") || normalized.includes("leave") || normalized.includes("cuti")) return "leave";
-  if (normalized.includes("alpha") || normalized.includes("alpa") || normalized.includes("absent")) return "absent";
+  if (normalized.includes("alpha") || normalized.includes("alfa") || normalized.includes("alpa") || normalized.includes("absent")) return "absent";
   return "present";
 }
 

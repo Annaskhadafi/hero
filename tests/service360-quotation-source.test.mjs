@@ -31,7 +31,7 @@ test('service 360 quotation reload keeps backup labour prorate eligible', () => 
 
   assert.match(
     formSource,
-    /category: i\.item\?\.category \|\| \(i\.quotationItem\.isBackup \? "Labour Cost" : "General"\)/
+    /if \(desc\.includes\("labour cost"\) \|\| i\.quotationItem\.isBackup\) inferredCategory = "Labour Cost"/
   )
   assert.match(
     formSource,
@@ -67,11 +67,43 @@ test('service 360 quotation list supports PO column and selected PDF summary', (
   assert.match(tableSource, /PO Customer/)
   assert.match(tableSource, /PDF Summary/)
   assert.match(tableSource, /selectedRows/)
-  assert.match(tableSource, /getPoStatus/)
-  assert.match(tableSource, /['"]Waiting PO['"]/)
-  assert.match(tableSource, /['"]PO Release['"]/)
+  assert.match(tableSource, /QuotationStatusSelect/)
   assert.match(tableSource, /['"]No Quotation['"]/)
-  assert.match(tableSource, /['"]Nama Customer['"]/)
+  assert.match(tableSource, /['"]Customer['"]/)
   assert.match(tableSource, /['"]Total Amount['"]/)
   assert.match(tableSource, /['"]Periode['"]/)
+})
+
+test('service 360 quotation syncs Labour Cost after period and labour rows exist', () => {
+  const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
+  const actionSource = read('app/actions/service360.ts')
+
+  assert.match(formSource, /const canSyncAttendance = Boolean/)
+  assert.match(formSource, /canSyncAttendance &&/)
+  assert.match(formSource, /Sync Attendance/)
+  assert.match(formSource, /FB dipisah, OFF tetap dihitung/)
+  assert.match(formSource, /syncQuotationLabourAttendance/)
+  assert.match(formSource, /return \[\{ \.\.\.item, startDate: "", endDate: "", extraDateRanges: \[\] \}\]/)
+  assert.match(formSource, /if \(synced\.remove\)/)
+  assert.match(formSource, /item\.category\.toLowerCase\(\)\.trim\(\) === "labour cost" && !hasPeriod/)
+  assert.match(formSource, /i\.siteId === Number\(selectedProjectSite\)/)
+  assert.match(actionSource, /eq\(employees\.isActive, true\)/)
+  assert.match(actionSource, /remove: true/)
+  assert.match(actionSource, /timesheetSchedulingPlansV2/)
+  assert.match(actionSource, /timesheetFieldBreakPlans/)
+  assert.match(actionSource, /timesheetAttendanceRealOverrides/)
+  assert.match(actionSource, /attendanceRecords/)
+  assert.match(actionSource, /normalizedCode === "FB"/)
+  assert.match(actionSource, /normalizedCode === "OFF"/)
+  assert.match(actionSource, /timesheetSchedulingConfigs\.fieldBreakConfig/)
+  assert.match(actionSource, /isQuotationAttendanceStatusBillable/)
+  assert.match(actionSource, /quotationBillingConfig\.countEmpty/)
+
+  const setupSource = read('components/scheduling-timesheet-workspace.tsx')
+  assert.match(setupSource, /Aturan Tagihan Quotation/)
+  assert.match(setupSource, /\['countEmpty', 'Kosong'\]/)
+  assert.match(setupSource, /\['countSick', 'Sakit'\]/)
+  assert.match(setupSource, /\['countLeave', 'Izin'\]/)
+  assert.match(setupSource, /\['countAbsent', 'Alfa'\]/)
+  assert.match(setupSource, /Hitung \{label\}/)
 })

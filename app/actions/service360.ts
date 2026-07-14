@@ -10,8 +10,24 @@ import {
   service360RateSettings,
   service360FormHistory
 } from "@/db/schema/service360"
-import { employees, sites, masterDepartments, masterSections } from "@/db/schema/hero"
-import { eq, desc, asc, and, sql, isNotNull } from "drizzle-orm"
+import { attendanceRecords, employees, sites, masterDepartments, masterSections } from "@/db/schema/hero"
+import {
+  timesheetAttendanceRealOverrides,
+  timesheetFieldBreakPlans,
+  timesheetSchedulingPlans,
+  timesheetSchedulingPlansV2,
+  timesheetSchedulingConfigs,
+} from "@/db/schema/timesheet"
+import {
+  buildContiguousQuotationRanges,
+  DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
+  getIsoDatesInRange,
+  getPeriodsInDateRange,
+  isQuotationAttendanceStatusBillable,
+  normalizeQuotationBillingStatusConfig,
+} from "@/lib/service360-quotation-attendance"
+import { normalizeAttendanceStatus } from "@/lib/timesheet/attendance-real"
+import { eq, desc, asc, and, sql, isNotNull, inArray, gte, lte, or, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -134,6 +150,234 @@ export async function getItems() {
   }))
 
   return [...allItems, ...labourItems]
+}
+
+const quotationAttendanceSyncSchema = z.object({
+  items: z.array(z.object({
+    rowId: z.number().int(),
+    itemId: z.number().int().min(1000001),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).refine((item) => item.endDate >= item.startDate, {
+    message: "End Date must be greater than or equal to Start Date",
+    path: ["endDate"],
+  }).refine((item) => getIsoDatesInRange(item.startDate, item.endDate).length > 0, {
+    message: "Date range is invalid",
+    path: ["startDate"],
+  })).min(1).max(250),
+})
+
+type SchedulingRow = {
+  employeeId: number
+  schedule: string[]
+}
+
+export async function syncQuotationLabourAttendance(
+  input: z.infer<typeof quotationAttendanceSyncSchema>
+) {
+  const parsed = quotationAttendanceSyncSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false as const, error: "Data Labour Cost atau periode belum valid." }
+  }
+
+  const requested = parsed.data.items.map((item) => ({
+    ...item,
+    employeeId: item.itemId - 1000000,
+  }))
+  const employeeIds = [...new Set(requested.map((item) => item.employeeId))]
+  const employeeRows = await db
+    .select({ id: employees.id, siteId: employees.siteId })
+    .from(employees)
+    .where(and(
+      inArray(employees.id, employeeIds),
+      eq(employees.department, "Central Services"),
+      eq(employees.isActive, true)
+    ))
+  const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]))
+  const siteIds = [...new Set(employeeRows.flatMap((employee) => employee.siteId == null ? [] : [employee.siteId]))]
+
+  if (!siteIds.length) {
+    return { success: false as const, error: "Site karyawan Labour Cost belum terisi di Employee Data." }
+  }
+
+  const periods = [...new Set(requested.flatMap((item) => getPeriodsInDateRange(item.startDate, item.endDate)))]
+  const earliestDate = requested.reduce((value, item) => item.startDate < value ? item.startDate : value, requested[0].startDate)
+  const latestDate = requested.reduce((value, item) => item.endDate > value ? item.endDate : value, requested[0].endDate)
+  const earliestAt = new Date(`${earliestDate}T00:00:00.000Z`)
+  const latestAt = new Date(`${latestDate}T23:59:59.999Z`)
+
+  const [v2Plans, v1Plans, fieldBreakPlans, attendanceOverrides, realAttendanceRecords, schedulingConfigs] = await Promise.all([
+    db
+      .select({
+        siteId: timesheetSchedulingPlansV2.siteId,
+        period: timesheetSchedulingPlansV2.period,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(and(
+        eq(timesheetSchedulingPlansV2.status, "active"),
+        inArray(timesheetSchedulingPlansV2.siteId, siteIds),
+        inArray(timesheetSchedulingPlansV2.period, periods)
+      )),
+    db
+      .select({
+        siteId: timesheetSchedulingPlans.siteId,
+        period: timesheetSchedulingPlans.period,
+        fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+      })
+      .from(timesheetSchedulingPlans)
+      .where(and(
+        inArray(timesheetSchedulingPlans.siteId, siteIds),
+        inArray(timesheetSchedulingPlans.period, periods)
+      )),
+    db
+      .select({
+        siteId: timesheetFieldBreakPlans.siteId,
+        employeeId: timesheetFieldBreakPlans.employeeId,
+        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
+        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
+      })
+      .from(timesheetFieldBreakPlans)
+      .where(and(
+        inArray(timesheetFieldBreakPlans.siteId, siteIds),
+        inArray(timesheetFieldBreakPlans.employeeId, employeeIds),
+        lte(timesheetFieldBreakPlans.fieldBreakDate, latestDate),
+        or(
+          gte(timesheetFieldBreakPlans.fieldBreakEndDate, earliestDate),
+          and(
+            isNull(timesheetFieldBreakPlans.fieldBreakEndDate),
+            gte(timesheetFieldBreakPlans.fieldBreakDate, earliestDate)
+          )
+        )
+      )),
+    db
+      .select({
+        siteId: timesheetAttendanceRealOverrides.siteId,
+        period: timesheetAttendanceRealOverrides.period,
+        employeeId: timesheetAttendanceRealOverrides.employeeId,
+        day: timesheetAttendanceRealOverrides.day,
+        status: timesheetAttendanceRealOverrides.status,
+      })
+      .from(timesheetAttendanceRealOverrides)
+      .where(and(
+        inArray(timesheetAttendanceRealOverrides.siteId, siteIds),
+        inArray(timesheetAttendanceRealOverrides.employeeId, employeeIds),
+        inArray(timesheetAttendanceRealOverrides.period, periods)
+      )),
+    db
+      .select({
+        siteId: attendanceRecords.siteId,
+        employeeId: attendanceRecords.employeeId,
+        eventTime: attendanceRecords.eventTime,
+        status: attendanceRecords.status,
+      })
+      .from(attendanceRecords)
+      .where(and(
+        inArray(attendanceRecords.siteId, siteIds),
+        inArray(attendanceRecords.employeeId, employeeIds),
+        gte(attendanceRecords.eventTime, earliestAt),
+        lte(attendanceRecords.eventTime, latestAt)
+      )),
+    db
+      .select({
+        siteId: timesheetSchedulingConfigs.siteId,
+        fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
+      })
+      .from(timesheetSchedulingConfigs)
+      .where(inArray(timesheetSchedulingConfigs.siteId, siteIds)),
+  ])
+
+  const activeSchedules = new Map(
+    v2Plans.map((plan) => [`${plan.siteId}:${plan.period}`, plan.activeSchedule as SchedulingRow[]])
+  )
+  const legacySchedules = new Map(
+    v1Plans.map((plan) => [`${plan.siteId}:${plan.period}`, plan.fixedSchedule as SchedulingRow[]])
+  )
+  const attendanceOverridesByDay = new Map(
+    attendanceOverrides.map((item) => [
+      `${item.employeeId}:${item.period}-${String(item.day).padStart(2, "0")}`,
+      item.status,
+    ])
+  )
+  const attendanceRecordDates = new Set(
+    realAttendanceRecords
+      .filter((record) => normalizeAttendanceStatus(record.status) === "present")
+      .map((record) => `${record.employeeId}:${record.eventTime.toISOString().slice(0, 10)}`)
+  )
+  const quotationBillingConfigBySite = new Map(
+    schedulingConfigs.map((config) => {
+      const fieldBreakConfig =
+        config.fieldBreakConfig && typeof config.fieldBreakConfig === "object"
+          ? config.fieldBreakConfig as Record<string, unknown>
+          : {}
+      return [
+        config.siteId,
+        normalizeQuotationBillingStatusConfig(fieldBreakConfig.quotationBillingConfig),
+      ] as const
+    })
+  )
+
+  const syncedItems = requested.map((item) => {
+    const employee = employeesById.get(item.employeeId)
+    if (!employee) {
+      return { rowId: item.rowId, ranges: [], fieldBreakDays: 0, remove: true, error: null }
+    }
+    if (!employee?.siteId) {
+      return { rowId: item.rowId, ranges: [], fieldBreakDays: 0, remove: false, error: "Site karyawan belum terisi." }
+    }
+    const quotationBillingConfig = quotationBillingConfigBySite.get(employee.siteId)
+      ?? DEFAULT_QUOTATION_BILLING_STATUS_CONFIG
+
+    const fieldBreakDates = new Set<string>()
+    const rosterOffDates = new Set<string>()
+    for (const period of getPeriodsInDateRange(item.startDate, item.endDate)) {
+      const rows = activeSchedules.get(`${employee.siteId}:${period}`)
+        ?? legacySchedules.get(`${employee.siteId}:${period}`)
+        ?? []
+      const row = rows.find((candidate) => candidate.employeeId === item.employeeId)
+      row?.schedule.forEach((code, index) => {
+        const date = `${period}-${String(index + 1).padStart(2, "0")}`
+        const normalizedCode = code.trim().toUpperCase()
+        if (normalizedCode === "FB") fieldBreakDates.add(date)
+        if (normalizedCode === "OFF" || normalizedCode === "LIBUR") rosterOffDates.add(date)
+      })
+    }
+
+    fieldBreakPlans
+      .filter((plan) => plan.siteId === employee.siteId && plan.employeeId === item.employeeId && plan.fieldBreakDate)
+      .forEach((plan) => {
+        for (const date of getIsoDatesInRange(
+          plan.fieldBreakDate!,
+          plan.fieldBreakEndDate || plan.fieldBreakDate!
+        )) {
+          if (date >= item.startDate && date <= item.endDate) fieldBreakDates.add(date)
+        }
+      })
+
+    const billableDates = getIsoDatesInRange(item.startDate, item.endDate).filter((date) => {
+      if (fieldBreakDates.has(date)) return false
+      if (rosterOffDates.has(date)) return true
+      const overrideKey = `${item.employeeId}:${date}`
+      if (attendanceOverridesByDay.has(overrideKey)) {
+        return isQuotationAttendanceStatusBillable(
+          normalizeAttendanceStatus(attendanceOverridesByDay.get(overrideKey)),
+          quotationBillingConfig
+        )
+      }
+      if (attendanceRecordDates.has(overrideKey)) return true
+      return quotationBillingConfig.countEmpty
+    })
+
+    return {
+      rowId: item.rowId,
+      ranges: buildContiguousQuotationRanges(billableDates),
+      fieldBreakDays: [...fieldBreakDates].filter((date) => date >= item.startDate && date <= item.endDate).length,
+      remove: false,
+      error: null,
+    }
+  })
+
+  return { success: true as const, items: syncedItems }
 }
 
 export async function createItem(data: { name: string; category: string; price: string; siteId?: number | null; jobTitle?: string | null }) {
@@ -406,13 +650,13 @@ export async function getEmployeeLabours() {
       name: employees.name,
       section: employees.section,
       jobTitle: employees.jobTitle,
-      siteName: employees.workLocation, // Reusing siteName field on the frontend for workLocation
+      siteName: sites.name,
       siteId: sites.id,
       level: service360EmployeeLevels.level,
       price: service360RateSettings.price
     })
     .from(employees)
-    .where(eq(employees.department, "Central Services"))
+    .where(and(eq(employees.department, "Central Services"), eq(employees.isActive, true)))
     .leftJoin(sites, eq(employees.siteId, sites.id))
     .leftJoin(service360EmployeeLevels, eq(employees.id, service360EmployeeLevels.employeeId))
     .leftJoin(
