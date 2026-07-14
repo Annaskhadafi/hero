@@ -615,6 +615,17 @@ export function EmployeeClientPage({
               options={genderOptions}
               widthClassName="w-[160px]"
             />
+            <TableMultiFilter
+              label="Status Kontrak"
+              filterKey="contract"
+              options={[
+                { value: "Aktif", label: "Aktif" },
+                { value: "Akan Berakhir", label: "Akan Berakhir" },
+                { value: "Selesai", label: "Selesai" },
+                { value: "Tanpa Kontrak", label: "Tanpa Kontrak" },
+              ]}
+              widthClassName="w-[160px]"
+            />
           </>
         }
         actions={
@@ -678,6 +689,7 @@ export function EmployeeClientPage({
                     data-filter-section={emp.sectionName ?? ""}
                     data-filter-location={emp.siteName ?? ""}
                     data-filter-gender={emp.genderCode ?? ""}
+                    data-filter-contract={status.label}
                     className={hcTableRowClassName}
                   >
                     <TableCell className="text-center">
