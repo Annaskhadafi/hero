@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   getRealtimeExchangeRate,
   updateForecastItemStatus,
@@ -35,6 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat('id-ID', {
@@ -95,6 +96,33 @@ export function DailyClientPage({
   const [sapSearch, setSapSearch] = useState('')
   const [sapCustomerFilter, setSapCustomerFilter] = useState('')
   const [sapSalesmanFilter, setSapSalesmanFilter] = useState('')
+
+  const searchParams = useSearchParams()
+  const autoOpenedRef = useRef(false)
+
+  useEffect(() => {
+    if (autoOpenedRef.current) return
+    const valueNonVat = searchParams.get('valueNonVat')
+    const poNumber = searchParams.get('poNumber')
+    const customer = searchParams.get('customer')
+    const category = searchParams.get('category') || 'outstanding'
+    if (!valueNonVat) return
+    autoOpenedRef.current = true
+    const today = new Date().toISOString().split('T')[0]
+    const catKey = category.toLowerCase()
+    const prefix = ['outstanding', 'service', 'repair', 'retread'].includes(catKey) ? catKey : 'outstanding'
+    const idrKey = `${prefix}AmountIdr`
+    const remarkKey = `${prefix}Remark`
+    setActualsForm((prev) => ({
+      ...prev,
+      updateDate: today,
+      [idrKey]: valueNonVat,
+      [remarkKey]: poNumber || '',
+      customer: customer || '',
+      periodId: periods.length > 0 ? periods[0].id.toString() : '',
+    }))
+    setIsActualsDialogOpen(true)
+  }, [searchParams, periods])
 
   const filteredItems = React.useMemo(() => {
     return initialItems.filter((wrapper) => {

@@ -23,6 +23,7 @@ import { QuotationPreviewDialog } from './quotation-preview-dialog'
 import { QuotationStatusSelect } from './quotation-status-select'
 import { QuotationPoEdit } from './quotation-po-edit'
 import { QuotationPoUpload } from './quotation-po-upload'
+import { QuotationDailyUpdateDialog } from './quotation-daily-update-dialog'
 
 type QuotationSummaryRow = {
   id: number
@@ -82,6 +83,7 @@ function QuotationRowActions({ row, onDeleted }: { row: QuotationSummaryRow; onD
           <Copy className="h-4 w-4 text-amber-600" />
         </Button>
       </Link>
+      <QuotationDailyUpdateDialog subTotal={row.subTotal} poNumber={row.poNumber || ''} />
       <Button
         variant="destructive"
         size="icon"

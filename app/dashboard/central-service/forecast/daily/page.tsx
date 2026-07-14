@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { getDailyForecastItems, getForecastPeriods } from "@/app/actions/central-service-forecast";
 import { fetchSapInvoices } from "@/lib/cs-sap-db";
 import { DailyClientPage } from "./client-page";
@@ -14,10 +15,12 @@ export default async function DailyForecastPage() {
     : [];
 
   return (
-    <DailyClientPage
-      initialItems={allItems}
-      periods={periods}
-      initialSapInvoices={sapInvoices}
-    />
+    <Suspense fallback={<div className="p-6 text-muted-foreground">Loading...</div>}>
+      <DailyClientPage
+        initialItems={allItems}
+        periods={periods}
+        initialSapInvoices={sapInvoices}
+      />
+    </Suspense>
   );
 }

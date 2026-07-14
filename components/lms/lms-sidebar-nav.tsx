@@ -13,7 +13,6 @@ import {
   Award,
   BarChart,
   Trophy,
-  Map,
   ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -83,12 +82,7 @@ const ADMIN_ITEMS = [
     icon: ClipboardList,
     color: 'violet',
   },
-  {
-    title: 'Learning Paths',
-    href: '/dashboard/chitralearning-lms/paths',
-    icon: Map,
-    color: 'emerald',
-  },
+
 ]
 
 const COLOR_MAP: Record<string, { icon: string; active: string; ring: string }> = {

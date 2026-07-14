@@ -438,3 +438,11 @@ export async function getSapInvoices(monthYear: string) {
   const { fetchSapInvoices } = await import('@/lib/cs-sap-db')
   return fetchSapInvoices(monthYear)
 }
+
+export async function getForecastCustomers() {
+  const result = await db
+    .selectDistinct({ customer: centralServiceForecastItems.customer })
+    .from(centralServiceForecastItems)
+    .orderBy(centralServiceForecastItems.customer)
+  return result.map((r) => r.customer)
+}
