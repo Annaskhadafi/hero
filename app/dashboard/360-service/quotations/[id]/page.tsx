@@ -357,7 +357,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           return (
                             <tr key={idx} className={`border-b last:border-b-0 border-slate-100 text-slate-700 ${isEven ? 'bg-white' : 'bg-slate-50/50'}`}>
                               <td className="border-r border-slate-100 text-center py-1.5 font-medium text-slate-500">
-                                {isAccomodation ? '' : globalIndex + 1}
+                                {globalIndex + 1}
                               </td>
                               <td className="border-r border-slate-100 px-2 text-center text-[8.5pt] align-top py-2">
                                 <div className="flex flex-col gap-1">
