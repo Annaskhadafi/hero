@@ -123,6 +123,38 @@ describe('scheduling timesheet V2', () => {
     expect(isCompleteScheduleV2(rows, [10, 11], '2026-02')).toBe(false)
   })
 
+  it('allows incomplete rows to be saved and activated', () => {
+    const actions = fs.readFileSync(path.join(process.cwd(), 'app/dashboard/admin-actions.ts'), 'utf8')
+    const workspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet/schedule-v2-workspace.tsx'),
+      'utf8'
+    )
+    expect(actions).toContain('normalizeScheduleV2DraftRows')
+    expect(actions).toContain('const draftRows = await normalizeScheduleV2DraftRows')
+    expect(actions).toContain('section: existing?.section')
+    expect(actions).toContain('positionOnSite: z.string().trim().max(120).optional()')
+    expect(actions).not.toContain('Schedule belum lengkap. Isi semua cell sebelum aktivasi.')
+    expect(workspace).toContain('title="Aktifkan roster Schedule V2. Draft boleh belum lengkap."')
+    expect(workspace).toContain('disabled={pending}')
+  })
+
+  it('syncs grid profile site changes and supports adding users to a roster', () => {
+    const actions = fs.readFileSync(path.join(process.cwd(), 'app/dashboard/admin-actions.ts'), 'utf8')
+    const workspace = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet/schedule-v2-workspace.tsx'),
+      'utf8'
+    )
+    expect(actions).toContain('syncScheduleV2EmployeeAssignmentAction')
+    expect(actions).toContain("timesheet.schedule_v2_employee_site_synced")
+    expect(actions).toContain('workLocation: targetSite.location || targetSite.name')
+    expect(actions).toContain('syncScheduleV2EmployeeSiteAcrossPlans')
+    expect(actions).toContain("'/dashboard/scheduling-timesheet/schedule-v2'")
+    expect(workspace).toContain('Pilih user untuk ditambahkan ke site')
+    expect(workspace).toContain('addEmployeeToSite')
+    expect(workspace).toContain('Lokasi Site')
+    expect(workspace).toContain('User Management dan roster periode ini')
+  })
+
   it('uses active V2 over V1 while draft V2 leaves V1 active', () => {
     const v1 = [{ siteId: 1, period: '2026-07', value: 'v1' }]
     const draft = [{ siteId: 1, period: '2026-07', status: 'draft', activeSchedule: [] }]

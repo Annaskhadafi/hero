@@ -329,6 +329,22 @@ describe('scheduling timesheet workflow', () => {
     expect(actionSource).toContain('updateAttendanceImportPreviewMatchAction')
   })
 
+  it('allows attendance workspace creation before a Schedule V2 plan exists', () => {
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+    const actionSource = fs.readFileSync(
+      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
+      'utf8'
+    )
+    expect(source).toContain("selectedAttendancePlan || siteId !== 'all'")
+    expect(source).toContain('Attendance bisa dibuat tanpa Schedule V2')
+    expect(source).toContain('overrides: [],')
+    expect(actionSource).toContain("attendanceStatus: 'draft'")
+    expect(actionSource).toContain('Created empty attendance workspace before Schedule V2 exists.')
+  })
+
   it('does not use native prompts in scheduling workspace', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),

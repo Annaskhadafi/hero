@@ -187,6 +187,13 @@ const parsePoPeriod = (periodStr?: string | null) => {
   };
 };
 
+const toProxyUrl = (url: string | null | undefined) => {
+  if (!url) return "";
+  if (url.startsWith("/api/uploads/") || url.startsWith("http://localhost") || url.startsWith("/uploads/")) return url;
+  const match = url.match(/(?:^|\/)((?:attendance-photos|profile-photos|upload)\/.+)$/);
+  return match ? `/api/uploads/${match[1]}` : url;
+};
+
 export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, initialSignatureReadableUrl, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; initialSignatureReadableUrl?: string | null; isEdit?: boolean }) {
 const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -312,7 +319,7 @@ const router = useRouter()
       const sigData = await getLatestSignatureByFromName(fromName);
       if (sigData && sigData.signatureUrl) {
         setValue("fromSignatureUrl", sigData.signatureUrl);
-        setSignatureDisplayUrl(sigData.readableUrl);
+        setSignatureDisplayUrl(toProxyUrl(sigData.signatureUrl));
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -681,7 +688,7 @@ const router = useRouter()
                     const res = await uploadFile(formData)
                     if (res.success) {
                       setValue("fromSignatureUrl", res.url)
-                      setSignatureDisplayUrl(res.readableUrl)
+                      setSignatureDisplayUrl(toProxyUrl(res.url))
                       toast.success("Signature uploaded")
                     } else {
                       toast.error("Upload failed")

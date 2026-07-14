@@ -1154,8 +1154,8 @@ export function SchedulingTimesheetWorkspace({
       ? attendanceSiteRows.find((item) => String(item.site.id) === siteId)?.plan
       : null
   const attendanceHistoryRows = useMemo(
-    () =>
-      savedPlans
+    () => {
+      const planRows = savedPlans
         .filter(
           (plan) =>
             !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
@@ -1172,8 +1172,34 @@ export function SchedulingTimesheetWorkspace({
           (left, right) =>
             right.plan.period.localeCompare(left.plan.period) ||
             (left.site?.name ?? '').localeCompare(right.site?.name ?? '')
-        ),
-    [deletedSchedulePlanKeys, savedPlans, schedulingStatuses, sites]
+        )
+
+      if (mode !== 'attendance') return planRows
+      const planKeys = new Set(planRows.map(({ plan }) => `${plan.siteId}:${plan.period}`))
+      const statusRows = schedulingStatuses
+        .filter((status) => !planKeys.has(`${status.siteId}:${status.period}`))
+        .map((status) => ({
+          plan: {
+            siteId: status.siteId,
+            period: status.period,
+            siteScheduleType: 'office',
+            draftSchedule: [],
+            fixedSchedule: [],
+            employeeProfiles: [],
+            fieldBreakConfig: null,
+            updatedAt: status.lastSavedAt ?? '',
+            sourceVersion: 'v2' as const,
+          },
+          site: sites.find((site) => site.id === status.siteId),
+          status,
+        }))
+      return [...planRows, ...statusRows].sort(
+        (left, right) =>
+          right.plan.period.localeCompare(left.plan.period) ||
+          (left.site?.name ?? '').localeCompare(right.site?.name ?? '')
+      )
+    },
+    [deletedSchedulePlanKeys, mode, savedPlans, schedulingStatuses, sites]
   )
   const payrollHistorySiteRows = useMemo(() => {
     const grouped = new Map<number, typeof attendanceHistoryRows>()
@@ -1231,15 +1257,35 @@ export function SchedulingTimesheetWorkspace({
 
   function createAttendanceWorkspace() {
     const numericSiteId = Number(attendanceCreateSiteId)
-    const matchingPlan = attendanceHistoryRows.find(
-      (item) => item.plan.siteId === numericSiteId && item.plan.period === attendanceCreatePeriod
-    )
-    if (!matchingPlan) {
-      toast.error('Schedule V2 aktif belum tersedia untuk site dan bulan ini.')
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || !attendanceCreatePeriod) {
+      toast.error('Pilih site dan bulan terlebih dahulu.')
       return
     }
-    setAttendanceCreateOpen(false)
-    openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+    const existingAttendance = attendanceHistoryRows.some(
+      (item) => item.plan.siteId === numericSiteId && item.plan.period === attendanceCreatePeriod
+    )
+    if (existingAttendance) {
+      setAttendanceCreateOpen(false)
+      openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+      return
+    }
+    startSavingAttendance(async () => {
+      try {
+        await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period: attendanceCreatePeriod,
+          overrides: [],
+        })
+        setAttendanceCreateOpen(false)
+        openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+        router.refresh()
+        toast.success('Attendance dibuat. Schedule dapat dilengkapi nanti.')
+      } catch (error) {
+        toast.error('Gagal membuat attendance', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
   }
 
   function clearAttendanceWorkspace() {
@@ -1408,7 +1454,14 @@ export function SchedulingTimesheetWorkspace({
   }, [siteId, schedulingConfigs])
 
   useEffect(() => {
-    if (!savedPlan) return
+    if (!savedPlan) {
+      setOverrides({})
+      setPermanentBase({})
+      setPermanentOverrides({})
+      setEmployeeProfiles({})
+      setScheduleSavedAt(null)
+      return
+    }
 
     const nextDraftOverrides: Record<string, ScheduleCode> = {}
     const nextPermanentBase: Record<string, ScheduleCode> = {}
@@ -1523,9 +1576,13 @@ export function SchedulingTimesheetWorkspace({
         const schedule = days.map((day) => {
           const scheduleType = siteScheduleTypes[siteId] ?? 'office'
           const date = dateKey(period, day)
-          const generatedCode = forceDayShift
-            ? 'DS'
-            : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
+          const generatedCode = (
+            savedPlan
+              ? forceDayShift
+                ? 'DS'
+                : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
+              : ''
+          ) as ScheduleCode
           const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
             scheduleType,
             rosterType: siteConfig.rosterType,
@@ -1623,6 +1680,7 @@ export function SchedulingTimesheetWorkspace({
       rate.msaStaff,
       rosterSectionByEmployee,
       rosterSectionCounts,
+      savedPlan,
       siteConfig.mealsType,
       siteConfig.msaType,
       siteConfig.overtimeType,
@@ -5870,7 +5928,7 @@ export function SchedulingTimesheetWorkspace({
       {mode === 'attendance' ? (
         attendanceWorkspaceOpen ? (
           <section className="space-y-3">
-            {selectedAttendancePlan ? (
+            {selectedAttendancePlan || siteId !== 'all' ? (
               <section className="space-y-3">
                 <Card className="surface-module-card border-border/60 overflow-hidden rounded-xl border bg-white p-0">
                   <div className="bg-white">
@@ -6876,11 +6934,11 @@ export function SchedulingTimesheetWorkspace({
               <Card className="surface-module-card rounded-[1.1rem] border-0 p-8 text-center">
                 <CalendarDays className="text-muted-foreground mx-auto size-8" aria-hidden="true" />
                 <p className="font-display text-foreground mt-3 text-lg font-semibold">
-                  Schedule V2 belum aktif
+                  Attendance belum memiliki Schedule V2
                 </p>
                 <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
-                  Aktifkan Schedule V2 untuk periode ini terlebih dahulu agar attendance dapat
-                  diisi.
+                  Attendance tetap bisa dibuat dan diisi. Schedule V2 dapat ditambahkan atau
+                  dilengkapi kemudian.
                 </p>
               </Card>
             )}
@@ -6919,7 +6977,7 @@ export function SchedulingTimesheetWorkspace({
                 <Button
                   size="dense"
                   onClick={() => {
-                    setAttendanceCreateSiteId(String(attendanceHistoryRows[0]?.plan.siteId ?? ''))
+                    setAttendanceCreateSiteId(String(currentEmployeeSiteId ?? sites[0]?.id ?? ''))
                     setAttendanceCreatePeriod(currentMonthPeriod)
                     setAttendanceCreateOpen(true)
                   }}
@@ -6952,7 +7010,9 @@ export function SchedulingTimesheetWorkspace({
                       </TableCell>
                       <TableCell className="px-4 py-3 tabular-nums">{formatMonthPeriod(plan.period)}</TableCell>
                       <TableCell className="px-4 py-3">
-                        <Badge>Aktif</Badge>
+                        <Badge variant={plan.draftSchedule.length ? 'default' : 'secondary'}>
+                          {plan.draftSchedule.length ? 'Aktif' : 'Belum ada'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="px-4 py-3">
                         <Badge
@@ -7023,7 +7083,8 @@ export function SchedulingTimesheetWorkspace({
                   {!attendanceHistoryRows.length ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-muted-foreground px-4 py-12 text-center">
-                        Belum ada Schedule V2 aktif. Buat dan aktifkan schedule terlebih dahulu.
+                        Belum ada attendance. Klik Tambah Attendance untuk membuat site dan bulan,
+                        meskipun Schedule V2 belum tersedia.
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -7055,15 +7116,17 @@ export function SchedulingTimesheetWorkspace({
                     />
                   </div>
                   <p className="text-muted-foreground text-xs">
-                    Attendance hanya dapat dibuat jika Schedule V2 untuk site dan bulan tersebut
-                    sudah aktif.
+                    Attendance bisa dibuat tanpa Schedule V2. Jika schedule belum ada, form memakai
+                    daftar karyawan aktif dari site dan dapat dilengkapi kemudian.
                   </p>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setAttendanceCreateOpen(false)}>
                     Batal
                   </Button>
-                  <Button onClick={createAttendanceWorkspace}>Buka form attendance</Button>
+                  <Button disabled={isSavingAttendance} onClick={createAttendanceWorkspace}>
+                    {isSavingAttendance ? 'Membuat...' : 'Buka form attendance'}
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>

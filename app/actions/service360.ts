@@ -254,8 +254,8 @@ export async function getLatestSignatureByFromName(fromName: string) {
     .limit(1);
 
   if (quotation && quotation.fromSignatureUrl) {
-    const { getS3ObjectReadUrl } = await import('@/lib/s3-storage');
-    const readableUrl = await getS3ObjectReadUrl(quotation.fromSignatureUrl);
+    const { resolveUploadUrl } = await import('@/lib/s3-storage');
+    const readableUrl = resolveUploadUrl(quotation.fromSignatureUrl);
     return {
       signatureUrl: quotation.fromSignatureUrl,
       readableUrl

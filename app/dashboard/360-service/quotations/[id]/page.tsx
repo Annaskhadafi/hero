@@ -5,7 +5,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { PrintButton } from "./print-button"
 import { Suspense } from "react"
-import { getS3ObjectReadUrl } from "@/lib/s3-storage"
+import { resolveUploadUrl } from "@/lib/s3-storage"
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 function abbreviatePeriod(period: string | null) {
@@ -31,7 +31,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return notFound()
   }
 
-  const signatureUrl = quotation.fromSignatureUrl ? await getS3ObjectReadUrl(quotation.fromSignatureUrl) : null;
+  const signatureUrl = quotation.fromSignatureUrl ? resolveUploadUrl(quotation.fromSignatureUrl) : null;
 
   // Helper to determine row color based on description
   const getRowIndexBg = (desc: string) => {
@@ -77,7 +77,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   };
 
-  const rentalItems = quotation.items.filter(i => i.item?.category === "Rental");
+  const rentalItems = quotation.items.filter(i => {
+    const cat = i.item?.category || '';
+    const desc = (i.quotationItem.customDescription || '').toLowerCase();
+    return cat === "Rental" || cat === "Rental & Tools" || desc.includes("rental");
+  });
   let totalRental = 0;
   rentalItems.forEach(item => {
     let backupProrate = 0;
@@ -434,6 +438,13 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                     <div className="w-[280px] bg-slate-50 rounded-xl p-4 border border-slate-200 shadow-sm shrink-0">
                       <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
                         <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">Subtotal</div>
+                        <div className="flex-1 flex justify-between font-semibold text-[9pt]">
+                          <span className="text-slate-400">Rp</span>
+                          <span>{Number(quotation.subTotal).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
+                        <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">Total (Non VAT)</div>
                         <div className="flex-1 flex justify-between font-semibold text-[9pt]">
                           <span className="text-slate-400">Rp</span>
                           <span>{Number(quotation.subTotal).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>

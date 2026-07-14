@@ -39,6 +39,7 @@ export type AuditAction =
   | 'timesheet.schedule_v2_draft_saved'
   | 'timesheet.schedule_v2_activated'
   | 'timesheet.schedule_v2_deleted'
+  | 'timesheet.schedule_v2_employee_site_synced'
   | 'timesheet.field_break_saved'
   | 'timesheet.payroll_snapshot_saved'
   | 'timesheet.attendance_saved'

@@ -11,6 +11,7 @@ import {
   deleteSchedulingTimesheetPlanV2Action,
   getIndonesiaHolidaysAction,
   saveSchedulingTimesheetPlanV2DraftAction,
+  syncScheduleV2EmployeeAssignmentAction,
 } from '@/app/dashboard/admin-actions'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { EnterpriseActionButtons, type TableRbacAccess } from '@/components/ui/enterprise-table-kit'
@@ -285,15 +286,22 @@ function formatPeriod(period: string) {
 }
 
 function reconcileRows(plan: ScheduleV2Plan, employees: Employee[]) {
-  const current = new Map(plan.draftSchedule.map((row) => [row.employeeId, row.schedule]))
+  const current = new Map(plan.draftSchedule.map((row) => [row.employeeId, row]))
   const dayCount = getScheduleV2DayCount(plan.period)
-  return employees.map((employee) => ({
-    employeeId: employee.id,
-    schedule: Array.from(
-      { length: dayCount },
-      (_, index) => current.get(employee.id)?.[index] ?? ''
-    ) as ScheduleV2Code[],
-  }))
+  return employees.map((employee) => {
+    const existing = current.get(employee.id)
+    return {
+      employeeId: employee.id,
+      schedule: Array.from(
+        { length: dayCount },
+        (_, index) => existing?.schedule[index] ?? ''
+      ) as ScheduleV2Code[],
+      section: existing?.section,
+      positionOnSite: existing?.positionOnSite,
+      kimperLv: existing?.kimperLv,
+      kimperTh: existing?.kimperTh,
+    }
+  })
 }
 
 function employeesForSite(employees: Employee[], siteId: number) {
@@ -348,6 +356,8 @@ export function ScheduleV2Workspace({
   const [profilePositionOnSite, setProfilePositionOnSite] = useState('')
   const [profileKimperLv, setProfileKimperLv] = useState(false)
   const [profileKimperTh, setProfileKimperTh] = useState(false)
+  const [profileSiteId, setProfileSiteId] = useState('')
+  const [addEmployeeId, setAddEmployeeId] = useState('')
 
   const selectedEmployee = useMemo(
     () => (selectedEmployeeId ? employees.find((e) => e.id === selectedEmployeeId) : null),
@@ -358,6 +368,13 @@ export function ScheduleV2Workspace({
   const canDelete = Boolean(access.canDelete || access.canSelectAll)
   const selectedSiteEmployees = useMemo(
     () => employeesForSite(employees, Number(editorPlan?.siteId)),
+    [editorPlan?.siteId, employees]
+  )
+  const availableEmployees = useMemo(
+    () =>
+      employees
+        .filter((employee) => employee.siteId !== Number(editorPlan?.siteId))
+        .sort((left, right) => left.name.localeCompare(right.name)),
     [editorPlan?.siteId, employees]
   )
   const employeeById = useMemo(
@@ -436,6 +453,7 @@ export function ScheduleV2Workspace({
     setProfilePositionOnSite(row.positionOnSite || '')
     setProfileKimperLv(row.kimperLv ?? false)
     setProfileKimperTh(row.kimperTh ?? false)
+    setProfileSiteId(String(employee?.siteId ?? editorPlan?.siteId ?? ''))
   }
 
   function exportSchedulePdf() {
@@ -527,21 +545,103 @@ export function ScheduleV2Workspace({
   }
 
   function saveProfile() {
-    if (!selectedEmployeeId) return
-    setRows((current) =>
-      current.map((row) =>
-        row.employeeId === selectedEmployeeId
-          ? {
-              ...row,
-              section: profileSection,
-              positionOnSite: profilePositionOnSite,
-              kimperLv: profileKimperLv,
-              kimperTh: profileKimperTh,
-            }
-          : row
-      )
-    )
-    setSelectedEmployeeId(null)
+    if (!selectedEmployeeId || !editorPlan) return
+    const targetSiteId = Number(profileSiteId)
+    if (!targetSiteId) {
+      toast.error('Pilih site tujuan terlebih dahulu')
+      return
+    }
+
+    const fromSiteId = selectedEmployee?.siteId || editorPlan.siteId
+    startTransition(async () => {
+      try {
+        const result = await syncScheduleV2EmployeeAssignmentAction({
+          siteId: targetSiteId,
+          period: editorPlan.period,
+          employeeId: selectedEmployeeId,
+          fromSiteId,
+          section: profileSection,
+          positionOnSite: profilePositionOnSite,
+          kimperLv: profileKimperLv,
+          kimperTh: profileKimperTh,
+        })
+
+        setRows((current) => {
+          if (targetSiteId !== editorPlan.siteId) {
+            return current.filter((row) => row.employeeId !== selectedEmployeeId)
+          }
+          return current.map((row) =>
+            row.employeeId === selectedEmployeeId
+              ? {
+                  ...row,
+                  section: profileSection,
+                  positionOnSite: profilePositionOnSite,
+                  kimperLv: profileKimperLv,
+                  kimperTh: profileKimperTh,
+                }
+              : row
+          )
+        })
+        setSelectedEmployeeId(null)
+        toast.success('Profil dan lokasi site berhasil disinkronkan', {
+          description: `Diperbarui ${new Date(result.updatedAt).toLocaleString('id-ID')}`,
+        })
+        router.refresh()
+      } catch (error) {
+        toast.error('Gagal menyinkronkan profil site', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
+  }
+
+  function addEmployeeToSite() {
+    if (!editorPlan) return
+    const employeeId = Number(addEmployeeId)
+    const employee = employeeById.get(employeeId)
+    if (!employeeId || !employee) return
+
+    const section = normalizeRosterSection(employee.section || employee.role)
+    const positionOnSite = defaultPositionOnSite(section)
+    const fromSiteId = employee.siteId || editorPlan.siteId
+    startTransition(async () => {
+      try {
+        await syncScheduleV2EmployeeAssignmentAction({
+          siteId: editorPlan.siteId,
+          period: editorPlan.period,
+          employeeId,
+          fromSiteId,
+          section,
+          positionOnSite,
+          kimperLv: Boolean(employee.kimperLv),
+          kimperTh: Boolean(employee.kimperTh),
+        })
+
+        setRows((current) => {
+          if (current.some((row) => row.employeeId === employeeId)) return current
+          return [
+            ...current,
+            {
+              employeeId,
+              schedule: Array(getScheduleV2DayCount(editorPlan.period)).fill('') as ScheduleV2Code[],
+              section,
+              positionOnSite,
+              kimperLv: Boolean(employee.kimperLv),
+              kimperTh: Boolean(employee.kimperTh),
+            },
+          ]
+        })
+        setAddEmployeeId('')
+        toast.success(`${employee.name} ditambahkan ke site`, {
+          description: 'Baris schedule kosong siap dilengkapi dan disimpan.',
+        })
+        router.refresh()
+      } catch (error) {
+        toast.error('Gagal menambahkan user ke site', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
   }
 
   function handleProfileSectionChange(value: string) {
@@ -1468,7 +1568,30 @@ export function ScheduleV2Workspace({
                   Holiday hanya penanda. Schedule aktif lama tetap dipakai sampai draft diaktifkan
                   ulang.
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <select
+                    aria-label="Pilih user untuk ditambahkan ke site"
+                    value={addEmployeeId}
+                    onChange={(event) => setAddEmployeeId(event.target.value)}
+                    disabled={pending || availableEmployees.length === 0}
+                    className="border-border h-9 min-w-56 rounded-lg border bg-white px-3 text-sm"
+                  >
+                    <option value="">Tambah user ke site...</option>
+                    {availableEmployees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.name} · {employee.siteId ? siteById.get(employee.siteId)?.name ?? 'Site lain' : 'Belum ada site'}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    size="dense"
+                    variant="outline"
+                    disabled={pending || !addEmployeeId}
+                    onClick={addEmployeeToSite}
+                    title="Pindahkan user ke site ini dan buat baris schedule kosong"
+                  >
+                    <Plus className="size-4" /> Tambah User
+                  </Button>
                   <Button variant="outline" onClick={() => setEditorPlan(null)}>
                     Tutup
                   </Button>
@@ -1482,16 +1605,12 @@ export function ScheduleV2Workspace({
                   ) : null}
                   {canEdit ? (
                     <Button
-                      disabled={pending || !progress.complete}
-                      title={
-                        progress.complete
-                          ? 'Aktifkan roster Schedule V2.'
-                          : `Lengkapi seluruh roster sebelum aktivasi (${progress.filled}/${progress.total} cell terisi).`
-                      }
+                      disabled={pending}
+                      title="Aktifkan roster Schedule V2. Draft boleh belum lengkap."
                       onClick={activatePlan}
                     >
                       <CheckCircle2 className="size-4" />{' '}
-                      {progress.complete ? 'Aktifkan' : `Lengkapi ${progress.filled}/${progress.total}`}
+                      {pending ? 'Mengaktifkan...' : 'Aktifkan'}
                     </Button>
                   ) : null}
                 </div>
@@ -1532,6 +1651,27 @@ export function ScheduleV2Workspace({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Lokasi Site</Label>
+              <select
+                value={profileSiteId}
+                onChange={(event) => setProfileSiteId(event.target.value)}
+                disabled={pending}
+                className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
+              >
+                <option value="" disabled>
+                  Pilih site
+                </option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                Perubahan site otomatis tersimpan ke User Management dan roster periode ini.
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label>Grouping Section</Label>
               <select
@@ -1605,7 +1745,9 @@ export function ScheduleV2Workspace({
             <Button variant="outline" onClick={() => setSelectedEmployeeId(null)}>
               Batal
             </Button>
-            <Button onClick={saveProfile}>Simpan Profil</Button>
+            <Button disabled={pending} onClick={saveProfile}>
+              {pending ? 'Menyimpan...' : 'Simpan Profil'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -31,6 +31,7 @@ type QuotationSummaryRow = {
   customerName: string
   poNumber: string
   totalAmount: number
+  subTotal: number
   site: string
   period: string
   status: string
@@ -148,13 +149,14 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
     const columns = [
       { label: 'No', key: 'no' as const, width: 8 },
       { label: 'No Quotation', key: 'quotationNumber' as const, width: 36 },
-      { label: 'Date', key: 'quotationDate' as const, width: 20 },
-      { label: 'Customer', key: 'customerName' as const, width: 44 },
-      { label: 'PO Customer', key: 'poNumber' as const, width: 28 },
-      { label: 'Total Amount', key: 'totalAmount' as const, width: 32 },
-      { label: 'Site', key: 'site' as const, width: 32 },
-      { label: 'Periode', key: 'period' as const, width: 34 },
-      { label: 'Status', key: 'status' as const, width: 20 },
+      { label: 'Date', key: 'quotationDate' as const, width: 18 },
+      { label: 'Customer', key: 'customerName' as const, width: 40 },
+      { label: 'PO Customer', key: 'poNumber' as const, width: 24 },
+      { label: 'Total Amount', key: 'totalAmount' as const, width: 28 },
+      { label: 'Total (Non VAT)', key: 'subTotal' as const, width: 28 },
+      { label: 'Site', key: 'site' as const, width: 38 },
+      { label: 'Periode', key: 'period' as const, width: 28 },
+      { label: 'Status', key: 'status' as const, width: 16 },
     ]
     const tableW = columns.reduce((sum, c) => sum + c.width + colGap, -colGap)
     const tableLeft = left + (right - left - tableW) / 2
@@ -192,6 +194,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
         row.customerName || '-',
         row.poNumber || '-',
         formatCurrency(row.totalAmount),
+        formatCurrency(row.subTotal),
         row.site || '-',
         row.period || '-',
         row.status,
@@ -256,7 +259,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
       })
     }
 
-    const drawTotalRow = (yPos: number, grandTotal: number) => {
+    const drawTotalRow = (yPos: number, grandTotal: number, grandSubTotal: number) => {
       pdf.setFillColor(226, 232, 240)
       pdf.setDrawColor(...BORDER_COLOR)
       pdf.setLineWidth(0.2)
@@ -268,9 +271,11 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
       const labelW = columns.slice(0, 4).reduce((s, c) => s + c.width + colGap, -colGap)
       pdf.text('TOTAL', tableLeft + labelW - 2, yPos + 5.5, { align: 'right' })
 
-      const amountX = tableLeft + columns.slice(0, 5).reduce((s, c) => s + c.width + colGap, -colGap)
-      const amountW = columns[5].width
-      pdf.text(formatCurrency(grandTotal), amountX + amountW - 2, yPos + 5.5, { align: 'right' })
+      const amtX = tableLeft + columns.slice(0, 5).reduce((s, c) => s + c.width + colGap, -colGap)
+      pdf.text(formatCurrency(grandTotal), amtX + columns[5].width - 2, yPos + 5.5, { align: 'right' })
+
+      const nonVatX = amtX + columns[5].width + colGap
+      pdf.text(formatCurrency(grandSubTotal), nonVatX + columns[6].width - 2, yPos + 5.5, { align: 'right' })
     }
 
     const drawRow = (row: QuotationSummaryRow, idx: number, yPos: number, rowH: number) => {
@@ -286,6 +291,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
         customerName: row.customerName || '-',
         poNumber: row.poNumber || '-',
         totalAmount: formatCurrency(row.totalAmount),
+        subTotal: formatCurrency(row.subTotal),
         site: row.site || '-',
         period: abbreviatePeriod(row.period),
         status: row.status,
@@ -294,7 +300,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
       let cx = tableLeft
       columns.forEach((col) => {
         const val = cellValues[col.key]
-        const isRight = col.key === 'no' || col.key === 'totalAmount'
+        const isRight = col.key === 'no' || col.key === 'totalAmount' || col.key === 'subTotal'
         const align: 'left' | 'right' = isRight ? 'right' : 'left'
         const textX = isRight ? cx + col.width - 2 : cx + 2
         const maxW = col.width - 4
@@ -317,6 +323,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
     y += HEADER_ROW_H + 1
 
     const grandTotal = selectedRows.reduce((s, r) => s + r.totalAmount, 0)
+    const grandSubTotal = selectedRows.reduce((s, r) => s + r.subTotal, 0)
     const needsTotalRow = selectedRows.length > 1
     const spaceForFooter = FOOTER_H + 4
     const spaceForTotal = needsTotalRow ? TOTAL_ROW_H + 2 : 0
@@ -328,7 +335,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
 
       if (y + totalNeeded > pageH - spaceForFooter || (idx > 0 && remaining < totalNeeded)) {
         if (needsTotalRow) {
-          drawTotalRow(y, grandTotal)
+          drawTotalRow(y, grandTotal, grandSubTotal)
           y += TOTAL_ROW_H + 2
         }
         drawFooter(pageNum, Math.ceil(selectedRows.length / 10) + 1)
@@ -349,7 +356,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
 
     if (needsTotalRow) {
       y += 1
-      drawTotalRow(y, grandTotal)
+      drawTotalRow(y, grandTotal, grandSubTotal)
     }
 
     const totalPages = pageNum
@@ -425,6 +432,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
         { key: 'customerName', label: 'Customer' },
         { key: 'poNumber', label: 'PO Customer' },
         { key: 'totalAmount', label: 'Total Amount' },
+        { key: 'subTotal', label: 'Total (Non VAT)' },
         { key: 'site', label: 'Site' },
         { key: 'period', label: 'Periode' },
         { key: 'status', label: 'Status' },
@@ -464,6 +472,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
             <TableHead>Customer</TableHead>
             <TableHead>PO Customer</TableHead>
             <TableHead>Total Amount</TableHead>
+            <TableHead>Total (Non VAT)</TableHead>
             <TableHead>Site</TableHead>
             <TableHead>Periode</TableHead>
             <TableHead>Status</TableHead>
@@ -497,6 +506,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
                 </div>
               </TableCell>
               <TableCell>{formatCurrency(row.totalAmount)}</TableCell>
+              <TableCell>{formatCurrency(row.subTotal)}</TableCell>
               <TableCell>{row.site || '-'}</TableCell>
               <TableCell>{abbreviatePeriod(row.period)}</TableCell>
               <TableCell>
@@ -509,7 +519,7 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
           ))}
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={9} className="text-muted-foreground py-8 text-center">
+              <TableCell colSpan={10} className="text-muted-foreground py-8 text-center">
                 No quotations found.
               </TableCell>
             </TableRow>

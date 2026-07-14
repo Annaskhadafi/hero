@@ -482,6 +482,10 @@ const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB'])
 const scheduleV2RowSchema = z.object({
   employeeId: z.number().int().positive(),
   schedule: z.array(scheduleV2CodeSchema),
+  section: z.string().trim().max(120).optional(),
+  positionOnSite: z.string().trim().max(120).optional(),
+  kimperLv: z.boolean().optional(),
+  kimperTh: z.boolean().optional(),
 })
 const scheduleV2KeySchema = z.object({
   siteId: z.number().int().positive(),
@@ -512,6 +516,106 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
     if (row.schedule.length !== dayCount) throw new Error(`Schedule harus berisi ${dayCount} hari.`)
   }
   return activeEmployees.map((employee) => employee.id)
+}
+
+async function normalizeScheduleV2DraftRows(
+  siteId: number,
+  period: string,
+  rows: ScheduleV2Row[]
+) {
+  const activeEmployees = await getActiveScheduleEmployees(siteId)
+  const allowedIds = new Set(activeEmployees.map((employee) => employee.id))
+  if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
+    throw new Error('Duplicate employee pada schedule V2.')
+  }
+  for (const row of rows) {
+    if (!allowedIds.has(row.employeeId)) throw new Error('Employee bukan anggota aktif site ini.')
+  }
+
+  const rowByEmployee = new Map(rows.map((row) => [row.employeeId, row]))
+  const dayCount = getScheduleV2DayCount(period)
+  return activeEmployees.map((employee) => {
+    const existing = rowByEmployee.get(employee.id)
+    return {
+      employeeId: employee.id,
+      schedule: Array.from(
+        { length: dayCount },
+        (_, index) => existing?.schedule[index] ?? ''
+      ),
+      section: existing?.section,
+      positionOnSite: existing?.positionOnSite,
+      kimperLv: existing?.kimperLv,
+      kimperTh: existing?.kimperTh,
+    }
+  })
+}
+
+async function syncScheduleV2EmployeeSiteAcrossPlans(
+  employeeId: number,
+  sourceSiteId: number | null,
+  targetSiteId: number
+) {
+  if (sourceSiteId === targetSiteId) return
+
+  // ponytail: scan the small period-plan set; add a site/employee index if volume grows.
+  await db.transaction(async (tx) => {
+    const targetPlans = await tx
+      .select({
+        id: timesheetSchedulingPlansV2.id,
+        period: timesheetSchedulingPlansV2.period,
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(eq(timesheetSchedulingPlansV2.siteId, targetSiteId))
+
+    for (const plan of targetPlans) {
+      const add = (rows: ScheduleV2Row[]) => {
+        if (rows.some((row) => row.employeeId === employeeId)) return rows
+        return [
+          ...rows,
+          {
+            employeeId,
+            schedule: Array(getScheduleV2DayCount(plan.period)).fill(''),
+          } as ScheduleV2Row,
+        ]
+      }
+      await tx
+        .update(timesheetSchedulingPlansV2)
+        .set({
+          draftSchedule: add((plan.draftSchedule ?? []) as ScheduleV2Row[]),
+          activeSchedule:
+            plan.status === 'active'
+              ? add((plan.activeSchedule ?? []) as ScheduleV2Row[])
+              : plan.activeSchedule,
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheetSchedulingPlansV2.id, plan.id))
+    }
+
+    if (sourceSiteId == null) return
+    const sourcePlans = await tx
+      .select({
+        id: timesheetSchedulingPlansV2.id,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(eq(timesheetSchedulingPlansV2.siteId, sourceSiteId))
+
+    for (const plan of sourcePlans) {
+      const remove = (rows: ScheduleV2Row[]) => rows.filter((row) => row.employeeId !== employeeId)
+      await tx
+        .update(timesheetSchedulingPlansV2)
+        .set({
+          draftSchedule: remove((plan.draftSchedule ?? []) as ScheduleV2Row[]),
+          activeSchedule: remove((plan.activeSchedule ?? []) as ScheduleV2Row[]),
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheetSchedulingPlansV2.id, plan.id))
+    }
+  })
 }
 
 async function syncFieldBreakPlansFromV2Rows(
@@ -711,14 +815,14 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
-  await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
+  const draftRows = await normalizeScheduleV2DraftRows(payload.siteId, payload.period, payload.rows)
   const actorEmail = await getCurrentActorEmail()
   const actorUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
   const updated = await db.transaction(async (tx) => {
     const [updatedPlan] = await tx
       .update(timesheetSchedulingPlansV2)
-      .set({ draftSchedule: payload.rows, updatedByUserId: actorUserId, updatedAt: now })
+      .set({ draftSchedule: draftRows, updatedByUserId: actorUserId, updatedAt: now })
       .where(
         and(
           eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
@@ -730,7 +834,7 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
     await syncFieldBreakPlansFromV2Rows(tx, {
       siteId: payload.siteId,
       period: payload.period,
-      rows: payload.rows,
+      rows: draftRows,
       savedByUserId: actorUserId,
       now,
     })
@@ -742,7 +846,148 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
     action: 'timesheet.schedule_v2_draft_saved',
     entityType: 'timesheet_scheduling_v2',
     entityLabel: `${payload.siteId}:${payload.period}`,
-    description: `Saved manual scheduling V2 draft (${payload.rows.length} rows).`,
+    description: `Saved manual scheduling V2 draft (${draftRows.length} rows).`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, updatedAt: now.toISOString() }
+}
+
+const scheduleV2EmployeeAssignmentSchema = scheduleV2KeySchema.extend({
+  employeeId: z.number().int().positive(),
+  fromSiteId: z.number().int().positive(),
+  section: z.string().trim().max(120),
+  positionOnSite: z.string().trim().max(120),
+  kimperLv: z.boolean(),
+  kimperTh: z.boolean(),
+})
+
+export async function syncScheduleV2EmployeeAssignmentAction(
+  input: z.infer<typeof scheduleV2EmployeeAssignmentSchema>
+) {
+  const payload = scheduleV2EmployeeAssignmentSchema.parse(input)
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+
+  const [employee] = await db
+    .select({ id: employees.id, siteId: employees.siteId, isActive: employees.isActive })
+    .from(employees)
+    .where(eq(employees.id, payload.employeeId))
+    .limit(1)
+  if (!employee || !employee.isActive) throw new Error('Employee tidak ditemukan atau tidak aktif.')
+
+  // Always derive the source location from the database so a stale client cannot
+  // remove the employee from an unrelated site's roster.
+  const sourceSiteId = employee.siteId ?? payload.fromSiteId
+
+  const [targetSite] = await db
+    .select({ id: sites.id, name: sites.name, location: sites.location })
+    .from(sites)
+    .where(and(eq(sites.id, payload.siteId), eq(sites.isActive, true)))
+    .limit(1)
+  if (!targetSite) throw new Error('Site tujuan tidak ditemukan atau tidak aktif.')
+
+  const profile = {
+    section: payload.section,
+    positionOnSite: payload.positionOnSite,
+    kimperLv: payload.kimperLv,
+    kimperTh: payload.kimperTh,
+  }
+  const addToRows = (rows: ScheduleV2Row[]) => {
+    const existing = rows.find((row) => row.employeeId === payload.employeeId)
+    if (existing) {
+      return rows.map((row) =>
+        row.employeeId === payload.employeeId ? { ...row, ...profile } : row
+      )
+    }
+    return [
+      ...rows,
+      {
+        employeeId: payload.employeeId,
+        schedule: Array(getScheduleV2DayCount(payload.period)).fill(''),
+        ...profile,
+      } as ScheduleV2Row,
+    ]
+  }
+
+  const removeFromRows = (rows: ScheduleV2Row[]) =>
+    rows.filter((row) => row.employeeId !== payload.employeeId)
+
+  const now = new Date()
+  await db.transaction(async (tx) => {
+    await tx
+      .update(employees)
+      .set({
+        siteId: payload.siteId,
+        workLocation: targetSite.location || targetSite.name,
+      })
+      .where(eq(employees.id, payload.employeeId))
+
+    const [targetPlan] = await tx
+      .select({
+        id: timesheetSchedulingPlansV2.id,
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+
+    if (targetPlan) {
+      await tx
+        .update(timesheetSchedulingPlansV2)
+        .set({
+          draftSchedule: addToRows((targetPlan.draftSchedule ?? []) as ScheduleV2Row[]),
+          activeSchedule: targetPlan.status === 'active'
+            ? addToRows((targetPlan.activeSchedule ?? []) as ScheduleV2Row[])
+            : targetPlan.activeSchedule,
+          updatedAt: now,
+        })
+        .where(eq(timesheetSchedulingPlansV2.id, targetPlan.id))
+    }
+
+    if (sourceSiteId !== payload.siteId) {
+      const [sourcePlan] = await tx
+        .select({
+          id: timesheetSchedulingPlansV2.id,
+          draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+          activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+        })
+        .from(timesheetSchedulingPlansV2)
+        .where(
+          and(
+            eq(timesheetSchedulingPlansV2.siteId, sourceSiteId),
+            eq(timesheetSchedulingPlansV2.period, payload.period)
+          )
+        )
+        .limit(1)
+
+      if (sourcePlan) {
+        await tx
+          .update(timesheetSchedulingPlansV2)
+          .set({
+            draftSchedule: removeFromRows((sourcePlan.draftSchedule ?? []) as ScheduleV2Row[]),
+            activeSchedule: removeFromRows((sourcePlan.activeSchedule ?? []) as ScheduleV2Row[]),
+            updatedAt: now,
+          })
+          .where(eq(timesheetSchedulingPlansV2.id, sourcePlan.id))
+      }
+    }
+  })
+
+  const actorEmail = await getCurrentActorEmail()
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_employee_site_synced',
+    entityType: 'hero_employee',
+    entityLabel: String(payload.employeeId),
+    description: `Moved employee ${payload.employeeId} from site ${sourceSiteId} to ${payload.siteId} for Schedule V2 ${payload.period}.`,
   })
   revalidateSchedulingV2Paths()
   return { ok: true, updatedAt: now.toISOString() }
@@ -755,10 +1000,7 @@ export async function activateSchedulingTimesheetPlanV2Action(
   await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
-  const employeeIds = await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
-  if (!isCompleteScheduleV2(payload.rows, employeeIds, payload.period)) {
-    throw new Error('Schedule belum lengkap. Isi semua cell sebelum aktivasi.')
-  }
+  await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
   const actorEmail = await getCurrentActorEmail()
   const actorUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
@@ -1217,7 +1459,31 @@ export async function saveAttendanceRealOverridesAction(
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
 
-  if (!payload.overrides.length) return { ok: true, savedCount: 0 }
+  if (!payload.overrides.length) {
+    await db
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        attendanceStatus: 'draft',
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { attendanceStatus: 'draft', savedByUserId, updatedAt: now },
+      })
+    revalidatePath('/dashboard/scheduling-timesheet')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
+    await logAuditEvent({
+      actorEmail,
+      action: 'timesheet.attendance_saved',
+      entityType: 'timesheet_scheduling',
+      entityLabel: `${payload.siteId}:${payload.period}`,
+      description: 'Created empty attendance workspace before Schedule V2 exists.',
+    })
+    return { ok: true, savedCount: 0 }
+  }
 
   // Ensure site exists in sites table
   const [existingSite] = await db
@@ -4534,6 +4800,9 @@ function revalidateAdminSurfaces() {
     '/dashboard/leaderboard',
     '/dashboard/security',
     '/dashboard/security/users',
+    '/dashboard/scheduling-timesheet/schedule-v2',
+    '/dashboard/scheduling-timesheet/attendance',
+    '/dashboard/scheduling-timesheet/payroll',
     '/mobile',
     '/mobile/dashboard',
     '/mobile/activity',
@@ -5750,6 +6019,11 @@ export async function manageSecurityUserAction(
           isActive: normalizedStatus.isActive,
         })
         .where(eq(employees.id, employee.id))
+
+      const targetSiteId = selectedSite?.id ?? employee.siteId
+      if (targetSiteId != null && targetSiteId !== employee.siteId) {
+        await syncScheduleV2EmployeeSiteAcrossPlans(employee.id, employee.siteId, targetSiteId)
+      }
 
       if (employee.authUserId) {
         const now = new Date()

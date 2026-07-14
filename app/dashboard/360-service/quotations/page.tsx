@@ -12,6 +12,7 @@ export default async function QuotationsPage() {
     customerName: customer?.customerName ?? '',
     poNumber: quotation.poNumber ?? '',
     totalAmount: Number(quotation.totalAmount),
+    subTotal: Number(quotation.subTotal),
     site: quotation.projectName ?? '',
     period: quotation.poPeriod ?? '',
     status: quotation.status,
