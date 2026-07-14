@@ -18,6 +18,27 @@ function abbreviatePeriod(period: string | null) {
 
 export const dynamic = "force-dynamic"
 
+import { Metadata } from "next"
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const resolvedParams = await params;
+  const id = parseInt(resolvedParams.id)
+  if (isNaN(id)) return { title: 'Quotation Preview' }
+  
+  const quotation = await getQuotationById(id)
+  if (!quotation) return { title: 'Quotation Preview' }
+
+  const dateStr = new Date(quotation.quotationDate);
+  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const bulan = `${monthNames[dateStr.getMonth()]} ${dateStr.getFullYear()}`;
+  const site = quotation.projectName || 'Site';
+  const safeQuotationNum = quotation.quotationNumber.replace(/\//g, '-');
+  
+  return {
+    title: `${safeQuotationNum}-${site}-${bulan}`,
+  }
+}
+
 export default async function QuotationPrintPreview({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   const id = parseInt(resolvedParams.id)
