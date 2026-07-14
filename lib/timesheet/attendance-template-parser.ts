@@ -9,6 +9,7 @@ import { normalizeAttendanceStatus } from '@/lib/timesheet/attendance-real'
 
 export type AttendanceTemplateKind =
   | 'matrix'
+  | 'hero-template'
   | 'row-log'
   | 'fingerprint-detail'
   | 'contractor-detail'
@@ -239,6 +240,31 @@ function detectMatrix(rows: RawSheet, sheetName: string): AttendanceTemplateDete
   return best
 }
 
+function detectHeroTemplate(rows: RawSheet, sheetName: string): AttendanceTemplateDetection | null {
+  for (let index = 0; index < Math.min(rows.length, 20); index += 1) {
+    const header = rows[index] ?? []
+    const dayHeaders = header.filter((cell) => /^d\d{1,2}$/.test(normalizeHeader(cell)))
+    const clockInHeaders = header.filter((cell) => /^masuk\d{1,2}$/.test(normalizeHeader(cell)))
+    const clockOutHeaders = header.filter((cell) => /^pulang\d{1,2}$/.test(normalizeHeader(cell)))
+    const mapping = buildMapping(header)
+    if (
+      mapping.employeeName === undefined &&
+      mapping.employeeSn === undefined
+    ) continue
+    if (dayHeaders.length < 5 || clockInHeaders.length < 5 || clockOutHeaders.length < 5) continue
+
+    return {
+      sheetName,
+      kind: 'hero-template',
+      headerRowIndex: index,
+      columnMapping: mapping,
+      confidence: 100 + dayHeaders.length,
+      warnings: [`Detected HERO attendance template: ${sheetName}`],
+    }
+  }
+  return null
+}
+
 function detectFingerprintDetail(
   rows: RawSheet,
   sheetName: string
@@ -356,6 +382,7 @@ function detectTemplate(workbook: XLSX.WorkBook): {
   const candidates = workbook.SheetNames.flatMap((sheetName) => {
     const rows = readRows(workbook, sheetName)
     return [
+      detectHeroTemplate(rows, sheetName),
       detectContractorDetail(rows, sheetName),
       detectRowLog(rows, sheetName),
       detectMatrix(rows, sheetName),
@@ -453,6 +480,14 @@ function normalizeTimeValue(value: string) {
   const minute = Number(time[2])
   if (hour > 23 || minute > 59) return ''
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function normalizeTemplateAttendanceStatus(value: string, hasTimes: boolean): AttendanceImportRawRow['status'] {
+  const trimmed = value.trim().toLowerCase()
+  if (!hasTimes && (!trimmed || trimmed === '-' || trimmed === 'off' || trimmed === 'libur')) {
+    return 'empty'
+  }
+  return normalizeAttendanceStatus(value || 'Masuk')
 }
 
 function parseCompressedTimes(value: string) {
@@ -593,6 +628,53 @@ function parseMatrix(
           note: raw,
         },
       ]
+    })
+  })
+}
+
+function parseHeroTemplate(
+  rows: RawSheet,
+  detection: AttendanceTemplateDetection
+): AttendanceImportRawRow[] {
+  const header = rows[detection.headerRowIndex] ?? []
+  const dayColumns = new Map<number, { status?: number; clockIn?: number; clockOut?: number }>()
+  header.forEach((cell, index) => {
+    const normalized = normalizeHeader(cell)
+    const match = normalized.match(/^(d|masuk|pulang)(\d{1,2})$/)
+    if (!match) return
+    const day = Number(match[2])
+    if (day < 1 || day > 31) return
+    const current = dayColumns.get(day) ?? {}
+    if (match[1] === 'd') current.status = index
+    if (match[1] === 'masuk') current.clockIn = index
+    if (match[1] === 'pulang') current.clockOut = index
+    dayColumns.set(day, current)
+  })
+
+  const employeeNameIndex = detection.columnMapping.employeeName
+  const employeeSnIndex = detection.columnMapping.employeeSn
+  const siteNameIndex = detection.columnMapping.siteName
+  return rows.slice(detection.headerRowIndex + 1).flatMap((row) => {
+    const employeeName = getCell(row, employeeNameIndex)
+    const employeeSn = getCell(row, employeeSnIndex)
+    if (!employeeName && !employeeSn) return []
+    const siteName = getCell(row, siteNameIndex)
+
+    return Array.from(dayColumns.entries()).flatMap(([day, columns]) => {
+      const rawStatus = getCell(row, columns.status)
+      const clockIn = normalizeTimeValue(getCell(row, columns.clockIn))
+      const clockOut = normalizeTimeValue(getCell(row, columns.clockOut))
+      if (!rawStatus && !clockIn && !clockOut) return []
+      return [{
+        employeeSn,
+        employeeName,
+        siteName,
+        day,
+        status: normalizeTemplateAttendanceStatus(rawStatus, Boolean(clockIn || clockOut)),
+        clockIn,
+        clockOut,
+        note: rawStatus,
+      }]
     })
   })
 }
@@ -778,7 +860,9 @@ export function parseAttendanceWorkbook(params: {
 }): AttendanceTemplateParseResult {
   const { detection, rows } = detectTemplate(params.workbook)
   const parsedRows =
-    detection.kind === 'contractor-detail'
+    detection.kind === 'hero-template'
+      ? parseHeroTemplate(rows, detection)
+      : detection.kind === 'contractor-detail'
       ? parseContractorDetail(rows, detection, params.period, params.employees)
       : detection.kind === 'matrix'
         ? parseMatrix(rows, detection, params.period)

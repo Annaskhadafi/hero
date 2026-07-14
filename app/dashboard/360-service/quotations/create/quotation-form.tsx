@@ -197,6 +197,7 @@ const toProxyUrl = (url: string | null | undefined) => {
 export function QuotationForm({ customers: initialCustomers, items, siteList, initialQuotationNumber, initialData, initialSignatureReadableUrl, isEdit = false }: { customers: any[]; items: any[]; siteList?: any[]; initialQuotationNumber?: string; initialData?: any; initialSignatureReadableUrl?: string | null; isEdit?: boolean }) {
 const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
   const [signatureDisplayUrl, setSignatureDisplayUrl] = useState(initialSignatureReadableUrl || initialData?.fromSignatureUrl || "")
   const parsedPoPeriod = parsePoPeriod(initialData?.poPeriod)
@@ -516,7 +517,10 @@ const router = useRouter()
       toast.error("Error saving item to master");
     }
   }
+
   const submitHandler = async (data: QuotationFormValues, isDraft = false) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setLoading(true);
     try {
       // Calculate totals for the payload
@@ -554,21 +558,22 @@ const router = useRouter()
         
       if (res && res.id) {
         toast.success(isEdit ? "Quotation updated" : "Quotation created");
-        // Open the download link in a new tab
-        window.open(`/dashboard/360-service/quotations/${res.id}?download=true`, '_blank');
-        // Return to the list page
-        router.push("/dashboard/360-service/quotations");
+        setIsSubmitting(false);
+        setLoading(false);
+        router.push(`/dashboard/360-service/quotations/${res.id}?download=true`);
       } else {
         toast.error("Error saving quotation: Unknown error");
+        setIsSubmitting(false);
+        setLoading(false);
       }
     } catch (e: any) {
       toast.error(e.message || "An error occurred");
-    } finally {
+      setIsSubmitting(false);
       setLoading(false);
     }
   };
 
-  const onSubmit = (data: QuotationFormValues) => submitHandler(data, false);
+  const onSubmit = (data: QuotationFormValues) => { const promise = submitHandler(data, false); return promise; };
   const onInvalid = (errors: any) => {
     console.error("Form Errors:", errors);
     

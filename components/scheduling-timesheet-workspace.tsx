@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState, useTransition } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
 import { useRouter } from 'next/navigation'
 import {
@@ -1054,6 +1054,7 @@ export function SchedulingTimesheetWorkspace({
   const [isSavingAttendance, startSavingAttendance] = useTransition()
   const [isSavingPayroll, startSavingPayroll] = useTransition()
   const [isImportingExcel, setIsImportingExcel] = useState(false)
+  const attendanceFileInputRef = useRef<HTMLInputElement>(null)
   const [lastImportSuccess, setLastImportSuccess] = useState<{
     filename: string
     matched: number
@@ -1297,6 +1298,7 @@ export function SchedulingTimesheetWorkspace({
           siteId: target.siteId,
           period: target.period,
           source: 'all',
+          removeWorkspace: !target.recreate,
         })
         setAttendanceResetTarget(null)
         toast.success(
@@ -5953,43 +5955,42 @@ export function SchedulingTimesheetWorkspace({
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Import button with loading + success state */}
                         <Button
-                          asChild
                           size="sm"
                           variant={lastImportSuccess ? 'default' : 'outline'}
                           disabled={isFinalized || isImportingExcel}
+                          onClick={() => attendanceFileInputRef.current?.click()}
                           className={
                             lastImportSuccess
                               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                               : ''
                           }
                         >
-                          <Label className="h-9 cursor-pointer px-3">
-                            {isImportingExcel ? (
-                              <>
-                                <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
-                              </>
-                            ) : lastImportSuccess ? (
-                              <>
-                                <Check className="mr-2 size-4" /> Berhasil (
-                                {lastImportSuccess.matched} matched)
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="mr-2 size-4" /> Import Excel
-                              </>
-                            )}
-                            <Input
-                              disabled={isFinalized || isImportingExcel}
-                              className="hidden"
-                              type="file"
-                              accept=".xlsx,.xls,.csv"
-                              onChange={(event) => {
-                                void importAttendanceExcel(event.target.files?.[0] ?? null)
-                                event.currentTarget.value = ''
-                              }}
-                            />
-                          </Label>
+                          {isImportingExcel ? (
+                            <>
+                              <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
+                            </>
+                          ) : lastImportSuccess ? (
+                            <>
+                              <Check className="mr-2 size-4" /> Berhasil (
+                              {lastImportSuccess.matched} matched)
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-2 size-4" /> Import Excel
+                            </>
+                          )}
                         </Button>
+                        <Input
+                          ref={attendanceFileInputRef}
+                          disabled={isFinalized || isImportingExcel}
+                          className="sr-only"
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          onChange={(event) => {
+                            void importAttendanceExcel(event.target.files?.[0] ?? null)
+                            event.currentTarget.value = ''
+                          }}
+                        />
                         <Button
                           size="sm"
                           variant="outline"

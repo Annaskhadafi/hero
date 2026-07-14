@@ -105,6 +105,48 @@ describe('scheduling timesheet workflow', () => {
     })
   })
 
+  it('parses the generated HERO attendance template with D, Masuk, and Pulang columns', () => {
+    const workbook = XLSX.utils.book_new()
+    const sheet = XLSX.utils.aoa_to_sheet([
+      [
+        'Nama', 'SN', 'Jabatan', 'Site',
+        'D1', 'Masuk 1', 'Pulang 1', 'D2', 'Masuk 2', 'Pulang 2',
+        'D3', 'Masuk 3', 'Pulang 3', 'D4', 'Masuk 4', 'Pulang 4',
+        'D5', 'Masuk 5', 'Pulang 5',
+      ],
+      [
+        'Ari Anggara', '51097', 'Serviceman', 'CK MHU',
+        'Masuk', '06:00', '18:00', 'OFF', '', '',
+        '', '', '', '', '', '', '', '', '',
+      ],
+    ])
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Attendance Real')
+
+    const result = parseAttendanceWorkbook({
+      workbook,
+      period: '2026-07',
+      employees: [{ id: 1, name: 'Ari Anggara', employeeSn: '51097' }],
+    })
+
+    expect(result.detection.kind).toBe('hero-template')
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        employeeSn: '51097',
+        employeeName: 'Ari Anggara',
+        siteName: 'CK MHU',
+        day: 1,
+        status: 'present',
+        clockIn: '06:00',
+        clockOut: '18:00',
+      }),
+      expect.objectContaining({
+        day: 2,
+        status: 'empty',
+        note: 'OFF',
+      }),
+    ])
+  })
+
   it('parses fingerprint detail templates with compressed scan times', () => {
     const workbook = XLSX.utils.book_new()
     const sheet = XLSX.utils.aoa_to_sheet([
@@ -324,9 +366,14 @@ describe('scheduling timesheet workflow', () => {
     expect(source).toContain('Rollback')
     expect(source).toContain('clearAttendanceRealOverridesAction')
     expect(source).toContain('rollbackAttendanceImportPreviewAction')
+    expect(source).toContain('attendanceFileInputRef.current?.click()')
+    expect(source).toContain('ref={attendanceFileInputRef}')
+    expect(source).toContain('removeWorkspace: !target.recreate')
     expect(actionSource).toContain('clearAttendanceRealOverridesAction')
     expect(actionSource).toContain('getAttendanceImportHistoryAction')
     expect(actionSource).toContain('updateAttendanceImportPreviewMatchAction')
+    expect(actionSource).toContain('removeWorkspace: z.boolean().default(false)')
+    expect(actionSource).toContain('timesheetSchedulingStatuses)')
   })
 
   it('allows attendance workspace creation before a Schedule V2 plan exists', () => {

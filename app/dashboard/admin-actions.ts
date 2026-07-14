@@ -1883,6 +1883,7 @@ const clearAttendanceRealOverridesSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
   source: z.enum(['excel', 'manual', 'attendance', 'all']).default('excel'),
+  removeWorkspace: z.boolean().default(false),
 })
 const updateAttendanceImportPreviewMatchSchema = z.object({
   previewId: z.number().int().positive(),
@@ -2458,27 +2459,76 @@ export async function clearAttendanceRealOverridesAction(
           eq(timesheetAttendanceImportPreviews.status, 'preview')
         )
       )
-    await tx
-      .insert(timesheetSchedulingStatuses)
-      .values({
-        siteId: payload.siteId,
-        period: payload.period,
-        attendanceStatus: 'draft',
-        importStatus: 'none',
-        conflictCount: 0,
-        savedByUserId,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
-        set: {
+    if (payload.removeWorkspace) {
+      const scheduleV2 = await tx
+        .select({ id: timesheetSchedulingPlansV2.id })
+        .from(timesheetSchedulingPlansV2)
+        .where(
+          and(
+            eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+            eq(timesheetSchedulingPlansV2.period, payload.period)
+          )
+        )
+        .limit(1)
+      const scheduleV1 = await tx
+        .select({ id: timesheetSchedulingPlans.id })
+        .from(timesheetSchedulingPlans)
+        .where(
+          and(
+            eq(timesheetSchedulingPlans.siteId, payload.siteId),
+            eq(timesheetSchedulingPlans.period, payload.period)
+          )
+        )
+        .limit(1)
+      if (!scheduleV2[0] && !scheduleV1[0]) {
+        await tx
+          .delete(timesheetSchedulingStatuses)
+          .where(
+            and(
+              eq(timesheetSchedulingStatuses.siteId, payload.siteId),
+              eq(timesheetSchedulingStatuses.period, payload.period)
+            )
+          )
+      } else {
+        await tx
+          .update(timesheetSchedulingStatuses)
+          .set({
+            attendanceStatus: 'draft',
+            importStatus: 'none',
+            conflictCount: 0,
+            savedByUserId,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(timesheetSchedulingStatuses.siteId, payload.siteId),
+              eq(timesheetSchedulingStatuses.period, payload.period)
+            )
+          )
+      }
+    } else {
+      await tx
+        .insert(timesheetSchedulingStatuses)
+        .values({
+          siteId: payload.siteId,
+          period: payload.period,
           attendanceStatus: 'draft',
           importStatus: 'none',
           conflictCount: 0,
           savedByUserId,
           updatedAt: now,
-        },
-      })
+        })
+        .onConflictDoUpdate({
+          target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+          set: {
+            attendanceStatus: 'draft',
+            importStatus: 'none',
+            conflictCount: 0,
+            savedByUserId,
+            updatedAt: now,
+          },
+        })
+    }
   })
 
   await logAuditEvent({
