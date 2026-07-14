@@ -57,7 +57,7 @@ export function SearchableSelect({
           <ChevronDown className="size-4 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[280px] rounded-xl border border-border/80 bg-white p-2 shadow-lg">
+      <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-[280px] rounded-xl border border-border/80 bg-white p-2 shadow-lg">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
