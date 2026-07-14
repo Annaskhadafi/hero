@@ -242,12 +242,18 @@ export function QuotationsSummaryTable({ rows: initialRows }: { rows: QuotationS
     }
 
     const drawTableHeader = (yPos: number) => {
+      pdf.setFillColor(...HEADER_BG)
+      pdf.setDrawColor(...BORDER_COLOR)
+      pdf.setLineWidth(0.2)
+      pdf.rect(tableLeft, yPos, tableW, HEADER_ROW_H, 'DF')
+
       let hx = tableLeft
-      columns.forEach((col) => {
-        pdf.setFillColor(...HEADER_BG)
-        pdf.setDrawColor(...BORDER_COLOR)
-        pdf.setLineWidth(0.15)
-        pdf.rect(hx, yPos, col.width, HEADER_ROW_H, 'DF')
+      columns.forEach((col, i) => {
+        if (i > 0) {
+          pdf.setDrawColor(...BORDER_COLOR)
+          pdf.setLineWidth(0.1)
+          pdf.line(hx - colGap / 2, yPos, hx - colGap / 2, yPos + HEADER_ROW_H)
+        }
 
         pdf.setFontSize(HEADER_FONT_SIZE)
         pdf.setFont('helvetica', 'bold')
