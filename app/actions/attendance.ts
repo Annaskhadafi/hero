@@ -275,8 +275,8 @@ function buildAttendanceNote(input: {
   return [input.locationNote, ...details].join(' | ')
 }
 
-function getAttendanceQueryWindow() {
-  const now = new Date()
+function getAttendanceQueryWindow(targetDate?: Date) {
+  const now = targetDate || new Date()
 
   return {
     start: subHours(startOfDay(now), 8),
@@ -1008,7 +1008,7 @@ export async function getTodayAttendanceLogs() {
   return { success: true, employee, logs: logsWithPhotoPreview }
 }
 
-export async function getLiveAttendanceMapData() {
+export async function getLiveAttendanceMapData(dateStr?: string) {
   const [employee, access] = await Promise.all([
     getCurrentEmployee(),
     getCurrentMenuPermission('attendance_live_map'),
@@ -1018,7 +1018,8 @@ export async function getLiveAttendanceMapData() {
     return { success: false as const, reason: 'forbidden' as const, records: [], scope: 'own' as const }
   }
 
-  const attendanceWindow = getAttendanceQueryWindow()
+  const targetDate = dateStr ? new Date(dateStr) : undefined
+  const attendanceWindow = getAttendanceQueryWindow(targetDate)
   const conditions = [
     gte(attendanceRecords.eventTime, attendanceWindow.start),
     lte(attendanceRecords.eventTime, attendanceWindow.end),
@@ -1038,6 +1039,8 @@ export async function getLiveAttendanceMapData() {
       siteName: sites.name,
       siteLocation: sites.location,
       siteRadiusMeters: sites.geoRadiusMeters,
+      siteGeoLatitude: sites.geoLatitude,
+      siteGeoLongitude: sites.geoLongitude,
       eventType: attendanceRecords.eventType,
       eventTime: attendanceRecords.eventTime,
       status: attendanceRecords.status,
@@ -1064,8 +1067,84 @@ export async function getLiveAttendanceMapData() {
       siteLocation: record.siteLocation ?? '',
       siteRadiusMeters: record.siteRadiusMeters ?? 500,
     })),
+    sites: Array.from(new Map(
+      records.filter(r => r.siteId)
+      .map(r => {
+        let lat = Number(r.siteGeoLatitude)
+        let lng = Number(r.siteGeoLongitude)
+        
+        // Jika Site belum pernah di-set kordinatnya, gunakan kordinat absen pertama sebagai titik awal
+        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+          lat = Number(r.latitude) || -2.5
+          lng = Number(r.longitude) || 118
+        }
+        
+        return [r.siteId, {
+          id: r.siteId,
+          name: r.siteName ?? `Site ${r.siteId}`,
+          latitude: lat,
+          longitude: lng,
+          radiusMeters: r.siteRadiusMeters ?? 500,
+        }]
+      })
+    ).values())
   }
 }
+
+export async function updateSiteRadiusFromMap(siteId: number, radius: number, lat?: number, lng?: number) {
+  const [employee, access] = await Promise.all([
+    getCurrentEmployee(),
+    getCurrentMenuPermission('attendance_live_map'),
+  ])
+
+  if (!employee || !hasGlobalDataAccess(access)) {
+    return { success: false, error: 'Anda tidak memiliki akses global untuk mengubah setting radius.' }
+  }
+  
+  if (!radius || radius < 10) return { success: false, error: 'Radius tidak valid (minimal 10m).' }
+
+  const payload: any = { geoRadiusMeters: radius }
+  if (lat !== undefined && lng !== undefined) {
+    payload.geoLatitude = lat.toString()
+    payload.geoLongitude = lng.toString()
+  }
+
+  await db
+    .update(sites)
+    .set(payload)
+    .where(eq(sites.id, siteId))
+
+  return { success: true, message: 'Pengaturan Site berhasil disimpan.' }
+}
+
+export async function getSitesForMap() {
+  const [employee, access] = await Promise.all([
+    getCurrentEmployee(),
+    getCurrentMenuPermission('attendance_live_map'),
+  ])
+
+  if (!employee || !access.canView) return { success: false, sites: [] }
+
+  const conditions = [eq(sites.isActive, true)]
+  if (!hasGlobalDataAccess(access)) {
+    conditions.push(eq(sites.id, employee.siteId))
+  }
+
+  const data = await db
+    .select({
+      id: sites.id,
+      name: sites.name,
+      geoLatitude: sites.geoLatitude,
+      geoLongitude: sites.geoLongitude,
+      geoRadiusMeters: sites.geoRadiusMeters
+    })
+    .from(sites)
+    .where(and(...conditions))
+    .orderBy(sites.name)
+
+  return { success: true, sites: data }
+}
+
 
 export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {
   if (!ids.length) return { success: false, error: 'Tidak ada data dipilih.' }

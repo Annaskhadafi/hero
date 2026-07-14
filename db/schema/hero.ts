@@ -1151,6 +1151,12 @@ export const chitraLearningCampaigns = pgTable('hero_chitralearning_campaigns', 
   status: text('status').notNull().default('draft'),
   passingScore: integer('passing_score').notNull().default(80),
   assignmentPrompt: text('assignment_prompt').notNull().default(''),
+  maxRetakes: integer('max_retakes').notNull().default(-1),
+  durationMinutes: integer('duration_minutes').notNull().default(0),
+  periodType: text('period_type').notNull().default('custom'),
+  periodValue: text('period_value').notNull().default(''),
+  periodStart: timestamp('period_start'),
+  periodEnd: timestamp('period_end'),
   createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
     onDelete: 'set null',
   }),
@@ -1207,6 +1213,33 @@ export const chitraLearningAssignmentResponses = pgTable(
     }),
     score: integer('score'),
     feedback: text('feedback').notNull().default(''),
+  }
+)
+
+export const chitraLearningOnlineAssignmentQuestions = pgTable(
+  'hero_chitralearning_online_assignment_questions',
+  {
+    id: serial('id').primaryKey(),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => chitraLearningCampaigns.id, { onDelete: 'cascade' }),
+    questionType: text('question_type').notNull().default('single_choice'),
+    questionMetadata: jsonb('question_metadata'),
+    questionText: text('question_text').notNull(),
+    questionImageUrl: text('question_image_url').notNull().default(''),
+    optionA: text('option_a').notNull(),
+    optionAImageUrl: text('option_a_image_url').notNull().default(''),
+    optionB: text('option_b').notNull(),
+    optionBImageUrl: text('option_b_image_url').notNull().default(''),
+    optionC: text('option_c').notNull().default(''),
+    optionCImageUrl: text('option_c_image_url').notNull().default(''),
+    optionD: text('option_d').notNull().default(''),
+    optionDImageUrl: text('option_d_image_url').notNull().default(''),
+    correctOption: text('correct_option').notNull().default('A'),
+    points: integer('points').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(1),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
   }
 )
 

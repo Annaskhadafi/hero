@@ -16,9 +16,11 @@ import {
   chitraLearningCourses,
   chitraLearningEnrollments,
   chitraLearningLessons,
+  chitraLearningOnlineAssignmentQuestions,
   chitraLearningQuizQuestions,
   employees,
   trainingRecords,
+  sites,
 } from "@/db/schema/hero";
 import { sendLmsEnrollmentRequestNotification } from "@/lib/chitralearning-lms/notifications";
 import { getServerSession } from "@/lib/auth-session";
@@ -28,6 +30,7 @@ import {
   isLmsAdmin,
   canManageLmsSection,
 } from "@/lib/chitralearning-lms";
+import { createNotificationEventForEmployee } from "@/lib/push-notifications";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 
 const LMS_PATH = "/dashboard/chitralearning-lms";
@@ -868,7 +871,8 @@ export async function createInternalLmsCampaignAction(formData: FormData) {
     throw new Error("Judul campaign wajib diisi");
   }
 
-  if (campaignType !== "assignment" && !courseId) {
+  const standaloneTypes = ["assignment", "online_assignment"];
+  if (!standaloneTypes.includes(campaignType) && !courseId) {
     throw new Error("Post test / quiz refreshment wajib pilih course");
   }
 
@@ -893,11 +897,16 @@ export async function createInternalLmsCampaignAction(formData: FormData) {
       targetType,
       targetValue,
       dueAt: dateValue(formData, "dueAt"),
-      // ponytail: recurrence is stored as policy only; automatic future campaign generation can reuse this field later.
       recurrence: textValue(formData, "recurrence", "manual") || "manual",
       status: "draft",
       passingScore,
       assignmentPrompt: textValue(formData, "assignmentPrompt"),
+      maxRetakes: clampScore(numberValue(formData, "maxRetakes", -1)),
+      durationMinutes: clampScore(numberValue(formData, "durationMinutes", 0)),
+      periodType: textValue(formData, "periodType", "custom") || "custom",
+      periodValue: textValue(formData, "periodValue"),
+      periodStart: dateValue(formData, "periodStart"),
+      periodEnd: dateValue(formData, "periodEnd"),
       createdByEmployeeId: actorEmployeeId,
     })
     .returning({ id: chitraLearningCampaigns.id });
@@ -917,6 +926,7 @@ export async function createInternalLmsCampaignAction(formData: FormData) {
   });
 
   revalidateLms();
+  return campaign;
 }
 
 export async function publishInternalLmsCampaignAction(formData: FormData) {
@@ -1125,7 +1135,28 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
     throw new Error("Course tidak ditemukan");
   }
 
-  if (course.maxRetakes !== undefined && course.maxRetakes >= 0) {
+  // Determine effective maxRetakes: per-lesson quizSettings overrides course-level
+  let effectiveMaxRetakes = course.maxRetakes ?? -1;
+  let retakeAfterPass = true;
+  if (lessonId) {
+    const [lesson] = await db
+      .select()
+      .from(chitraLearningLessons)
+      .where(eq(chitraLearningLessons.id, lessonId))
+      .limit(1);
+    const qs = lesson?.quizSettings as Record<string, any> | null;
+    if (qs?.limitAttempts && typeof qs.maxAttempts === 'number' && qs.maxAttempts > 0) {
+      effectiveMaxRetakes = qs.maxAttempts - 1; // maxAttempts=3 means 2 retakes (total 3 attempts), so maxRetakes = maxAttempts - 1
+    }
+    if (qs?.retakeAfterPass === false) {
+      retakeAfterPass = false;
+    }
+  }
+
+  const enrollment = await getOrCreateEnrollment(courseId, employee.id);
+
+  // Check if retake is allowed
+  if (effectiveMaxRetakes >= 0) {
     const { sql } = await import('drizzle-orm')
     const { chitraLearningAuditLogs } = await import('@/db/schema/hero')
     const auditRows = await db
@@ -1138,12 +1169,28 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
          sql`CAST(after_value->>'lessonId' AS INTEGER) = ${lessonId || 0}`
       ))
     const attemptCount = Number(auditRows[0].count)
-    if (attemptCount > course.maxRetakes) {
+    if (attemptCount > effectiveMaxRetakes) {
       throw new Error("Anda telah mencapai batas maksimal percobaan tes.")
     }
   }
 
-  const enrollment = await getOrCreateEnrollment(courseId, employee.id);
+  // Check retakeAfterPass: block retake if user already passed this lesson and retakeAfterPass is false
+  if (!retakeAfterPass && lessonId) {
+    const prevPassed = await db
+      .select({ id: chitraLearningAuditLogs.id })
+      .from(chitraLearningAuditLogs)
+      .where(and(
+         eq(chitraLearningAuditLogs.employeeId, employee.id),
+         eq(chitraLearningAuditLogs.courseId, course.id),
+         eq(chitraLearningAuditLogs.action, 'quiz_submitted'),
+         sql`CAST(after_value->>'lessonId' AS INTEGER) = ${lessonId}`,
+         sql`CAST(after_value->>'passed' AS BOOLEAN) = true`
+      ))
+      .limit(1);
+    if (prevPassed.length > 0) {
+      throw new Error("Anda sudah lulus tes ini. Pengulangan tidak diizinkan.")
+    }
+  }
   const questions = await db
     .select()
     .from(chitraLearningQuizQuestions)
@@ -1178,13 +1225,16 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
   }, 0);
   const score = totalPoints > 0 ? Math.round((awardedPoints / totalPoints) * 100) : 0;
 
+  let passed = false;
+  let finalScore = 0;
+
   if (phase === "pretest") {
     const progress = Math.max(enrollment.progress, await getLessonProgress(courseId, lessonId));
     
-    const finalScore = course.gradingType === 'weighted' 
+    finalScore = course.gradingType === 'weighted' 
         ? Math.round((score * (course.pretestWeight || 0) / 100) + ((enrollment.posttestScore || 0) * (course.posttestWeight || 100) / 100))
         : (enrollment.posttestScore || 0);
-    const passed = finalScore >= course.passingScore;
+    passed = finalScore >= course.passingScore;
 
     await db
       .update(chitraLearningEnrollments)
@@ -1199,10 +1249,10 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       })
       .where(eq(chitraLearningEnrollments.id, enrollment.id));
   } else {
-    const finalScore = course.gradingType === 'weighted'
+    finalScore = course.gradingType === 'weighted'
         ? Math.round(((enrollment.pretestScore || 0) * (course.pretestWeight || 0) / 100) + (score * (course.posttestWeight || 100) / 100))
         : score;
-    const passed = finalScore >= course.passingScore;
+    passed = finalScore >= course.passingScore;
 
     await db
       .update(chitraLearningEnrollments)
@@ -1259,6 +1309,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       lessonId,
       phase,
       score,
+      passed,
       answers: questions.map((question) => ({
         questionId: question.id,
         answer: textValue(formData, `answer_${question.id}`).toUpperCase(),
@@ -1271,7 +1322,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
   return {
     success: true,
     score,
-    passed: phase === "pretest" ? (course.gradingType === 'weighted' ? (score * (course.pretestWeight || 0) / 100) + ((enrollment.posttestScore || 0) * (course.posttestWeight || 100) / 100) >= course.passingScore : (enrollment.posttestScore || 0) >= course.passingScore) : (course.gradingType === 'weighted' ? ((enrollment.pretestScore || 0) * (course.pretestWeight || 0) / 100) + (score * (course.posttestWeight || 100) / 100) >= course.passingScore : score >= course.passingScore)
+    passed,
   };
 }
 
@@ -1732,4 +1783,322 @@ export async function updateCertificateTemplateAction(courseId: number, backgrou
   }
 
   revalidateLms();
+}
+
+// ─── Online Assignment (Standalone Quiz/Assignment) ───────────────────────
+
+async function checkLmsAdmin() {
+  const session = await getServerSession();
+  const isAdmin = await isLmsAdmin(session);
+  if (!isAdmin) throw new Error("Unauthorized");
+  return session;
+}
+
+export async function createOnlineAssignmentAction(formData: FormData) {
+  await checkLmsAdmin();
+  return createInternalLmsCampaignAction(formData);
+}
+
+export async function updateOnlineAssignmentAction(campaignId: number, formData: FormData) {
+  await checkLmsAdmin();
+
+  await db
+    .update(chitraLearningCampaigns)
+    .set({
+      title: textValue(formData, "title"),
+      description: textValue(formData, "description"),
+      targetType: textValue(formData, "targetType", "all") || "all",
+      targetValue: textValue(formData, "targetType") === "all" ? "*" : textValue(formData, "targetValue"),
+      dueAt: dateValue(formData, "dueAt"),
+      passingScore: clampScore(numberValue(formData, "passingScore", 80)),
+      maxRetakes: clampScore(numberValue(formData, "maxRetakes", -1)),
+      durationMinutes: clampScore(numberValue(formData, "durationMinutes", 0)),
+      periodType: textValue(formData, "periodType", "custom") || "custom",
+      periodValue: textValue(formData, "periodValue"),
+      periodStart: dateValue(formData, "periodStart"),
+      periodEnd: dateValue(formData, "periodEnd"),
+      updatedAt: new Date(),
+    })
+    .where(eq(chitraLearningCampaigns.id, campaignId));
+
+  revalidateLms();
+  return { success: true };
+}
+
+export async function deleteOnlineAssignmentAction(campaignId: number) {
+  await checkLmsAdmin();
+  await db.delete(chitraLearningCampaigns).where(eq(chitraLearningCampaigns.id, campaignId));
+  revalidateLms();
+  return { success: true };
+}
+
+export async function createOnlineAssignmentQuestionAction(formData: FormData) {
+  await checkLmsAdmin();
+  const campaignId = numberValue(formData, "campaignId");
+  if (!campaignId) throw new Error("Campaign ID wajib diisi");
+
+  const [created] = await db
+    .insert(chitraLearningOnlineAssignmentQuestions)
+    .values({
+      campaignId,
+      questionType: textValue(formData, "questionType", "single_choice"),
+      questionText: textValue(formData, "questionText"),
+      questionImageUrl: textValue(formData, "questionImageUrl"),
+      optionA: textValue(formData, "optionA"),
+      optionAImageUrl: textValue(formData, "optionAImageUrl"),
+      optionB: textValue(formData, "optionB"),
+      optionBImageUrl: textValue(formData, "optionBImageUrl"),
+      optionC: textValue(formData, "optionC"),
+      optionCImageUrl: textValue(formData, "optionCImageUrl"),
+      optionD: textValue(formData, "optionD"),
+      optionDImageUrl: textValue(formData, "optionDImageUrl"),
+      correctOption: textValue(formData, "correctOption", "A"),
+      points: clampScore(numberValue(formData, "points", 1)),
+      questionMetadata: textValue(formData, "questionMetadata") ? JSON.parse(textValue(formData, "questionMetadata")) : null,
+    })
+    .returning();
+
+  revalidatePath(`/dashboard/chitralearning-lms/online-assignments/${campaignId}/quiz-builder`);
+  return created;
+}
+
+export async function updateOnlineAssignmentQuestionAction(questionId: number, formData: FormData) {
+  await checkLmsAdmin();
+
+  const [updated] = await db
+    .update(chitraLearningOnlineAssignmentQuestions)
+    .set({
+      questionType: textValue(formData, "questionType", "single_choice"),
+      questionText: textValue(formData, "questionText"),
+      questionImageUrl: textValue(formData, "questionImageUrl"),
+      optionA: textValue(formData, "optionA"),
+      optionAImageUrl: textValue(formData, "optionAImageUrl"),
+      optionB: textValue(formData, "optionB"),
+      optionBImageUrl: textValue(formData, "optionBImageUrl"),
+      optionC: textValue(formData, "optionC"),
+      optionCImageUrl: textValue(formData, "optionCImageUrl"),
+      optionD: textValue(formData, "optionD"),
+      optionDImageUrl: textValue(formData, "optionDImageUrl"),
+      correctOption: textValue(formData, "correctOption", "A"),
+      points: clampScore(numberValue(formData, "points", 1)),
+      questionMetadata: textValue(formData, "questionMetadata") ? JSON.parse(textValue(formData, "questionMetadata")) : null,
+    })
+    .where(eq(chitraLearningOnlineAssignmentQuestions.id, questionId))
+    .returning();
+
+  revalidatePath(`/dashboard/chitralearning-lms/online-assignments/${updated?.campaignId ?? ""}/quiz-builder`);
+  return updated;
+}
+
+export async function deleteOnlineAssignmentQuestionAction(questionId: number) {
+  await checkLmsAdmin();
+  await db.delete(chitraLearningOnlineAssignmentQuestions).where(eq(chitraLearningOnlineAssignmentQuestions.id, questionId));
+  revalidatePath("/dashboard/chitralearning-lms/online-assignments");
+  return { success: true };
+}
+
+export async function submitOnlineAssignmentQuizAction(formData: FormData) {
+  // LmsQuizPlayer sends courseId+lessonId; online assignments use lessonId as campaignId
+  const campaignId = numberValue(formData, "campaignId") || numberValue(formData, "lessonId");
+  const employee = await getCurrentEmployee();
+
+  if (!campaignId || !employee) throw new Error("Campaign dan karyawan wajib ada");
+
+  const [campaign] = await db
+    .select()
+    .from(chitraLearningCampaigns)
+    .where(eq(chitraLearningCampaigns.id, campaignId))
+    .limit(1);
+
+  if (!campaign || campaign.status !== "published") throw new Error("Assignment tidak tersedia");
+
+  // Retake check
+  if (campaign.maxRetakes !== undefined && campaign.maxRetakes >= 0) {
+    const auditRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(chitraLearningAuditLogs)
+      .where(and(
+        eq(chitraLearningAuditLogs.employeeId, employee.id),
+        eq(chitraLearningAuditLogs.action, 'online_assignment_submitted'),
+        sql`CAST(after_value->>'campaignId' AS INTEGER) = ${campaignId}`
+      ));
+    const attemptCount = Number(auditRows[0].count);
+    if (attemptCount > campaign.maxRetakes) {
+      throw new Error("Anda telah mencapai batas maksimal percobaan.");
+    }
+  }
+
+  const questions = await db
+    .select()
+    .from(chitraLearningOnlineAssignmentQuestions)
+    .where(eq(chitraLearningOnlineAssignmentQuestions.campaignId, campaignId))
+    .orderBy(asc(chitraLearningOnlineAssignmentQuestions.sortOrder), asc(chitraLearningOnlineAssignmentQuestions.id));
+
+  if (questions.length === 0) throw new Error("Belum ada soal untuk assignment ini");
+
+  const totalPoints = questions.reduce((sum, q) => sum + Math.max(1, q.points || 1), 0);
+  const awardedPoints = questions.reduce((sum, q) => {
+    const answer = textValue(formData, `answer_${q.id}`);
+    const correct = q.correctOption;
+    const type = q.questionType || 'single_choice';
+    let isCorrect = false;
+
+    if (type === 'multiple_choice') {
+      const answerSorted = answer.split(',').filter(Boolean).sort().join(',').toUpperCase();
+      const correctSorted = correct.split(',').filter(Boolean).sort().join(',').toUpperCase();
+      isCorrect = answerSorted === correctSorted && answerSorted.length > 0;
+    } else if (type === 'fill_in_the_gap') {
+      isCorrect = answer.trim().toUpperCase() === correct.trim().toUpperCase() && answer.trim().length > 0;
+    } else {
+      isCorrect = answer.toUpperCase() === correct.toUpperCase() && answer.trim().length > 0;
+    }
+
+    return sum + (isCorrect ? Math.max(1, q.points || 1) : 0);
+  }, 0);
+
+  const score = totalPoints > 0 ? Math.round((awardedPoints / totalPoints) * 100) : 0;
+  const passed = score >= campaign.passingScore;
+
+  // Update or insert participant record
+  const [existing] = await db
+    .select()
+    .from(chitraLearningCampaignParticipants)
+    .where(and(
+      eq(chitraLearningCampaignParticipants.campaignId, campaignId),
+      eq(chitraLearningCampaignParticipants.employeeId, employee.id)
+    ))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(chitraLearningCampaignParticipants)
+      .set({
+        status: passed ? "passed" : "failed",
+        score,
+        submittedAt: new Date(),
+        completedAt: passed ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(chitraLearningCampaignParticipants.id, existing.id));
+  } else {
+    await db.insert(chitraLearningCampaignParticipants).values({
+      campaignId,
+      employeeId: employee.id,
+      status: passed ? "passed" : "failed",
+      score,
+      submittedAt: new Date(),
+      completedAt: passed ? new Date() : null,
+    });
+  }
+
+  await logInternalLmsAudit({
+    actorEmployeeId: employee.id,
+    action: "online_assignment_submitted",
+    courseId: null,
+    employeeId: employee.id,
+    afterValue: {
+      campaignId,
+      score,
+      passed,
+      answers: questions.map((q) => ({
+        questionId: q.id,
+        answer: textValue(formData, `answer_${q.id}`).toUpperCase(),
+      })),
+    },
+  });
+
+  revalidateLms();
+
+  return { success: true, score, passed };
+}
+
+export async function publishOnlineAssignmentWithBroadcastAction(formData: FormData) {
+  await checkLmsAdmin();
+  const campaignId = numberValue(formData, "campaignId");
+
+  const [campaign] = await db
+    .select()
+    .from(chitraLearningCampaigns)
+    .where(eq(chitraLearningCampaigns.id, campaignId))
+    .limit(1);
+
+  if (!campaign) throw new Error("Assignment tidak ditemukan");
+
+  // Publish campaign
+  await publishInternalLmsCampaignAction(formData);
+
+  // Create broadcast for targeted users
+  const { broadcasts } = await import("@/db/schema/hero");
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const broadcastLink = `${appUrl}/dashboard/chitralearning-lms/online-assignments/${campaignId}/take`;
+
+    await db
+      .insert(broadcasts)
+      .values({
+        title: `Assignment Online: ${campaign.title}`,
+        content: campaign.description || "Anda memiliki assignment online yang harus diselesaikan.",
+        mediaType: "text",
+        targetType: campaign.targetType,
+        targetId: null,
+        targetValue: campaign.targetValue,
+        maxPopups: 5,
+        linkUrl: broadcastLink,
+        isActive: true,
+        createdBy: "lms_system",
+      });
+
+    // Send push notifications to targeted employees
+    let targetEmployees: Array<{ id: number }> = [];
+    const targetValues = campaign.targetValue && campaign.targetValue !== "*"
+      ? campaign.targetValue.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
+
+    if (campaign.targetType === "all") {
+      targetEmployees = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.isActive, true));
+    } else if (campaign.targetType === "department" && targetValues.length > 0) {
+      targetEmployees = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.isActive, true), or(...targetValues.map((v) => eq(employees.department, v)))));
+    } else if (campaign.targetType === "section" && targetValues.length > 0) {
+      targetEmployees = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.isActive, true), or(...targetValues.map((v) => eq(employees.section, v)))));
+    } else if (campaign.targetType === "site" && targetValues.length > 0) {
+      targetEmployees = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.isActive, true), or(...targetValues.map((v) => eq(employees.workLocation, v)))));
+    } else if (campaign.targetType === "employee" && targetValues.length > 0) {
+      targetEmployees = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.isActive, true), or(...targetValues.map((v) => eq(employees.employeeSn, v)))));
+    }
+
+    if (targetEmployees.length > 0) {
+      Promise.allSettled(
+        targetEmployees.map(async (emp) => {
+          try {
+            await createNotificationEventForEmployee({
+              employeeId: emp.id,
+              eventType: "online_assignment_published",
+              category: "training" as any,
+              title: `Assignment Baru: ${campaign.title}`,
+              body: campaign.description || "Anda memiliki assignment online baru yang harus diselesaikan.",
+              url: broadcastLink,
+            });
+          } catch { /* background delivery, don't block */ }
+        })
+      );
+    }
+  } catch { /* broadcast is best-effort; don't block assignment publishing */ }
+
+  revalidateLms();
+  return { success: true };
 }

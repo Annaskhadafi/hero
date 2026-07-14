@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
-import { submitInternalLmsQuizAction } from '@/app/dashboard/chitralearning-lms/actions'
+import { submitInternalLmsQuizAction, submitOnlineAssignmentQuizAction } from '@/app/dashboard/chitralearning-lms/actions'
 
 export interface QuizQuestion {
   id: number
@@ -34,6 +34,8 @@ interface LmsQuizPlayerProps {
   randomizeOptions?: boolean
   attemptCount?: number
   maxRetakes?: number
+  /** Pass a custom submit action for online assignments. Uses submitInternalLmsQuizAction by default. */
+  submitAction?: (formData: FormData) => Promise<{ success: boolean; score: number; passed: boolean }>
 }
 
 function QuizHtml({ html, className = '' }: { html: string; className?: string }) {
@@ -45,7 +47,7 @@ function QuizHtml({ html, className = '' }: { html: string; className?: string }
   )
 }
 
-export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLessonHref, courseHref, randomizeOptions, attemptCount = 0, maxRetakes = -1 }: LmsQuizPlayerProps) {
+export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLessonHref, courseHref, randomizeOptions, attemptCount = 0, maxRetakes = -1, submitAction }: LmsQuizPlayerProps) {
   const router = useRouter()
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
@@ -98,8 +100,10 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
         formData.append(`answer_${questionId}`, answer)
       })
 
+      const action = submitAction ?? submitInternalLmsQuizAction
+
       startTransition(async () => {
-        const res = await submitInternalLmsQuizAction(formData)
+        const res = await action(formData)
         if (res && res.success) {
           setScoreResult({ score: res.score, passed: res.passed })
         }

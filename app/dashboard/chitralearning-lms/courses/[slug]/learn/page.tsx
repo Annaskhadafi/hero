@@ -156,6 +156,7 @@ export default async function LmsCoursePlayerPage({
   }))
   
   let attemptCount = 0;
+  let effectiveMaxRetakes = course.maxRetakes ?? -1;
   if (['quiz', 'pretest', 'posttest'].includes(activeLessonType)) {
     const auditRows = await db
       .select({ count: sql<number>`count(*)` })
@@ -167,6 +168,12 @@ export default async function LmsCoursePlayerPage({
          sql`CAST(after_value->>'lessonId' AS INTEGER) = ${activeLesson.id}`
       ))
     attemptCount = Number(auditRows[0].count)
+
+    // Per-lesson quizSettings override
+    const qs = (activeLesson as any).quizSettings as Record<string, any> | null;
+    if (qs?.limitAttempts && typeof qs.maxAttempts === 'number' && qs.maxAttempts > 0) {
+      effectiveMaxRetakes = qs.maxAttempts - 1; // maxAttempts=3 means 2 retakes
+    }
   }
   const nextLessonHref = nextLesson ? `/dashboard/chitralearning-lms/courses/${course.slug}/learn?lessonId=${nextLesson.id}` : null
   const rawFileUrl = activeLesson.fileUrl || ''
@@ -246,7 +253,7 @@ export default async function LmsCoursePlayerPage({
                   courseHref={`/dashboard/chitralearning-lms/courses/${course.slug}`}
                   randomizeOptions={(activeLesson as any).quizSettings?.randomizeOptions}
                   attemptCount={attemptCount}
-                  maxRetakes={course.maxRetakes ?? -1}
+                  maxRetakes={effectiveMaxRetakes}
                 />
               </div>
             ) : (

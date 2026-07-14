@@ -103,6 +103,7 @@ export const INTERNAL_LMS_CAMPAIGN_TYPES = [
   { value: "posttest", label: "Post test refreshment" },
   { value: "quiz", label: "Quiz dadakan" },
   { value: "assignment", label: "Assignment" },
+  { value: "online_assignment", label: "Online Assignment" },
 ] as const;
 
 export const INTERNAL_LMS_RECURRENCE_OPTIONS = [

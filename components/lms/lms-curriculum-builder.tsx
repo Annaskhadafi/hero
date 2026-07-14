@@ -872,7 +872,6 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                         { key: 'showCorrectAnswer', label: 'Show correct answer' },
                         { key: 'attemptHistory', label: 'Quiz Attempt History' },
                         { key: 'retakeAfterPass', label: 'Retake After Pass' },
-                        { key: 'limitAttempts', label: 'Limited attempts to retake quizzes' }
                       ].map(({ key, label }) => (
                         <label key={key} className="flex items-center gap-3 text-sm text-slate-700 cursor-pointer">
                           <Switch 
@@ -882,6 +881,28 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                           {label}
                         </label>
                       ))}
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-3 text-sm text-slate-700 cursor-pointer">
+                          <Switch 
+                            checked={!!quizSettings?.limitAttempts} 
+                            onCheckedChange={(checked) => setQuizSettings({ ...quizSettings, limitAttempts: checked, maxAttempts: checked ? (quizSettings?.maxAttempts || 3) : undefined })} 
+                          />
+                          Limited attempts to retake quizzes
+                        </label>
+                        {quizSettings?.limitAttempts ? (
+                          <div className="ml-10 flex items-center gap-2">
+                            <Label className="text-xs text-slate-500 whitespace-nowrap">Max attempts:</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="99"
+                              value={quizSettings?.maxAttempts || 3}
+                              onChange={(e) => setQuizSettings({ ...quizSettings, maxAttempts: parseInt(e.target.value, 10) || 1 })}
+                              className="h-7 w-16 text-xs"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="rounded-md bg-slate-100 p-4 text-sm text-slate-700">
                       <span className="font-semibold text-slate-950">Hint:</span> 4.5 Points = 80-89% or "A" grade

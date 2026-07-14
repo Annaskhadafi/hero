@@ -14,6 +14,7 @@ import {
   BarChart,
   Trophy,
   Map,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -76,7 +77,12 @@ const ADMIN_ITEMS = [
     icon: Megaphone,
     color: 'orange',
   },
-
+  {
+    title: 'Online Assignment',
+    href: '/dashboard/chitralearning-lms/online-assignments',
+    icon: ClipboardList,
+    color: 'violet',
+  },
   {
     title: 'Learning Paths',
     href: '/dashboard/chitralearning-lms/paths',

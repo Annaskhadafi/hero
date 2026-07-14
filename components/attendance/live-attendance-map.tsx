@@ -11,11 +11,24 @@ import {
   ShieldCheck,
   Users,
   Wifi,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Plus,
 } from 'lucide-react'
-import { getLiveAttendanceMapData } from '@/app/actions/attendance'
+import dynamic from 'next/dynamic'
+import { format, addDays, subDays, isSameDay } from 'date-fns'
+import { id } from 'date-fns/locale'
+import { getLiveAttendanceMapData, getSitesForMap } from '@/app/actions/attendance'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+const LiveAttendanceLeaflet = dynamic(() => import('./live-attendance-leaflet'), { 
+  ssr: false,
+  loading: () => <div className="size-full animate-pulse bg-[#dceae6]" />
+})
 
 type LiveAttendanceRecord = {
   id: number
@@ -54,11 +67,6 @@ type Props = {
 }
 
 type MapCenter = { latitude: number; longitude: number }
-
-const MAP_ZOOM = 7
-const MAP_CENTER = { latitude: -2.5, longitude: 118 }
-const MAP_TILE_COLUMNS = 12
-const MAP_TILE_ROWS = 10
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(
@@ -116,26 +124,6 @@ function latestByEmployee(records: LiveAttendanceRecord[]) {
   })
 }
 
-function tileCoordinate(latitude: number, longitude: number, zoom: number) {
-  const scale = 2 ** zoom
-  const x = ((longitude + 180) / 360) * scale
-  const latitudeRadians = (latitude * Math.PI) / 180
-  const y =
-    ((1 - Math.asinh(Math.tan(latitudeRadians)) / Math.PI) / 2) * scale
-
-  return { x: x * 256, y: y * 256 }
-}
-
-function mapMarkerPosition(latitude: number, longitude: number, zoom: number, mapCenter: MapCenter) {
-  const center = tileCoordinate(mapCenter.latitude, mapCenter.longitude, zoom)
-  const marker = tileCoordinate(latitude, longitude, zoom)
-
-  return {
-    left: marker.x - center.x,
-    top: marker.y - center.y,
-  }
-}
-
 function getRadiusInfo(record: LiveAttendanceRecord) {
   const accuracyMatch = record.locationNote.match(/(\d+)\s*m\s*accuracy/i)
   return {
@@ -144,109 +132,82 @@ function getRadiusInfo(record: LiveAttendanceRecord) {
   }
 }
 
-function getRadiusVisualSize(radiusMeters: number, zoom: number) {
-  return Math.min(132, Math.max(20, radiusMeters * 0.045 * 2 ** (zoom - MAP_ZOOM)))
-}
-
-function MapTiles({ zoom, pan, mapCenter }: { zoom: number; pan: { x: number; y: number }; mapCenter: MapCenter }) {
-  const center = tileCoordinate(mapCenter.latitude, mapCenter.longitude, zoom)
-  const centerTileX = Math.floor(center.x / 256)
-  const centerTileY = Math.floor(center.y / 256)
-  const startX = centerTileX - Math.floor(MAP_TILE_COLUMNS / 2)
-  const startY = centerTileY - Math.floor(MAP_TILE_ROWS / 2)
-  const maxTile = 2 ** zoom
-
-  return (
-    <div className="absolute inset-0 overflow-hidden bg-[#dceae6]">
-      {Array.from({ length: MAP_TILE_COLUMNS * MAP_TILE_ROWS }, (_, index) => {
-        const column = index % MAP_TILE_COLUMNS
-        const row = Math.floor(index / MAP_TILE_COLUMNS)
-        const x = ((startX + column) % maxTile + maxTile) % maxTile
-        const y = Math.max(0, Math.min(maxTile - 1, startY + row))
-        const worldX = (startX + column) * 256
-        const worldY = (startY + row) * 256
-
-        return (
-          <img
-            key={`${x}-${y}`}
-            src={`https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`}
-            alt=""
-            className="absolute size-64 max-w-none opacity-90 saturate-[0.72]"
-            style={{
-              left: `calc(50% + ${worldX - center.x + pan.x}px - 128px)`,
-              top: `calc(50% + ${worldY - center.y + pan.y}px - 128px)`,
-            }}
-            loading="lazy"
-          />
-        )
-      })}
-    </div>
-  )
-}
-
 export function LiveAttendanceMap({ initialData }: Props) {
   const [data, setData] = useState<LiveAttendanceData>(initialData as LiveAttendanceData)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'offline'>('all')
   const [refreshing, setRefreshing] = useState(false)
-  const [mapZoom, setMapZoom] = useState(MAP_ZOOM)
-  const [mapPan, setMapPan] = useState({ x: 0, y: 0 })
-  const mapDragRef = useRef<{
-    pointerId: number
-    startX: number
-    startY: number
-    originX: number
-    originY: number
-  } | null>(null)
-  const suppressMarkerClickRef = useRef(false)
+  const [targetDate, setTargetDate] = useState<Date>(new Date())
+  const [allSites, setAllSites] = useState<any[]>([])
+  const [manualSites, setManualSites] = useState<any[]>([])
 
-  const handleMapPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
-    if ((event.target as HTMLElement).closest('button')) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    mapDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: mapPan.x,
-      originY: mapPan.y,
-    }
-  }
-
-  const handleMapPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = mapDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-
-    const deltaX = event.clientX - drag.startX
-    const deltaY = event.clientY - drag.startY
-    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) suppressMarkerClickRef.current = true
-    setMapPan({
-      x: drag.originX + deltaX,
-      y: drag.originY + deltaY,
-    })
-  }
-
-  const handleMapPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const drag = mapDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
-    mapDragRef.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  const refresh = async () => {
+  const refresh = async (date: Date = targetDate) => {
     setRefreshing(true)
     try {
-      setData((await getLiveAttendanceMapData()) as LiveAttendanceData)
+      const dateStr = format(date, 'yyyy-MM-dd')
+      setData((await getLiveAttendanceMapData(dateStr)) as LiveAttendanceData)
     } finally {
       setRefreshing(false)
     }
   }
 
   useEffect(() => {
-    const interval = window.setInterval(() => void refresh(), 30000)
+    if (!isSameDay(targetDate, new Date())) return
+    const interval = window.setInterval(() => void refresh(targetDate), 30000)
     return () => window.clearInterval(interval)
-  }, [])
+  }, [targetDate])
+
+  const handlePrevDay = () => {
+    const prev = subDays(targetDate, 1)
+    setTargetDate(prev)
+    refresh(prev)
+  }
+
+  const handleNextDay = () => {
+    if (isSameDay(targetDate, new Date())) return
+    const next = addDays(targetDate, 1)
+    setTargetDate(next)
+    refresh(next)
+  }
+
+  const loadAllSites = async (isOpen: boolean) => {
+    if (isOpen && allSites.length === 0) {
+      const res = await getSitesForMap()
+      if (res.success) setAllSites(res.sites)
+    }
+  }
+
+  const handleAddManualSite = (siteIdStr: string) => {
+    const siteId = Number(siteIdStr)
+    const existingMapSites = data.success && data.sites ? data.sites : []
+    
+    if (manualSites.some(s => s.id === siteId) || existingMapSites.some((s: any) => s.id === siteId)) {
+      return // Already on map
+    }
+    
+    const site = allSites.find(s => s.id === siteId)
+    if (site) {
+      setManualSites(prev => [...prev, {
+        id: site.id,
+        name: site.name,
+        latitude: Number(site.geoLatitude) || -2.5,
+        longitude: Number(site.geoLongitude) || 118,
+        radiusMeters: site.geoRadiusMeters || 500,
+      }])
+    }
+  }
+
+  const mergedSites = useMemo(() => {
+    const mapSites = data.success && data.sites ? data.sites : []
+    const combined = [...mapSites]
+    manualSites.forEach(ms => {
+      if (!combined.some(cs => cs.id === ms.id)) {
+        combined.push(ms)
+      }
+    })
+    return combined
+  }, [data, manualSites])
 
   const records = data.success ? data.records : []
   const latestRecords = useMemo(() => latestByEmployee(records), [records])
@@ -264,12 +225,6 @@ export function LiveAttendanceMap({ initialData }: Props) {
     })
   }, [latestRecords, query, statusFilter])
   const selected = visibleRecords.find((record) => record.employeeId === selectedId) ?? visibleRecords[0]
-  const mapCenter = useMemo<MapCenter>(() => {
-    const anchor = latestRecords.find(hasValidCoordinates)
-    return anchor
-      ? { latitude: Number(anchor.latitude), longitude: Number(anchor.longitude) }
-      : MAP_CENTER
-  }, [latestRecords])
   const liveCount = latestRecords.filter(statusIsLive).length
   const locationsCount = latestRecords.filter(hasValidCoordinates).length
   const scopeLabel = data.success && data.scope === 'global' ? 'Semua site' : 'Site Anda'
@@ -291,19 +246,50 @@ export function LiveAttendanceMap({ initialData }: Props) {
               Data diperbarui otomatis setiap 30 detik.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge className="h-9 rounded-full border border-[#b7e3d4] bg-[#e8faf3] px-3 text-[#0e7b66]">
-              <Wifi className="mr-1.5 size-3.5" /> Live {scopeLabel}
-            </Badge>
-            <Button
-              variant="outline"
-              className="h-9 rounded-full border-[#cfe3df] bg-white text-[#0a4f51]"
-              onClick={() => void refresh()}
-              disabled={refreshing}
-            >
-              <RefreshCw className={refreshing ? 'mr-2 size-4 animate-spin' : 'mr-2 size-4'} />
-              Refresh
-            </Button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Badge className="h-9 rounded-full border border-[#b7e3d4] bg-[#e8faf3] px-3 text-[#0e7b66]">
+                <Wifi className="mr-1.5 size-3.5" /> Live {scopeLabel}
+              </Badge>
+              <Button
+                variant="outline"
+                className="h-9 rounded-full border-[#cfe3df] bg-white text-[#0a4f51]"
+                onClick={() => void refresh()}
+                disabled={refreshing}
+              >
+                <RefreshCw className={refreshing ? 'mr-2 size-4 animate-spin' : 'mr-2 size-4'} />
+                Refresh
+              </Button>
+            </div>
+            
+            <div className="flex items-center gap-1 rounded-full border border-[#cfe3df] bg-white p-1 shadow-sm">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-full hover:bg-[#edf6f3] text-[#0a4f51]"
+                onClick={handlePrevDay}
+                disabled={refreshing}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <div className="flex items-center gap-2 px-3 text-sm font-semibold text-[#0a4f51]">
+                <Calendar className="size-4 text-[#6b8d8d]" />
+                <span className="min-w-[120px] text-center">
+                  {isSameDay(targetDate, new Date()) 
+                    ? 'Hari Ini' 
+                    : format(targetDate, 'dd MMM yyyy', { locale: id })}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-full hover:bg-[#edf6f3] text-[#0a4f51]"
+                onClick={handleNextDay}
+                disabled={refreshing || isSameDay(targetDate, new Date())}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
           </div>
         </div>
         <div className="grid border-t border-[#d8ebe7] sm:grid-cols-3">
@@ -340,72 +326,39 @@ export function LiveAttendanceMap({ initialData }: Props) {
                 <p className="mt-0.5 text-xs text-[#6b8d8d]">Marker menunjukkan aktivitas terbaru setiap user.</p>
               </div>
               <div className="flex items-center gap-2 text-xs text-[#6b8d8d]">
-                <span className="inline-flex size-2 rounded-full bg-[#25b88f]" /> Aktif
+                <Select onOpenChange={loadAllSites} onValueChange={handleAddManualSite}>
+                  <SelectTrigger className="h-8 w-[160px] text-xs">
+                    <SelectValue placeholder="Tambah Marka Site..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allSites.length === 0 ? (
+                      <div className="p-2 text-center text-xs text-muted-foreground">Memuat site...</div>
+                    ) : (
+                      allSites.map(site => (
+                        <SelectItem key={site.id} value={site.id.toString()}>
+                          {site.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                
+                <span className="ml-2 inline-flex size-2 rounded-full bg-[#25b88f]" /> Aktif
                 <span className="ml-2 inline-flex size-2 rounded-full bg-[#95a9b2]" /> Selesai / offline
               </div>
             </div>
-            <div
-              className="relative aspect-[1.55] min-h-[420px] cursor-grab select-none overflow-hidden bg-[#dceae6] active:cursor-grabbing"
-              onPointerDown={handleMapPointerDown}
-              onPointerMove={handleMapPointerMove}
-              onPointerUp={handleMapPointerUp}
-              onPointerCancel={handleMapPointerUp}
-              style={{ touchAction: 'none' }}
-            >
-              <MapTiles zoom={mapZoom} pan={mapPan} mapCenter={mapCenter} />
-              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(245,251,249,0.18),transparent_44%,rgba(7,79,81,0.12))]" />
-              {visibleRecords.map((record) => {
-                const latitude = Number(record.latitude)
-                const longitude = Number(record.longitude)
-                if (!hasValidCoordinates(record)) return null
-                const position = mapMarkerPosition(latitude, longitude, mapZoom, mapCenter)
-                const active = statusIsLive(record)
-                const selectedMarker = selected?.employeeId === record.employeeId
-                const radiusMeters = getRadiusInfo(record).meters
-                const radiusSize = getRadiusVisualSize(radiusMeters, mapZoom)
-                return (
-                  <button
-                    key={record.employeeId}
-                    type="button"
-                    className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 transition-transform hover:scale-110 ${selectedMarker ? 'scale-110' : ''}`}
-                    style={{
-                      left: `calc(50% + ${position.left + mapPan.x}px)`,
-                      top: `calc(50% + ${position.top + mapPan.y}px)`,
-                    }}
-                    onClick={() => {
-                      if (suppressMarkerClickRef.current) {
-                        suppressMarkerClickRef.current = false
-                        return
-                      }
-                      setSelectedId(record.employeeId)
-                    }}
-                    aria-label={`Lihat ${record.employeeName} di ${record.siteName}`}
-                  >
-                    <span
-                      className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border ${active ? 'border-[#10a77f]/55 bg-[#10a77f]/18' : 'border-[#6f8791]/50 bg-[#6f8791]/16'}`}
-                      style={{ width: radiusSize, height: radiusSize }}
-                      title={`${getRadiusInfo(record).label} ${radiusMeters}m`}
-                    />
-                    <span className={`relative flex size-9 items-center justify-center rounded-full border-2 border-white shadow-lg ${active ? 'bg-[#10a77f]' : 'bg-[#6f8791]'}`}>
-                      <MapPin className="size-4 text-white" />
-                    </span>
-                    {active ? <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-[#25b88f]/40" /> : null}
-                  </button>
-                )
-              })}
-              <div className="absolute bottom-3 left-3 rounded-lg border border-white/70 bg-white/85 px-2.5 py-1.5 text-[10px] text-[#4f7474] shadow-sm backdrop-blur-sm">
-                © OpenStreetMap contributors
-              </div>
-              <div className="absolute right-3 top-3 flex items-center gap-2 rounded-lg border border-white/70 bg-white/90 px-2 py-1.5 text-[#4f7474] shadow-sm backdrop-blur-sm">
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">Indonesia · {mapZoom}Z</span>
-                  <span className="text-[10px]">Lingkaran = radius akurasi</span>
-                </div>
-                <div className="flex overflow-hidden rounded-md border border-[#cfe3df] bg-white">
-                  <button type="button" className="size-7 text-base font-semibold hover:bg-[#edf6f3]" onClick={() => { setMapZoom((zoom) => Math.max(1, zoom - 1)); setMapPan({ x: 0, y: 0 }) }} aria-label="Perkecil peta">−</button>
-                  <button type="button" className="size-7 border-l border-[#cfe3df] text-base font-semibold hover:bg-[#edf6f3]" onClick={() => { setMapZoom((zoom) => Math.min(8, zoom + 1)); setMapPan({ x: 0, y: 0 }) }} aria-label="Perbesar peta">+</button>
-                </div>
-              </div>
+            <div className="relative aspect-[1.55] min-h-[420px] overflow-hidden bg-[#dceae6]">
+              <LiveAttendanceLeaflet
+                records={visibleRecords}
+                selectedId={selectedId}
+                setSelectedId={setSelectedId}
+                statusIsLive={statusIsLive}
+                getRadiusInfo={getRadiusInfo}
+                formatTime={formatTime}
+                sites={mergedSites}
+                refresh={refresh}
+              />
+              <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(135deg,rgba(245,251,249,0.18),transparent_44%,rgba(7,79,81,0.12))]" />
             </div>
           </div>
 
