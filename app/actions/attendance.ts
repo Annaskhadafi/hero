@@ -25,7 +25,7 @@ import {
 } from '@/lib/legacy-approval-engine'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, desc, sql, asc, inArray, not } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
 
 async function ensureEmployeeSite<
@@ -1056,6 +1056,66 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
     .orderBy(desc(attendanceRecords.eventTime))
     .limit(500)
 
+  // Ambil semua site yang sudah punya kordinat tersimpan agar selalu muncul di peta
+  const siteConditions = [
+    eq(sites.isActive, true),
+    not(eq(sites.geoLatitude, '')),
+    not(eq(sites.geoLongitude, '')),
+  ]
+  if (!hasGlobalDataAccess(access)) {
+    if (employee.siteId) {
+      siteConditions.push(eq(sites.id, employee.siteId))
+    } else {
+      // Jika user tidak punya siteId dan tidak punya global access, maka jangan kembalikan site apa-apa
+      siteConditions.push(eq(sites.id, -1))
+    }
+  }
+  const savedSites = await db
+    .select({
+      id: sites.id,
+      name: sites.name,
+      geoLatitude: sites.geoLatitude,
+      geoLongitude: sites.geoLongitude,
+      geoRadiusMeters: sites.geoRadiusMeters,
+    })
+    .from(sites)
+    .where(and(...siteConditions))
+
+  const allSitesMap = new Map()
+  
+  // Masukkan saved sites terlebih dahulu
+  for (const s of savedSites) {
+    allSitesMap.set(s.id, {
+      id: s.id,
+      name: s.name,
+      latitude: Number(s.geoLatitude),
+      longitude: Number(s.geoLongitude),
+      radiusMeters: s.geoRadiusMeters ?? 500,
+    })
+  }
+
+  // Tambahkan site dari records sebagai fallback jika belum ada di savedSites
+  for (const r of records) {
+    if (!r.siteId || allSitesMap.has(r.siteId)) continue
+    
+    let lat = Number(r.siteGeoLatitude)
+    let lng = Number(r.siteGeoLongitude)
+    
+    // Jika Site belum pernah di-set kordinatnya, gunakan kordinat absen pertama sebagai titik awal
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+      lat = Number(r.latitude) || -2.5
+      lng = Number(r.longitude) || 118
+    }
+    
+    allSitesMap.set(r.siteId, {
+      id: r.siteId,
+      name: r.siteName ?? `Site ${r.siteId}`,
+      latitude: lat,
+      longitude: lng,
+      radiusMeters: r.siteRadiusMeters ?? 500,
+    })
+  }
+
   return {
     success: true as const,
     scope: hasGlobalDataAccess(access) ? ('global' as const) : ('site' as const),
@@ -1067,27 +1127,7 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
       siteLocation: record.siteLocation ?? '',
       siteRadiusMeters: record.siteRadiusMeters ?? 500,
     })),
-    sites: Array.from(new Map(
-      records.filter(r => r.siteId)
-      .map(r => {
-        let lat = Number(r.siteGeoLatitude)
-        let lng = Number(r.siteGeoLongitude)
-        
-        // Jika Site belum pernah di-set kordinatnya, gunakan kordinat absen pertama sebagai titik awal
-        if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-          lat = Number(r.latitude) || -2.5
-          lng = Number(r.longitude) || 118
-        }
-        
-        return [r.siteId, {
-          id: r.siteId,
-          name: r.siteName ?? `Site ${r.siteId}`,
-          latitude: lat,
-          longitude: lng,
-          radiusMeters: r.siteRadiusMeters ?? 500,
-        }]
-      })
-    ).values())
+    sites: Array.from(allSitesMap.values())
   }
 }
 
@@ -1127,7 +1167,11 @@ export async function getSitesForMap() {
 
   const conditions = [eq(sites.isActive, true)]
   if (!hasGlobalDataAccess(access)) {
-    conditions.push(eq(sites.id, employee.siteId))
+    if (employee.siteId) {
+      conditions.push(eq(sites.id, employee.siteId))
+    } else {
+      conditions.push(eq(sites.id, -1))
+    }
   }
 
   const data = await db

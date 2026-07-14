@@ -268,7 +268,7 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays, includeBast
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, showDays, includeBast
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -294,6 +294,7 @@ export async function createQuotation(data: any) {
     showIntro: showIntro ?? true,
     customIntro,
     hideBackupPrice: hideBackupPrice ?? false,
+    hideBackupDate: hideBackupDate ?? false,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
   }).returning()
@@ -329,7 +330,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, showDays, includeBast
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, showDays, includeBast
   } = data
   
   const [quotation] = await db.update(service360Quotations).set({
@@ -355,6 +356,7 @@ export async function updateQuotation(id: number, data: any) {
     showIntro: showIntro ?? true,
     customIntro,
     hideBackupPrice: hideBackupPrice ?? false,
+    hideBackupDate: hideBackupDate ?? false,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
     updatedAt: new Date()

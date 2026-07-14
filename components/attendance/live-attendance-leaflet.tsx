@@ -4,8 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { MapPin, Clock3, ShieldCheck, Building2, Save } from 'lucide-react'
-import { renderToString } from 'react-dom/server'
+import { Clock3, ShieldCheck, Save } from 'lucide-react'
 import { updateSiteRadiusFromMap } from '@/app/actions/attendance'
 
 // Setup default icon to fix missing icon issue in nextjs/leaflet
@@ -52,11 +51,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
   const [saving, setSaving] = useState(false)
   const markerRef = useRef<any>(null)
 
-  const iconHtml = renderToString(
-    <div className="relative flex size-12 items-center justify-center rounded-xl border-[3px] border-white shadow-xl bg-[#0a4f51] hover:scale-105 transition-transform">
-      <Building2 className="size-6 text-white" />
-    </div>
-  )
+  const iconHtml = `<div style="position:relative;display:flex;width:48px;height:48px;align-items:center;justify-content:center;border-radius:12px;border:3px solid white;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);background-color:#0a4f51;transition:transform 0.15s"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg></div>`
   const customIcon = L.divIcon({
     html: iconHtml,
     className: 'bg-transparent border-0',
@@ -218,16 +213,12 @@ export default function LiveAttendanceLeaflet({
             isOutOfBounds = distanceToSite > (record.siteRadiusMeters || 500)
           }
 
-          const markerColor = isOutOfBounds ? 'bg-red-500' : (active ? 'bg-[#10a77f]' : 'bg-[#6f8791]')
-          const pingColor = isOutOfBounds ? 'bg-red-400/50' : 'bg-[#25b88f]/50'
+          const markerBg = isOutOfBounds ? '#ef4444' : (active ? '#10a77f' : '#6f8791')
 
           // Create custom SVG icon that looks exactly like the old UI
-          const iconHtml = renderToString(
-            <div className={`relative flex size-9 items-center justify-center rounded-full border-2 border-white shadow-lg transition-transform ${markerColor} ${isSelected ? 'scale-110' : ''}`}>
-              <MapPin className="size-4 text-white" />
-              {active ? <span className={`absolute inset-0 -z-10 animate-ping rounded-full ${pingColor}`} /> : null}
-            </div>
-          )
+          const pingEl = active ? `<span style="position:absolute;inset:0;z-index:-1;border-radius:9999px;animation:ping 1s cubic-bezier(0,0,0.2,1) infinite;background-color:${isOutOfBounds ? 'rgba(239,68,68,0.5)' : 'rgba(37,184,143,0.5)'}"></span>` : ''
+          const markerHtml = `<div style="position:relative;display:flex;width:36px;height:36px;align-items:center;justify-content:center;border-radius:9999px;border:2px solid white;background-color:${markerBg};box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);${isSelected ? 'transform:scale(1.1)' : ''}">${pingEl}<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`
+          const iconHtml = markerHtml
 
           const customIcon = L.divIcon({
             html: iconHtml,

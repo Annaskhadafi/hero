@@ -347,10 +347,10 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                       <span className="text-[7.5pt] text-slate-400 font-medium">({days} hari)</span>
                                     ) : null;
                                   })()}
-                                  {item.quotationItem.isBackup && (
+                                  {item.quotationItem.isBackup && !quotation.hideBackupDate && (
                                     <span className="text-teal-600 font-medium pt-1 border-t border-slate-100">{item.quotationItem.backupMonthPeriod || '-'}</span>
                                   )}
-                                  {item.quotationItem.isBackup && quotation.showDays !== false && (() => {
+                                  {item.quotationItem.isBackup && !quotation.hideBackupDate && quotation.showDays !== false && (() => {
                                     const days = parseDaysFromMonthPeriod(item.quotationItem.backupMonthPeriod || '');
                                     return days > 0 ? (
                                       <span className="text-[7.5pt] text-teal-400 font-medium">({days} hari)</span>
@@ -370,7 +370,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                 <td className="border-r border-slate-100 text-center align-top py-2">
                                   <div className="flex flex-col gap-2 items-center">
                                     <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[8pt] font-bold">{item.quotationItem.level}</span>
-                                    {item.quotationItem.isBackup && (
+                                    {item.quotationItem.isBackup && !quotation.hideBackupDate && (
                                       <span className="bg-teal-50 text-teal-600 px-2 py-0.5 rounded text-[8pt] font-bold border border-teal-100">{item.quotationItem.backupLevel || '-'}</span>
                                     )}
                                   </div>
@@ -380,7 +380,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                 <td className="border-r border-slate-100 text-center align-top py-2">
                                   <div className="flex flex-col gap-2 items-center">
                                     <span className="text-[8.5pt] font-medium text-slate-700">{Number(item.quotationItem.quantity)}</span>
-                                    {item.quotationItem.isBackup && (
+                                    {item.quotationItem.isBackup && !quotation.hideBackupDate && (
                                       <span className="text-[8.5pt] font-medium text-teal-600 pt-1 border-t border-slate-100 w-full">{Number(item.quotationItem.quantity)}</span>
                                     )}
                                   </div>
@@ -392,7 +392,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                     <span className="text-slate-400">Rp</span>
                                     <span className="font-semibold">{Number(item.quotationItem.price).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                   </div>
-                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && (
+                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && !quotation.hideBackupDate && (
                                     <div className="flex justify-between w-full pt-1 border-t border-slate-100 text-teal-700">
                                       <span className="text-slate-400">Rp</span>
                                       <span className="font-semibold">{Number(item.quotationItem.backupPrice).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
@@ -406,7 +406,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                                     <span className="text-slate-400">Rp</span>
                                     <span className="font-bold text-[9pt] text-teal-700">{Number(quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                                   </div>
-                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && (
+                                  {item.quotationItem.isBackup && !quotation.hideBackupPrice && !quotation.hideBackupDate && (
                                     <div className="flex justify-between w-full pt-1 border-t border-slate-100">
                                       <span className="text-slate-400">Rp</span>
                                       <span className="font-bold text-[9pt] text-teal-700">{Number(backupProrate).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
@@ -573,7 +573,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                         <td className="border border-slate-800 text-center py-2 px-2">
                           <div className="flex flex-col gap-1">
                             <span>{abbreviatePeriod(item.quotationItem.monthPeriod)}</span>
-                            {item.quotationItem.isBackup && (
+                            {item.quotationItem.isBackup && !quotation.hideBackupDate && (
                               <span className="text-teal-600 font-medium pt-1 border-t border-slate-200">{item.quotationItem.backupMonthPeriod || '-'}</span>
                             )}
                           </div>

@@ -83,6 +83,7 @@ const quotationSchema = z.object({
   showLevel: z.boolean(),
   showQty: z.boolean(),
   hideBackupPrice: z.boolean().optional(),
+  hideBackupDate: z.boolean().optional(),
   showDays: z.boolean().optional(),
   showIntro: z.boolean().optional(),
   customIntro: z.string().optional(),
@@ -216,6 +217,7 @@ const router = useRouter()
       showLevel: initialData?.showLevel ?? true,
       showQty: initialData?.showQty ?? false,
       hideBackupPrice: initialData?.hideBackupPrice ?? false,
+      hideBackupDate: initialData?.hideBackupDate ?? false,
       showDays: initialData?.showDays ?? true,
       attn: initialData?.attn || "",
       cc: initialData?.cc || "",
@@ -274,6 +276,7 @@ const router = useRouter()
   const showIntro = watch("showIntro")
   const customIntro = watch("customIntro")
   const hideBackupPrice = watch("hideBackupPrice")
+  const hideBackupDate = watch("hideBackupDate")
   const showDays = watch("showDays")
   const poPeriodEnd = watch("poPeriodEnd")
   const selectedCustomerId = watch("customerId")
@@ -743,6 +746,10 @@ const router = useRouter()
                   <div className="flex items-center gap-2">
                     <Switch checked={hideBackupPrice} onCheckedChange={(v) => setValue("hideBackupPrice", v)} />
                     <label className="text-xs leading-tight">Hide Backup<br/>Price/Mo<br/>(PDF)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={hideBackupDate} onCheckedChange={(v) => setValue("hideBackupDate", v)} />
+                    <label className="text-xs leading-tight">Hide Backup<br/>Date<br/>(PDF)</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showDays} onCheckedChange={(v) => setValue("showDays", v)} />

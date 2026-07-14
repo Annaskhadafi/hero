@@ -74,6 +74,7 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   showIntro: boolean("show_intro").notNull().default(true),
   customIntro: text("custom_intro"),
   hideBackupPrice: boolean("hide_backup_price").notNull().default(false),
+  hideBackupDate: boolean("hide_backup_date").notNull().default(false),
   showDays: boolean("show_days").notNull().default(true),
   includeBast: boolean("include_bast").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
