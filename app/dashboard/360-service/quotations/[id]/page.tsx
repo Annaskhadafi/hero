@@ -519,7 +519,8 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
         
         {/* BAST PAGE */}
         {quotation.includeBast && rentalItems.length > 0 && (
-          <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+          <>
+            <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             <div className="absolute inset-0 z-0 pointer-events-none">
               <Image 
                 src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" 
@@ -606,7 +607,22 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 </table>
               </div>
 
-              <div className="leading-relaxed mb-10">
+            </div>
+            </div>
+
+          {/* Keep the BAST closing text and signatures off the table page. */}
+            <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+            <div className="absolute inset-0 z-0 pointer-events-none">
+              <Image
+                src="/ChitraParatama_Stationery_Letterhead_jkt.jpg"
+                alt="Letterhead"
+                fill
+                className="object-cover"
+              />
+            </div>
+
+            <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
+              <div className="leading-relaxed mb-10 mt-10">
                 Demikian Berita Acara ini dibuat dan ditanda tangani oleh kedua belah pihak.<br/>
                 Sebagai dasar lampiran invoice untuk tagihan rental Bulan <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span><br/>
                 <span className="font-bold">Reff PO {quotation.poNumber || '-'}</span>
@@ -630,9 +646,9 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                   <p className="font-bold">( {quotation.fromName || "Nama Tanda tangan & Cap"} )</p>
                 </div>
               </div>
-
             </div>
-          </div>
+            </div>
+          </>
         )}
       </div>
       
