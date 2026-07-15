@@ -201,6 +201,7 @@ export const timesheetSchedulingConfigs = pgTable(
     allowanceVariables: jsonb("allowance_variables").notNull().default([]),
     overtimeVariables: jsonb("overtime_variables").notNull().default([]),
     overtimeConfig: jsonb("overtime_config"),
+    pdfConfig: jsonb("pdf_config"),
     savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

@@ -6077,7 +6077,16 @@ export async function getSchedulingTimesheetOptions() {
         period: override.period,
         employeeId: override.employeeId,
         day: override.day,
-        status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
+        status: [
+          'present',
+          'empty',
+          'sick',
+          'leave',
+          'absent',
+          'off',
+          'standby',
+          'field_break',
+        ].includes(override.status)
           ? override.status
           : 'empty',
         clockIn: override.clockIn,
@@ -6118,6 +6127,7 @@ export async function getSchedulingTimesheetOptions() {
         allowanceVariables: config.allowanceVariables,
         overtimeVariables: config.overtimeVariables,
         overtimeConfig: config.overtimeConfig,
+        pdfConfig: config.pdfConfig,
         updatedAt: config.updatedAt.toISOString(),
       })),
     schedulingStatuses: schedulingStatuses
@@ -6312,7 +6322,16 @@ function serializeAttendanceOverride(
     period: override.period,
     employeeId: override.employeeId,
     day: override.day,
-    status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
+    status: [
+      'present',
+      'empty',
+      'sick',
+      'leave',
+      'absent',
+      'off',
+      'standby',
+      'field_break',
+    ].includes(override.status)
       ? override.status
       : 'empty',
     clockIn: override.clockIn,

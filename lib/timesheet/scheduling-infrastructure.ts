@@ -57,6 +57,9 @@ export async function ensureSchedulingTimesheetTables() {
       await tx.execute(
         sql`alter table hero_timesheet_scheduling_configs add column if not exists overtime_config jsonb;`
       )
+      await tx.execute(
+        sql`alter table hero_timesheet_scheduling_configs add column if not exists pdf_config jsonb;`
+      )
       await tx.execute(sql`
       create table if not exists hero_timesheet_scheduling_statuses (
         id serial primary key,

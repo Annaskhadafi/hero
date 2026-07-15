@@ -1439,7 +1439,16 @@ export async function saveTimesheetPayrollSnapshotAction(
   return { ok: true, snapshotId: snapshot.id }
 }
 
-const attendanceRealStatusSchema = z.enum(['present', 'empty', 'sick', 'leave', 'absent', 'off'])
+const attendanceRealStatusSchema = z.enum([
+  'present',
+  'empty',
+  'sick',
+  'leave',
+  'absent',
+  'off',
+  'standby',
+  'field_break',
+])
 const saveAttendanceRealOverridesSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
@@ -2614,6 +2623,7 @@ const saveSchedulingConfigSchema = z.object({
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
   overtimeConfig: siteOvertimeConfigSchema,
+  pdfConfig: z.unknown().optional(),
 })
 
 export async function saveSchedulingConfigAction(
@@ -2648,6 +2658,7 @@ export async function saveSchedulingConfigAction(
         allowanceVariables: payload.allowanceVariables,
         overtimeVariables: payload.overtimeVariables,
         overtimeConfig: payload.overtimeConfig,
+        pdfConfig: payload.pdfConfig,
         savedByUserId,
         updatedAt: now,
       },

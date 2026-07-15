@@ -48,6 +48,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   applyAttendanceImportPreviewAction,
   clearAttendanceRealOverridesAction,
@@ -275,6 +276,7 @@ type SiteSchedulingConfig = {
   employeeBenefitConfig: EmployeeBenefitConfig
   quotationBillingConfig: QuotationBillingStatusConfig
   overtimeConfig: SiteOvertimeConfig
+  pdfConfig: PdfConfig
 }
 
 type SavedFieldBreakPlan = {
@@ -356,6 +358,20 @@ type OvertimeVariable = {
   dayType: 'work' | 'off'
   totalHours: number
   overtimeHours: number
+}
+
+type PdfConfigSigner = {
+  label: string
+  name: string
+  employeeId?: number | null
+}
+
+type PdfConfig = {
+  preparedBy: string
+  pjoLeader: string
+  approvedBy: string
+  customSigners: PdfConfigSigner[]
+  logoUrl: string
 }
 
 type BackupAssignment = {
@@ -453,6 +469,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   employeeBenefitConfig: DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   quotationBillingConfig: DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
   overtimeConfig: normalizeSiteOvertimeConfig(null),
+  pdfConfig: { preparedBy: '', pjoLeader: '', approvedBy: '', customSigners: [], logoUrl: '' },
 }
 
 function serializeSiteConfig(config: SiteSchedulingConfig) {
@@ -479,10 +496,12 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
     fieldBreakBreakDays,
     employeeBenefitConfig,
     quotationBillingConfig,
+    pdfConfig,
     ...dbConfig
   } = config
   return {
     dbConfig,
+    pdfConfig,
     fieldBreakConfig: {
       lokasiKhususEnabled,
       lokasiKhususRate,
@@ -508,6 +527,31 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       employeeBenefitConfig,
       quotationBillingConfig,
     },
+  }
+}
+
+function normalizePdfConfig(
+  raw: unknown,
+  currentEmployeeName: string,
+  siteId: string,
+  employees: EmployeeOption[],
+  sites: SiteOption[]
+): PdfConfig {
+  const cfg = (raw ?? {}) as Record<string, unknown>
+  const site = sites.find((s) => String(s.id) === siteId)
+  const headEmp = site?.headEmployeeId
+    ? (employees.find((e) => e.id === site.headEmployeeId)?.name ?? '')
+    : ''
+  const defaultApprovedBy = site ? `Plant. SPV Department (${site.name})` : ''
+  const customSigners = Array.isArray(cfg.customSigners)
+    ? (cfg.customSigners as PdfConfigSigner[])
+    : []
+  return {
+    preparedBy: (cfg.preparedBy as string) || currentEmployeeName,
+    pjoLeader: (cfg.pjoLeader as string) || headEmp,
+    approvedBy: (cfg.approvedBy as string) || defaultApprovedBy,
+    customSigners,
+    logoUrl: (cfg.logoUrl as string) || '',
   }
 }
 
@@ -843,6 +887,8 @@ function attendanceCellClass(status: AttendanceCellStatus) {
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
   if (status === 'off') return 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
+  if (status === 'standby') return 'bg-violet-100 text-violet-950 ring-1 ring-violet-200'
+  if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200'
   return 'bg-red-100 text-red-950 ring-1 ring-red-200'
 }
 
@@ -1040,6 +1086,7 @@ export function SchedulingTimesheetWorkspace({
     fieldBreakConfig?: unknown
     allowanceVariables?: unknown
     overtimeVariables?: unknown
+    pdfConfig?: unknown
   }>
   approvedSplWindows?: ApprovedSplWindow[]
   schedulingStatuses?: Array<{
@@ -1161,6 +1208,7 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceView, setAttendanceView] = useState<
     'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
   >('attendance')
+  const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -1259,15 +1307,22 @@ export function SchedulingTimesheetWorkspace({
     [holidays]
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
-  const pdfSignatures = useMemo(() => {
-    const pjoLeader = employees.find((employee) => employee.id === site?.headEmployeeId)?.name
-    return {
-      preparedBy: currentEmployeeName,
-      pjoLeader: pjoLeader || 'Belum diset di Master Data Site',
-      approvedBy: `Plant. SPV Department (${site?.name || 'Site'})`,
-    }
-  }, [currentEmployeeName, employees, site])
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
+  const pdfSignatures = useMemo(() => {
+    const cfg = siteConfig.pdfConfig
+    const pjoLeaderName =
+      cfg.pjoLeader ||
+      employees.find((employee) => employee.id === site?.headEmployeeId)?.name ||
+      'Belum diset di Master Data Site'
+    const approvedByName = cfg.approvedBy || `Plant. SPV Department (${site?.name || 'Site'})`
+    return {
+      preparedBy: cfg.preparedBy || currentEmployeeName,
+      pjoLeader: pjoLeaderName,
+      approvedBy: approvedByName,
+      customSigners: cfg.customSigners,
+      logoUrl: cfg.logoUrl,
+    }
+  }, [currentEmployeeName, employees, site, siteConfig.pdfConfig])
   const isThirteenOneRoster = siteConfig.rosterType === '13:1'
   const fieldBreakWorkCycleDays = isThirteenOneRoster ? siteConfig.fieldBreakWorkMonths * 7 : 90
   const fieldBreakRestDays = isThirteenOneRoster
@@ -1543,19 +1598,23 @@ export function SchedulingTimesheetWorkspace({
     )
     setManualAttendance(
       Object.fromEntries(
-        scoped.map((override) => [
-          attendanceKey(override.employeeId, override.day),
-          {
-            status: normalizeAttendanceStatus(override.status),
-            clockIn: override.clockIn,
-            clockOut: override.clockOut,
-            note: override.note,
-            source:
-              override.source === 'excel' || override.source === 'attendance'
-                ? override.source
-                : 'manual',
-          },
-        ])
+        scoped.map((override) => {
+          const status = normalizeAttendanceStatus(override.status)
+          const clearsTime = status === 'standby' || status === 'field_break'
+          return [
+            attendanceKey(override.employeeId, override.day),
+            {
+              status,
+              clockIn: clearsTime ? '' : override.clockIn,
+              clockOut: clearsTime ? '' : override.clockOut,
+              note: override.note,
+              source:
+                override.source === 'excel' || override.source === 'attendance'
+                  ? override.source
+                  : 'manual',
+            },
+          ]
+        })
       )
     )
     setAttendanceSavedAt(
@@ -1659,6 +1718,13 @@ export function SchedulingTimesheetWorkspace({
             fieldBreakConfig.quotationBillingConfig
           ),
           overtimeConfig: normalizeSiteOvertimeConfig(savedConfig.overtimeConfig),
+          pdfConfig: normalizePdfConfig(
+            savedConfig.pdfConfig,
+            currentEmployeeName,
+            siteId,
+            employees,
+            sites
+          ),
         }
       : defaultSiteConfig
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
@@ -2818,12 +2884,13 @@ export function SchedulingTimesheetWorkspace({
   async function saveSiteConfig() {
     if (!guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
-    const { dbConfig, fieldBreakConfig } = serializeSiteConfig(siteConfig)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     try {
       await saveSchedulingConfigAction({
         siteId: Number(siteId),
         ...dbConfig,
         fieldBreakConfig,
+        pdfConfig,
         allowanceVariables,
         overtimeVariables,
       })
@@ -2987,12 +3054,66 @@ export function SchedulingTimesheetWorkspace({
     setAllowanceVariables((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
+  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[]) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = current[siteId] ?? defaultSiteConfig
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: { ...currentConfig.pdfConfig, [key]: value },
+        },
+      }
+    })
+  }
+
+  function addCustomSigner() {
+    updatePdfConfig('customSigners', [
+      ...siteConfig.pdfConfig.customSigners,
+      { label: '', name: '', employeeId: null },
+    ])
+  }
+
+  function removeCustomSigner(index: number) {
+    updatePdfConfig(
+      'customSigners',
+      siteConfig.pdfConfig.customSigners.filter((_, i) => i !== index)
+    )
+  }
+
+  function updateCustomSigner(
+    index: number,
+    key: keyof PdfConfigSigner,
+    value: string | number | null
+  ) {
+    updatePdfConfig(
+      'customSigners',
+      siteConfig.pdfConfig.customSigners.map((s, i) => (i === index ? { ...s, [key]: value } : s))
+    )
+  }
+
+  function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo maksimal 2MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      updatePdfConfig('logoUrl', reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
   function saveAllowanceVariables() {
-    const { dbConfig, fieldBreakConfig } = serializeSiteConfig(siteConfig)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
       ...dbConfig,
       fieldBreakConfig,
+      pdfConfig,
       allowanceVariables,
       overtimeVariables,
     })
@@ -3000,11 +3121,12 @@ export function SchedulingTimesheetWorkspace({
 
   function resetAllowanceVariables() {
     setAllowanceVariables(defaultAllowanceVariables)
-    const { dbConfig, fieldBreakConfig } = serializeSiteConfig(siteConfig)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
       ...dbConfig,
       fieldBreakConfig,
+      pdfConfig,
       allowanceVariables: defaultAllowanceVariables,
       overtimeVariables,
     })
@@ -3039,11 +3161,12 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function saveOvertimeVariables() {
-    const { dbConfig, fieldBreakConfig } = serializeSiteConfig(siteConfig)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
       ...dbConfig,
       fieldBreakConfig,
+      pdfConfig,
       allowanceVariables,
       overtimeVariables,
     })
@@ -3051,11 +3174,12 @@ export function SchedulingTimesheetWorkspace({
 
   function resetOvertimeVariables() {
     setOvertimeVariables(defaultOvertimeVariables)
-    const { dbConfig, fieldBreakConfig } = serializeSiteConfig(siteConfig)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
       ...dbConfig,
       fieldBreakConfig,
+      pdfConfig,
       allowanceVariables,
       overtimeVariables: defaultOvertimeVariables,
     })
@@ -3589,9 +3713,15 @@ export function SchedulingTimesheetWorkspace({
   ) {
     if (!guardOpenPeriod('Edit attendance')) return
     const key = attendanceKey(employeeId, day)
+    const statusClearsTime = patch.status === 'standby' || patch.status === 'field_break'
     setManualAttendance((current) => ({
       ...current,
-      [key]: { ...getAttendanceCell(employeeId, day), source: 'manual', ...patch },
+      [key]: {
+        ...getAttendanceCell(employeeId, day),
+        source: 'manual',
+        ...patch,
+        ...(statusClearsTime ? { clockIn: '', clockOut: '' } : {}),
+      },
     }))
     setIsAttendanceDirty(true)
   }
@@ -3599,7 +3729,16 @@ export function SchedulingTimesheetWorkspace({
   function cycleAttendanceCell(employeeId: number, day: number) {
     if (!guardOpenPeriod('Edit attendance')) return
     const current = getAttendanceCell(employeeId, day)
-    const cycle: AttendanceCellStatus[] = ['present', 'off', 'sick', 'leave', 'absent', 'empty']
+    const cycle: AttendanceCellStatus[] = [
+      'present',
+      'off',
+      'standby',
+      'field_break',
+      'sick',
+      'leave',
+      'absent',
+      'empty',
+    ]
     const nextStatus = cycle[(cycle.indexOf(current.status) + 1) % cycle.length]
     updateAttendanceCell(employeeId, day, {
       status: nextStatus,
@@ -4121,6 +4260,29 @@ export function SchedulingTimesheetWorkspace({
         )
       : rows
 
+  useEffect(() => {
+    setSelectedOvertimeEmployeeIds([])
+  }, [period, siteId])
+
+  function toggleOvertimeEmployee(employeeId: number) {
+    setSelectedOvertimeEmployeeIds((current) =>
+      current.includes(employeeId)
+        ? current.filter((id) => id !== employeeId)
+        : [...current, employeeId]
+    )
+  }
+
+  function toggleAllOvertimeEmployees() {
+    const visibleIds = displayedAttendanceRows.map((row) => row.employee.id)
+    const allSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedOvertimeEmployeeIds.includes(id))
+    setSelectedOvertimeEmployeeIds((current) =>
+      allSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds]))
+    )
+  }
+
   function submitFinalizePeriod() {
     const numericSiteId = Number(siteId)
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) return
@@ -4158,76 +4320,81 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  async function buildEmployeeOvertimePdf(employee: EmployeeOption, showTotalOvertime = true) {
+    const { generateOvertimeRecordPdf, buildAttendanceDayData } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    const employeeRow = rows.find((row) => row.employee.id === employee.id)
+    const employeeSchedule = employeeRow?.schedule ?? []
+    const staff = isStaffRole(employee.role)
+    const dayData = buildAttendanceDayData({
+      period,
+      dayCount,
+      getCell: (day) => getAttendanceCell(employee.id, day),
+      getScheduleCode: (day) => employeeSchedule[day - 1] ?? 'IN',
+      holidays,
+      getOvertime: (day) => {
+        const cell = getAttendanceCell(employee.id, day)
+        return calculateDayOvertime(
+          employeeSchedule,
+          day,
+          cell.clockIn,
+          cell.clockOut,
+          staff,
+          employee.id
+        )
+      },
+    }).map((day) => {
+      const shiftKey = day.scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+      const dayKey = classifyOvertimePolicyDay({
+        schedule: employeeSchedule,
+        dayIndex: day.day - 1,
+        isHoliday: day.isHoliday,
+      })
+      const configuredIntervals = siteConfig.overtimeConfig.enabled
+        ? siteConfig.overtimeConfig[dayKey][shiftKey]
+        : []
+      const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
+      return {
+        ...day,
+        // ponytail: keep one shared builder for single and bulk downloads.
+        workingTimeFrom: day.isHoliday
+          ? ''
+          : useDay6WorkingTime
+            ? day.scheduleCode === 'NS'
+              ? siteConfig.day6NightShiftClockIn
+              : siteConfig.day6DayShiftClockIn
+            : day.scheduleCode === 'NS'
+              ? siteConfig.nightShiftClockIn
+              : siteConfig.dayShiftClockIn,
+        workingTimeTo: day.isHoliday
+          ? ''
+          : useDay6WorkingTime
+            ? day.scheduleCode === 'NS'
+              ? siteConfig.day6NightShiftClockOut
+              : siteConfig.day6DayShiftClockOut
+            : day.scheduleCode === 'NS'
+              ? siteConfig.nightShiftClockOut
+              : siteConfig.dayShiftClockOut,
+        configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
+      }
+    })
+    return generateOvertimeRecordPdf({
+      period,
+      employeeName: employee.name,
+      employeeSn: employee.employeeSn || '',
+      department: employee.department || '',
+      section: employee.section || '',
+      siteName: site?.name || '',
+      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      days: dayData,
+      isNonStaff: !staff,
+      showTotalOvertime,
+    })
+  }
+
   async function generateEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
-      const { generateOvertimeRecordPdf, buildAttendanceDayData } =
-        await import('@/lib/timesheet/generate-attendance-pdf')
-      const employeeRow = rows.find((row) => row.employee.id === employee.id)
-      const employeeSchedule = employeeRow?.schedule ?? []
-      const staff = isStaffRole(employee.role)
-      const dayData = buildAttendanceDayData({
-        period,
-        dayCount,
-        getCell: (day) => getAttendanceCell(employee.id, day),
-        getScheduleCode: (day) => employeeSchedule[day - 1] ?? 'IN',
-        holidays,
-        getOvertime: (day) => {
-          const cell = getAttendanceCell(employee.id, day)
-          return calculateDayOvertime(
-            employeeSchedule,
-            day,
-            cell.clockIn,
-            cell.clockOut,
-            staff,
-            employee.id
-          )
-        },
-      }).map((day) => {
-        const shiftKey = day.scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
-        const dayKey = classifyOvertimePolicyDay({
-          schedule: employeeSchedule,
-          dayIndex: day.day - 1,
-          isHoliday: day.isHoliday,
-        })
-        const configuredIntervals = siteConfig.overtimeConfig.enabled
-          ? siteConfig.overtimeConfig[dayKey][shiftKey]
-          : []
-        const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
-        return {
-          ...day,
-          // ponytail: holiday working time is intentionally blank; OT remains visible from site rules.
-          workingTimeFrom: day.isHoliday
-            ? ''
-            : useDay6WorkingTime
-              ? day.scheduleCode === 'NS'
-                ? siteConfig.day6NightShiftClockIn
-                : siteConfig.day6DayShiftClockIn
-              : day.scheduleCode === 'NS'
-                ? siteConfig.nightShiftClockIn
-                : siteConfig.dayShiftClockIn,
-          workingTimeTo: day.isHoliday
-            ? ''
-            : useDay6WorkingTime
-              ? day.scheduleCode === 'NS'
-                ? siteConfig.day6NightShiftClockOut
-                : siteConfig.day6DayShiftClockOut
-              : day.scheduleCode === 'NS'
-                ? siteConfig.nightShiftClockOut
-                : siteConfig.dayShiftClockOut,
-          configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
-        }
-      })
-      const pdf = await generateOvertimeRecordPdf({
-        period,
-        employeeName: employee.name,
-        employeeSn: employee.employeeSn || '',
-        department: employee.department || '',
-        section: employee.section || '',
-        siteName: site?.name || '',
-        signatures: { ...pdfSignatures, preparedBy: employee.name },
-        days: dayData,
-        isNonStaff: !staff,
-      })
+      const pdf = await buildEmployeeOvertimePdf(employee)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -4246,40 +4413,83 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
+  async function bulkDownloadOvertimePdf(showTotalOvertime: boolean) {
+    const selected = rows
+      .filter((row) => selectedOvertimeEmployeeIds.includes(row.employee.id))
+      .map((row) => row.employee)
+    if (!selected.length) {
+      toast.error('Pilih minimal satu karyawan untuk bulk download OT PDF.')
+      return
+    }
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+      for (const employee of selected) {
+        for (const pdf of [
+          await buildEmployeeOvertimePdf(employee, showTotalOvertime),
+          await buildEmployeeAllowancePdf(employee),
+        ]) {
+          const source = await PDFDocument.load(pdf)
+          const pages = await merged.copyPages(source, source.getPageIndices())
+          pages.forEach((page) => merged.addPage(page))
+        }
+      }
+      const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `OT_Benefit_Bulk_${period}_${showTotalOvertime ? 'dengan-total' : 'tanpa-total'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`${selected.length} karyawan: OT dan Benefit digabung selang-seling.`)
+    } catch (error) {
+      console.error('[Bulk PDF OT Error]', error)
+      toast.error('Bulk download PDF Overtime gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
+    const { generateSiteAllowancePdf, buildAttendanceDayData } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    const employeeRow = rows.find((row) => row.employee.id === employee.id)
+    if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
+    const dayData = buildAttendanceDayData({
+      period,
+      dayCount,
+      getCell: (day) => getAttendanceCell(employee.id, day),
+      getScheduleCode: (day) => employeeRow.schedule[day - 1] as string,
+      holidays,
+    }).map((day) => {
+      const allowance = getAllowanceAmounts(employeeRow, day.day)
+      return {
+        ...day,
+        msaAmount: allowance.msaAmount,
+        mealsAmount: allowance.mealsAmount,
+        specialAllowanceAmount: allowance.specialAllowanceAmount,
+        showMsa: siteConfig.msaType !== 'none' && allowance.rule.msa,
+        showMeals: siteConfig.mealsType !== 'none' && allowance.rule.meals,
+        showSpecialAllowance: allowance.rule.specialAllowance,
+      }
+    })
+    return generateSiteAllowancePdf({
+      period,
+      employeeName: employee.name,
+      employeeSn: employee.employeeSn || '',
+      department: employee.department || '',
+      section: employee.section || '',
+      siteName: site?.name || '',
+      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      days: dayData,
+    })
+  }
+
   async function generateEmployeeAllowancePdf(employee: EmployeeOption) {
     try {
-      const { generateSiteAllowancePdf, buildAttendanceDayData } =
-        await import('@/lib/timesheet/generate-attendance-pdf')
-      const employeeRow = rows.find((row) => row.employee.id === employee.id)
-      if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
-      const dayData = buildAttendanceDayData({
-        period,
-        dayCount,
-        getCell: (day) => getAttendanceCell(employee.id, day),
-        getScheduleCode: (day) => employeeRow.schedule[day - 1] as string,
-        holidays,
-      }).map((day) => {
-        const allowance = getAllowanceAmounts(employeeRow, day.day)
-        return {
-          ...day,
-          msaAmount: allowance.msaAmount,
-          mealsAmount: allowance.mealsAmount,
-          specialAllowanceAmount: allowance.specialAllowanceAmount,
-          showMsa: siteConfig.msaType !== 'none' && allowance.rule.msa,
-          showMeals: siteConfig.mealsType !== 'none' && allowance.rule.meals,
-          showSpecialAllowance: allowance.rule.specialAllowance,
-        }
-      })
-      const pdf = await generateSiteAllowancePdf({
-        period,
-        employeeName: employee.name,
-        employeeSn: employee.employeeSn || '',
-        department: employee.department || '',
-        section: employee.section || '',
-        siteName: site?.name || '',
-        signatures: { ...pdfSignatures, preparedBy: employee.name },
-        days: dayData,
-      })
+      const pdf = await buildEmployeeAllowancePdf(employee)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -4362,6 +4572,8 @@ export function SchedulingTimesheetWorkspace({
       { Status: 'Sakit', Keterangan: 'Cell kuning.' },
       { Status: 'Izin', Keterangan: 'Cell biru.' },
       { Status: 'Alpha', Keterangan: 'Cell rose.' },
+      { Status: 'ST', Keterangan: 'Standby.' },
+      { Status: 'GB', Keterangan: 'Field Break.' },
       { Status: '-', Keterangan: 'Kosong / belum ada data.' },
     ]
     const XLSX = await import('xlsx')
@@ -4393,6 +4605,8 @@ export function SchedulingTimesheetWorkspace({
             leave: 0,
             absent: 0,
             off: 0,
+            standby: 0,
+            field_break: 0,
           } as Record<AttendanceCellStatus, number>
         )
       : ({
@@ -4403,6 +4617,8 @@ export function SchedulingTimesheetWorkspace({
           leave: 0,
           absent: 0,
           off: 0,
+          standby: 0,
+          field_break: 0,
         } as Record<AttendanceCellStatus, number>)
 
   // Source summary stats for AttendanceSummaryBar (Req 7.1, 7.2, 7.5)
@@ -4532,12 +4748,15 @@ export function SchedulingTimesheetWorkspace({
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
     const scheduleCode = row.schedule[day - 1] as string
+    const attendanceStatus = getAttendanceCell(row.employee.id, day).status
     const isFieldBreakDay =
-      scheduleCode === 'FB' || (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+      scheduleCode === 'FB' ||
+      attendanceStatus === 'field_break' ||
+      (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
     return {
-      eligibleMsa: isMsaEligibleDay(scheduleCode, scheduleCode === 'FB'),
+      eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
       // ponytail: Meals follows the roster; inferred attendance gaps must not cancel DS/NS meals.
-      eligibleMeals: isMsaEligibleDay(scheduleCode, scheduleCode === 'FB'),
+      eligibleMeals: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
     }
   }
 
@@ -5983,6 +6202,148 @@ export function SchedulingTimesheetWorkspace({
                     </table>
                   </div>
                 </div>
+                <div className="border-border/30 border-t px-4 py-4">
+                  <div className="mb-3">
+                    <p className="font-display text-foreground text-sm font-semibold">
+                      Konfigurasi PDF &amp; Tanda Tangan
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
+                      Site Allowance.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Dibuat oleh
+                      </Label>
+                      <Input
+                        value={siteConfig.pdfConfig.preparedBy}
+                        onChange={(e) => updatePdfConfig('preparedBy', e.target.value)}
+                        placeholder={currentEmployeeName}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        PJO / Leader
+                      </Label>
+                      <SearchableSelect
+                        label="PJO Leader"
+                        value={
+                          employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)?.id
+                            ? String(
+                                employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)!.id
+                              )
+                            : ''
+                        }
+                        onValueChange={(v) => {
+                          const e = employees.find((x) => String(x.id) === v)
+                          updatePdfConfig('pjoLeader', e?.name ?? '')
+                        }}
+                        options={employees.map((e) => ({ value: String(e.id), label: e.name }))}
+                        placeholder="Cari PJO/Leader..."
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Approved by
+                      </Label>
+                      <Input
+                        value={siteConfig.pdfConfig.approvedBy}
+                        onChange={(e) => updatePdfConfig('approvedBy', e.target.value)}
+                        placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-foreground text-xs font-semibold">
+                        Penandatangan Tambahan
+                      </p>
+                      <Button size="sm" variant="outline" onClick={addCustomSigner}>
+                        + Tambah TTD
+                      </Button>
+                    </div>
+                    {siteConfig.pdfConfig.customSigners.length > 0 ? (
+                      <div className="overflow-auto">
+                        <table className="w-full min-w-[500px] text-sm">
+                          <thead>
+                            <tr className="bg-surface-container-low text-muted-foreground text-left text-[10px] tracking-[0.12em] uppercase">
+                              <th className="px-3 py-2 font-medium">Label</th>
+                              <th className="px-3 py-2 font-medium">Nama</th>
+                              <th className="w-20 px-3 py-2 font-medium">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {siteConfig.pdfConfig.customSigners.map((s, i) => (
+                              <tr
+                                key={`pdfsig-${i}`}
+                                className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                              >
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={s.label}
+                                    onChange={(e) => updateCustomSigner(i, 'label', e.target.value)}
+                                    placeholder="Misal: Mengetahui"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={s.name}
+                                    onChange={(e) => updateCustomSigner(i, 'name', e.target.value)}
+                                    placeholder="Ketik nama penandatangan"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => removeCustomSigner(i)}
+                                  >
+                                    <X className="size-3.5" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-foreground mb-2 text-xs font-semibold">Logo Customer</p>
+                    <p className="text-muted-foreground mb-3 text-xs">
+                      Upload logo customer. Muncul di pojok kanan PDF. Format PNG/JPG, maks 2MB.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <label className="bg-surface-container-low hover:bg-surface-container-high flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
+                        <Upload className="size-4" /> Pilih Logo
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          className="hidden"
+                          onChange={handleLogoUpload}
+                        />
+                      </label>
+                      {siteConfig.pdfConfig.logoUrl ? (
+                        <div className="relative inline-flex">
+                          <img
+                            src={siteConfig.pdfConfig.logoUrl}
+                            alt="Customer Logo"
+                            className="h-14 w-auto rounded-lg border object-contain"
+                          />
+                          <button
+                            type="button"
+                            className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-rose-600 text-white hover:bg-rose-700"
+                            onClick={() => updatePdfConfig('logoUrl', '')}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </Card>
             </DialogContent>
           </Dialog>
@@ -6630,6 +6991,32 @@ export function SchedulingTimesheetWorkspace({
                     </div>
                   </div>
                 </Card>
+                <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
+                  <div className="text-muted-foreground text-xs">
+                    <span className="text-foreground font-semibold">
+                      {selectedOvertimeEmployeeIds.length} karyawan dipilih
+                    </span>{' '}
+                    untuk bulk download OT PDF
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={selectedOvertimeEmployeeIds.length === 0}
+                      onClick={() => void bulkDownloadOvertimePdf(true)}
+                    >
+                      <Download className="mr-2 size-4" /> OT + Benefit · Total Overtime
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={selectedOvertimeEmployeeIds.length === 0}
+                      onClick={() => void bulkDownloadOvertimePdf(false)}
+                    >
+                      <Download className="mr-2 size-4" /> OT + Benefit · tanpa Total Overtime
+                    </Button>
+                  </div>
+                </Card>
                 {lastImportSuccess ? (
                   <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
                     <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
@@ -6969,7 +7356,21 @@ export function SchedulingTimesheetWorkspace({
                       <thead>
                         <tr className="bg-surface-container-low text-muted-foreground text-left tracking-[0.12em] uppercase">
                           <th className="bg-surface-container-low sticky left-0 z-30 w-[220px] min-w-[220px] px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
-                            Nama
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                aria-label="Pilih semua karyawan untuk bulk OT PDF"
+                                checked={
+                                  displayedAttendanceRows.length > 0 &&
+                                  displayedAttendanceRows.every((row) =>
+                                    selectedOvertimeEmployeeIds.includes(row.employee.id)
+                                  )
+                                }
+                                onChange={toggleAllOvertimeEmployees}
+                                className="accent-primary size-3.5"
+                              />
+                              Nama
+                            </label>
                           </th>
                           {days.map((day) => {
                             const holiday = holidaysByDay.get(day)
@@ -7047,11 +7448,24 @@ export function SchedulingTimesheetWorkspace({
                                         className={`text-foreground sticky left-0 z-20 min-w-[220px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                       >
                                         <div className="flex items-center justify-between gap-1">
-                                          <div>
-                                            {row.employee.name}
-                                            <p className="text-muted-foreground text-[10px] font-normal">
-                                              {row.employee.section || row.employee.role}
-                                            </p>
+                                          <div className="flex items-start gap-2">
+                                            <input
+                                              type="checkbox"
+                                              aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
+                                              checked={selectedOvertimeEmployeeIds.includes(
+                                                row.employee.id
+                                              )}
+                                              onChange={() =>
+                                                toggleOvertimeEmployee(row.employee.id)
+                                              }
+                                              className="accent-primary mt-0.5 size-3.5 shrink-0"
+                                            />
+                                            <div>
+                                              {row.employee.name}
+                                              <p className="text-muted-foreground text-[10px] font-normal">
+                                                {row.employee.section || row.employee.role}
+                                              </p>
+                                            </div>
                                           </div>
                                           <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
                                             <button
@@ -7112,6 +7526,7 @@ export function SchedulingTimesheetWorkspace({
                                           // Check if this day is in a Field Break period (14+ days no attendance)
                                           const isFieldBreakDay =
                                             scheduleCode === 'FB' ||
+                                            cell.status === 'field_break' ||
                                             (fieldBreakDaysByEmployee
                                               .get(row.employee.id)
                                               ?.has(day) ??
@@ -7152,7 +7567,7 @@ export function SchedulingTimesheetWorkspace({
                                             ) {
                                               cellValue = '-'
                                               cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (scheduleCode === 'FB') {
+                                            } else if (isFieldBreakDay) {
                                               cellValue = 'FB'
                                               cellBg = 'bg-purple-50 text-purple-700'
                                             } else {
@@ -7194,7 +7609,7 @@ export function SchedulingTimesheetWorkspace({
                                             ) {
                                               cellValue = '-'
                                               cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (scheduleCode === 'FB') {
+                                            } else if (isFieldBreakDay) {
                                               cellValue = 'FB'
                                               cellBg = 'bg-purple-50 text-purple-700'
                                             } else {
@@ -7396,7 +7811,8 @@ export function SchedulingTimesheetWorkspace({
                                               }
 
                                               // Skip Field Break days for MSA/Meals
-                                              const isFbPeriod = code === 'FB'
+                                              const isFbPeriod =
+                                                code === 'FB' || cell.status === 'field_break'
                                               if (
                                                 isFbPeriod &&
                                                 (attendanceView === 'msa' ||
@@ -8300,6 +8716,8 @@ export function SchedulingTimesheetWorkspace({
                     options={[
                       { value: 'present', label: 'Masuk' },
                       { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
+                      { value: 'standby', label: 'Standby (ST)' },
+                      { value: 'field_break', label: 'Field Break (GB)' },
                       { value: 'sick', label: 'Sakit' },
                       { value: 'leave', label: 'Izin' },
                       { value: 'absent', label: 'Alpha' },

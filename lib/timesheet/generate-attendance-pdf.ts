@@ -1,6 +1,10 @@
 import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
 import type { OvertimeCalculationResult, OvertimeInterval } from '@/lib/timesheet/overtime-policy'
-import { drawPdfSignatures, type PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
+import {
+  drawPdfSignatures,
+  embedCustomLogo,
+  type PdfSignatureNames,
+} from '@/lib/timesheet/pdf-signatures'
 
 type AttendanceDayData = {
   day: number
@@ -33,6 +37,7 @@ type OvertimeRecordInput = {
   signatures: PdfSignatureNames
   days: AttendanceDayData[]
   isNonStaff: boolean
+  showTotalOvertime?: boolean
 }
 
 type SiteAllowanceInput = {
@@ -105,6 +110,7 @@ function drawCell(
     color?: ReturnType<typeof rgb>
     bgColor?: ReturnType<typeof rgb>
     borderColor?: ReturnType<typeof rgb>
+    wrap?: boolean
   }
 ) {
   const opts = options ?? {}
@@ -118,14 +124,62 @@ function drawCell(
   if (opts.text && opts.font) {
     const fontSize = opts.fontSize ?? 8
     const textColor = opts.color ?? rgb(0, 0, 0)
-    const cleanText = opts.text.replace(/[\n\r\t]/g, ' ').trim()
+    const cleanText = opts.text.replace(/[\r\t]/g, ' ').trim()
     if (!cleanText) return
-    const textWidth = opts.font.widthOfTextAtSize(cleanText, fontSize)
+    if (opts.wrap) {
+      const maxWidth = Math.max(1, w - 6)
+      const lineHeight = fontSize
+      const maxLines = Math.max(1, Math.floor((h - 1) / lineHeight))
+      const lines: string[] = []
+      for (const paragraph of cleanText.split('\n')) {
+        let line = ''
+        for (const word of paragraph.split(/\s+/)) {
+          const next = line ? `${line} ${word}` : word
+          if (line && opts.font.widthOfTextAtSize(next, fontSize) > maxWidth) {
+            lines.push(line)
+            line = word
+          } else {
+            line = next
+          }
+        }
+        if (line) lines.push(line)
+      }
+      const visibleLines = lines.slice(0, maxLines)
+      if (lines.length > maxLines && visibleLines.length) {
+        const last = visibleLines.length - 1
+        while (
+          visibleLines[last].length > 1 &&
+          opts.font.widthOfTextAtSize(`${visibleLines[last]}…`, fontSize) > maxWidth
+        ) {
+          visibleLines[last] = visibleLines[last].slice(0, -1)
+        }
+        visibleLines[last] = `${visibleLines[last]}…`
+      }
+      const firstY = y + (h + lineHeight * (visibleLines.length - 1)) / 2 - fontSize + 1
+      visibleLines.forEach((line, index) => {
+        const textWidth = opts.font!.widthOfTextAtSize(line, fontSize)
+        const textX =
+          opts.align === 'center'
+            ? x + (w - textWidth) / 2
+            : opts.align === 'right'
+              ? x + w - textWidth - 4
+              : x + 4
+        page.drawText(line, {
+          x: textX,
+          y: firstY - index * lineHeight,
+          font: opts.font!,
+          size: fontSize,
+          color: textColor,
+        })
+      })
+      return
+    }
+    const textWidth = opts.font.widthOfTextAtSize(cleanText.replace(/\n/g, ' '), fontSize)
     let textX = x + 4
     if (opts.align === 'center') textX = x + (w - textWidth) / 2
-    else if (opts.align === 'right') textX = x + w - textWidth - 4
+    else if (opts.align === 'right') textX = x - textWidth + w - 4
     const textY = y + (h - fontSize) / 2 + 1
-    page.drawText(cleanText, {
+    page.drawText(cleanText.replace(/\n/g, ' '), {
       x: textX,
       y: textY,
       font: opts.font,
@@ -171,6 +225,18 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   if (logo) {
     page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
   }
+  // Customer logo on right side
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
   const title1 = 'PT. CHITRA PARATAMA'
   const title2 = 'OVER TIME RECORD'
   page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
@@ -204,7 +270,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
   // === TABLE ===
   const rowH = 15
-  const cols = [30, 60, 50, 45, 50, 50, 50, 50, 150]
+  const cols =
+    input.showTotalOvertime === false
+      ? [30, 60, 50, 45, 50, 50, 0, 50, 150]
+      : [30, 60, 50, 45, 50, 50, 50, 50, 150]
   const totalTableW = cols.reduce((s, c) => s + c, 0)
   const tableStartX = (width - totalTableW) / 2
   const colX: number[] = []
@@ -266,12 +335,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     fontSize: 7,
     align: 'center',
   })
-  drawCell(page, colX[6], y - hH, cols[6], hH, {
-    text: 'Total\nOvertime',
-    font: fontBold,
-    fontSize: 7,
-    align: 'center',
-  })
+  if (input.showTotalOvertime !== false) {
+    drawCell(page, colX[6], y - hH, cols[6], hH, {
+      text: 'Total\nOvertime',
+      font: fontBold,
+      fontSize: 7,
+      align: 'center',
+    })
+  }
   drawCell(page, colX[7], y - hH, cols[7], hH, {
     text: 'WD',
     font: fontBold,
@@ -294,6 +365,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     const isOff =
       day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+    const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const overtime = input.isNonStaff ? day.overtime : undefined
     const ot = input.isNonStaff
@@ -325,7 +397,12 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       color: dayColor,
     })
 
-    if (isOff && !day.clockIn) {
+    if (isStatusWithoutTime) {
+      drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
+      drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
+      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
+      drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
+    } else if (isOff && !day.clockIn) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: 'OFF',
         font: fontBold,
@@ -381,13 +458,15 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
     }
 
-    drawCell(page, colX[6], y, cols[6], rowH, {
-      text: ot > 0 ? String(Math.round(ot * 100) / 100) : '',
-      font: fontBold,
-      fontSize: 8,
-      align: 'center',
-      bgColor,
-    })
+    if (input.showTotalOvertime !== false) {
+      drawCell(page, colX[6], y, cols[6], rowH, {
+        text: ot > 0 ? String(Math.round(ot * 100) / 100) : '',
+        font: fontBold,
+        fontSize: 8,
+        align: 'center',
+        bgColor,
+      })
+    }
     drawCell(page, colX[7], y, cols[7], rowH, { bgColor })
 
     let remark = ''
@@ -395,7 +474,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     if (overtime?.unauthorizedMinutes) {
       remark = remark ? `${remark} / Perlu SPL` : 'Perlu SPL'
     }
-    if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName
+    if (!remark && day.status === 'standby') remark = 'ST'
+    else if (!remark && day.status === 'field_break') remark = 'FB'
+    else if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName
     else if (!remark && day.status === 'sick') remark = 'SICK'
     else if (!remark && day.status === 'leave') remark = 'IJIN'
     else if (!remark && day.status === 'absent') remark = 'ALPA'
@@ -410,8 +491,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[8], y, cols[8], rowH, {
       text: remark,
       font,
-      fontSize: 7,
+      fontSize: 6,
       align: 'left',
+      wrap: true,
       bgColor,
       color: rc,
     })
@@ -428,14 +510,16 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     align: 'center',
     bgColor: tBg,
   })
-  drawCell(page, colX[6], y, cols[6], rowH, {
-    text: String(Math.round(totalOT * 10) / 10),
-    font: fontBold,
-    fontSize: 10,
-    align: 'center',
-    bgColor: tBg,
-    color: rgb(0, 0.5, 0),
-  })
+  if (input.showTotalOvertime !== false) {
+    drawCell(page, colX[6], y, cols[6], rowH, {
+      text: String(Math.round(totalOT * 10) / 10),
+      font: fontBold,
+      fontSize: 10,
+      align: 'center',
+      bgColor: tBg,
+      color: rgb(0, 0.5, 0),
+    })
+  }
   drawCell(page, colX[7], y, cols[7], rowH, { bgColor: tBg })
   drawCell(page, colX[8], y, cols[8], rowH, { bgColor: tBg })
 
@@ -464,6 +548,18 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   // === LOGO (with padding from edge) + HEADER (centered) ===
   if (logo) {
     page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  // Customer logo on right side
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
   }
   const title1 = 'PT. CHITRA PARATAMA'
   const title2 = 'PAYABLE SITE ALLOWANCE'
@@ -714,13 +810,16 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
 
     // Remarks
     let remark = ''
-    if (day.isHoliday && day.holidayName) remark = day.holidayName
+    if (day.status === 'standby') remark = 'ST'
+    else if (day.status === 'field_break') remark = 'FB'
+    else if (day.isHoliday && day.holidayName) remark = day.holidayName
     else if (isOff) remark = day.scheduleCode
     drawCell(page, colX[5], y, cols[5], rowH, {
       text: remark,
       font,
-      fontSize: 7,
+      fontSize: 5.5,
       align: 'left',
+      wrap: true,
       bgColor,
     })
   }
