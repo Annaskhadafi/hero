@@ -1,5 +1,6 @@
-import { getSessionDetail, getMessages, getCurrentEmployee } from "@/app/actions/hr-counseling";
+import { getSessionDetail, getMessages, getCurrentEmployee, getTicketForwardOptions } from "@/app/actions/hr-counseling";
 import ChatClient from "@/app/dashboard/curhat/[sessionId]/chat-client";
+import { HrForwardTicketForm } from "@/components/dashboard/hr-forward-ticket-form";
 import { redirect } from "next/navigation";
 
 export default async function HrCounselingSessionPage({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -13,6 +14,7 @@ export default async function HrCounselingSessionPage({ params }: { params: Prom
   const session = await getSessionDetail(sessionId);
   if (!session) redirect("/dashboard/hr-counseling");
   const messages = await getMessages(sessionId);
+  const forwardOptions = await getTicketForwardOptions();
 
     return (
       <ChatClient
@@ -20,6 +22,7 @@ export default async function HrCounselingSessionPage({ params }: { params: Prom
         initialMessages={messages}
         currentUserId={currentEmployee.id}
         isHrView={true}
+        forwardOptions={forwardOptions}
       />
     );
   }

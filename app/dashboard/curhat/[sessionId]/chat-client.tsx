@@ -11,6 +11,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getHrTicketStatus } from "@/lib/hr-ticket-status";
+import { HrForwardTicketForm } from "@/components/dashboard/hr-forward-ticket-form";
 
 type Message = {
   id: number;
@@ -30,6 +32,7 @@ type Session = {
   userId: number;
   userName: string;
   category: string;
+  ticketNumber?: string | null;
   status: string;
 };
 
@@ -45,6 +48,7 @@ export default function ChatClient({
   currentUserId: number;
   isHrView?: boolean;
   backPath?: string;
+  forwardOptions?: { sections: Array<{ id: number; name: string }>; pics: Array<{ id: number; name: string; sectionId: number | null; sectionName: string | null }> };
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
@@ -205,11 +209,11 @@ export default function ChatClient({
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold leading-none">{chatPartnerName}</h1>
-                <Badge variant={session.status === "open" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4">
-                  {session.status === "open" ? "Aktif" : "Selesai"}
+                <Badge className={`text-[10px] px-1.5 py-0 h-4 ${getHrTicketStatus(session.status).className}`}>
+                  {getHrTicketStatus(session.status).label}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-1 truncate max-w-[200px] md:max-w-xs">Kategori: {session.category}</p>
+              <p className="text-xs text-muted-foreground mt-1 truncate max-w-[240px] md:max-w-xs">{session.ticketNumber ?? `HR-${session.id}`} · {session.category}</p>
             </div>
           </div>
           {session.status === "open" && (
@@ -219,6 +223,8 @@ export default function ChatClient({
             </Button>
           )}
         </div>
+
+        {isHrView && forwardOptions && <HrForwardTicketForm sessionId={session.id} {...forwardOptions} />}
 
         {/* Chat Area */}
         <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/40 dark:bg-background">

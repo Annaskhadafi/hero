@@ -17,6 +17,7 @@ export const hrCounselingSessions = pgTable("hero_hr_counseling_sessions", {
     .notNull()
     .references(() => employees.id, { onDelete: "cascade" }),
   category: text("category").notNull(),
+  ticketNumber: text("ticket_number"),
   status: text("status").notNull().default("open"),
   closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

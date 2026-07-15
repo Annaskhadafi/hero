@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { ApdRequestForm } from "@/app/dashboard/apd/new/apd-form";
+import { fetchApdItemOptions } from "@/lib/apd-data";
 
 export default async function MobileNewApdPage() {
   const session = await getServerSession();
@@ -31,6 +32,11 @@ export default async function MobileNewApdPage() {
 
   if (!employeeProfile) return notFound();
 
+  const [toolsOptions, materialOptions] = await Promise.all([
+    fetchApdItemOptions("TOOLS"),
+    fetchApdItemOptions("MATERIAL"),
+  ]);
+
   return (
     <div className="space-y-4 pb-6">
       {/* Header */}
@@ -46,18 +52,20 @@ export default async function MobileNewApdPage() {
           </Link>
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Form Pengajuan</p>
-            <h1 className="mt-0.5 text-lg font-bold tracking-tight">Ajukan APD</h1>
+            <h1 className="mt-0.5 text-lg font-bold tracking-tight">Ajukan Request Barang</h1>
           </div>
         </div>
       </section>
 
       {/* Form Container */}
-      <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <section className="-mx-4 w-[calc(100%+2rem)] rounded-xl border-0 bg-transparent p-0 shadow-none">
         <ApdRequestForm 
           employeeName={employeeProfile.name}
           employeeSn={employeeProfile.employeeSn}
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
+          itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          mobileWide
         />
       </section>
     </div>

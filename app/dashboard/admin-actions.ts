@@ -3766,13 +3766,23 @@ async function applyApprovalDecision(params: {
     const now = new Date()
     const decisionStatus =
       params.decision === 'approved'
-        ? 'approved'
+        ? 'proses_order'
         : params.decision === 'rejected'
-          ? 'rejected'
+          ? 'cancel'
           : 'needs_correction'
     const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
 
     await db.transaction(async (tx) => {
+      const nextStep = approvalRoute?.steps?.find(
+        (s: any) => s.stepOrder === (approval.level ?? 0) + 1
+      )
+      const requestStatus =
+        decisionStatus === 'cancel'
+          ? 'cancel'
+          : decisionStatus === 'needs_correction' || nextStep
+            ? 'pending_approval'
+            : 'proses_order'
+
       await tx
         .update(approvals)
         .set({
@@ -3788,33 +3798,25 @@ async function applyApprovalDecision(params: {
         })
         .where(eq(approvals.id, approval.approvalId))
 
-      if (
-        (decisionStatus === 'approved' || decisionStatus === 'rejected') &&
-        approval.apdRequestId != null
-      ) {
+      if (approval.apdRequestId != null) {
         await tx
           .update(apdRequests)
-          .set({ status: decisionStatus, updatedAt: now })
+          .set({ status: requestStatus, updatedAt: now })
           .where(eq(apdRequests.id, approval.apdRequestId))
       }
 
-      if (decisionStatus === 'approved' && approvalRoute?.steps && approval.apdRequestId != null) {
-        const nextStep = approvalRoute.steps.find(
-          (s: any) => s.stepOrder === (approval.level ?? 0) + 1
-        )
-        if (nextStep) {
-          await tx.insert(approvals).values({
-            apdRequestId: approval.apdRequestId,
-            level: nextStep.stepOrder,
-            approverName: nextStep.approverName,
-            approverEmployeeId: nextStep.approverEmployeeId,
-            approvalStepId: nextStep.approvalMatrixStepId,
-            resolutionSource: nextStep.resolutionSource,
-            status: 'pending' as const,
-            submittedAt: now,
-            routeSnapshot: approval.routeSnapshot,
-          })
-        }
+      if (decisionStatus === 'proses_order' && approval.apdRequestId != null && nextStep) {
+        await tx.insert(approvals).values({
+          apdRequestId: approval.apdRequestId,
+          level: nextStep.stepOrder,
+          approverName: nextStep.approverName,
+          approverEmployeeId: nextStep.approverEmployeeId,
+          approvalStepId: nextStep.approvalMatrixStepId,
+          resolutionSource: nextStep.resolutionSource,
+          status: 'pending' as const,
+          submittedAt: now,
+          routeSnapshot: approval.routeSnapshot,
+        })
       }
     })
     return true

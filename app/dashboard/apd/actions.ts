@@ -8,12 +8,15 @@ import { sendApdRequestSubmittedEmail } from "@/lib/apd-email";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
+import { normalizeApdRequestCategory, normalizeApdRequestStatus } from "@/lib/apd-status";
+import { ensureApdRequestSchema } from "@/lib/apd-data";
 
 export async function submitApdRequest(formData: FormData) {
   const currentEmployee = await getCurrentEmployee();
   if (!currentEmployee) {
     throw new Error("Unauthorized");
   }
+  await ensureApdRequestSchema();
   
   const rawItems = formData.get("items") as string;
   if (!rawItems) {
@@ -27,6 +30,20 @@ export async function submitApdRequest(formData: FormData) {
     quantity: number;
     notes: string;
   }>;
+  const requestCategory = normalizeApdRequestCategory(String(formData.get("requestCategory") ?? ""));
+  if (!requestCategory) throw new Error("Jenis request tidak valid");
+
+  const normalizedItems = Array.isArray(items)
+    ? items.map((item) => ({
+        ...item,
+        itemType: requestCategory === "APD"
+          ? String(item.itemType ?? "").trim()
+          : String(item.itemType ?? "").trim().toUpperCase(),
+      }))
+    : [];
+  if (normalizedItems.length === 0 || normalizedItems.some((item) => !item.itemType)) {
+    throw new Error("Minimal satu nama barang wajib diisi");
+  }
   
   const notes = (formData.get("notes") as string) || "";
   const signatureUrl = formData.get("signatureUrl") as string;
@@ -44,16 +61,17 @@ export async function submitApdRequest(formData: FormData) {
         requestNumber,
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? 0,
-        status: "pending",
+        requestCategory,
+        status: "pending_approval",
         notes,
         signatureUrl,
       })
       .returning();
 
     // 2. Insert items
-    if (items.length > 0) {
+    if (normalizedItems.length > 0) {
       await tx.insert(apdRequestItems).values(
-        items.map((item) => ({
+        normalizedItems.map((item) => ({
           requestId: request.id,
           itemType: item.itemType,
           requestType: item.requestType,
@@ -80,7 +98,7 @@ export async function submitApdRequest(formData: FormData) {
       const payloadSnapshot = JSON.stringify({
         title: `Permintaan APD ${requestNumber}`,
         reason: notes,
-        items,
+        items: normalizedItems,
       });
       
       const previewSnapshot = JSON.stringify({
@@ -165,6 +183,25 @@ export async function deleteApdRequest(id: number) {
   await db.delete(apdRequests).where(eq(apdRequests.id, id));
 
   revalidatePath("/dashboard/apd");
+  revalidatePath("/dashboard/approval");
+  return { success: true };
+}
+
+export async function updateApdRequestStatus(id: number, rawStatus: string) {
+  const currentEmployee = await getCurrentEmployee();
+  if (!currentEmployee || !["admin", "superadmin"].includes(currentEmployee.role)) {
+    throw new Error("Anda tidak memiliki akses untuk mengubah status permintaan APD");
+  }
+
+  const status = normalizeApdRequestStatus(rawStatus);
+  if (!status) throw new Error("Status APD tidak valid");
+
+  const [request] = await db.select({ id: apdRequests.id }).from(apdRequests).where(eq(apdRequests.id, id));
+  if (!request) throw new Error("Request tidak ditemukan");
+
+  await db.update(apdRequests).set({ status, updatedAt: new Date() }).where(eq(apdRequests.id, id));
+  revalidatePath("/dashboard/apd");
+  revalidatePath(`/dashboard/apd/${id}`);
   revalidatePath("/dashboard/approval");
   return { success: true };
 }

@@ -16,10 +16,10 @@ function SubmitButton() {
       {pending ? (
         <>
           <Loader2 className="mr-2 size-4 animate-spin" />
-          Membuat sesi...
+          Membuat tiket...
         </>
       ) : (
-        "Mulai Chat"
+        "Buat Tiket"
       )}
     </Button>
   )
@@ -31,12 +31,12 @@ export function CurhatCreateForm({ hrList, createSessionAction }: { hrList: HrPe
       <DialogTrigger asChild>
         <Button className="w-full h-14 rounded-2xl text-md font-bold shadow-lg" size="lg">
           <PlusCircle className="mr-2 h-5 w-5" />
-          Mulai Konsultasi Baru
+          Buat Pengaduan Baru
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md mx-4 rounded-3xl p-6">
         <DialogHeader>
-          <DialogTitle className="text-xl">Mulai Sesi Curhat Baru</DialogTitle>
+          <DialogTitle className="text-xl">Buat Tiket Pengaduan</DialogTitle>
         </DialogHeader>
         <form action={createSessionAction}>
           <div className="grid gap-5 py-4">
@@ -56,7 +56,7 @@ export function CurhatCreateForm({ hrList, createSessionAction }: { hrList: HrPe
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="category" className="text-sm font-semibold text-[#486275]">Kategori Masalah</Label>
+              <Label htmlFor="category" className="text-sm font-semibold text-[#486275]">Kategori Pengaduan</Label>
               <Select name="category" required>
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue placeholder="Pilih Kategori..." />

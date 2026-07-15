@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { fetchApdItemOptions } from "@/lib/apd-data";
 
 export default async function NewApdRequestPage() {
   const currentEmployee = await getCurrentEmployee();
@@ -25,11 +26,16 @@ export default async function NewApdRequestPage() {
 
   if (!employeeProfile) return notFound();
 
+  const [toolsOptions, materialOptions] = await Promise.all([
+    fetchApdItemOptions("TOOLS"),
+    fetchApdItemOptions("MATERIAL"),
+  ]);
+
   return (
     <AdminPageShell
       eyebrow="Form Permintaan"
-      title="Ajukan APD Baru / Pergantian"
-      description="Isi form di bawah ini untuk mengajukan permintaan Alat Pelindung Diri (APD). Jika memilih pergantian, Anda diwajibkan melampirkan foto barang yang rusak/usang."
+      title="Ajukan Request Barang"
+      description="Pilih tab Request APD, Request Tools, atau Request Material. Barang baru otomatis disimpan sebagai pilihan berikutnya."
     >
       <div className="mx-auto max-w-4xl pt-6">
         <ApdRequestForm 
@@ -37,6 +43,7 @@ export default async function NewApdRequestPage() {
           employeeSn={employeeProfile.employeeSn}
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
+          itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
         />
       </div>
     </AdminPageShell>

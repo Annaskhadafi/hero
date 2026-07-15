@@ -1,13 +1,15 @@
 import { getMySessions, getHrPersonnel, createSession } from "@/app/actions/hr-counseling";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { PlusCircle, MessageSquare } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { redirect } from "next/navigation";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getHrTicketStatus } from "@/lib/hr-ticket-status";
 
 export default async function CurhatPage() {
   const sessions = await getMySessions();
@@ -27,23 +29,23 @@ export default async function CurhatPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
+    <div className="container mx-auto w-full max-w-none p-4">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Curhat Dengan HR</h1>
-          <p className="text-muted-foreground">Konsultasi pribadi dan aman dengan tim HR.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Pengaduan</h1>
+          <p className="text-muted-foreground">Sampaikan pengaduan secara aman kepada tim HR.</p>
         </div>
         
         <Dialog>
           <DialogTrigger asChild>
             <Button>
               <PlusCircle className="mr-2 h-4 w-4" />
-              Mulai Sesi Baru
+              Buat Pengaduan Baru
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Mulai Sesi Curhat Baru</DialogTitle>
+              <DialogTitle>Buat Tiket Pengaduan</DialogTitle>
             </DialogHeader>
             <form action={handleCreateSession}>
               <div className="grid gap-4 py-4">
@@ -79,42 +81,24 @@ export default async function CurhatPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button type="submit">Mulai Chat</Button>
+                <Button type="submit">Buat Tiket</Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid gap-4">
-        {sessions.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center p-12 text-center">
-              <MessageSquare className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
-              <h3 className="text-lg font-semibold">Belum Ada Sesi</h3>
-              <p className="text-muted-foreground">Mulai sesi baru untuk berkonsultasi dengan HR.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          sessions.map((session) => (
-            <Card key={session.id} className="hover:bg-accent/50 transition-colors">
-              <Link href={`/dashboard/curhat/${session.id}`}>
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold">{session.category}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      HR: {session.hrName} • Diperbarui: {new Date(session.updatedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Badge variant={session.status === "open" ? "default" : "secondary"}>
-                    {session.status === "open" ? "Aktif" : "Selesai"}
-                  </Badge>
-                </CardContent>
-              </Link>
-            </Card>
-          ))
-        )}
-      </div>
+      <MinimalTableShell label="pengaduan" fileName="Riwayat-Pengaduan" searchPlaceholder="Cari nomor tiket, kategori, HR..." showImport={false} dateFilter className="w-full">
+        <Table className="w-full">
+          <TableHeader><TableRow><TableHead>No. Tiket</TableHead><TableHead>Kategori</TableHead><TableHead>HR</TableHead><TableHead>Status</TableHead><TableHead>Diperbarui</TableHead><TableHead className="text-right">Aksi</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {sessions.length === 0 ? <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">Belum ada pengaduan.</TableCell></TableRow> : sessions.map((session) => {
+              const status = getHrTicketStatus(session.status);
+              return <TableRow key={session.id}><TableCell className="font-semibold">{session.ticketNumber ?? `HR-${session.id}`}</TableCell><TableCell>{session.category}</TableCell><TableCell>{session.hrName}</TableCell><TableCell><Badge className={status.className}>{status.label}</Badge></TableCell><TableCell data-date-value={session.updatedAt.toISOString()}>{session.updatedAt.toLocaleDateString("id-ID")}</TableCell><TableCell className="text-right"><Link href={`/dashboard/curhat/${session.id}`} className="font-semibold text-primary hover:underline">Buka</Link></TableCell></TableRow>;
+            })}
+          </TableBody>
+        </Table>
+      </MinimalTableShell>
     </div>
   );
 }

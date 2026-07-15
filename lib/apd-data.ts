@@ -1,13 +1,29 @@
 import { db } from "@/db";
 import { apdRequests, apdRequestItems, employees, masterDepartments, sites, approvals } from "@/db/schema/hero";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
+import type { ApdRequestCategory } from "@/lib/apd-status";
+
+let apdSchemaReady: Promise<void> | null = null;
+
+export function ensureApdRequestSchema() {
+  apdSchemaReady ??= db.execute(sql`
+    ALTER TABLE hero_apd_requests
+    ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD'
+  `).then(() => undefined).catch((error) => {
+    apdSchemaReady = null;
+    throw error;
+  });
+  return apdSchemaReady;
+}
 
 export async function fetchApdRequests(currentEmployeeId?: number) {
+  await ensureApdRequestSchema();
   const query = db
     .select({
       id: apdRequests.id,
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
+      requestCategory: apdRequests.requestCategory,
       status: apdRequests.status,
       notes: apdRequests.notes,
       employeeName: employees.name,
@@ -39,11 +55,13 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
 }
 
 export async function fetchApdRequestById(id: number) {
+  await ensureApdRequestSchema();
   const [request] = await db
     .select({
       id: apdRequests.id,
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
+      requestCategory: apdRequests.requestCategory,
       status: apdRequests.status,
       notes: apdRequests.notes,
       signatureUrl: apdRequests.signatureUrl,
@@ -73,4 +91,15 @@ export async function fetchApdRequestById(id: number) {
     .orderBy(desc(approvals.level));
 
   return { ...request, items, approvalHistory };
+}
+
+export async function fetchApdItemOptions(category: ApdRequestCategory) {
+  await ensureApdRequestSchema();
+  const rows = await db
+    .select({ itemType: apdRequestItems.itemType })
+    .from(apdRequestItems)
+    .innerJoin(apdRequests, eq(apdRequestItems.requestId, apdRequests.id))
+    .where(eq(apdRequests.requestCategory, category));
+
+  return [...new Set(rows.map((row) => row.itemType.trim().toUpperCase()).filter(Boolean))].sort();
 }

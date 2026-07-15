@@ -5,12 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { fetchApdRequests } from "@/lib/apd-data";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
+import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
 
 function statusBadgeClass(status: string) {
-  const n = status.toLowerCase();
-  if (n.includes("approved") || n.includes("completed")) return "bg-emerald-50 text-emerald-700";
-  if (n.includes("pending")) return "bg-amber-50 text-amber-700";
-  if (n.includes("reject")) return "bg-rose-50 text-rose-700";
+  const n = normalizeApdRequestStatus(status);
+  if (n === "complete" || n === "proses_order") return "bg-emerald-50 text-emerald-700";
+  if (n === "pending_approval") return "bg-amber-50 text-amber-700";
+  if (n === "cancel") return "bg-rose-50 text-rose-700";
   return "bg-blue-50 text-blue-700";
 }
 
@@ -28,8 +29,9 @@ export default async function MobileApdPage() {
   }
 
   const requests = await fetchApdRequests(currentEmployee.id);
-  const pendingCount = requests.filter(r => r.status === "pending").length;
-  const approvedCount = requests.filter(r => r.status === "approved" || r.status === "completed").length;
+  const pendingCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "pending_approval").length;
+  const orderCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "proses_order").length;
+  const completeCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "complete").length;
 
   return (
     <div className="space-y-4 pb-6">
@@ -37,8 +39,8 @@ export default async function MobileApdPage() {
       <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE &bull; APD</p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight">Permintaan APD</h1>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE &bull; REQUEST BARANG</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Request Barang</h1>
           </div>
           <Link
             prefetch={false}
@@ -58,7 +60,7 @@ export default async function MobileApdPage() {
               </span>
               <p className="mt-3 text-3xl font-bold leading-none">{requests.length}</p>
               <p className="mt-2 text-sm text-blue-200">
-                Total pengajuan APD Anda
+                Total request barang Anda
               </p>
             </div>
             <Link
@@ -70,14 +72,18 @@ export default async function MobileApdPage() {
             </Link>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
               <p className="text-[10px] font-medium text-blue-200">Menunggu Approval</p>
               <p className="mt-0.5 text-base font-bold text-amber-300">{pendingCount}</p>
             </div>
             <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-              <p className="text-[10px] font-medium text-blue-200">Selesai / Disetujui</p>
-              <p className="mt-0.5 text-base font-bold text-emerald-300">{approvedCount}</p>
+              <p className="text-[10px] font-medium text-blue-200">Proses Order</p>
+              <p className="mt-0.5 text-base font-bold text-sky-300">{orderCount}</p>
+            </div>
+            <div className="rounded-lg bg-white/10 px-2 py-2 text-center">
+              <p className="text-[10px] font-medium text-blue-200">Complete</p>
+              <p className="mt-0.5 text-base font-bold text-emerald-300">{completeCount}</p>
             </div>
           </div>
         </div>
@@ -102,11 +108,13 @@ export default async function MobileApdPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{request.requestNumber}</p>
-                      <h2 className="mt-1 text-sm font-semibold leading-tight text-gray-900">Pengajuan APD</h2>
+                      <div className="mt-1 flex items-center gap-2">
+                        <h2 className="text-sm font-semibold leading-tight text-gray-900">Request {request.requestCategory || "APD"}</h2>
+                      </div>
                       <p className="mt-1 text-xs text-gray-500">{request.requestDate?.toLocaleDateString("id-ID", { dateStyle: "medium" })}</p>
                     </div>
                     <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium shrink-0 uppercase tracking-wider ${statusBadgeClass(request.status)}`}>
-                      {request.status}
+                      {APD_REQUEST_STATUS_LABELS[normalizeApdRequestStatus(request.status) ?? "pending_approval"] ?? request.status}
                     </span>
                   </div>
 

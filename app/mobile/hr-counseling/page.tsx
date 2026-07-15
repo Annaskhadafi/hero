@@ -31,7 +31,7 @@ export default async function MobileHrCounselingInboxPage() {
             </div>
             <h3 className="text-sm font-bold text-[#003461]">Belum Ada Sesi</h3>
             <p className="text-xs text-[#486275] mt-1 leading-relaxed">
-              Anda belum menerima permintaan curhat dari karyawan.
+              Anda belum menerima pengaduan dari karyawan.
             </p>
           </div>
         ) : (

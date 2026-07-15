@@ -119,7 +119,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-amber-500/10 text-amber-600",
     },
     {
-      title: "Request APD",
+      title: "Request Barang",
       href: "/mobile/apd",
       resource: "apd-request",
       icon: HardHat,
@@ -140,7 +140,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-[#0ea5b0]/10 text-[#003461]",
     },
     {
-      title: "Curhat HR",
+      title: "Pengaduan HR",
       href: "/mobile/curhat",
       resource: "hr_counseling_user",
       icon: MessageSquare,

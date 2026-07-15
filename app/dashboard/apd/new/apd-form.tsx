@@ -13,6 +13,7 @@ import { submitApdRequest } from "../actions";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/signature-pad";
+import type { ApdRequestCategory } from "@/lib/apd-status";
 
 const APD_ITEMS = [
   "Sepatu Safety",
@@ -40,6 +41,8 @@ interface ApdRequestFormProps {
   employeeSn: string;
   departmentName: string | null;
   sectionName: string | null;
+  itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
+  mobileWide?: boolean;
 }
 
 export function ApdRequestForm({
@@ -47,9 +50,12 @@ export function ApdRequestForm({
   employeeSn,
   departmentName,
   sectionName,
+  itemOptions,
+  mobileWide = false,
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">("apd");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ApdItemInput[]>([
     { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFile: null },
@@ -66,7 +72,7 @@ export function ApdRequestForm({
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFile: null },
+      { id: crypto.randomUUID(), itemType: requestMode === "apd" ? APD_ITEMS[0] : "", requestType: "baru", quantity: 1, notes: "", photoFile: null },
     ]);
   };
 
@@ -125,11 +131,12 @@ export function ApdRequestForm({
       const submitData = new FormData();
       submitData.append("notes", notes);
       submitData.append("signatureUrl", signatureUrl);
+      submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
       submitData.append("items", JSON.stringify(processedItems));
 
       const res = await submitApdRequest(submitData);
       if (res.success) {
-        toast.success("Permintaan APD berhasil diajukan!");
+        toast.success(`${requestMode === "apd" ? "Permintaan APD" : `Request ${requestMode === "tools" ? "Tools" : "Material"}`} berhasil diajukan!`);
         router.push("/dashboard/apd");
       }
     } catch (error: any) {
@@ -142,7 +149,7 @@ export function ApdRequestForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card className="border-border shadow-sm bg-muted/50">
-        <CardContent className="p-4 sm:p-6">
+        <CardContent className={mobileWide ? "p-2 sm:p-6" : "p-4 sm:p-6"}>
           <h3 className="text-sm font-semibold text-foreground mb-4">Informasi Pemohon (Otomatis)</h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-1">
@@ -168,10 +175,34 @@ export function ApdRequestForm({
       </Card>
 
       <Card className="border-border shadow-sm">
-        <CardContent className="p-4 sm:p-6 space-y-6">
+        <CardContent className={`${mobileWide ? "p-2" : "p-4"} space-y-6 sm:p-6`}>
+          <div className="flex gap-2 rounded-lg bg-muted p-1" role="tablist" aria-label="Jenis request barang">
+            {([
+              ["apd", "Request APD"],
+              ["tools", "Request Tools"],
+              ["material", "Request Material"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={requestMode === value}
+                className={`min-h-12 flex-1 rounded-md px-4 text-sm font-medium transition ${requestMode === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => {
+                  setRequestMode(value);
+                  setItems((prev) => prev.map((item) => ({ ...item, itemType: value === "apd" ? APD_ITEMS[0] : "" })));
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Daftar Item APD</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                {requestMode === "apd" ? "Daftar Item APD" : `Daftar ${requestMode === "tools" ? "Tools" : "Material"}`}
+              </h3>
               <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-2">
                 <Plus className="size-4" /> Tambah Item
               </Button>
@@ -189,17 +220,30 @@ export function ApdRequestForm({
                 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Jenis APD</Label>
-                    <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {APD_ITEMS.map((opt) => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>{requestMode === "apd" ? "Jenis APD" : `Barang / ${requestMode === "tools" ? "Tools" : "Material"}`}</Label>
+                    {requestMode === "apd" ? (
+                      <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {APD_ITEMS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <>
+                        <Input
+                          required
+                          list={`apd-item-options-${requestMode}`}
+                          placeholder={`Pilih atau tulis ${requestMode === "tools" ? "tools" : "material"}`}
+                          value={item.itemType}
+                          onChange={(e) => updateItem(item.id, "itemType", e.target.value.toUpperCase())}
+                        />
+                        <datalist id={`apd-item-options-${requestMode}`}>
+                          {itemOptions[requestMode === "tools" ? "TOOLS" : "MATERIAL"].map((option) => (
+                            <option key={option} value={option} />
+                          ))}
+                        </datalist>
+                      </>
+                    )}
                   </div>
 
                   <div className="space-y-2">

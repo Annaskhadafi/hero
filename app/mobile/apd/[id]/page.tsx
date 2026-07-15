@@ -5,17 +5,18 @@ import Image from "next/image";
 
 import { getServerSession } from "@/lib/auth-session";
 import { fetchApdRequestById } from "@/lib/apd-data";
+import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
 
 function StatusBadge({ status }: { status: string }) {
-  const n = status.toLowerCase();
+  const n = normalizeApdRequestStatus(status);
   let bg = "bg-blue-50 text-blue-700";
-  if (n.includes("approved") || n.includes("completed")) bg = "bg-emerald-50 text-emerald-700";
-  if (n.includes("pending")) bg = "bg-amber-50 text-amber-700";
-  if (n.includes("reject")) bg = "bg-rose-50 text-rose-700";
+  if (n === "complete" || n === "proses_order") bg = "bg-emerald-50 text-emerald-700";
+  if (n === "pending_approval") bg = "bg-amber-50 text-amber-700";
+  if (n === "cancel") bg = "bg-rose-50 text-rose-700";
   
   return (
     <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium uppercase tracking-wider ${bg}`}>
-      {status}
+      {APD_REQUEST_STATUS_LABELS[n ?? "pending_approval"] ?? status}
     </span>
   );
 }
@@ -84,9 +85,14 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
         </div>
       </section>
 
-      {/* Detail Item APD */}
+      <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Jenis Request</p>
+        <p className="mt-1 font-semibold text-gray-900">{request.requestCategory || "APD"}</p>
+      </section>
+
+      {/* Detail Item */}
       <section>
-        <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Detail Item APD</h2>
+        <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Detail Item {request.requestCategory || "APD"}</h2>
         <div className="space-y-3">
           {request.items.map((item) => (
             <article key={item.id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">

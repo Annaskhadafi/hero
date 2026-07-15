@@ -3709,7 +3709,8 @@ export const apdRequests = pgTable('hero_apd_requests', {
     .notNull()
     .references(() => sites.id, { onDelete: 'cascade' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
-  status: text('status').notNull().default('pending'),
+  requestCategory: text('request_category').notNull().default('APD'),
+  status: text('status').notNull().default('pending_approval'),
   notes: text('notes').notNull().default(''),
   signatureUrl: text('signature_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

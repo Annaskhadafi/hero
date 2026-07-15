@@ -9,9 +9,12 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DeleteApdButton } from "./delete-button";
+import { ApdStatusActions } from "./status-actions";
+import { normalizeApdRequestStatus } from "@/lib/apd-status";
 
 export default async function ApdRequestsPage() {
   const currentEmployee = await getCurrentEmployee();
+  const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin";
   
   // For now, if the user is a superadmin (or specific roles), we might want to show all requests.
   // But typically this page shows the user's own requests. Let's fetch all if they have permission, or their own.
@@ -23,13 +26,13 @@ export default async function ApdRequestsPage() {
   return (
     <AdminPageShell
       eyebrow="HSE • Alat Pelindung Diri"
-      title="Permintaan APD"
-      description="Daftar pengajuan baru atau pergantian Alat Pelindung Diri (APD) beserta status persetujuan."
+      title="Request Barang"
+      description="Daftar request APD, tools, dan material beserta status prosesnya."
       actions={
         <Button asChild className="gap-2">
           <Link href="/dashboard/apd/new">
             <Plus className="size-4" />
-            Ajukan APD
+            Ajukan Barang
           </Link>
         </Button>
       }
@@ -39,29 +42,33 @@ export default async function ApdRequestsPage() {
         items={[
           { label: "Total Permintaan", value: `${rows.length}`, meta: "Total pengajuan tercatat" },
           {
-            label: "Menunggu Persetujuan",
-            value: `${rows.filter((row) => row.status === "pending").length}`,
+            label: "Pending Approval",
+            value: `${rows.filter((row) => row.status === "pending" || row.status === "pending_approval").length}`,
             meta: "Sedang dalam proses approval",
           },
           {
             label: "Selesai",
-            value: `${rows.filter((row) => row.status === "approved" || row.status === "completed").length}`,
-            meta: "Permintaan disetujui",
+            value: `${rows.filter((row) => row.status === "complete" || row.status === "completed").length}`,
+            meta: "Request sudah selesai",
           },
         ]}
       />
 
       <AdminTableCard
-        title="Daftar Permintaan APD"
+        title="Daftar Request Barang"
         description="Pantau status permintaan APD dari seluruh karyawan."
-        columns={["No. Tiket", "Tanggal", "Karyawan", "Lokasi", "Menunggu Review", "Status", "Aksi"]}
+        columns={["No. Tiket", "Tanggal", "Jenis Request", "Karyawan", "Lokasi", "Menunggu Review", "Status", "Aksi"]}
         rows={rows.map((row) => [
           <span className="font-medium text-foreground" key="req">{row.requestNumber}</span>,
           row.requestDate?.toLocaleDateString("id-ID", { dateStyle: "medium" }),
+          row.requestCategory,
           row.employeeName,
           row.siteName,
           row.pendingWith || "-",
-          <AdminStatusBadge key={`status-${row.id}`} value={row.status} />,
+          <div key={`status-${row.id}`} className="flex flex-col items-start gap-2">
+            <AdminStatusBadge value={normalizeApdRequestStatus(row.status) ?? row.status} />
+            {canManageStatus && <ApdStatusActions id={row.id} status={row.status} />}
+          </div>,
           <div key={`action-${row.id}`} className="flex items-center gap-2">
             <Dialog>
               <DialogTrigger asChild>
