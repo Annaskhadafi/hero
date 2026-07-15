@@ -122,6 +122,7 @@ import {
   type ApprovedSplWindow,
   type OvertimeCalculationResult,
   type OvertimeDayKey,
+  type OvertimeInterval,
   type OvertimeShiftKey,
   type SiteOvertimeConfig,
 } from '@/lib/timesheet/overtime-policy'
@@ -129,7 +130,6 @@ import {
   DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   getEmployeeBenefitRule,
   getSpecialAllowanceAmount,
-  isMealsEligibleDay,
   isMsaEligibleDay,
   isNonLocalEmployee,
   normalizeEmployeeBenefitConfig,
@@ -167,6 +167,7 @@ type SiteOption = {
   name: string
   location?: string | null
   customerName: string
+  headEmployeeId?: number | null
 }
 
 type FieldBreakTimelineView = 'month' | 'quarter' | 'semester' | 'year'
@@ -255,7 +256,14 @@ type SiteSchedulingConfig = {
   defaultClockIn: string
   defaultClockOut: string
   dayShiftClockIn: string
+  dayShiftClockOut: string
   nightShiftClockIn: string
+  nightShiftClockOut: string
+  day6WorkingTimeEnabled: boolean
+  day6DayShiftClockIn: string
+  day6DayShiftClockOut: string
+  day6NightShiftClockIn: string
+  day6NightShiftClockOut: string
   defaultEarlyOvertimeHours: number
   defaultOvertimeEnd: string
   lokasiKhususRate: number
@@ -426,7 +434,14 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   defaultClockIn: '07:00',
   defaultClockOut: '17:00',
   dayShiftClockIn: '06:00',
+  dayShiftClockOut: '17:00',
   nightShiftClockIn: '18:00',
+  nightShiftClockOut: '06:00',
+  day6WorkingTimeEnabled: false,
+  day6DayShiftClockIn: '08:00',
+  day6DayShiftClockOut: '14:00',
+  day6NightShiftClockIn: '20:00',
+  day6NightShiftClockOut: '02:00',
   defaultEarlyOvertimeHours: 1,
   defaultOvertimeEnd: '19:00',
   lokasiKhususRate: 35000,
@@ -450,7 +465,14 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
     defaultClockIn,
     defaultClockOut,
     dayShiftClockIn,
+    dayShiftClockOut,
     nightShiftClockIn,
+    nightShiftClockOut,
+    day6WorkingTimeEnabled,
+    day6DayShiftClockIn,
+    day6DayShiftClockOut,
+    day6NightShiftClockIn,
+    day6NightShiftClockOut,
     defaultEarlyOvertimeHours,
     defaultOvertimeEnd,
     fieldBreakWorkMonths,
@@ -470,7 +492,14 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       defaultClockIn,
       defaultClockOut,
       dayShiftClockIn,
+      dayShiftClockOut,
       nightShiftClockIn,
+      nightShiftClockOut,
+      day6WorkingTimeEnabled,
+      day6DayShiftClockIn,
+      day6DayShiftClockOut,
+      day6NightShiftClockIn,
+      day6NightShiftClockOut,
       defaultEarlyOvertimeHours,
       defaultOvertimeEnd,
       fieldBreakWorkMonths,
@@ -989,11 +1018,13 @@ export function SchedulingTimesheetWorkspace({
   approvedSplWindows = EMPTY_APPROVED_SPL_WINDOWS,
   activities = [],
   currentEmployeeSiteId = null,
+  currentEmployeeName = 'User Management',
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
   sites: SiteOption[]
   currentEmployeeSiteId?: number | null
+  currentEmployeeName?: string
   savedPlans?: SavedSchedulingPlan[]
   fieldBreakPlans?: SavedFieldBreakPlan[]
   attendanceRecords?: AttendanceRealRecord[]
@@ -1228,6 +1259,14 @@ export function SchedulingTimesheetWorkspace({
     [holidays]
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
+  const pdfSignatures = useMemo(() => {
+    const pjoLeader = employees.find((employee) => employee.id === site?.headEmployeeId)?.name
+    return {
+      preparedBy: currentEmployeeName,
+      pjoLeader: pjoLeader || 'Belum diset di Master Data Site',
+      approvedBy: `Plant. SPV Department (${site?.name || 'Site'})`,
+    }
+  }, [currentEmployeeName, employees, site])
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
   const isThirteenOneRoster = siteConfig.rosterType === '13:1'
   const fieldBreakWorkCycleDays = isThirteenOneRoster ? siteConfig.fieldBreakWorkMonths * 7 : 90
@@ -1554,8 +1593,11 @@ export function SchedulingTimesheetWorkspace({
           scheduleType: savedConfig.scheduleType as SiteScheduleType,
           rosterType: savedRosterType ?? '5:2',
           msaType: savedConfig.msaType as SiteMsaType,
-          // ponytail: legacy mealsType remains persisted for compatibility; category switches own eligibility.
-          mealsType: 'workday' as SiteMealsType,
+          mealsType: (savedConfig.mealsType === 'none'
+            ? 'none'
+            : savedConfig.mealsType === 'field-break'
+              ? 'field-break'
+              : 'workday') as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
           defaultShiftType:
             (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
@@ -1565,7 +1607,22 @@ export function SchedulingTimesheetWorkspace({
             (fieldBreakConfig.dayShiftClockIn as string | undefined) ??
             (fieldBreakConfig.defaultClockIn as string | undefined) ??
             '06:00',
+          dayShiftClockOut:
+            (fieldBreakConfig.dayShiftClockOut as string | undefined) ??
+            (fieldBreakConfig.defaultClockOut as string | undefined) ??
+            '17:00',
           nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
+          nightShiftClockOut:
+            (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
+          day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
+          day6DayShiftClockIn:
+            (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
+          day6DayShiftClockOut:
+            (fieldBreakConfig.day6DayShiftClockOut as string | undefined) ?? '14:00',
+          day6NightShiftClockIn:
+            (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
+          day6NightShiftClockOut:
+            (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
           defaultEarlyOvertimeHours: Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
           defaultOvertimeEnd:
             (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
@@ -1725,6 +1782,14 @@ export function SchedulingTimesheetWorkspace({
     () =>
       visibleEmployees.map((employee, employeeIndex) => {
         const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
+        const persistedSchedule = savedPlan
+          ? (mode === 'schedule'
+              ? savedPlan.draftSchedule
+              : savedPlan.fixedSchedule.length
+                ? savedPlan.fixedSchedule
+                : savedPlan.draftSchedule
+            ).find((item) => item.employeeId === employee.id)?.schedule
+          : undefined
         const forceDayShift =
           (employeeRosterSection === 'Service Operation' ||
             employeeRosterSection === 'Repair Retread') &&
@@ -1765,7 +1830,12 @@ export function SchedulingTimesheetWorkspace({
             ? 'FB'
             : holidayAdjustedCode
 
-          return overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode
+          // ponytail: attendance/benefit views read the fixed Schedule V2 roster; edit view reads draft.
+          return mode === 'schedule'
+            ? (overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode)
+            : ((persistedSchedule?.[day - 1] as ScheduleCode | undefined) ??
+                overrides[`${employee.id}-${day}`] ??
+                fieldBreakAdjustedCode)
         })
         const workDays = schedule.filter(
           (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
@@ -1843,6 +1913,7 @@ export function SchedulingTimesheetWorkspace({
       employeeProfiles,
       fieldBreakPlansByEmployee,
       holidays,
+      mode,
       overtimeVariables,
       overrides,
       period,
@@ -2867,10 +2938,7 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  function updateQuotationBillingRule(
-    key: keyof QuotationBillingStatusConfig,
-    checked: boolean
-  ) {
+  function updateQuotationBillingRule(key: keyof QuotationBillingStatusConfig, checked: boolean) {
     if (!guardOpenPeriod('Edit quotation billing settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
@@ -4114,6 +4182,40 @@ export function SchedulingTimesheetWorkspace({
             employee.id
           )
         },
+      }).map((day) => {
+        const shiftKey = day.scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+        const dayKey = classifyOvertimePolicyDay({
+          schedule: employeeSchedule,
+          dayIndex: day.day - 1,
+          isHoliday: day.isHoliday,
+        })
+        const configuredIntervals = siteConfig.overtimeConfig.enabled
+          ? siteConfig.overtimeConfig[dayKey][shiftKey]
+          : []
+        const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
+        return {
+          ...day,
+          // ponytail: holiday working time is intentionally blank; OT remains visible from site rules.
+          workingTimeFrom: day.isHoliday
+            ? ''
+            : useDay6WorkingTime
+              ? day.scheduleCode === 'NS'
+                ? siteConfig.day6NightShiftClockIn
+                : siteConfig.day6DayShiftClockIn
+              : day.scheduleCode === 'NS'
+                ? siteConfig.nightShiftClockIn
+                : siteConfig.dayShiftClockIn,
+          workingTimeTo: day.isHoliday
+            ? ''
+            : useDay6WorkingTime
+              ? day.scheduleCode === 'NS'
+                ? siteConfig.day6NightShiftClockOut
+                : siteConfig.day6DayShiftClockOut
+              : day.scheduleCode === 'NS'
+                ? siteConfig.nightShiftClockOut
+                : siteConfig.dayShiftClockOut,
+          configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
+        }
       })
       const pdf = await generateOvertimeRecordPdf({
         period,
@@ -4122,6 +4224,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
+        signatures: { ...pdfSignatures, preparedBy: employee.name },
         days: dayData,
         isNonStaff: !staff,
       })
@@ -4162,6 +4265,9 @@ export function SchedulingTimesheetWorkspace({
           msaAmount: allowance.msaAmount,
           mealsAmount: allowance.mealsAmount,
           specialAllowanceAmount: allowance.specialAllowanceAmount,
+          showMsa: siteConfig.msaType !== 'none' && allowance.rule.msa,
+          showMeals: siteConfig.mealsType !== 'none' && allowance.rule.meals,
+          showSpecialAllowance: allowance.rule.specialAllowance,
         }
       })
       const pdf = await generateSiteAllowancePdf({
@@ -4171,6 +4277,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
+        signatures: { ...pdfSignatures, preparedBy: employee.name },
         days: dayData,
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
@@ -4212,6 +4319,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
+        signatures: { ...pdfSignatures, preparedBy: employee.name },
         activities: monthActivities,
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
@@ -4423,21 +4531,13 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
-    const cell = getAttendanceCell(row.employee.id, day)
     const scheduleCode = row.schedule[day - 1] as string
-    const holiday = holidaysByDay.get(day)
-    const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
-    const isWorkDay = !isRosterOff
     const isFieldBreakDay =
       scheduleCode === 'FB' || (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
     return {
-      eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
-      eligibleMeals: isMealsEligibleDay({
-        isPresent: cell.status === 'present',
-        isHoliday: Boolean(holiday),
-        isWorkDay,
-        isFieldBreakPeriod: isFieldBreakDay,
-      }),
+      eligibleMsa: isMsaEligibleDay(scheduleCode, scheduleCode === 'FB'),
+      // ponytail: Meals follows the roster; inferred attendance gaps must not cancel DS/NS meals.
+      eligibleMeals: isMsaEligibleDay(scheduleCode, scheduleCode === 'FB'),
     }
   }
 
@@ -4466,7 +4566,11 @@ export function SchedulingTimesheetWorkspace({
             ? rate.msaStaff
             : rate.msaNonStaff
     const mealsAmount =
-      !rule.meals || !eligibility.eligibleMeals ? 0 : staff ? rate.mealsStaff : rate.mealsNonStaff
+      siteConfig.mealsType === 'none' || !rule.meals || !eligibility.eligibleMeals
+        ? 0
+        : staff
+          ? rate.mealsStaff
+          : rate.mealsNonStaff
     const specialAllowanceAmount = getSpecialAllowanceAmount(
       rule,
       eligibility.eligibleMsa,
@@ -5487,10 +5591,10 @@ export function SchedulingTimesheetWorkspace({
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
                   <div className="mb-3">
-                    <p className="text-foreground text-sm font-semibold">Jam Masuk Attendance</p>
+                    <p className="text-foreground text-sm font-semibold">Working Time</p>
                     <p className="text-muted-foreground text-xs">
-                      Dipakai mobile attendance untuk menentukan tepat waktu atau terlambat per
-                      site.
+                      Dipakai mobile attendance dan PDF Overtime. Jam berikut berlaku untuk{' '}
+                      <span className="font-semibold">Regular Day</span>.
                     </p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -5509,6 +5613,19 @@ export function SchedulingTimesheetWorkspace({
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Jam Pulang Day Shift (DS / IN)
+                      </Label>
+                      <Input
+                        type="time"
+                        value={siteConfig.dayShiftClockOut}
+                        onChange={(event) => {
+                          if (event.target.value)
+                            updateSiteConfig('dayShiftClockOut', event.target.value)
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                         Jam Masuk Night Shift (NS)
                       </Label>
                       <Input
@@ -5520,6 +5637,63 @@ export function SchedulingTimesheetWorkspace({
                         }}
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Jam Pulang Night Shift (NS)
+                      </Label>
+                      <Input
+                        type="time"
+                        value={siteConfig.nightShiftClockOut}
+                        onChange={(event) => {
+                          if (event.target.value)
+                            updateSiteConfig('nightShiftClockOut', event.target.value)
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="border-border/30 border-t px-4 py-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-foreground text-sm font-semibold">Working Time Day 6</p>
+                      <p className="text-muted-foreground text-xs">
+                        Dipakai pada hari kerja tepat sebelum OFF/Libur.
+                      </p>
+                    </div>
+                    <label className="text-muted-foreground flex items-center gap-2 text-xs font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={siteConfig.day6WorkingTimeEnabled}
+                        onChange={(event) =>
+                          updateSiteConfig('day6WorkingTimeEnabled', event.target.checked)
+                        }
+                      />
+                      Aktifkan
+                    </label>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {(
+                      [
+                        ['day6DayShiftClockIn', 'Jam Masuk Day Shift (DS / IN)', '08:00'],
+                        ['day6DayShiftClockOut', 'Jam Pulang Day Shift (DS / IN)', '14:00'],
+                        ['day6NightShiftClockIn', 'Jam Masuk Night Shift (NS)', '20:00'],
+                        ['day6NightShiftClockOut', 'Jam Pulang Night Shift (NS)', '02:00'],
+                      ] as const
+                    ).map(([key, label, fallback]) => (
+                      <div className="space-y-1.5" key={key}>
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          {label}
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig[key] || fallback}
+                          onChange={(event) => {
+                            if (event.target.value) updateSiteConfig(key, event.target.value)
+                          }}
+                          disabled={!siteConfig.day6WorkingTimeEnabled}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div className="border-border/30 grid gap-4 border-t px-4 py-4 sm:grid-cols-2">
@@ -5584,7 +5758,10 @@ export function SchedulingTimesheetWorkspace({
                         key={key}
                         className="bg-surface-container-low flex min-h-12 items-center justify-between gap-3 rounded-xl px-3 py-2"
                       >
-                        <Label htmlFor={`quotation-billing-${key}`} className="text-sm font-semibold">
+                        <Label
+                          htmlFor={`quotation-billing-${key}`}
+                          className="text-sm font-semibold"
+                        >
                           Hitung {label}
                         </Label>
                         <Switch
@@ -6969,7 +7146,13 @@ export function SchedulingTimesheetWorkspace({
                                                   : '-'
 
                                           if (attendanceView === 'msa') {
-                                            if (isFieldBreakDay) {
+                                            if (
+                                              !allowance.rule.msa ||
+                                              siteConfig.msaType === 'none'
+                                            ) {
+                                              cellValue = '-'
+                                              cellBg = 'bg-slate-50 text-muted-foreground'
+                                            } else if (scheduleCode === 'FB') {
                                               cellValue = 'FB'
                                               cellBg = 'bg-purple-50 text-purple-700'
                                             } else {
@@ -7005,12 +7188,15 @@ export function SchedulingTimesheetWorkspace({
                                                   : 'bg-white text-foreground'
                                             }
                                           } else if (attendanceView === 'meals') {
-                                            if (isFieldBreakDay && cell.status !== 'present') {
+                                            if (
+                                              !allowance.rule.meals ||
+                                              siteConfig.mealsType === 'none'
+                                            ) {
+                                              cellValue = '-'
+                                              cellBg = 'bg-slate-50 text-muted-foreground'
+                                            } else if (scheduleCode === 'FB') {
                                               cellValue = 'FB'
                                               cellBg = 'bg-purple-50 text-purple-700'
-                                            } else if (noAllowance) {
-                                              cellValue = absentLabel
-                                              cellBg = 'bg-rose-50 text-rose-700'
                                             } else {
                                               const mealsRate = allowance.mealsAmount
                                               cellValue = mealsRate
@@ -7202,19 +7388,6 @@ export function SchedulingTimesheetWorkspace({
 
                                               const isRosterOff2 =
                                                 code === 'OFF' || code === 'Libur'
-                                              const isNationalHoliday2 = Boolean(hol)
-                                              const isWorkDay2 = !isRosterOff2
-                                              const isAbsent2 =
-                                                cell.status === 'leave' ||
-                                                cell.status === 'sick' ||
-                                                cell.status === 'absent'
-                                              const isEmptyWorkDay2 =
-                                                isWorkDay2 &&
-                                                !isNationalHoliday2 &&
-                                                code !== 'ST' &&
-                                                cell.status === 'empty'
-                                              const noAllowance2 =
-                                                isAbsent2 || isEmptyWorkDay2 || code === 'FB'
                                               const allowance = getAllowanceAmounts(row, day)
 
                                               if (attendanceView === 'lokasi') {
@@ -7223,12 +7396,7 @@ export function SchedulingTimesheetWorkspace({
                                               }
 
                                               // Skip Field Break days for MSA/Meals
-                                              const isFbPeriod =
-                                                code === 'FB' ||
-                                                (fieldBreakDaysByEmployee
-                                                  .get(row.employee.id)
-                                                  ?.has(day) ??
-                                                  false)
+                                              const isFbPeriod = code === 'FB'
                                               if (
                                                 isFbPeriod &&
                                                 (attendanceView === 'msa' ||
@@ -7237,9 +7405,6 @@ export function SchedulingTimesheetWorkspace({
                                                 continue
 
                                               // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                              if (noAllowance2 && attendanceView === 'meals')
-                                                continue
-
                                               // OVT: only count present days
                                               if (
                                                 attendanceView === 'ovt' &&

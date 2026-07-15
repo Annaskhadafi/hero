@@ -3314,8 +3314,10 @@ Silakan login ke dashboard HC untuk melihat hasil akhir.`,
     recipientScope: 'specific',
     ccEmail: '',
     subject: 'Pengaduan {{ticketNumber}} diteruskan ke {{sectionName}}',
-    htmlContent: '<p>Halo {{picName}},</p><p>Pengaduan <strong>{{ticketNumber}}</strong> dari {{employeeName}} diteruskan kepada Section {{sectionName}}.</p><p>Kategori: {{category}}</p><p>Catatan HR: {{note}}</p><p>Silakan buka dashboard HERO untuk menindaklanjuti.</p>',
-    textContent: 'Pengaduan {{ticketNumber}} dari {{employeeName}} diteruskan ke {{sectionName}}. Kategori: {{category}}. Catatan HR: {{note}}',
+    htmlContent:
+      '<p>Halo {{picName}},</p><p>Pengaduan <strong>{{ticketNumber}}</strong> dari {{employeeName}} diteruskan kepada Section {{sectionName}}.</p><p>Kategori: {{category}}</p><p>Catatan HR: {{note}}</p><p>Silakan buka dashboard HERO untuk menindaklanjuti.</p>',
+    textContent:
+      'Pengaduan {{ticketNumber}} dari {{employeeName}} diteruskan ke {{sectionName}}. Kategori: {{category}}. Catatan HR: {{note}}',
     isActive: true,
   },
   {
@@ -5750,6 +5752,7 @@ export async function getSchedulingTimesheetOptions() {
         name: sites.name,
         location: sites.location,
         customerName: sites.customerName,
+        headEmployeeId: sites.headEmployeeId,
       })
       .from(sites)
       .where(eq(sites.isActive, true))

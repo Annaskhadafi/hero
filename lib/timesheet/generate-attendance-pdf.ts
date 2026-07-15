@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
-import type { OvertimeCalculationResult } from '@/lib/timesheet/overtime-policy'
+import type { OvertimeCalculationResult, OvertimeInterval } from '@/lib/timesheet/overtime-policy'
+import { drawPdfSignatures, type PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 
 type AttendanceDayData = {
   day: number
@@ -11,9 +12,15 @@ type AttendanceDayData = {
   isHoliday: boolean
   holidayName?: string
   overtime?: OvertimeCalculationResult
+  workingTimeFrom?: string
+  workingTimeTo?: string
+  configuredOvertimeIntervals?: OvertimeInterval[]
   msaAmount?: number
   mealsAmount?: number
   specialAllowanceAmount?: number
+  showMsa?: boolean
+  showMeals?: boolean
+  showSpecialAllowance?: boolean
 }
 
 type OvertimeRecordInput = {
@@ -23,6 +30,7 @@ type OvertimeRecordInput = {
   department: string
   section: string
   siteName: string
+  signatures: PdfSignatureNames
   days: AttendanceDayData[]
   isNonStaff: boolean
 }
@@ -34,6 +42,7 @@ type SiteAllowanceInput = {
   department: string
   section: string
   siteName: string
+  signatures: PdfSignatureNames
   days: AttendanceDayData[]
 }
 
@@ -328,19 +337,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
     } else if (day.clockIn) {
-      const configuredWorkingIntervals =
-        overtime && overtime.source !== 'Legacy' ? overtime.workingIntervals : null
-      const workFrom = configuredWorkingIntervals
-        ? configuredWorkingIntervals.map((interval) => interval.start.replace(':', '.')).join('/')
-        : day.clockIn.replace(':', '.')
-      const workTo = configuredWorkingIntervals
-        ? configuredWorkingIntervals.map((interval) => interval.end.replace(':', '.')).join('/')
-        : day.clockOut
-          ? day.clockOut.replace(':', '.')
-          : ''
-      const eligibleIntervals = overtime?.intervals ?? []
-      const otFrom = eligibleIntervals.map((interval) => interval.start.replace(':', '.')).join('/')
-      const otTo = eligibleIntervals.map((interval) => interval.end.replace(':', '.')).join('/')
+      const workFrom = (day.workingTimeFrom ?? day.clockIn).replace(':', '.')
+      const workTo = (day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.')
+      const configuredOvertimeIntervals =
+        day.configuredOvertimeIntervals ?? overtime?.intervals ?? []
+      const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
+        interval ? `${interval.start.replace(':', '.')}-${interval.end.replace(':', '.')}` : ''
+      const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+      const otTo = formatOvertimeInterval(configuredOvertimeIntervals[1])
 
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: workFrom,
@@ -437,18 +441,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
   // Signatures
   y -= 70
-  const sigLabels = ['Dibuat Oleh,', 'Mengetahui,', 'Mengetahui,', 'Menyetujui,']
-  const sigSpacing = (width - 100) / 4
-  for (let i = 0; i < 4; i++) {
-    const sx = 50 + i * sigSpacing
-    page.drawText(sigLabels[i], { x: sx, y, font: fontItalic, size: 8, color: rgb(0.3, 0.3, 0.3) })
-    page.drawLine({
-      start: { x: sx - 5, y: y - 55 },
-      end: { x: sx + 95, y: y - 55 },
-      color: rgb(0.5, 0.5, 0.5),
-      thickness: 0.5,
-    })
-  }
+  drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
 
   return doc.save()
 }
@@ -665,7 +658,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       color: dayColor,
     })
 
-    const lokasiVal = day.specialAllowanceAmount ?? 0
+    const lokasiVal = day.showSpecialAllowance === false ? 0 : (day.specialAllowanceAmount ?? 0)
     if (lokasiVal > 0) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: `Rp     ${formatMoney(lokasiVal)}`,
@@ -679,7 +672,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
     }
 
-    const msaAmount = day.msaAmount ?? 0
+    const msaAmount = day.showMsa === false ? 0 : (day.msaAmount ?? 0)
     if (msaAmount > 0) {
       drawCell(page, colX[3], y, cols[3], rowH, {
         text: `Rp     ${formatMoney(msaAmount)}`,
@@ -691,7 +684,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       totalMsa += msaAmount
     } else {
       drawCell(page, colX[3], y, cols[3], rowH, {
-        text: isFieldBreakDay ? 'FB' : '',
+        text: day.showMsa === false ? '' : day.scheduleCode === 'FB' ? 'FB' : '',
         font,
         fontSize: 7,
         align: 'center',
@@ -699,7 +692,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       })
     }
 
-    const mealsAmount = day.mealsAmount ?? 0
+    const mealsAmount = day.showMeals === false ? 0 : (day.mealsAmount ?? 0)
     if (mealsAmount > 0) {
       drawCell(page, colX[4], y, cols[4], rowH, {
         text: `Rp     ${formatMoney(mealsAmount)}`,
@@ -711,7 +704,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       totalMeals += mealsAmount
     } else {
       drawCell(page, colX[4], y, cols[4], rowH, {
-        text: isFieldBreakDay ? 'FB' : '',
+        text: day.showMeals === false ? '' : day.scheduleCode === 'FB' ? 'FB' : '',
         font,
         fontSize: 7,
         align: 'center',
@@ -770,18 +763,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
 
   // Signatures — proper spacing
   y -= 70
-  const sigLabels2 = ['Dibuat Oleh,', 'Mengetahui,', 'Mengetahui,', 'Menyetujui,']
-  const sigSpacing2 = (width - 100) / 4
-  for (let i = 0; i < 4; i++) {
-    const sx = 50 + i * sigSpacing2
-    page.drawText(sigLabels2[i], { x: sx, y, font: fontItalic, size: 8, color: rgb(0.3, 0.3, 0.3) })
-    page.drawLine({
-      start: { x: sx - 5, y: y - 55 },
-      end: { x: sx + 95, y: y - 55 },
-      color: rgb(0.5, 0.5, 0.5),
-      thickness: 0.5,
-    })
-  }
+  drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
 
   return doc.save()
 }
