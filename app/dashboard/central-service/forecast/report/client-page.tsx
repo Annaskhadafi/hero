@@ -19,9 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { BarChart3, Search, ArrowUpDown, Download } from 'lucide-react'
+import { BarChart3, Search, ArrowUpDown, Download, FileSpreadsheet } from 'lucide-react'
 import { getSapRevenue } from '@/app/actions/central-service-forecast'
 import html2canvas from 'html2canvas-pro'
+import * as XLSX from 'xlsx'
 import {
   BarChart,
   Bar,
@@ -243,6 +244,180 @@ export function ReportClientPage({
     } catch (err) {
       console.error('Export failed:', err)
     }
+  }
+
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new()
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId)
+    const periodLabel = period?.monthYear || 'Export'
+
+    // --- Sheet 1: Revenue SAP ---
+    const revenueRows = [
+      ['Revenue SAP - Daily Report', '', '', '', '', '', ''],
+      [`Period: ${periodLabel}`, '', '', '', '', '', ''],
+      [],
+      ['Category', 'Forecast IDR', 'Forecast USD', 'Actual IDR (SAP)', 'Actual USD (SAP)'],
+      [
+        'Total',
+        totalScore.forecast,
+        totalScore.forecast / rate,
+        totalScore.actual,
+        totalScore.actualUsd,
+      ],
+      [
+        'Service',
+        totals.serviceFc,
+        totals.serviceFc / rate,
+        sapRevenue.service.idr,
+        sapRevenue.service.usd,
+      ],
+      [
+        'Repair',
+        totals.repairFc,
+        totals.repairFc / rate,
+        sapRevenue.repair.idr,
+        sapRevenue.repair.usd,
+      ],
+      [
+        'Retread',
+        totals.retreadFc,
+        totals.retreadFc / rate,
+        sapRevenue.retread.idr,
+        sapRevenue.retread.usd,
+      ],
+    ]
+    const wsRevenue = XLSX.utils.aoa_to_sheet(revenueRows)
+    wsRevenue['!cols'] = [
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 15 },
+    ]
+    XLSX.utils.book_append_sheet(wb, wsRevenue, 'Revenue SAP')
+
+    // --- Sheet 2: Pending Document ---
+    const headers = [
+      'No',
+      'Customer',
+      'PIC',
+      'Remark Monthly',
+      'Forecast IDR',
+      'Forecast USD',
+      'Category',
+      'Remark Daily',
+      'Amount',
+      'Amount USD',
+      'Status Doc',
+      'Sisa Amount',
+      'Sisa USD',
+      'Status Forecast',
+    ]
+
+    const dataRows: any[][] = []
+    let rowNum = 0
+
+    groupedData.forEach((group, gi) => {
+      const catLen = group.categories.length
+      group.categories.forEach((cat, ci) => {
+        rowNum++
+        const isFirst = ci === 0
+        dataRows.push([
+          isFirst ? gi + 1 : '',
+          isFirst ? group.customer : '',
+          isFirst ? group.pic : '',
+          isFirst ? (group.remarkMonthly || '') : '',
+          isFirst && group.totalAmountIdr > 0 ? group.totalAmountIdr : '',
+          isFirst && group.totalAmountUsd > 0 ? Math.round(group.totalAmountUsd) : '',
+          cat.category,
+          getRemarkDaily(cat) || '',
+          cat.forecastIdr > 0 ? cat.forecastIdr : '',
+          cat.forecastIdr > 0 ? Math.round(cat.forecastIdr / rate) : '',
+          formatStatusDoc(cat.status, cat.poNumber),
+          cat.forecastIdr > 0 ? getRemainingAmount(cat) : '',
+          cat.forecastIdr > 0 ? Math.round(getRemainingAmount(cat) / rate) : '',
+          isFirst ? group.forecastStatus : '',
+        ])
+      })
+    })
+
+    // Total row
+    dataRows.push([
+      '',
+      '',
+      '',
+      'TOTAL',
+      groupedData.reduce((s, g) => s + g.totalAmountIdr, 0),
+      Math.round(groupedData.reduce((s, g) => s + g.totalAmountUsd, 0)),
+      '',
+      '',
+      groupedData.reduce(
+        (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
+        0
+      ),
+      Math.round(
+        groupedData.reduce(
+          (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
+          0
+        ) / rate
+      ),
+      '',
+      groupedData.reduce(
+        (s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
+        0
+      ),
+      Math.round(
+        groupedData.reduce(
+          (s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
+          0
+        ) / rate
+      ),
+      '',
+    ])
+
+    const allRows = [headers, ...dataRows]
+    const wsPending = XLSX.utils.aoa_to_sheet(allRows)
+
+    // --- Merge cells for grouped columns (No, Customer, PIC, Remark Monthly, Forecast IDR, Forecast USD, Status Forecast) ---
+    const mergeCols = [0, 1, 2, 3, 4, 5, 13] // 0-indexed columns to merge
+    let currentRow = 1 // skip header (row 0)
+    groupedData.forEach((group) => {
+      const catLen = group.categories.length
+      if (catLen > 1) {
+        mergeCols.forEach((col) => {
+          XLSX.utils.book_append_sheet // no-op, just reference
+          wsPending['!merges'] = wsPending['!merges'] || []
+          wsPending['!merges'].push({
+            s: { r: currentRow, c: col },
+            e: { r: currentRow + catLen - 1, c: col },
+          })
+        })
+      }
+      currentRow += catLen
+    })
+
+    wsPending['!cols'] = [
+      { wch: 5 },   // No
+      { wch: 28 },  // Customer
+      { wch: 16 },  // PIC
+      { wch: 20 },  // Remark Monthly
+      { wch: 18 },  // Forecast IDR
+      { wch: 14 },  // Forecast USD
+      { wch: 14 },  // Category
+      { wch: 22 },  // Remark Daily
+      { wch: 18 },  // Amount
+      { wch: 14 },  // Amount USD
+      { wch: 18 },  // Status Doc
+      { wch: 16 },  // Sisa Amount
+      { wch: 14 },  // Sisa USD
+      { wch: 16 },  // Status Forecast
+    ]
+
+    XLSX.utils.book_append_sheet(wb, wsPending, 'Pending Document')
+
+    // Download
+    const fileName = `daily-report-${periodLabel.replace(/\s/g, '-')}.xlsx`
+    XLSX.writeFile(wb, fileName)
   }
 
   const filtered = useMemo(() => {
@@ -551,6 +726,10 @@ export function ReportClientPage({
           <Button variant="outline" size="sm" className="h-9" onClick={handleExportJpeg}>
             <Download className="mr-2 h-4 w-4" />
             Export JPEG
+          </Button>
+          <Button variant="outline" size="sm" className="h-9" onClick={handleExportExcel}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Export Excel
           </Button>
         </div>
       </div>
