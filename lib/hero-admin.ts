@@ -384,6 +384,29 @@ const GOVERNANCE_ROLE_SEEDS = [
 ]
 
 const RAW_SIDEBAR_MENU_SEEDS = [
+  // Marketing
+  {
+    menuArea: 'main',
+    section: 'Marketing',
+    title: 'A2R Competition',
+    url: '/dashboard/marketing/a2r-competition',
+    iconName: 'bar-chart',
+    resource: 'marketing_a2r_competition',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Marketing',
+    title: 'Slow Moving',
+    url: '/dashboard/marketing/slow-moving',
+    iconName: 'trending-down',
+    resource: 'marketing_slow_moving',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // 360 Service
   {
     menuArea: 'main',
