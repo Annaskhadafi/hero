@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  ArrowRight, CheckCircle2, ClipboardList, FileSignature,
+  AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, FileSignature,
   ListChecks, Plus, Sparkles, Target,
 } from "lucide-react";
 
@@ -44,6 +44,7 @@ export default async function MobileActivityPage() {
       ? Math.round((data.summary.jobsCompleted / data.summary.jobsAssigned) * 100)
       : data.activities.length > 0 ? 100 : 0;
   const pagePurpose = getActivityPagePurpose("input");
+  const splToUpdate = data.routeChecklist?.activeSpl ?? data.standaloneOvertimeChecklist;
 
   return (
     <div className="space-y-4 pb-6">
@@ -101,6 +102,34 @@ export default async function MobileActivityPage() {
           </div>
         </div>
       </section>
+
+      {splToUpdate ? (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
+              <AlertTriangle className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                Aktivitas lembur perlu diupdate
+              </p>
+              <p className="mt-1 text-sm font-bold text-amber-950">{splToUpdate.splNumber} · {splToUpdate.title}</p>
+              <p className="mt-1 text-xs leading-5 text-amber-800">
+                {splToUpdate.status === "submitted"
+                  ? "SPL masih menunggu approval, tetapi pekerjaan urgent dan evidence sudah boleh diisi."
+                  : "SPL sudah approved. Lengkapi aktivitas dan foto evidence sebelum closing."}
+              </p>
+              <Link
+                prefetch={false}
+                href="/mobile/activity/input"
+                className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-700 px-4 text-xs font-bold text-white"
+              >
+                <FileSignature className="size-4" /> Update Aktivitas Lembur
+              </Link>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* Job List */}
       <section>

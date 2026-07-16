@@ -113,6 +113,7 @@ import {
   orgChartStructures,
   overtimeCommandLetters,
   overtimeCommandLetterItems,
+  overtimeCommandLetterParticipants,
   pointEvents,
   penaltyEvents,
   pointDisputes,
@@ -175,6 +176,7 @@ import {
   evaluatePointThresholdBadges,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
+import { splDateKey } from '@/lib/spl-data'
 import {
   cancelLegacyApprovalSubmission,
   createLegacyApprovalRequest,
@@ -2571,6 +2573,17 @@ const overtimeDayRuleSchema = z.object({
 const siteOvertimeConfigSchema = z
   .object({
     enabled: z.boolean(),
+    splPolicy: z.object({
+      enabled: z.boolean(),
+      allowBreak: z.boolean(),
+      allowOffDay: z.boolean(),
+      allowAfterMandatoryOt: z.boolean(),
+      dayShiftBreak: overtimeIntervalSchema,
+      nightShiftBreak: overtimeIntervalSchema,
+      submissionGraceDays: z.number().int().min(0).max(14),
+      minimumMinutes: z.number().int().min(15).max(720),
+      replacementOffMaxDays: z.number().int().min(1).max(90),
+    }),
     hariBiasa: overtimeDayRuleSchema,
     hariLibur: overtimeDayRuleSchema,
     hariKe6: overtimeDayRuleSchema,
@@ -3169,6 +3182,58 @@ async function updateLegacyEntityForSubmissionDecision(params: {
         updatedAt: params.now,
       })
       .where(eq(overtimeCommandLetters.id, legacyRecordId))
+    if (params.decision === 'approved') {
+      const [spl] = await params.tx
+        .select({ siteId: overtimeCommandLetters.siteId })
+        .from(overtimeCommandLetters)
+        .where(eq(overtimeCommandLetters.id, legacyRecordId))
+        .limit(1)
+      const replacements = await params.tx
+        .select({
+          employeeId: overtimeCommandLetterParticipants.employeeId,
+          replacementOffDate: overtimeCommandLetterParticipants.replacementOffDate,
+        })
+        .from(overtimeCommandLetterParticipants)
+        .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, legacyRecordId))
+      for (const replacement of replacements) {
+        if (!spl || !replacement.replacementOffDate) continue
+        const replacementDateKey = splDateKey(replacement.replacementOffDate)
+        const period = replacementDateKey.slice(0, 7)
+        const day = Number(replacementDateKey.slice(8, 10))
+        const [plan] = await params.tx
+          .select({
+            id: timesheetSchedulingPlansV2.id,
+            status: timesheetSchedulingPlansV2.status,
+            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+          })
+          .from(timesheetSchedulingPlansV2)
+          .where(
+            and(
+              eq(timesheetSchedulingPlansV2.siteId, spl.siteId),
+              eq(timesheetSchedulingPlansV2.period, period)
+            )
+          )
+          .limit(1)
+        if (!plan) continue
+        const applyOff = (rows: ScheduleV2Row[]) =>
+          rows.map((row) =>
+            row.employeeId === replacement.employeeId
+              ? { ...row, schedule: row.schedule.map((code, index) => (index === day - 1 ? 'OFF' : code)) }
+              : row
+          )
+        await params.tx
+          .update(timesheetSchedulingPlansV2)
+          .set({
+            draftSchedule: applyOff(plan.draftSchedule as ScheduleV2Row[]),
+            ...(plan.status === 'active'
+              ? { activeSchedule: applyOff(plan.activeSchedule as ScheduleV2Row[]) }
+              : {}),
+            updatedAt: params.now,
+          })
+          .where(eq(timesheetSchedulingPlansV2.id, plan.id))
+      }
+    }
     return
   }
 
@@ -3609,19 +3674,48 @@ async function applyLegacySubmissionDecision(params: {
                 category: 'approval_requests',
                 title,
                 body: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
-                url: finalApproved ? '/mobile/activity/input' : '/dashboard/overtime-requests',
+                url: finalApproved ? '/mobile/activity/input' : '/mobile/overtime?tab=history',
               })
               await sendPushNotification({
                 employeeId,
                 category: 'approval_requests',
                 title,
                 body: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
-                url: finalApproved ? '/mobile/activity/input' : '/dashboard/overtime-requests',
+                url: finalApproved ? '/mobile/activity/input' : '/mobile/overtime?tab=history',
                 tag: `spl-decision-${splId}-${employeeId}`,
                 notificationEventId: event?.id,
               })
             })
           )
+          const emailRows = recipients.length
+            ? await db
+                .select({ email: employees.email })
+                .from(employees)
+                .where(inArray(employees.id, recipients))
+            : []
+          const recipientEmails = emailRows.map((row) => row.email).filter(Boolean)
+          if (recipientEmails.length) {
+            const content = buildWorkflowEmailContent({
+              title,
+              intro: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
+              ctaLabel: finalApproved ? 'Lengkapi Evidence SPL' : 'Buka Riwayat SPL',
+              ctaUrl: getAppUrl(finalApproved ? '/mobile/activity/input' : '/mobile/overtime?tab=history'),
+            })
+            await sendWorkflowEmailToMany({
+              recipients: recipientEmails,
+              templateCode: finalApproved ? 'spl_assigned' : 'spl_decision',
+              templateName: finalApproved ? 'SPL Assigned' : 'SPL Decision',
+              variables: {
+                splNumber: spl?.splNumber ?? 'SPL',
+                employeeName: '',
+                status: finalApproved ? 'approved' : params.decision,
+                reason: params.note,
+              },
+              fallbackSubject: title,
+              fallbackHtml: content.html,
+              fallbackText: content.text,
+            })
+          }
         } catch (notificationError) {
           console.error('Failed to dispatch SPL decision notification', notificationError)
         }
@@ -5079,6 +5173,9 @@ export async function reviewApprovalAction(formData: FormData) {
     decision: formData.get('decision'),
     note: formData.get('note'),
   })
+  if (payload.decision !== 'approved' && payload.note.trim().length < 3) {
+    throw new Error('Alasan wajib diisi untuk reject atau return.')
+  }
 
   // Check if a signature file is provided
   const signatureFile = formData.get('signatureFile') as File | null

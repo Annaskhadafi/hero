@@ -25,8 +25,10 @@ export default async function MobileActivityInputPage() {
     );
   }
 
+  const activeSpl = data.routeChecklist?.activeSpl ?? data.standaloneOvertimeChecklist;
   const now = new Date();
-  const defaultDateTime = dateTimeLocalValue(now);
+  const defaultStartTime = dateTimeLocalValue(activeSpl?.plannedStartAt ?? activeSpl?.workDate ?? now);
+  const defaultEndTime = dateTimeLocalValue(activeSpl?.plannedEndAt ?? activeSpl?.workDate ?? now);
   const pagePurpose = getActivityPagePurpose("input");
 
   return (
@@ -111,8 +113,8 @@ export default async function MobileActivityInputPage() {
         employeeId={data.employee.id}
         assignments={data.assignments}
         availableLibrary={data.availableLibrary}
-        defaultStartTime={defaultDateTime}
-        defaultEndTime={defaultDateTime}
+        defaultStartTime={defaultStartTime}
+        defaultEndTime={defaultEndTime}
         routeChecklist={data.routeChecklist}
         standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
         site={data.site}

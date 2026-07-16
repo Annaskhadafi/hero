@@ -1,3 +1,5 @@
+import { DEFAULT_SPL_POLICY, normalizeSplPolicy, type SplPolicyConfig } from '@/lib/spl-policy'
+
 export type OvertimeDayKey = 'hariBiasa' | 'hariLibur' | 'hariKe6'
 export type OvertimeShiftKey = 'dayShift' | 'nightShift'
 
@@ -10,6 +12,7 @@ export type OvertimeDayRule = Record<OvertimeShiftKey, OvertimeInterval[]>
 
 export type SiteOvertimeConfig = {
   enabled: boolean
+  splPolicy: SplPolicyConfig
   hariBiasa: OvertimeDayRule
   hariLibur: OvertimeDayRule
   hariKe6: OvertimeDayRule
@@ -23,6 +26,10 @@ export type ApprovedSplWindow = {
   plannedStartAt: string
   plannedEndAt: string
   status: string
+  category?: 'break' | 'off_day' | 'after_mandatory_ot'
+  overtimeCreditMinutes?: number | null
+  evidenceStatus?: string
+  payrollPeriod?: string
 }
 
 export type CalculatedTimeInterval = {
@@ -68,6 +75,7 @@ const EMPTY_RESULT: OvertimeCalculationResult = {
 
 export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
   enabled: false,
+  splPolicy: DEFAULT_SPL_POLICY,
   hariBiasa: {
     dayShift: [
       { start: '06:00', end: '08:00' },
@@ -103,6 +111,7 @@ export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
 function cloneDefaults(): SiteOvertimeConfig {
   return {
     enabled: DEFAULT_SITE_OVERTIME_CONFIG.enabled,
+    splPolicy: normalizeSplPolicy(DEFAULT_SITE_OVERTIME_CONFIG.splPolicy),
     hariBiasa: {
       dayShift: DEFAULT_SITE_OVERTIME_CONFIG.hariBiasa.dayShift.map((item) => ({ ...item })),
       nightShift: DEFAULT_SITE_OVERTIME_CONFIG.hariBiasa.nightShift.map((item) => ({ ...item })),
@@ -158,7 +167,11 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
   const fallback = cloneDefaults()
   if (!value || typeof value !== 'object') return fallback
   const source = value as Record<string, unknown>
-  const result = { ...fallback, enabled: source.enabled === true }
+  const result = {
+    ...fallback,
+    enabled: source.enabled === true,
+    splPolicy: normalizeSplPolicy(source.splPolicy),
+  }
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6'] as const) {
     const day =
       source[dayKey] && typeof source[dayKey] === 'object'
@@ -397,29 +410,44 @@ export function calculateConfiguredOvertime(params: {
   const configuredIntervals = params.config[params.dayKey][shiftKey]
   const normalWork = configuredNonOvertimeGap(configuredIntervals, overnight)
   const shiftEnvelope = configuredShiftEnvelope(configuredIntervals, overnight)
-  const outsideConfiguredShift = subtractIntervals(fullAttendance, shiftEnvelope)
+  const outsideConfiguredShift =
+    params.dayKey === 'hariLibur' ? fullAttendance : subtractIntervals(fullAttendance, shiftEnvelope)
   const autoConfigured = intervalOccurrences(configuredIntervals)
-  const autoEligible = intersectSets(fullAttendance, autoConfigured).map((item) => ({
+  const autoEligible = (params.dayKey === 'hariLibur' ? [] : intersectSets(fullAttendance, autoConfigured)).map((item) => ({
     ...item,
     sources: new Set<'auto' | 'spl'>(['auto']),
   }))
 
-  const matchedSpl: Array<{ interval: MinuteInterval; splNumber: string }> = []
+  const matchedSpl: Array<{
+    interval: MinuteInterval
+    splNumber: string
+    category: ApprovedSplWindow['category']
+    fixedMinutes: number
+  }> = []
   for (const window of params.splWindows ?? []) {
     if (!['approved', 'closed'].includes(window.status.toLowerCase())) continue
     const interval = splInterval(window, params.workDate)
-    if (!interval || interval.end - interval.start < 120) continue
+    if (!interval || interval.end - interval.start < params.config.splPolicy.minimumMinutes) continue
     const overlapsAttendance = intersect(interval, attendance)
     if (overlapsAttendance)
-      matchedSpl.push({ interval: overlapsAttendance, splNumber: window.splNumber })
+      matchedSpl.push({
+        interval: overlapsAttendance,
+        splNumber: window.splNumber,
+        category: window.category,
+        fixedMinutes: window.overtimeCreditMinutes ?? 0,
+      })
   }
   const splEligible = intersectSets(
-    outsideConfiguredShift,
-    matchedSpl.map((item) => item.interval)
+    fullAttendance,
+    matchedSpl.flatMap((item) => {
+      if (item.category === 'break' || item.category === 'off_day') return [item.interval]
+      const outside = outsideConfiguredShift.map((candidate) => intersect(candidate, item.interval)).filter((match): match is MinuteInterval => match != null)
+      return outside
+    })
   ).map((item) => ({ ...item, sources: new Set<'auto' | 'spl'>(['spl']) }))
   const contributingSplNumbers = matchedSpl
-    .filter(({ interval }) =>
-      outsideConfiguredShift.some((candidate) => intersect(interval, candidate))
+    .filter(({ interval, category }) =>
+      category === 'break' || category === 'off_day' || outsideConfiguredShift.some((candidate) => intersect(interval, candidate))
     )
     .map((item) => item.splNumber)
   const eligible = mergeIntervals([...autoEligible, ...splEligible])
@@ -429,13 +457,16 @@ export function calculateConfiguredOvertime(params: {
     params.dayKey === 'hariLibur' ? [] : intersectSets(fullAttendance, normalWork)
   const hasAuto = autoEligible.length > 0
   const hasSpl = splEligible.length > 0
+  const fixedSplMinutes = Math.max(0, ...matchedSpl.map((item) => item.fixedMinutes))
+  const calculatedTotalMinutes = fixedSplMinutes || totalMinutes(eligible)
 
   return {
-    totalMinutes: totalMinutes(eligible),
-    totalHours: totalMinutes(eligible) / 60,
+    totalMinutes: calculatedTotalMinutes,
+    totalHours: calculatedTotalMinutes / 60,
     autoMinutes: totalMinutes(autoEligible),
     splMinutes: totalMinutes(splEligible),
-    unauthorizedMinutes: unauthorizedTotal >= 120 ? unauthorizedTotal : 0,
+    unauthorizedMinutes:
+      unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0,
     source: hasAuto && hasSpl ? 'Auto + SPL' : hasAuto ? 'Auto' : hasSpl ? 'SPL' : 'None',
     splNumbers: [...new Set(contributingSplNumbers)],
     intervals: eligible.map((item) => ({

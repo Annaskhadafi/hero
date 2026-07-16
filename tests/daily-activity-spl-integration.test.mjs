@@ -22,14 +22,15 @@ test('employee and HR signoff boundaries are separated', () => {
   assert.match(panel, /disabled=\{!data\.permissions\.canReviewHr/)
 })
 
-test('SPL is editable only before review and operational only after approval', () => {
+test('submitted SPL can be worked urgently while editing remains restricted', () => {
   const action = read('app/dashboard/activity-hub/actions.ts')
   const data = read('lib/daily-activity.ts')
   const composer = read('components/overtime-command-letter-composer.tsx')
 
   assert.match(action, /status: z\.enum\(\['draft', 'returned'\]\)/)
   assert.match(action, /SPL hanya dapat diedit saat draft atau returned/)
-  assert.match(data, /eq\(overtimeCommandLetters\.status, 'approved'\)/)
+  assert.match(data, /inArray\(overtimeCommandLetters\.status, \['submitted', 'approved'\]\)/)
+  assert.match(action, /\['submitted', 'approved'\]\.includes\(spl\.status\.toLowerCase\(\)\)/)
   assert.doesNotMatch(composer, /option value="approved"/)
 })
 

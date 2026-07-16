@@ -20,6 +20,7 @@ import {
   masterPositions,
   masterSections,
   overtimeCommandLetterItems,
+  overtimeCommandLetterParticipants,
   overtimeCommandLetters,
   orgChartNodes,
   orgNodeAssignments,
@@ -440,7 +441,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
   employee: DailyActivityEmployeeContext,
   referenceDate = new Date()
 ) {
-  const dayStart = startOfDay(referenceDate)
+  const dayStart = startOfDay(new Date(referenceDate.getTime() - 2 * 86_400_000))
   const dayEnd = endOfDay(referenceDate)
 
   const splRows = await db
@@ -464,7 +465,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
         eq(overtimeCommandLetters.siteId, employee.siteId),
         gte(overtimeCommandLetters.workDate, dayStart),
         lte(overtimeCommandLetters.workDate, dayEnd),
-        eq(overtimeCommandLetters.status, 'approved')
+        inArray(overtimeCommandLetters.status, ['submitted', 'approved'])
       )
     )
     .orderBy(
@@ -581,8 +582,6 @@ async function getStandaloneOvertimeChecklistForEmployee(
     return null
   }
 
-  const dayStart = startOfDay(referenceDate)
-  const dayEnd = endOfDay(referenceDate)
   const [existingSession] = await db
     .select({
       id: dailyActivitySessions.id,
@@ -592,9 +591,7 @@ async function getStandaloneOvertimeChecklistForEmployee(
     .where(
       and(
         eq(dailyActivitySessions.employeeId, employee.id),
-        eq(dailyActivitySessions.overtimeCommandLetterId, activeSpl.id),
-        gte(dailyActivitySessions.workDate, dayStart),
-        lte(dailyActivitySessions.workDate, dayEnd)
+        eq(dailyActivitySessions.overtimeCommandLetterId, activeSpl.id)
       )
     )
     .orderBy(desc(dailyActivitySessions.updatedAt))
@@ -1479,9 +1476,37 @@ async function ensureDailyActivityTables() {
       status text not null default 'draft',
       request_notes text not null default '',
       execution_notes text not null default '',
+      origin text not null default 'leader_command',
+      request_kind text not null default 'base',
+      parent_spl_id integer references hero_overtime_command_letters(id) on delete set null,
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
+  `)
+
+  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists origin text not null default 'leader_command'`)
+  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists request_kind text not null default 'base'`)
+  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists parent_spl_id integer references hero_overtime_command_letters(id) on delete set null`)
+
+  await db.execute(sql`
+    create table if not exists hero_overtime_command_letter_participants (
+      id serial primary key,
+      overtime_command_letter_id integer not null references hero_overtime_command_letters(id) on delete cascade,
+      employee_id integer not null references hero_employees(id) on delete cascade,
+      category text not null default 'after_mandatory_ot',
+      shift_code text not null default 'DS',
+      roster_type text not null default '5:2',
+      schedule_code text not null default '',
+      work_streak_days integer not null default 0,
+      overtime_credit_minutes integer,
+      replacement_off_date timestamp,
+      work_period text not null default '',
+      payroll_period text not null default '',
+      evidence_status text not null default 'pending',
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now(),
+      unique (overtime_command_letter_id, employee_id)
+    )
   `)
 
   await db.execute(sql`
@@ -2410,6 +2435,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     disputeRows,
     splRows,
     splLineRows,
+    splParticipantRows,
     routeTemplateRows,
     libraryRows,
   ] = await Promise.all([
@@ -2511,6 +2537,10 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         status: overtimeCommandLetters.status,
         requestNotes: overtimeCommandLetters.requestNotes,
         executionNotes: overtimeCommandLetters.executionNotes,
+        origin: overtimeCommandLetters.origin,
+        requestKind: overtimeCommandLetters.requestKind,
+        parentSplId: overtimeCommandLetters.parentSplId,
+        requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
         sectionId: overtimeCommandLetters.sectionId,
         sectionName: masterSections.name,
         positionId: overtimeCommandLetters.positionId,
@@ -2558,6 +2588,29 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         asc(overtimeCommandLetterItems.sortOrder),
         asc(overtimeCommandLetterItems.id)
       ),
+    db
+      .select({
+        overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+        employeeId: overtimeCommandLetterParticipants.employeeId,
+        employeeName: employees.name,
+        category: overtimeCommandLetterParticipants.category,
+        shiftCode: overtimeCommandLetterParticipants.shiftCode,
+        rosterType: overtimeCommandLetterParticipants.rosterType,
+        scheduleCode: overtimeCommandLetterParticipants.scheduleCode,
+        workStreakDays: overtimeCommandLetterParticipants.workStreakDays,
+        overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+        replacementOffDate: overtimeCommandLetterParticipants.replacementOffDate,
+        workPeriod: overtimeCommandLetterParticipants.workPeriod,
+        payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
+        evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
+      })
+      .from(overtimeCommandLetterParticipants)
+      .innerJoin(
+        overtimeCommandLetters,
+        eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
+      )
+      .innerJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
+      .where(eq(overtimeCommandLetters.siteId, currentEmployee.siteId)),
     db
       .select({
         id: activityRouteTemplates.id,
@@ -2688,6 +2741,13 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     splSessionsByHeaderId.set(session.overtimeCommandLetterId, list)
   }
 
+  const splParticipantsByHeaderId = new Map<number, typeof splParticipantRows>()
+  for (const participant of splParticipantRows) {
+    const list = splParticipantsByHeaderId.get(participant.overtimeCommandLetterId) ?? []
+    list.push(participant)
+    splParticipantsByHeaderId.set(participant.overtimeCommandLetterId, list)
+  }
+
   const splSessionItemsByHeaderId = new Map<number, typeof splSessionItemRows>()
   for (const sessionItem of splSessionItemRows) {
     if (sessionItem.overtimeCommandLetterId == null) {
@@ -2703,6 +2763,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     const items = splLinesByHeaderId.get(row.id) ?? []
     const sessions = splSessionsByHeaderId.get(row.id) ?? []
     const sessionItems = splSessionItemsByHeaderId.get(row.id) ?? []
+    const participants = splParticipantsByHeaderId.get(row.id) ?? []
     const checkedLineIds = new Set(
       sessionItems
         .filter((item) => item.isChecked && item.overtimeCommandLetterItemId != null)
@@ -2741,6 +2802,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         ...item,
         isCheckedOnRoute: checkedLineIds.has(item.id),
       })),
+      participants,
       workers,
       workerCount: workers.length,
       checkedLineCount: checkedLineIds.size,

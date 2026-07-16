@@ -1,166 +1,86 @@
 import { redirect } from "next/navigation";
-import { Clock3, ClipboardList, Users2 } from "lucide-react";
+import { CheckCheck, Clock3, History, PlusCircle } from "lucide-react";
 
 import { manageOvertimeCommandLetterAction } from "@/app/dashboard/activity-hub/actions";
+import { MobileApprovalCenter } from "@/components/mobile/mobile-approval-center";
 import { MobileOvertimeRequestForm } from "@/components/mobile/mobile-overtime-request-form";
+import { MobileSplHistory, type MobileSplHistoryRow } from "@/components/mobile/mobile-spl-history";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getOvertimeRequestWorkspaceData } from "@/lib/overtime-request-data";
 
-function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
-
-  if (["draft", "submitted"].includes(normalized)) {
-    return "border-0 bg-[#fff1cf] text-[#8a5a00]";
-  }
-
-  if (["approved", "closed"].includes(normalized)) {
-    return "border-0 bg-[#dff4e8] text-[#14532d]";
-  }
-
-  return "border-0 bg-[#eaf4fb] text-[#003f78]";
-}
-
-export default async function MobileOvertimePage() {
+export default async function MobileOvertimePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; extend?: string }>;
+}) {
   const session = await getServerSession();
+  if (!session?.user?.email) redirect("/sign-in");
 
-  if (!session?.user?.email) {
-    redirect("/sign-in");
-  }
+  const [data, approvals, query] = await Promise.all([
+    getOvertimeRequestWorkspaceData(session.user.email),
+    getApprovalCenterData(session.user.email),
+    searchParams,
+  ]);
+  if (!data) return null;
 
-  const data = await getOvertimeRequestWorkspaceData(session.user.email);
-  if (!data) {
-    return null;
-  }
-
+  const parentSplId = Number(query.extend ?? 0) || undefined;
+  const historyRows: MobileSplHistoryRow[] = data.splDocuments.map((document) => ({
+    id: document.id,
+    splNumber: document.splNumber,
+    title: document.title,
+    workDate: document.workDate.toISOString(),
+    status: document.status.toLowerCase(),
+    origin: document.origin,
+    requestKind: document.requestKind,
+    workerNames: document.workers.map((worker) => worker.employeeName),
+    progressPercent: document.progressPercent,
+    lineCount: document.lineCount,
+  }));
+  const libraryActivities = data.splOptions.libraryActivities;
   return (
-    <div className="space-y-5">
-      <section className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Leader Workspace</p>
-        <h1 className="text-2xl font-black tracking-tight text-[#003461]">Pengajuan Lembur</h1>
-        <p className="text-sm font-semibold leading-6 text-[#486275]">
-          Pilih beberapa bawahan, centang daftar pekerjaan, lalu tambah pekerjaan custom bila perlu.
-        </p>
-      </section>
-
-      <section className="grid grid-cols-3 gap-3">
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
-          <Users2 className="size-5 text-[#003f78]" />
-          <p className="mt-3 text-2xl font-black text-[#082033]">{data.team.length}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Bawahan</p>
-        </div>
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
-          <ClipboardList className="size-5 text-[#003f78]" />
-          <p className="mt-3 text-2xl font-black text-[#082033]">{data.splDocuments.length}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">SPL</p>
-        </div>
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
-          <Clock3 className="size-5 text-[#5a2200]" />
-          <p className="mt-3 text-2xl font-black text-[#082033]">{data.metrics.totalAssignedLines}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Checklist</p>
-        </div>
-      </section>
-
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-5 pb-24">
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Akses Leader</p>
-            <p className="mt-1 text-sm font-black text-[#082033]">{data.lead.name}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#486275]">Surat Perintah Lembur</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">SPL Mobile</h1>
           </div>
-          <Badge className={data.canCreateRequests ? "border-0 bg-[#dff4e8] text-[#14532d]" : "border-0 bg-[#fff1cf] text-[#8a5a00]"}>
-            {data.canCreateRequests ? "Aktif" : "Butuh Setting"}
-          </Badge>
+          <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">{historyRows.length} SPL</Badge>
         </div>
+        <p className="text-sm font-semibold leading-6 text-[#486275]">Ajukan, approve, lengkapi evidence, dan cek history tanpa membuka desktop.</p>
       </section>
 
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <div className="mb-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Form Pengajuan</p>
-          <p className="mt-1 text-sm font-semibold leading-6 text-[#486275]">
-            Flow mobile native: pilih bawahan dulu, lalu multi select daftar pekerjaan dan custom pekerjaan.
-          </p>
-        </div>
+      <Tabs defaultValue={query.tab === "approval" ? "approval" : query.tab === "active" ? "active" : query.tab === "history" ? "history" : "apply"}>
+        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+          <TabsTrigger value="apply" className="min-h-12 rounded-xl px-1 text-[10px]"><PlusCircle className="size-4" />Ajukan</TabsTrigger>
+          <TabsTrigger value="approval" className="min-h-12 rounded-xl px-1 text-[10px]"><CheckCheck className="size-4" />Perlu Approval</TabsTrigger>
+          <TabsTrigger value="active" className="min-h-12 rounded-xl px-1 text-[10px]"><Clock3 className="size-4" />SPL Aktif</TabsTrigger>
+          <TabsTrigger value="history" className="min-h-12 rounded-xl px-1 text-[10px]"><History className="size-4" />Riwayat</TabsTrigger>
+        </TabsList>
 
-        {data.canCreateRequests && data.team.length > 0 ? (
-          <MobileOvertimeRequestForm
-            action={manageOvertimeCommandLetterAction}
-            submitLabel="Save Request"
-            libraryActivities={data.splOptions.libraryActivities}
-            teamMembers={data.team.map((member) => ({
-              id: member.id,
-              name: member.name,
-              role: member.jobTitle || member.role,
-            }))}
-          />
-        ) : (
-          <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-4 text-sm font-semibold leading-6 text-[#8a5a00]">
-            {data.team.length === 0
-              ? "Belum ada bawahan aktif. Pengajuan belum bisa dibuat."
-              : "Leader ini belum aktif di setting pengajuan lembur."}
-          </div>
-        )}
-      </section>
+        <TabsContent value="apply" className="mt-4 space-y-4">
+          <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">{parentSplId ? "Extension" : "Pengajuan Saya"}</p>
+            <p className="mt-1 text-sm font-semibold leading-6 text-[#486275]">Isi waktu, pilih aktivitas, lalu kirim.</p>
+            <div className="mt-4">
+              <MobileOvertimeRequestForm
+                action={manageOvertimeCommandLetterAction}
+                submitLabel="Ajukan SPL"
+                currentEmployeeId={data.lead.id}
+                parentSplId={parentSplId}
+                libraryActivities={libraryActivities}
+              />
+            </div>
+          </section>
+        </TabsContent>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Riwayat SPL</p>
-          <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
-            {data.splDocuments.length} dokumen
-          </Badge>
-        </div>
-
-        {data.splDocuments.length > 0 ? (
-          data.splDocuments.map((document) => (
-            <article
-              key={document.id}
-              className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
-                    {document.splNumber}
-                  </p>
-                  <h2 className="mt-1 text-base font-black leading-tight text-[#082033]">{document.title}</h2>
-                  <p className="mt-2 text-xs font-semibold text-[#486275]">
-                    {document.workDate.toLocaleDateString("id-ID")} • {document.workerCount} worker
-                  </p>
-                </div>
-                <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-3 text-xs font-semibold text-[#486275]">
-                <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Line</p>
-                  <p className="mt-1 text-sm text-[#082033]">{document.lineCount}</p>
-                </div>
-                <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Progress</p>
-                  <p className="mt-1 text-sm text-[#082033]">{document.progressPercent}%</p>
-                </div>
-                <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Point</p>
-                  <p className="mt-1 text-sm text-[#082033]">{document.plannedPointsTotal}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                {document.items.slice(0, 3).map((item) => (
-                  <div key={item.id} className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                    <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
-                    <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                      {item.assignedEmployeeName ?? "Belum pilih"} • {item.plannedPoints} pts
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </article>
-          ))
-        ) : (
-          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            Belum ada pengajuan lembur.
-          </div>
-        )}
-      </section>
+        <TabsContent value="approval" className="mt-4"><MobileApprovalCenter data={approvals} /></TabsContent>
+        <TabsContent value="active" className="mt-4"><MobileSplHistory rows={historyRows} activeOnly /></TabsContent>
+        <TabsContent value="history" className="mt-4"><MobileSplHistory rows={historyRows} /></TabsContent>
+      </Tabs>
     </div>
   );
 }

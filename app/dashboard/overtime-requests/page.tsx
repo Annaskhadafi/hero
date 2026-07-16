@@ -7,6 +7,8 @@ import {
   transitionOvertimeCommandLetterStatusAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { OvertimeCommandLetterComposer } from '@/components/overtime-command-letter-composer'
+import { SearchableEmployeeSelect } from '@/components/searchable-employee-select'
+import { SplMonthlySummary } from '@/components/spl-monthly-summary'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -80,9 +82,9 @@ export default async function OvertimeRequestsPage() {
           </div>
 
           <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-3 text-sm">
-            {data.canCreateRequests
-              ? `Akses leader aktif. Bawahan tersedia: ${data.team.length} orang.`
-              : 'Leader ini belum aktif di setting pengajuan lembur.'}
+            {data.canCreateCommands
+              ? `Perintah lembur aktif. Bawahan tersedia: ${data.team.length} orang.`
+              : 'Pengajuan SPL mandiri tersedia. Perintah lembur perlu akses leader aktif.'}
           </div>
         </CardHeader>
       </Card>
@@ -107,7 +109,7 @@ export default async function OvertimeRequestsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {data.canCreateRequests && data.team.length > 0 ? (
+              {data.canCreateCommands && data.team.length > 0 ? (
                 <OvertimeCommandLetterComposer
                   action={manageOvertimeCommandLetterAction}
                   intent="create"
@@ -133,6 +135,7 @@ export default async function OvertimeRequestsPage() {
 
         <TabsContent value="history">
           <div className="space-y-4">
+            <SplMonthlySummary documents={data.splDocuments} />
             {data.splDocuments.length > 0 ? (
               data.splDocuments.map((document) => (
                 <Card key={document.id} className="rounded-[1.4rem]">
@@ -288,11 +291,43 @@ export default async function OvertimeRequestsPage() {
                   Setting Leader Pembuat
                 </CardTitle>
                 <CardDescription>
-                  Aktifkan siapa saja yang boleh membuat pengajuan lembur. Scope tetap otomatis
-                  hanya ke bawahan dia.
+                  Pilih pemberi perintah lembur dari hierarchy Head Area pada master Lokasi Site.
+                  Scope otomatis hanya ke bawahannya.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="bg-surface-container-low rounded-[1rem] px-4 py-4">
+                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.14em]">
+                    Head Area / Head Location
+                  </p>
+                  <p className="text-foreground mt-1 font-semibold">
+                    {data.headLocation?.headEmployeeName ?? 'Belum diatur di Master Data > Lokasi Site'}
+                  </p>
+                </div>
+
+                {data.headLocation?.headEmployeeId && data.leaderOptions.length > 0 ? (
+                  <form
+                    action={manageOvertimeRequestLeaderPermissionAction}
+                    className="grid gap-3 rounded-[1rem] border border-border bg-background p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
+                  >
+                    <SearchableEmployeeSelect
+                      name="leaderEmployeeId"
+                      label="Tambah pemberi perintah lembur"
+                      placeholder="Cari orang dari hierarchy Head Area..."
+                      employees={data.leaderOptions.map((leader) => ({
+                        id: leader.id,
+                        name: leader.name,
+                        employeeSn: leader.employeeSn,
+                        role: `${leader.jobTitle || leader.role} • ${leader.subordinateCount} bawahan`,
+                      }))}
+                    />
+                    <input type="hidden" name="isActive" value="true" />
+                    <Button type="submit" className="min-h-10 rounded-xl">
+                      <Users2 className="size-4" /> Tambahkan
+                    </Button>
+                  </form>
+                ) : null}
+
                 {data.leaderCandidates.length > 0 ? (
                   data.leaderCandidates.map((leader) => (
                     <div
@@ -307,6 +342,18 @@ export default async function OvertimeRequestsPage() {
                         <p className="text-muted-foreground mt-1 text-xs">
                           Bawahan aktif: {leader.subordinateCount}
                         </p>
+                        <details className="mt-2">
+                          <summary className="text-primary cursor-pointer text-xs font-semibold">
+                            Lihat siapa saja bawahannya
+                          </summary>
+                          <div className="mt-2 flex max-w-3xl flex-wrap gap-1.5">
+                            {leader.subordinateNames.map((name) => (
+                              <Badge key={name} variant="outline" className="bg-background">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </details>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
@@ -340,7 +387,7 @@ export default async function OvertimeRequestsPage() {
                   ))
                 ) : (
                   <div className="bg-surface-container-low text-muted-foreground rounded-[1rem] px-4 py-6 text-sm">
-                    Belum ada kandidat leader dengan bawahan aktif di site ini.
+                    Belum ada pemberi perintah lembur yang dipilih.
                   </div>
                 )}
               </CardContent>

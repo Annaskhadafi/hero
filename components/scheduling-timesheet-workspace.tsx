@@ -2922,6 +2922,27 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function updateSplPolicy<Key extends keyof SiteOvertimeConfig['splPolicy']>(
+    key: Key,
+    value: SiteOvertimeConfig['splPolicy'][Key]
+  ) {
+    if (!guardOpenPeriod('Edit SPL policy')) return
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = current[siteId] ?? defaultSiteConfig
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          overtimeConfig: {
+            ...currentConfig.overtimeConfig,
+            splPolicy: { ...currentConfig.overtimeConfig.splPolicy, [key]: value },
+          },
+        },
+      }
+    })
+  }
+
   function updateOvertimeInterval(
     dayKey: OvertimeDayKey,
     shiftKey: OvertimeShiftKey,
@@ -6021,6 +6042,87 @@ export function SchedulingTimesheetWorkspace({
                           onCheckedChange={updateOvertimeEnabled}
                         />
                       </div>
+                    </div>
+                  </div>
+                  <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">Kebijakan SPL Site</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          Atur break, OFF, batas H+, minimum durasi, dan OFF pengganti.
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label="Aktifkan pengajuan SPL"
+                        checked={siteConfig.overtimeConfig.splPolicy.enabled}
+                        onCheckedChange={(value) => updateSplPolicy('enabled', value)}
+                      />
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {(
+                        [
+                          ['allowBreak', 'Jam istirahat'],
+                          ['allowOffDay', 'Hari OFF'],
+                          ['allowAfterMandatoryOt', 'Setelah OT wajib'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label key={key} className="bg-surface-container-low flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold">
+                          {label}
+                          <Switch
+                            aria-label={`Izinkan SPL ${label}`}
+                            checked={siteConfig.overtimeConfig.splPolicy[key]}
+                            onCheckedChange={(value) => updateSplPolicy(key, value)}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {(
+                        [
+                          ['submissionGraceDays', 'Batas submit H+', 0, 14],
+                          ['minimumMinutes', 'Minimum menit', 15, 720],
+                          ['replacementOffMaxDays', 'Maks. OFF pengganti', 1, 90],
+                        ] as const
+                      ).map(([key, label, min, max]) => (
+                        <Label key={key} className="space-y-1.5 text-xs font-semibold">
+                          {label}
+                          <Input
+                            type="number"
+                            min={min}
+                            max={max}
+                            value={siteConfig.overtimeConfig.splPolicy[key]}
+                            onChange={(event) => updateSplPolicy(key, Number(event.target.value))}
+                          />
+                        </Label>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          ['dayShiftBreak', 'Break DS'],
+                          ['nightShiftBreak', 'Break NS'],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <div key={key} className="space-y-2">
+                          <p className="text-xs font-semibold">{label}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(['start', 'end'] as const).map((field) => (
+                              <Input
+                                key={field}
+                                type="time"
+                                aria-label={`${label} ${field}`}
+                                value={siteConfig.overtimeConfig.splPolicy[key][field]}
+                                onChange={(event) =>
+                                  updateSplPolicy(key, {
+                                    ...siteConfig.overtimeConfig.splPolicy[key],
+                                    [field]: event.target.value,
+                                  })
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                   <div className="grid gap-4 xl:grid-cols-3">

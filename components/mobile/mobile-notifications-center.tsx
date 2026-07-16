@@ -248,8 +248,8 @@ function getNotificationDisplayKey(item: NotificationRow) {
 }
 
 function getNotificationActionLabel(item: NotificationRow) {
-  if (item.eventType === "spl_assigned") {
-    return "Kerjakan";
+  if (item.eventType?.startsWith("spl_")) {
+    return item.eventType === "spl_assigned" || item.eventType === "spl_approved" ? "Kerjakan" : "Lihat SPL";
   }
 
   if ((item.href || "").includes("/approval")) {

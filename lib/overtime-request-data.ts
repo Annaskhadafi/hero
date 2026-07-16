@@ -1,11 +1,22 @@
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { employees, overtimeRequestLeaderPermissions } from "@/db/schema/hero";
-import { ensureDailyActivitySeedData, getDailyActivityTeamBoardData, getManagedEmployeeIdsForLead } from "@/lib/daily-activity";
+import { employees, overtimeRequestLeaderPermissions, sites } from "@/db/schema/hero";
+import { ensureDailyActivitySeedData, getDailyActivityTeamBoardData } from "@/lib/daily-activity";
+import { getHeadLocationDescendantIds } from "@/lib/head-location-hierarchy";
 
 function canManageSettings(accessRole: string) {
   return ["Super Admin", "Site Admin", "HC Manager"].includes(accessRole);
+}
+
+export async function getHeadLocationManagedEmployeeIds(siteId: number, leaderId: number) {
+  const [site, rows] = await Promise.all([
+    db.select({ headEmployeeId: sites.headEmployeeId }).from(sites).where(eq(sites.id, siteId)).limit(1).then((result) => result[0]),
+    db.select({ id: employees.id, directManagerId: employees.directManagerId }).from(employees).where(and(eq(employees.siteId, siteId), eq(employees.isActive, true))),
+  ]);
+  if (!site?.headEmployeeId) return [];
+  const headScope = new Set([site.headEmployeeId, ...getHeadLocationDescendantIds(rows, site.headEmployeeId)]);
+  return headScope.has(leaderId) ? getHeadLocationDescendantIds(rows, leaderId) : [];
 }
 
 export async function getOvertimeRequestWorkspaceData(email?: string | null) {
@@ -17,7 +28,7 @@ export async function getOvertimeRequestWorkspaceData(email?: string | null) {
   }
 
   const currentEmployee = teamBoardData.lead;
-  const [permission, siteEmployees, permissionRows] = await Promise.all([
+  const [permission, siteRow, siteEmployees, permissionRows] = await Promise.all([
     db
       .select({
         id: overtimeRequestLeaderPermissions.id,
@@ -34,8 +45,17 @@ export async function getOvertimeRequestWorkspaceData(email?: string | null) {
       .limit(1)
       .then((rows) => rows[0] ?? null),
     db
+      .select({ headEmployeeId: sites.headEmployeeId, headEmployeeName: employees.name })
+      .from(sites)
+      .leftJoin(employees, eq(sites.headEmployeeId, employees.id))
+      .where(eq(sites.id, currentEmployee.siteId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db
       .select({
         id: employees.id,
+        employeeSn: employees.employeeSn,
+        directManagerId: employees.directManagerId,
         name: employees.name,
         role: employees.role,
         accessRole: employees.accessRole,
@@ -61,46 +81,64 @@ export async function getOvertimeRequestWorkspaceData(email?: string | null) {
   ]);
 
   const permissionByLeaderId = new Map(permissionRows.map((row) => [row.leaderEmployeeId, row]));
-  const leaderCandidates = (
-    await Promise.all(
-      siteEmployees.map(async (employee) => {
-        const managedEmployeeIds = await getManagedEmployeeIdsForLead(employee.id);
-        const settings = permissionByLeaderId.get(employee.id);
-
-        return {
-          ...employee,
-          subordinateCount: managedEmployeeIds.length,
-          isActive: settings?.isActive ?? false,
-          note: settings?.note ?? "",
-          subordinateIds: managedEmployeeIds,
-        };
-      }),
-    )
-  ).filter((employee) => {
-    if (employee.subordinateCount > 0) {
-      return true;
-    }
-
-    const normalizedRole = `${employee.role} ${employee.accessRole}`.toLowerCase();
-    return normalizedRole.includes("leader") || normalizedRole.includes("foreman");
-  });
+  const headScopeIds = siteRow?.headEmployeeId
+    ? new Set([siteRow.headEmployeeId, ...getHeadLocationDescendantIds(siteEmployees, siteRow.headEmployeeId)])
+    : new Set<number>();
+  const employeeById = new Map(siteEmployees.map((employee) => [employee.id, employee]));
+  const leaderOptions = siteEmployees
+    .filter((employee) => headScopeIds.has(employee.id))
+    .map((employee) => ({ ...employee, subordinateIds: getHeadLocationDescendantIds(siteEmployees, employee.id) }))
+    .filter((employee) => employee.subordinateIds.length > 0)
+    .map((employee) => ({
+      ...employee,
+      subordinateCount: employee.subordinateIds.length,
+      subordinateNames: employee.subordinateIds.map((id) => employeeById.get(id)?.name).filter(Boolean) as string[],
+    }));
+  const optionById = new Map(leaderOptions.map((employee) => [employee.id, employee]));
+  const leaderCandidates = permissionRows
+    .map((settings) => {
+      const employee = optionById.get(settings.leaderEmployeeId);
+      return employee ? { ...employee, isActive: settings.isActive, note: settings.note } : null;
+    })
+    .filter((employee): employee is NonNullable<typeof employee> => employee != null);
 
   const activeLeaderCount = leaderCandidates.filter((employee) => employee.isActive).length;
-  const totalAssignedLines = teamBoardData.splDocuments.reduce((total, document) => total + document.lineCount, 0);
-  const totalAssignedWorkers = teamBoardData.splDocuments.reduce((total, document) => total + document.workerCount, 0);
+  const currentManagedIds = permission?.isActive && headScopeIds.has(currentEmployee.id)
+    ? getHeadLocationDescendantIds(siteEmployees, currentEmployee.id)
+    : [];
+  const commandTeam = currentManagedIds
+    .map((employeeId) => employeeById.get(employeeId))
+    .filter((employee): employee is NonNullable<typeof employee> => employee != null);
+  const managedEmployeeIds = new Set(currentManagedIds);
+  const visibleSplDocuments = canManageSettings(currentEmployee.accessRole)
+    ? teamBoardData.splDocuments
+    : teamBoardData.splDocuments.filter(
+        (document) =>
+          document.requestedByEmployeeId === currentEmployee.id ||
+          document.workers.some(
+            (worker) => worker.employeeId === currentEmployee.id || managedEmployeeIds.has(worker.employeeId),
+          ),
+      );
+  const totalAssignedLines = visibleSplDocuments.reduce((total, document) => total + document.lineCount, 0);
+  const totalAssignedWorkers = visibleSplDocuments.reduce((total, document) => total + document.workerCount, 0);
 
   return {
     ...teamBoardData,
+    team: commandTeam,
+    splDocuments: visibleSplDocuments,
     permission,
     canManageSettings: canManageSettings(currentEmployee.accessRole),
-    canCreateRequests: canManageSettings(currentEmployee.accessRole) || Boolean(permission?.isActive),
+    canCreateRequests: true,
+    canCreateCommands: Boolean(permission?.isActive),
     metrics: {
       activeLeaders: activeLeaderCount,
       totalLeaders: leaderCandidates.length,
-      totalDocuments: teamBoardData.splDocuments.length,
+      totalDocuments: visibleSplDocuments.length,
       totalAssignedLines,
       totalAssignedWorkers,
     },
     leaderCandidates,
+    leaderOptions,
+    headLocation: siteRow,
   };
 }

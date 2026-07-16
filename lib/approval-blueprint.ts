@@ -39,6 +39,7 @@ import {
 } from '@/db/schema/hero'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { sendPushNotification, type PushDispatchInput } from '@/lib/push-notifications'
+import { runSplEvidenceReminderTick } from '@/lib/spl-reminders'
 import {
   buildWorkflowEmailContent,
   getAppUrl,
@@ -3013,9 +3014,12 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
     )
   }
 
+  const splEvidenceReminders = await runSplEvidenceReminderTick(referenceDate)
+
   return {
     remindersExecuted,
     expiredRequests,
+    splEvidenceReminders,
   }
 }
 

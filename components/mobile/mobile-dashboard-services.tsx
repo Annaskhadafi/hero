@@ -119,6 +119,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-amber-500/10 text-amber-600",
     },
     {
+      title: "Pengajuan SPL",
+      href: "/mobile/overtime?tab=apply",
+      resource: "overtime_requests",
+      icon: FileSignature,
+      bg: "bg-violet-500/10 text-violet-600",
+    },
+    {
       title: "Request Barang",
       href: "/mobile/apd",
       resource: "apd-request",

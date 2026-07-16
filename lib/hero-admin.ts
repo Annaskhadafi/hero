@@ -24,6 +24,7 @@ import {
   orgChartStructures,
   orgNodeAssignments,
   overtimeCommandLetterItems,
+  overtimeCommandLetterParticipants,
   overtimeCommandLetters,
   pointEvents,
   penaltyEvents,
@@ -5864,20 +5865,23 @@ export async function getSchedulingTimesheetOptions() {
         id: overtimeCommandLetters.id,
         splNumber: overtimeCommandLetters.splNumber,
         siteId: overtimeCommandLetters.siteId,
-        employeeId: overtimeCommandLetterItems.assignedEmployeeId,
+        employeeId: overtimeCommandLetterParticipants.employeeId,
         plannedStartAt: overtimeCommandLetters.plannedStartAt,
         plannedEndAt: overtimeCommandLetters.plannedEndAt,
         status: overtimeCommandLetters.status,
+        category: overtimeCommandLetterParticipants.category,
+        overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+        evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
+        payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
       })
       .from(overtimeCommandLetters)
       .innerJoin(
-        overtimeCommandLetterItems,
-        eq(overtimeCommandLetterItems.overtimeCommandLetterId, overtimeCommandLetters.id)
+        overtimeCommandLetterParticipants,
+        eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
       )
       .where(
         and(
           inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed']),
-          isNotNull(overtimeCommandLetterItems.assignedEmployeeId),
           isNotNull(overtimeCommandLetters.plannedStartAt),
           isNotNull(overtimeCommandLetters.plannedEndAt)
         )
@@ -6136,6 +6140,10 @@ export async function getSchedulingTimesheetOptions() {
         plannedStartAt: row.plannedStartAt!.toISOString(),
         plannedEndAt: row.plannedEndAt!.toISOString(),
         status: row.status,
+        category: row.category as 'break' | 'off_day' | 'after_mandatory_ot',
+        overtimeCreditMinutes: row.overtimeCreditMinutes,
+        evidenceStatus: row.evidenceStatus,
+        payrollPeriod: row.payrollPeriod,
       })),
     schedulingConfigs: schedulingConfigs
       .filter((config) => canSeeSchedulingSite(config.siteId))

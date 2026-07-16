@@ -2657,7 +2657,34 @@ Tim Human Capital`,
       approverName: 'Agus Subiyanto',
       reason: 'Barang sedang tidak tersedia'
     }
-  }
+  },
+  ...[
+    ['SPL Submitted', 'spl_submitted', 'SPL {{splNumber}} menunggu approval', 'Pengajuan {{splNumber}} oleh {{requesterName}} menunggu approval.'],
+    ['SPL Assigned', 'spl_assigned', 'SPL {{splNumber}} siap dikerjakan', '{{employeeName}}, SPL {{splNumber}} telah disetujui. Lengkapi attendance, aktivitas, dan foto.'],
+    ['SPL Decision', 'spl_decision', 'Keputusan SPL {{splNumber}}: {{status}}', 'Status SPL {{splNumber}} berubah menjadi {{status}}. {{reason}}'],
+    ['SPL Extension Submitted', 'spl_extension_submitted', 'Extension SPL {{splNumber}} menunggu approval', 'Extension {{splNumber}} diajukan untuk tambahan waktu {{duration}}.'],
+    ['SPL Evidence Reminder', 'spl_evidence_reminder', 'Evidence SPL {{splNumber}} belum lengkap', 'Lengkapi clock-in/out, aktivitas, dan minimal satu foto sebelum batas H+2.'],
+  ].map(([name, templateCode, subject, textContent]) => ({
+    name,
+    templateCode,
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester,employee,approver',
+    ccEmail: '',
+    subject,
+    htmlContent: '',
+    textContent,
+    description: `${name} notification`,
+    variables: ['splNumber', 'requesterName', 'employeeName', 'status', 'reason', 'duration'],
+    sampleValues: {
+      splNumber: 'SPL-001',
+      requesterName: 'Budi Santoso',
+      employeeName: 'Andi Wijaya',
+      status: 'approved',
+      reason: '-',
+      duration: '2 jam',
+    },
+  })),
 ]
 function escapeEmailHtml(value: string) {
   return value
@@ -2688,6 +2715,7 @@ function inferTemplateFeature(templateCode: string) {
     ['daily_report_', 'Daily Report'],
     ['leave_request_', 'Leave'],
     ['overtime_', 'Overtime'],
+    ['spl_', 'SPL'],
     ['daily_activity_', 'Daily Activity'],
     ['offboarding_', 'Offboarding'],
     ['hse_', 'HSE Safety'],
@@ -2778,6 +2806,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["daily_report_", "Daily Report"],
   ["leave_request_", "Leave"],
   ["overtime_", "Overtime"],
+  ["spl_", "SPL"],
   ["daily_activity_", "Daily Activity"],
   ["offboarding_", "Offboarding"],
   ["hse_", "HSE Safety"],

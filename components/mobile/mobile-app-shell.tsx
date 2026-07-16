@@ -81,7 +81,7 @@ const drawerItems: DrawerItem[] = [
     href: '/mobile/attendance/permission',
     icon: ShieldAlert,
   },
-  { type: 'link', label: 'Overtime', href: '/mobile/overtime', icon: FileSignature },
+  { type: 'link', label: 'SPL', href: '/mobile/overtime', icon: FileSignature },
   { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer },
   { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
   { type: 'section', label: 'SAFETY & HSE' },

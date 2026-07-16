@@ -76,7 +76,7 @@ describe('scheduling timesheet overtime policy', () => {
     expect(night.totalHours).toBe(4)
   })
 
-  it('keeps the one-hour holiday break outside eligible overtime', () => {
+  it('requires SPL for an OFF day', () => {
     const result = calculateConfiguredOvertime({
       config: activeConfig,
       dayKey: 'hariLibur',
@@ -85,8 +85,8 @@ describe('scheduling timesheet overtime policy', () => {
       clockIn: '06:00',
       clockOut: '18:00',
     })
-    expect(result.totalHours).toBe(11)
-    expect(result.unauthorizedMinutes).toBe(0)
+    expect(result.totalHours).toBe(0)
+    expect(result.unauthorizedMinutes).toBe(12 * 60)
   })
 
   it('requires approved SPL outside automatic windows and avoids double count', () => {
@@ -122,7 +122,7 @@ describe('scheduling timesheet overtime policy', () => {
     expect(withSpl.splNumbers).toEqual(['SPL-001'])
   })
 
-  it('ignores approved SPL windows shorter than two hours', () => {
+  it('accepts one-hour approved SPL using the site minimum', () => {
     const result = calculateConfiguredOvertime({
       config: activeConfig,
       dayKey: 'hariBiasa',
@@ -142,9 +142,33 @@ describe('scheduling timesheet overtime policy', () => {
         },
       ],
     })
-    expect(result.totalHours).toBe(4)
-    expect(result.unauthorizedMinutes).toBe(120)
-    expect(result.splNumbers).toEqual([])
+    expect(result.totalHours).toBe(5)
+    expect(result.unauthorizedMinutes).toBe(60)
+    expect(result.splNumbers).toEqual(['SPL-SHORT'])
+  })
+
+  it('uses fixed 6:1 OFF credit after approved SPL', () => {
+    const result = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariLibur',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '08:00',
+      clockOut: '12:00',
+      splWindows: [{
+        id: 4,
+        splNumber: 'SPL-OFF',
+        siteId: 1,
+        employeeId: 1,
+        plannedStartAt: '2026-07-01T00:00:00.000Z',
+        plannedEndAt: '2026-07-01T04:00:00.000Z',
+        status: 'approved',
+        category: 'off_day',
+        overtimeCreditMinutes: 660,
+      }],
+    })
+    expect(result.totalHours).toBe(11)
+    expect(result.splNumbers).toEqual(['SPL-OFF'])
   })
 
   it('uses legacy hours when the site switch is inactive', () => {

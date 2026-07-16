@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { z } from 'zod'
 import { db } from '@/db'
+import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import {
   activities,
   activityLibraries,
@@ -25,6 +26,7 @@ import {
   masterPositions,
   masterSections,
   overtimeCommandLetterItems,
+  overtimeCommandLetterParticipants,
   overtimeCommandLetters,
   overtimeRequestLeaderPermissions,
   penaltyEvents,
@@ -56,6 +58,9 @@ import {
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
 import { uploadAnyFileToS3 } from '@/lib/s3-storage'
 import { buildWorkflowEmailContent, getAppUrl, sendWorkflowEmail } from '@/lib/workflow-email'
+import { assertNoSplOverlap, buildSplParticipantSnapshots, getSiteSplPolicy } from '@/lib/spl-data'
+import { validateSplRequestWindow } from '@/lib/spl-policy'
+import { getHeadLocationManagedEmployeeIds } from '@/lib/overtime-request-data'
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024
 const MAX_SIGNATURE_FILE_SIZE = 2 * 1024 * 1024
@@ -221,6 +226,11 @@ const manageOvertimeCommandLetterSchema = z.object({
   executionNotes: z.string().trim().max(1200).optional().default(''),
   sectionId: optionalPositiveInt,
   positionId: optionalPositiveInt,
+  origin: z.enum(['employee_request', 'leader_command']).optional().default('leader_command'),
+  requestKind: z.enum(['base', 'extension']).optional().default('base'),
+  parentSplId: optionalPositiveInt,
+  replacementOffDate: z.string().trim().optional().default(''),
+  submitNow: formBoolean(false),
   lineItemsJson: z.string().trim().max(120000).optional().default('[]'),
 })
 
@@ -505,13 +515,35 @@ async function assertOvertimeRequestCreationAccess(
     return permission
   }
 
-  if (canManageOvertimeRequestSettings(employee)) {
-    return permission
-  }
-
   throw new Error(
-    'You are not allowed to create overtime requests. Enable this leader in settings first.'
+    'Anda belum dipilih sebagai pemberi perintah lembur pada Settings SPL.'
   )
+}
+
+async function sendSplSubmissionEmail(input: {
+  email: string
+  requesterName: string
+  splNumber: string
+  title: string
+  requestKind: 'base' | 'extension'
+}) {
+  if (!input.email) return
+  const content = buildWorkflowEmailContent({
+    title: input.requestKind === 'extension' ? 'Extension SPL diajukan' : 'SPL diajukan',
+    intro: `${input.splNumber} - ${input.title} sudah masuk ke Approval Engine.`,
+    ctaLabel: 'Lihat Riwayat SPL',
+    ctaUrl: getAppUrl('/mobile/overtime?tab=history'),
+  })
+  await sendWorkflowEmail({
+    to: input.email,
+    actorEmail: input.email,
+    templateCode: input.requestKind === 'extension' ? 'spl_extension_submitted' : 'spl_submitted',
+    templateName: input.requestKind === 'extension' ? 'SPL Extension Submitted' : 'SPL Submitted',
+    variables: { splNumber: input.splNumber, requesterName: input.requesterName, duration: '' },
+    fallbackSubject: `${input.splNumber} menunggu approval`,
+    fallbackHtml: content.html,
+    fallbackText: content.text,
+  })
 }
 
 async function uploadSignatureFile(file: FormDataEntryValue | null, prefix: string) {
@@ -1486,7 +1518,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
 
   const payload = manageOvertimeCommandLetterSchema.parse(Object.fromEntries(formData))
   const currentEmployee = await getAuthenticatedEmployeeContext()
-  await assertOvertimeRequestCreationAccess(currentEmployee)
+  if (payload.origin === 'leader_command') await assertOvertimeRequestCreationAccess(currentEmployee)
 
   const existingDocument =
     payload.id == null
@@ -1536,16 +1568,18 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
     throw new Error('SPL must have at least one work line.')
   }
 
-  const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id)
-  if (managedEmployeeIds.length === 0) {
-    throw new Error('This leader has no active subordinates for overtime requests.')
-  }
-
-  const managedEmployeeIdSet = new Set(managedEmployeeIds)
   const selectedEmployeeIds = Array.from(new Set(lineItems.map((item) => item.assignedEmployeeId)))
-
-  if (selectedEmployeeIds.some((employeeId) => !managedEmployeeIdSet.has(employeeId))) {
-    throw new Error("Overtime requests can only be made for this leader's subordinates.")
+  if (payload.origin === 'employee_request') {
+    if (selectedEmployeeIds.length !== 1 || selectedEmployeeIds[0] !== currentEmployee.id) {
+      throw new Error('Pengajuan SPL karyawan hanya dapat dibuat untuk akun sendiri.')
+    }
+  } else {
+    const managedEmployeeIdSet = new Set(
+      await getHeadLocationManagedEmployeeIds(currentEmployee.siteId, currentEmployee.id)
+    )
+    if (selectedEmployeeIds.some((employeeId) => !managedEmployeeIdSet.has(employeeId))) {
+      throw new Error('Perintah SPL hanya dapat dibuat untuk bawahan aktif Anda.')
+    }
   }
 
   if (!payload.workDate) {
@@ -1563,6 +1597,44 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   if (plannedStartAt && plannedEndAt && plannedEndAt <= plannedStartAt) {
     throw new Error('Jam selesai SPL harus setelah jam mulai.')
   }
+  if (!plannedStartAt || !plannedEndAt) throw new Error('Jam mulai dan selesai SPL wajib diisi.')
+  const policy = await getSiteSplPolicy(currentEmployee.siteId)
+  const requestWindowError = validateSplRequestWindow({
+    now: new Date(),
+    workDate,
+    plannedStartAt,
+    plannedEndAt,
+    policy,
+  })
+  if (requestWindowError) throw new Error(requestWindowError)
+  await assertNoSplOverlap({
+    splId: payload.id,
+    employeeIds: selectedEmployeeIds,
+    plannedStartAt,
+    plannedEndAt,
+  })
+  const replacementOffDate = payload.replacementOffDate
+    ? parseDateTime(payload.replacementOffDate, 'Tanggal OFF pengganti')
+    : null
+  if (payload.requestKind === 'extension') {
+    if (!payload.parentSplId) throw new Error('Extension wajib terhubung ke SPL awal.')
+    const [parent] = await db
+      .select({ id: overtimeCommandLetters.id, status: overtimeCommandLetters.status })
+      .from(overtimeCommandLetters)
+      .where(eq(overtimeCommandLetters.id, payload.parentSplId))
+      .limit(1)
+    if (!parent || !['approved', 'closed'].includes(parent.status)) {
+      throw new Error('Extension hanya dapat dibuat dari SPL approved atau closed.')
+    }
+  }
+  const participantSnapshots = await buildSplParticipantSnapshots({
+    siteId: currentEmployee.siteId,
+    employeeIds: selectedEmployeeIds,
+    workDate,
+    plannedStartAt,
+    plannedEndAt,
+    replacementOffDate,
+  })
 
   const values = {
     siteId: currentEmployee.siteId,
@@ -1578,6 +1650,9 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
     status: existingDocument?.status ?? 'draft',
     requestNotes: payload.requestNotes,
     executionNotes: payload.executionNotes,
+    origin: payload.origin,
+    requestKind: payload.requestKind,
+    parentSplId: payload.parentSplId ?? null,
     updatedAt: new Date(),
   }
 
@@ -1650,7 +1725,57 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         updatedAt: new Date(),
       }))
     )
+    if (payload.intent !== 'create') {
+      await tx
+        .delete(overtimeCommandLetterParticipants)
+        .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetterId!))
+    }
+    await tx.insert(overtimeCommandLetterParticipants).values(
+      participantSnapshots.map((participant) => ({
+        overtimeCommandLetterId: overtimeCommandLetterId!,
+        ...participant,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }))
+    )
   })
+
+  if (payload.submitNow && overtimeCommandLetterId && splNumber) {
+    const { submission } = await createLegacyApprovalRequest({
+      templateKey: 'overtime-command-letter',
+      requesterEmployeeId: currentEmployee.id,
+      siteId: currentEmployee.siteId,
+      activityType: 'overtime_command_letter',
+      transactionType: 'overtime_request',
+      priority: 'normal',
+      referenceId: overtimeCommandLetterId,
+      payloadSnapshot: {
+        legacyRecordId: overtimeCommandLetterId,
+        splNumber,
+        title: payload.title,
+        workDate: workDate.toISOString(),
+        origin: payload.origin,
+        requestKind: payload.requestKind,
+      },
+      previewSnapshot: {
+        title: payload.title,
+        splNumber,
+        plannedStartAt: plannedStartAt.toISOString(),
+        plannedEndAt: plannedEndAt.toISOString(),
+      },
+    })
+    await db
+      .update(overtimeCommandLetters)
+      .set({ requestSubmissionId: submission.id, status: 'submitted', updatedAt: new Date() })
+      .where(eq(overtimeCommandLetters.id, overtimeCommandLetterId))
+    await sendSplSubmissionEmail({
+      email: currentEmployee.email,
+      requesterName: currentEmployee.name,
+      splNumber,
+      title: payload.title,
+      requestKind: payload.requestKind,
+    })
+  }
 
   revalidateDailyActivitySurfaces()
 }
@@ -1679,9 +1804,9 @@ export async function manageOvertimeRequestLeaderPermissionAction(formData: Form
     throw new Error('Leader yang dipilih tidak valid untuk site ini.')
   }
 
-  const managedEmployeeIds = await getManagedEmployeeIdsForLead(leader.id)
+  const managedEmployeeIds = await getHeadLocationManagedEmployeeIds(currentEmployee.siteId, leader.id)
   if (managedEmployeeIds.length === 0) {
-    throw new Error('Leader ini belum punya bawahan aktif.')
+    throw new Error('Orang ini bukan bagian hierarchy Head Area atau belum punya bawahan aktif.')
   }
 
   const [existingPermission] = await db
@@ -1739,6 +1864,7 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
       plannedStartAt: overtimeCommandLetters.plannedStartAt,
       plannedEndAt: overtimeCommandLetters.plannedEndAt,
       status: overtimeCommandLetters.status,
+      requestKind: overtimeCommandLetters.requestKind,
       requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
       approvedByEmployeeId: overtimeCommandLetters.approvedByEmployeeId,
     })
@@ -1769,6 +1895,18 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
   }
 
   if (payload.targetStatus === 'submitted') {
+    if (!document.plannedStartAt || !document.plannedEndAt) {
+      throw new Error('Jam mulai dan selesai SPL wajib diisi sebelum diajukan.')
+    }
+    const policy = await getSiteSplPolicy(document.siteId)
+    const requestWindowError = validateSplRequestWindow({
+      now: new Date(),
+      workDate: document.workDate,
+      plannedStartAt: document.plannedStartAt,
+      plannedEndAt: document.plannedEndAt,
+      policy,
+    })
+    if (requestWindowError) throw new Error(requestWindowError)
     await cancelLegacyApprovalSubmission(
       document.requestSubmissionId,
       'SPL diperbarui dan diajukan ulang.'
@@ -1804,6 +1942,13 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
         updatedAt: new Date(),
       })
       .where(eq(overtimeCommandLetters.id, payload.id))
+    await sendSplSubmissionEmail({
+      email: currentEmployee.email,
+      requesterName: currentEmployee.name,
+      splNumber: document.splNumber,
+      title: document.title,
+      requestKind: document.requestKind === 'extension' ? 'extension' : 'base',
+    })
   } else {
     const lineRows = await db
       .select({ id: overtimeCommandLetterItems.id })
@@ -1828,10 +1973,65 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
       throw new Error('SPL belum dapat ditutup karena masih ada pekerjaan yang belum selesai.')
     }
 
-    await db
-      .update(overtimeCommandLetters)
-      .set({ status: 'closed', updatedAt: new Date() })
-      .where(eq(overtimeCommandLetters.id, payload.id))
+    const participants = await db
+      .select({
+        id: overtimeCommandLetterParticipants.id,
+        employeeId: overtimeCommandLetterParticipants.employeeId,
+        workPeriod: overtimeCommandLetterParticipants.workPeriod,
+      })
+      .from(overtimeCommandLetterParticipants)
+      .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, document.id))
+    const day = document.workDate.getDate()
+    for (const participant of participants) {
+      const [attendance] = await db
+        .select({
+          clockIn: timesheetAttendanceRealOverrides.clockIn,
+          clockOut: timesheetAttendanceRealOverrides.clockOut,
+        })
+        .from(timesheetAttendanceRealOverrides)
+        .where(
+          and(
+            eq(timesheetAttendanceRealOverrides.siteId, document.siteId),
+            eq(timesheetAttendanceRealOverrides.period, participant.workPeriod),
+            eq(timesheetAttendanceRealOverrides.employeeId, participant.employeeId),
+            eq(timesheetAttendanceRealOverrides.day, day)
+          )
+        )
+        .limit(1)
+      const [evidence] = await db
+        .select({
+          checkedCount: sql<number>`count(*) filter (where ${dailyActivitySessionItems.isChecked} = true)`,
+          photoCount: sql<number>`coalesce(sum(${dailyActivitySessionItems.photoCount}), 0)`,
+        })
+        .from(dailyActivitySessions)
+        .innerJoin(
+          dailyActivitySessionItems,
+          eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id)
+        )
+        .where(
+          and(
+            eq(dailyActivitySessions.overtimeCommandLetterId, document.id),
+            eq(dailyActivitySessions.employeeId, participant.employeeId)
+          )
+        )
+      if (!attendance?.clockIn || !attendance.clockOut) {
+        throw new Error('SPL belum dapat ditutup: clock-in dan clock-out Attendance Real belum lengkap.')
+      }
+      if (Number(evidence?.checkedCount ?? 0) < 1 || Number(evidence?.photoCount ?? 0) < 1) {
+        throw new Error('SPL belum dapat ditutup: aktivitas selesai dan minimal satu foto wajib tersedia.')
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(overtimeCommandLetters)
+        .set({ status: 'closed', updatedAt: new Date() })
+        .where(eq(overtimeCommandLetters.id, payload.id))
+      await tx
+        .update(overtimeCommandLetterParticipants)
+        .set({ evidenceStatus: 'complete', updatedAt: new Date() })
+        .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, document.id))
+    })
   }
 
   await logAuditEvent({
@@ -1968,8 +2168,12 @@ export async function submitDailyActivityAction(formData: FormData) {
       .where(eq(overtimeCommandLetters.id, payload.overtimeCommandLetterId))
       .limit(1)
 
-    if (!spl || spl.siteId !== employee.siteId || spl.status.toLowerCase() !== 'approved') {
-      throw new Error('SPL tidak valid atau belum disetujui untuk site Anda.')
+    if (
+      !spl ||
+      spl.siteId !== employee.siteId ||
+      !['submitted', 'approved'].includes(spl.status.toLowerCase())
+    ) {
+      throw new Error('SPL tidak valid atau belum diajukan untuk site Anda.')
     }
     if (startOfDay(spl.workDate).getTime() !== startOfDay(startTime).getTime()) {
       throw new Error('Tanggal aktivitas tidak sesuai dengan tanggal SPL.')

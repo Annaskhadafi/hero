@@ -1,3 +1,5 @@
+"use client";
+
 import { approveApprovalGroupAction, reviewApprovalAction } from "@/app/dashboard/admin-actions";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { Button } from "@/components/ui/button";
@@ -87,7 +89,7 @@ function MobileInbox({
                 {group.items.map((item) => (
                   <input key={item.approvalId} type="hidden" name="approvalIds" value={item.approvalId} />
                 ))}
-                <Button type="submit" className="h-11 rounded-full px-4">
+                <Button type="submit" className="h-11 rounded-full px-4" onClick={(event) => { if (!window.confirm(`Approve ${group.activityCount} item ini?`)) event.preventDefault(); }}>
                   Approve Semua
                 </Button>
               </form>
@@ -126,11 +128,11 @@ function MobileInbox({
                     <Textarea
                       name="note"
                       rows={3}
-                      placeholder="Reject wajib komentar. Revisi juga bisa isi catatan."
+                      placeholder="Reject atau return wajib alasan."
                       className="bg-white"
                     />
                     <div className="flex flex-wrap gap-2">
-                      <Button type="submit" name="decision" value="approved" className="h-11 rounded-full px-4">
+                      <Button type="submit" name="decision" value="approved" className="h-11 rounded-full px-4" onClick={(event) => { if (!window.confirm('Approve pengajuan ini?')) event.preventDefault(); }}>
                         Approve
                       </Button>
                       <Button
@@ -139,6 +141,7 @@ function MobileInbox({
                         value="rejected"
                         variant="secondary"
                         className="h-11 rounded-full px-4"
+                        onClick={(event) => { if (!window.confirm('Reject pengajuan ini? Keputusan ini final.')) event.preventDefault(); }}
                       >
                         Reject
                       </Button>
@@ -148,6 +151,7 @@ function MobileInbox({
                         value="needs_correction"
                         variant="outline"
                         className="h-11 rounded-full px-4"
+                        onClick={(event) => { if (!window.confirm('Return pengajuan untuk diperbaiki?')) event.preventDefault(); }}
                       >
                         Revisi
                       </Button>

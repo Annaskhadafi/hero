@@ -284,9 +284,44 @@ export const overtimeCommandLetters = pgTable('hero_overtime_command_letters', {
   status: text('status').notNull().default('draft'),
   requestNotes: text('request_notes').notNull().default(''),
   executionNotes: text('execution_notes').notNull().default(''),
+  origin: text('origin').notNull().default('leader_command'),
+  requestKind: text('request_kind').notNull().default('base'),
+  parentSplId: integer('parent_spl_id').references((): AnyPgColumn => overtimeCommandLetters.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const overtimeCommandLetterParticipants = pgTable(
+  'hero_overtime_command_letter_participants',
+  {
+    id: serial('id').primaryKey(),
+    overtimeCommandLetterId: integer('overtime_command_letter_id')
+      .notNull()
+      .references(() => overtimeCommandLetters.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    category: text('category').notNull().default('after_mandatory_ot'),
+    shiftCode: text('shift_code').notNull().default('DS'),
+    rosterType: text('roster_type').notNull().default('5:2'),
+    scheduleCode: text('schedule_code').notNull().default(''),
+    workStreakDays: integer('work_streak_days').notNull().default(0),
+    overtimeCreditMinutes: integer('overtime_credit_minutes'),
+    replacementOffDate: timestamp('replacement_off_date'),
+    workPeriod: text('work_period').notNull().default(''),
+    payrollPeriod: text('payroll_period').notNull().default(''),
+    evidenceStatus: text('evidence_status').notNull().default('pending'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    documentEmployeeUnique: uniqueIndex(
+      'hero_overtime_command_letter_participants_document_employee_uidx'
+    ).on(table.overtimeCommandLetterId, table.employeeId),
+  })
+)
 
 export const overtimeCommandLetterItems = pgTable('hero_overtime_command_letter_items', {
   id: serial('id').primaryKey(),

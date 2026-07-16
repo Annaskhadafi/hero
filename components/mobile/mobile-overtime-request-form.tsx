@@ -1,27 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, ChevronRight, ClipboardList, Plus, Search, Trash2, Users2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ClipboardList, Plus, Search, Trash2, X } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea";
-
-type TeamMember = {
-  id: number;
-  name: string;
-  role: string;
-};
 
 type LibraryActivity = {
   id: number;
@@ -30,651 +17,306 @@ type LibraryActivity = {
   basePoints: number;
 };
 
-type CustomJobDraft = {
+type CustomJob = {
   key: string;
   lineLabel: string;
   lineDescription: string;
   targetUnit: string;
   estimatedMinutes: string;
-  plannedPoints: string;
 };
 
-type EmployeeJobState = {
-  libraryActivityIds: string[];
-  customJobs: CustomJobDraft[];
-};
-
-function createCustomJobDraft(): CustomJobDraft {
+function newCustomJob(): CustomJob {
   return {
-    key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    key: crypto.randomUUID(),
     lineLabel: "",
     lineDescription: "",
     targetUnit: "",
     estimatedMinutes: "60",
-    plannedPoints: "0",
   };
 }
 
 function dateInputValue(value = new Date()) {
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 10);
 }
 
 function dateTimeInputValue(value = new Date()) {
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
-}
-
-function normalizeSearch(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function MobileOvertimeRequestForm({
   action,
-  teamMembers,
   libraryActivities,
   submitLabel,
+  currentEmployeeId,
+  parentSplId,
 }: {
   action: (formData: FormData) => void | Promise<void>;
-  teamMembers: TeamMember[];
   libraryActivities: LibraryActivity[];
   submitLabel: string;
+  currentEmployeeId: number;
+  parentSplId?: number;
 }) {
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
-  const [employeeStates, setEmployeeStates] = useState<Record<string, EmployeeJobState>>({});
-  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
-  const [jobPickerEmployeeId, setJobPickerEmployeeId] = useState<string | null>(null);
-  const [jobSearch, setJobSearch] = useState("");
+  const draftKey = `hero-spl-self-${currentEmployeeId}-${parentSplId ?? "base"}`;
+  const formRef = useRef<HTMLFormElement>(null);
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([]);
+  const [customJobs, setCustomJobs] = useState<CustomJob[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const selectedEmployees = useMemo(
-    () => teamMembers.filter((member) => selectedEmployeeIds.includes(`${member.id}`)),
-    [selectedEmployeeIds, teamMembers],
-  );
-
-  const selectedEmployeeCount = selectedEmployees.length;
-  const totalSelectedLibraryJobs = useMemo(
-    () =>
-      selectedEmployeeIds.reduce(
-        (total, employeeId) => total + (employeeStates[employeeId]?.libraryActivityIds.length ?? 0),
-        0,
-      ),
-    [employeeStates, selectedEmployeeIds],
-  );
-
-  const totalCustomJobs = useMemo(
-    () =>
-      selectedEmployeeIds.reduce(
-        (total, employeeId) => total + (employeeStates[employeeId]?.customJobs.length ?? 0),
-        0,
-      ),
-    [employeeStates, selectedEmployeeIds],
-  );
-
-  const totalValidCustomJobs = useMemo(
-    () =>
-      selectedEmployeeIds.reduce(
-        (total, employeeId) =>
-          total +
-          (employeeStates[employeeId]?.customJobs.filter((job) => job.lineLabel.trim().length > 0).length ?? 0),
-        0,
-      ),
-    [employeeStates, selectedEmployeeIds],
-  );
-
-  const totalSelectedJobs = totalSelectedLibraryJobs + totalValidCustomJobs;
-
-  const lineItemsJson = useMemo(() => {
-    const lines = selectedEmployeeIds.flatMap((employeeId) => {
-      const employeeState = employeeStates[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
-      const libraryLines = employeeState.libraryActivityIds.map((libraryId) => {
-        const library = libraryActivities.find((item) => `${item.id}` === libraryId);
-
-        return {
-          assignedEmployeeId: Number(employeeId),
-          routeTemplateId: null,
-          routeItemId: null,
-          libraryActivityId: library ? library.id : null,
-          lineLabel: library?.activityName ?? "Pekerjaan library",
-          lineDescription: library ? `Checklist library ${library.activityCode}` : "",
-          targetUnit: "",
-          estimatedMinutes: 60,
-          plannedPoints: library?.basePoints ?? 0,
-          sortOrder: 0,
-          isCustomLine: false,
-        };
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(draftKey) ?? "null") as {
+        selectedLibraryIds?: string[];
+        customJobs?: CustomJob[];
+        fields?: Record<string, string>;
+      } | null;
+      setSelectedLibraryIds(saved?.selectedLibraryIds ?? []);
+      setCustomJobs(saved?.customJobs ?? []);
+      requestAnimationFrame(() => {
+        if (!formRef.current || !saved?.fields) return;
+        for (const [name, value] of Object.entries(saved.fields)) {
+          const field = formRef.current.elements.namedItem(name);
+          if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.value = value;
+        }
       });
-
-      const customLines = employeeState.customJobs
-        .filter((job) => job.lineLabel.trim().length > 0)
-        .map((job) => ({
-          assignedEmployeeId: Number(employeeId),
-          routeTemplateId: null,
-          routeItemId: null,
-          libraryActivityId: null,
-          lineLabel: job.lineLabel,
-          lineDescription: job.lineDescription,
-          targetUnit: job.targetUnit,
-          estimatedMinutes: Number(job.estimatedMinutes || 60),
-          plannedPoints: Number(job.plannedPoints || 0),
-          sortOrder: 0,
-          isCustomLine: true,
-        }));
-
-      return [...libraryLines, ...customLines];
-    });
-
-    return JSON.stringify(
-      lines.map((line, index) => ({
-        ...line,
-        sortOrder: index + 1,
-      })),
-    );
-  }, [employeeStates, libraryActivities, selectedEmployeeIds]);
-
-  const filteredLibraries = useMemo(() => {
-    const normalizedSearch = normalizeSearch(jobSearch);
-    if (!normalizedSearch) {
-      return libraryActivities;
+    } catch {
+      localStorage.removeItem(draftKey);
     }
+  }, [draftKey]);
 
-    return libraryActivities.filter((item) =>
-      normalizeSearch(`${item.activityCode} ${item.activityName} ${item.basePoints}`).includes(normalizedSearch),
+  function persistDraft() {
+    const fields = formRef.current
+      ? Object.fromEntries(
+          [...new FormData(formRef.current).entries()]
+            .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+            .filter(([name]) => name !== "lineItemsJson"),
+        )
+      : {};
+    localStorage.setItem(draftKey, JSON.stringify({ selectedLibraryIds, customJobs, fields }));
+  }
+
+  useEffect(() => {
+    persistDraft();
+  }, [selectedLibraryIds, customJobs]);
+
+  const selectedLibraries = useMemo(
+    () => libraryActivities.filter((activity) => selectedLibraryIds.includes(String(activity.id))),
+    [libraryActivities, selectedLibraryIds],
+  );
+  const validCustomJobs = customJobs.filter((job) => job.lineLabel.trim());
+  const activityCount = selectedLibraries.length + validCustomJobs.length;
+  const filteredLibraries = libraryActivities.filter((activity) =>
+    `${activity.activityCode} ${activity.activityName}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+
+  const lineItemsJson = JSON.stringify([
+    ...selectedLibraries.map((activity) => ({
+      assignedEmployeeId: currentEmployeeId,
+      routeTemplateId: null,
+      routeItemId: null,
+      libraryActivityId: activity.id,
+      lineLabel: activity.activityName,
+      lineDescription: `Checklist library ${activity.activityCode}`,
+      targetUnit: "",
+      estimatedMinutes: 60,
+      plannedPoints: activity.basePoints,
+      isCustomLine: false,
+    })),
+    ...validCustomJobs.map((job) => ({
+      assignedEmployeeId: currentEmployeeId,
+      routeTemplateId: null,
+      routeItemId: null,
+      libraryActivityId: null,
+      lineLabel: job.lineLabel,
+      lineDescription: job.lineDescription,
+      targetUnit: job.targetUnit,
+      estimatedMinutes: Number(job.estimatedMinutes || 60),
+      plannedPoints: 0,
+      isCustomLine: true,
+    })),
+  ].map((line, index) => ({ ...line, sortOrder: index + 1 })));
+
+  function toggleLibrary(id: string) {
+    setSelectedLibraryIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
     );
-  }, [jobSearch, libraryActivities]);
-
-  function ensureEmployeeState(employeeId: string) {
-    setEmployeeStates((current) => ({
-      ...current,
-      [employeeId]:
-        current[employeeId] ?? {
-          libraryActivityIds: [],
-          customJobs: [],
-        },
-    }));
   }
 
-  function toggleEmployee(employeeId: string) {
-    setSelectedEmployeeIds((current) => {
-      const exists = current.includes(employeeId);
-      const next = exists ? current.filter((value) => value !== employeeId) : [...current, employeeId];
-
-      if (!exists) {
-        ensureEmployeeState(employeeId);
-      }
-
-      return next;
-    });
+  function updateCustom(key: string, patch: Partial<CustomJob>) {
+    setCustomJobs((current) => current.map((job) => (job.key === key ? { ...job, ...patch } : job)));
   }
 
-  function toggleLibraryJob(employeeId: string, libraryId: string) {
-    setEmployeeStates((current) => {
-      const employeeState = current[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
-      const exists = employeeState.libraryActivityIds.includes(libraryId);
-
-      return {
-        ...current,
-        [employeeId]: {
-          ...employeeState,
-          libraryActivityIds: exists
-            ? employeeState.libraryActivityIds.filter((value) => value !== libraryId)
-            : [...employeeState.libraryActivityIds, libraryId],
-        },
-      };
-    });
-  }
-
-  function addCustomJob(employeeId: string) {
-    setEmployeeStates((current) => {
-      const employeeState = current[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
-
-      return {
-        ...current,
-        [employeeId]: {
-          ...employeeState,
-          customJobs: [...employeeState.customJobs, createCustomJobDraft()],
-        },
-      };
-    });
-  }
-
-  function updateCustomJob(employeeId: string, key: string, nextValue: Partial<CustomJobDraft>) {
-    setEmployeeStates((current) => {
-      const employeeState = current[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
-
-      return {
-        ...current,
-        [employeeId]: {
-          ...employeeState,
-          customJobs: employeeState.customJobs.map((job) => (job.key === key ? { ...job, ...nextValue } : job)),
-        },
-      };
-    });
-  }
-
-  function removeCustomJob(employeeId: string, key: string) {
-    setEmployeeStates((current) => {
-      const employeeState = current[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
-
-      return {
-        ...current,
-        [employeeId]: {
-          ...employeeState,
-          customJobs: employeeState.customJobs.filter((job) => job.key !== key),
-        },
-      };
-    });
+  async function submit(formData: FormData) {
+    await action(formData);
+    localStorage.removeItem(draftKey);
   }
 
   return (
     <>
-      <form action={action} className="space-y-4">
+      <form ref={formRef} action={submit} onInput={persistDraft} className="space-y-4">
         <input type="hidden" name="intent" value="create" />
         <input type="hidden" name="status" value="draft" />
+        <input type="hidden" name="origin" value="employee_request" />
+        <input type="hidden" name="requestKind" value={parentSplId ? "extension" : "base"} />
+        <input type="hidden" name="parentSplId" value={parentSplId ?? ""} />
+        <input type="hidden" name="submitNow" value="true" />
+        <input type="hidden" name="executionNotes" value="" />
         <input type="hidden" name="lineItemsJson" value={lineItemsJson} />
 
+        <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
+          <div className="rounded-xl bg-[#eaf4fb] px-2 py-3 text-[#003f78]">1 · Waktu</div>
+          <div className="rounded-xl bg-[#eaf4fb] px-2 py-3 text-[#003f78]">2 · Aktivitas</div>
+          <div className="rounded-xl bg-[#eaf4fb] px-2 py-3 text-[#003f78]">3 · Kirim</div>
+        </div>
+
         <section className="space-y-4 rounded-[1.25rem] bg-[#f6fbff] p-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-[1rem] bg-white px-3 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Bawahan</p>
-              <p className="mt-1 text-lg font-black text-[#082033]">{selectedEmployeeCount}</p>
-            </div>
-            <div className="rounded-[1rem] bg-white px-3 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Daftar</p>
-              <p className="mt-1 text-lg font-black text-[#082033]">{totalSelectedLibraryJobs}</p>
-            </div>
-            <div className="rounded-[1rem] bg-white px-3 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Custom</p>
-              <p className="mt-1 text-lg font-black text-[#082033]">{totalCustomJobs}</p>
-            </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Langkah 1</p>
+            <p className="mt-1 text-base font-black text-[#082033]">Kapan Anda lembur?</p>
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Judul SPL</span>
-            <Input
-              name="title"
-              required
-              placeholder="Example: SPL Support Breakdown Unit Night"
-              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-            />
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Judul singkat</span>
+            <Input name="title" required placeholder="Contoh: Support breakdown unit" className="h-12 rounded-2xl border-0 bg-white px-4" />
+          </Label>
+
+          <Label className="block space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Tanggal kerja</span>
+            <Input name="workDate" type="date" required defaultValue={dateInputValue()} className="h-12 rounded-2xl border-0 bg-white px-4" />
           </Label>
 
           <div className="grid grid-cols-2 gap-3">
             <Label className="block space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Tanggal kerja</span>
-              <Input
-                name="workDate"
-                type="date"
-                required
-                defaultValue={dateInputValue()}
-                className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-              />
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
+              <Input name="plannedStartAt" type="datetime-local" required defaultValue={dateTimeInputValue()} className="h-12 rounded-2xl border-0 bg-white px-3 text-xs" />
             </Label>
             <Label className="block space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Jam mulai</span>
-              <Input
-                name="plannedStartAt"
-                type="datetime-local"
-                defaultValue={dateTimeInputValue()}
-                className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-              />
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
+              <Input name="plannedEndAt" type="datetime-local" required defaultValue={dateTimeInputValue(new Date(Date.now() + 2 * 60 * 60 * 1000))} className="h-12 rounded-2xl border-0 bg-white px-3 text-xs" />
             </Label>
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Jam selesai</span>
-            <Input
-              name="plannedEndAt"
-              type="datetime-local"
-              defaultValue={dateTimeInputValue(new Date(Date.now() + 2 * 60 * 60 * 1000))}
-              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-            />
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Alasan lembur</span>
+            <Textarea name="requestNotes" rows={3} required placeholder="Jelaskan alasan dan target pekerjaan." className="rounded-2xl border-0 bg-white px-4 py-3" />
           </Label>
 
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan pengajuan</span>
-            <Textarea
-              name="requestNotes"
-              rows={4}
-              placeholder="Alasan lembur, area kerja, target, dan catatan utama."
-              className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
-            />
-          </Label>
-
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan pelaksanaan</span>
-            <Textarea
-              name="executionNotes"
-              rows={3}
-              placeholder="Opsional. Bisa diisi kosong dulu."
-              className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
-            />
-          </Label>
+          <details className="rounded-2xl bg-white px-4 py-3">
+            <summary className="cursor-pointer text-xs font-bold text-[#486275]">Perlu OFF pengganti?</summary>
+            <Label className="mt-3 block space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Tanggal OFF pengganti</span>
+              <Input name="replacementOffDate" type="date" className="h-12 rounded-xl bg-[#f6fbff]" />
+            </Label>
+          </details>
         </section>
 
-        <section className="space-y-4 rounded-[1.25rem] bg-[#f6fbff] p-4">
+        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Step 1</p>
-              <p className="mt-1 text-base font-black text-[#082033]">Pilih bawahan</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Langkah 2</p>
+              <p className="mt-1 text-base font-black text-[#082033]">Apa yang Anda kerjakan?</p>
             </div>
-            <Button
-              type="button"
-              onClick={() => setEmployeePickerOpen(true)}
-              className="h-11 rounded-2xl bg-[#003f78] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white"
-            >
-              <Users2 className="size-4" />
-              Pilih
+            <Button type="button" variant="outline" onClick={() => setPickerOpen(true)} className="h-11 rounded-xl">
+              <ClipboardList className="size-4" /> Pilih
             </Button>
           </div>
 
-          {selectedEmployees.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {selectedEmployees.map((member) => (
-                <button
-                  key={member.id}
-                  type="button"
-                  onClick={() => toggleEmployee(`${member.id}`)}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-[#082033] shadow-[0_10px_22px_rgba(8,32,51,0.05)]"
-                >
-                  {member.name}
-                  <X className="size-3.5 text-[#486275]" />
-                </button>
-              ))}
+          {selectedLibraries.map((activity) => (
+            <div key={activity.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#f6fbff] px-3 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#082033]">{activity.activityName}</p>
+                <p className="text-[10px] font-bold text-[#486275]">{activity.activityCode}</p>
+              </div>
+              <button type="button" onClick={() => toggleLibrary(String(activity.id))} aria-label={`Hapus ${activity.activityName}`} className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-rose-600">
+                <X className="size-4" />
+              </button>
             </div>
-          ) : (
-            <div className="rounded-[1rem] bg-white px-4 py-4 text-sm font-semibold text-[#486275]">
-              Belum ada bawahan dipilih.
+          ))}
+
+          <Button type="button" variant="outline" onClick={() => setCustomJobs((current) => [...current, newCustomJob()])} className="h-11 w-full rounded-xl border-dashed">
+            <Plus className="size-4" /> Aktivitas tidak ada di daftar
+          </Button>
+
+          {customJobs.map((job, index) => (
+            <div key={job.key} className="space-y-3 rounded-xl bg-[#fff8e8] p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-[#5a2200]">Aktivitas custom {index + 1}</p>
+                <button type="button" onClick={() => setCustomJobs((current) => current.filter((item) => item.key !== job.key))} aria-label="Hapus aktivitas custom" className="grid size-10 place-items-center rounded-full bg-white text-rose-600"><Trash2 className="size-4" /></button>
+              </div>
+              <Input value={job.lineLabel} onChange={(event) => updateCustom(job.key, { lineLabel: event.target.value })} placeholder="Nama aktivitas" className="h-12 rounded-xl border-0 bg-white" />
+              <Textarea value={job.lineDescription} onChange={(event) => updateCustom(job.key, { lineDescription: event.target.value })} rows={2} placeholder="Deskripsi singkat" className="rounded-xl border-0 bg-white" />
+              <div className="grid grid-cols-2 gap-2">
+                <Input value={job.targetUnit} onChange={(event) => updateCustom(job.key, { targetUnit: event.target.value })} placeholder="Area / unit" className="h-12 rounded-xl border-0 bg-white" />
+                <Input type="number" min={60} value={job.estimatedMinutes} onChange={(event) => updateCustom(job.key, { estimatedMinutes: event.target.value })} placeholder="Menit" className="h-12 rounded-xl border-0 bg-white" />
+              </div>
             </div>
-          )}
+          ))}
+
+          {activityCount === 0 ? <p className="rounded-xl bg-[#fff8e8] px-4 py-3 text-sm font-semibold text-[#8a5a00]">Pilih minimal satu aktivitas.</p> : null}
         </section>
 
-        {selectedEmployees.map((member) => {
-          const employeeState = employeeStates[`${member.id}`] ?? { libraryActivityIds: [], customJobs: [] };
-          const selectedLibraryRows = employeeState.libraryActivityIds
-            .map((libraryId) => libraryActivities.find((item) => `${item.id}` === libraryId))
-            .filter((item): item is LibraryActivity => Boolean(item));
+        <section className="rounded-[1.25rem] bg-[#eaf4fb] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Langkah 3</p>
+          <p className="mt-1 font-black text-[#082033]">Siap diajukan</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
+            {activityCount} aktivitas dipilih. Shift, roster, kategori SPL, H+2, overlap, dan jalur approval dicek otomatis saat dikirim.
+          </p>
+          <p className="mt-2 rounded-xl bg-white px-3 py-3 text-xs font-semibold leading-5 text-[#486275]">
+            Foto evidence diunggah setelah SPL disetujui melalui tab <span className="font-black text-[#003f78]">SPL Aktif</span>.
+          </p>
+        </section>
 
-          return (
-            <section
-              key={member.id}
-              className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Bawahan terpilih</p>
-                  <p className="mt-1 text-base font-black text-[#082033]">{member.name}</p>
-                  <p className="mt-1 text-xs font-semibold text-[#486275]">{member.role}</p>
-                </div>
-                <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
-                  {selectedLibraryRows.length + employeeState.customJobs.length} pekerjaan
-                </Badge>
-              </div>
-
-              <div className="rounded-[1rem] bg-[#f6fbff] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Step 2</p>
-                    <p className="mt-1 text-sm font-black text-[#082033]">Daftar pekerjaan</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setJobPickerEmployeeId(`${member.id}`);
-                      setJobSearch("");
-                    }}
-                    className="h-11 rounded-2xl border-0 bg-white px-4 text-[11px] font-black uppercase tracking-[0.12em] text-[#003f78]"
-                  >
-                    <ClipboardList className="size-4" />
-                    Multi Select
-                  </Button>
-                </div>
-
-                {selectedLibraryRows.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {selectedLibraryRows.map((library) => (
-                      <div
-                        key={library.id}
-                        className="flex items-center justify-between gap-3 rounded-[0.95rem] bg-white px-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#082033]">{library.activityName}</p>
-                          <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
-                            {library.activityCode} • {library.basePoints} pts
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleLibraryJob(`${member.id}`, `${library.id}`)}
-                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#fce7f3] text-[#be185d]"
-                          aria-label={`Hapus ${library.activityName}`}
-                        >
-                          <X className="size-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-[0.95rem] bg-white px-4 py-4 text-sm font-semibold text-[#486275]">
-                    Belum ada daftar pekerjaan dipilih.
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-[1rem] bg-[#fff8e8] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8a5a00]">Step 3</p>
-                    <p className="mt-1 text-sm font-black text-[#5a2200]">Pekerjaan custom</p>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => addCustomJob(`${member.id}`)}
-                    className="h-11 rounded-2xl bg-[#8a5a00] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white"
-                  >
-                    <Plus className="size-4" />
-                    Tambah
-                  </Button>
-                </div>
-
-                {employeeState.customJobs.length > 0 ? (
-                  <div className="mt-3 space-y-3">
-                    {employeeState.customJobs.map((job, index) => (
-                      <div key={job.key} className="rounded-[0.95rem] bg-white p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-black text-[#082033]">Custom {index + 1}</p>
-                          <button
-                            type="button"
-                            onClick={() => removeCustomJob(`${member.id}`, job.key)}
-                            className="flex size-9 items-center justify-center rounded-full bg-[#ffe4e6] text-[#e11d48]"
-                            aria-label="Hapus pekerjaan custom"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
-                        </div>
-
-                        <div className="mt-3 grid gap-3">
-                          <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Nama pekerjaan</span>
-                            <Input
-                              value={job.lineLabel}
-                              onChange={(event) =>
-                                updateCustomJob(`${member.id}`, job.key, { lineLabel: event.target.value })
-                              }
-                              placeholder="Example: Support cleaning area breakdown"
-                              className="h-12 rounded-2xl border-0 bg-[#f6fbff] px-4 text-sm font-semibold text-[#082033]"
-                            />
-                          </Label>
-
-                          <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
-                            <Textarea
-                              rows={3}
-                              value={job.lineDescription}
-                              onChange={(event) =>
-                                updateCustomJob(`${member.id}`, job.key, { lineDescription: event.target.value })
-                              }
-                              placeholder="Jelaskan pekerjaan custom."
-                              className="rounded-2xl border-0 bg-[#f6fbff] px-4 py-3 text-sm font-semibold text-[#082033]"
-                            />
-                          </Label>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <Label className="block space-y-2">
-                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Target/unit</span>
-                              <Input
-                                value={job.targetUnit}
-                                onChange={(event) =>
-                                  updateCustomJob(`${member.id}`, job.key, { targetUnit: event.target.value })
-                                }
-                                placeholder="Area / Unit"
-                                className="h-12 rounded-2xl border-0 bg-[#f6fbff] px-4 text-sm font-semibold text-[#082033]"
-                              />
-                            </Label>
-                            <Label className="block space-y-2">
-                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Estimasi menit</span>
-                              <Input
-                                type="number"
-                                value={job.estimatedMinutes}
-                                onChange={(event) =>
-                                  updateCustomJob(`${member.id}`, job.key, { estimatedMinutes: event.target.value })
-                                }
-                                className="h-12 rounded-2xl border-0 bg-[#f6fbff] px-4 text-sm font-semibold text-[#082033]"
-                              />
-                            </Label>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-[0.95rem] bg-white px-4 py-4 text-sm font-semibold text-[#8a5a00]">
-                    Tidak wajib. Tambah hanya jika pekerjaan belum ada di daftar library.
-                  </div>
-                )}
-              </div>
-            </section>
-          );
-        })}
-
-        <Button
-          type="submit"
-          className="h-14 w-full rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
-          disabled={selectedEmployeeIds.length === 0 || totalSelectedJobs === 0}
-        >
-          <Check className="size-4" />
-          {submitLabel}
-        </Button>
-
-        {selectedEmployeeIds.length > 0 && totalSelectedJobs === 0 ? (
-          <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-4 text-sm font-semibold leading-6 text-[#8a5a00]">
-            Pilih minimal satu daftar pekerjaan atau isi minimal satu pekerjaan custom supaya pengajuan bisa disimpan.
-          </div>
-        ) : null}
+        <div className="sticky bottom-20 z-10 rounded-2xl bg-white/95 p-2 shadow-[0_12px_30px_rgba(8,32,51,0.18)] backdrop-blur">
+          <Button type="submit" disabled={activityCount === 0} className="h-14 w-full rounded-xl bg-[#003f78] text-white">
+            <Check className="size-4" /> {parentSplId ? "Ajukan Extend" : submitLabel}
+          </Button>
+        </div>
       </form>
 
-      <Dialog open={employeePickerOpen} onOpenChange={setEmployeePickerOpen}>
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="w-[min(96vw,640px)] max-w-[min(96vw,640px)] rounded-[1.5rem] p-0">
           <DialogHeader className="px-5 pt-5">
-            <DialogTitle>Pilih Bawahan</DialogTitle>
-            <DialogDescription>Multi select bawahan yang akan masuk pengajuan lembur.</DialogDescription>
+            <DialogTitle>Pilih Aktivitas Lembur</DialogTitle>
+            <DialogDescription>Boleh memilih lebih dari satu aktivitas.</DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-3 px-5 pb-5">
-            {teamMembers.map((member) => {
-              const checked = selectedEmployeeIds.includes(`${member.id}`);
-
-              return (
-                <div
-                  key={member.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => toggleEmployee(`${member.id}`)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      toggleEmployee(`${member.id}`);
-                    }
-                  }}
-                  className="flex w-full items-center gap-3 rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left"
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() => toggleEmployee(`${member.id}`)}
-                    onClick={(event) => event.stopPropagation()}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-[#082033]">{member.name}</p>
-                    <p className="mt-1 text-xs font-semibold text-[#486275]">{member.role}</p>
-                  </div>
-                  <ChevronRight className="size-4 text-[#486275]" />
-                </div>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={jobPickerEmployeeId != null} onOpenChange={(open) => !open && setJobPickerEmployeeId(null)}>
-        <DialogContent className="w-[min(96vw,640px)] max-w-[min(96vw,640px)] rounded-[1.5rem] p-0">
-          <DialogHeader className="px-5 pt-5">
-            <DialogTitle>Pilih Daftar Pekerjaan</DialogTitle>
-            <DialogDescription>Multi select daftar pekerjaan library untuk bawahan terpilih.</DialogDescription>
-          </DialogHeader>
-
           <div className="space-y-3 px-5 pb-5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#486275]" />
-              <Input
-                value={jobSearch}
-                onChange={(event) => setJobSearch(event.target.value)}
-                placeholder="Search code / job name"
-                className="h-12 rounded-2xl border-0 bg-[#f6fbff] pl-11 text-sm font-semibold text-[#082033]"
-              />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari aktivitas..." className="h-12 rounded-xl bg-[#f6fbff] pl-11" />
             </div>
-
-            <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
-              {filteredLibraries.map((library) => {
-                const checked =
-                  jobPickerEmployeeId != null &&
-                  (employeeStates[jobPickerEmployeeId]?.libraryActivityIds ?? []).includes(`${library.id}`);
-
+            <div className="max-h-[52vh] space-y-2 overflow-y-auto">
+              {filteredLibraries.map((activity) => {
+                const checked = selectedLibraryIds.includes(String(activity.id));
                 return (
                   <div
-                    key={library.id}
+                    key={activity.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      if (!jobPickerEmployeeId) return;
-                      toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
-                    }}
+                    onClick={() => toggleLibrary(String(activity.id))}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        if (!jobPickerEmployeeId) return;
-                        toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
+                        toggleLibrary(String(activity.id));
                       }
                     }}
-                    className="flex w-full items-center gap-3 rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left"
+                    className="flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl bg-[#f6fbff] px-4 text-left"
                   >
                     <Checkbox
                       checked={checked}
-                      onCheckedChange={() => {
-                        if (!jobPickerEmployeeId) return;
-                        toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
-                      }}
+                      onCheckedChange={() => toggleLibrary(String(activity.id))}
                       onClick={(event) => event.stopPropagation()}
                     />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-[#082033]">{library.activityName}</p>
-                      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
-                        {library.activityCode} • {library.basePoints} pts
-                      </p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#082033]">{activity.activityName}</p>
+                      <p className="text-[10px] font-bold text-[#486275]">{activity.activityCode}</p>
                     </div>
                   </div>
                 );
               })}
             </div>
+            <Button type="button" onClick={() => setPickerOpen(false)} className="h-12 w-full rounded-xl">Selesai · {selectedLibraryIds.length} dipilih</Button>
           </div>
         </DialogContent>
       </Dialog>
