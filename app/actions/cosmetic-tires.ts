@@ -54,7 +54,7 @@ function normalizeInput(data: CosmeticTireInput) {
 }
 
 export async function getCosmeticTires() {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_slow_moving", "view")
     await ensureCosmeticTiresTable()
 
     return await db
@@ -77,7 +77,7 @@ export async function getCosmeticTires() {
 
 export async function createCosmeticTire(data: CosmeticTireInput) {
     try {
-        const session = await getAuthenticatedSession("marketing", "create")
+        const session = await getAuthenticatedSession("marketing_slow_moving", "create")
         await ensureCosmeticTiresTable()
         const values = normalizeInput(data)
 
@@ -99,7 +99,7 @@ export async function createCosmeticTire(data: CosmeticTireInput) {
 
 export async function importCosmeticTires(data: CosmeticTireInput[]) {
     try {
-        const session = await getAuthenticatedSession("marketing", "create")
+        const session = await getAuthenticatedSession("marketing_slow_moving", "create")
         await ensureCosmeticTiresTable()
 
         const values = z.array(cosmeticTireSchema).parse(data)
@@ -139,7 +139,7 @@ export async function importCosmeticTires(data: CosmeticTireInput[]) {
 
 export async function updateCosmeticTire(id: number, data: CosmeticTireInput) {
     try {
-        await getAuthenticatedSession("marketing", "edit")
+        await getAuthenticatedSession("marketing_slow_moving", "edit")
         await ensureCosmeticTiresTable()
         const values = normalizeInput(data)
 
@@ -162,7 +162,7 @@ export async function updateCosmeticTire(id: number, data: CosmeticTireInput) {
 
 export async function deleteCosmeticTire(id: number) {
     try {
-        await getAuthenticatedSession("marketing", "delete")
+        await getAuthenticatedSession("marketing_slow_moving", "delete")
         await ensureCosmeticTiresTable()
 
         await db.delete(cosmeticTires).where(eq(cosmeticTires.id, id))
@@ -174,4 +174,5 @@ export async function deleteCosmeticTire(id: number) {
         return { success: false, error: "Gagal menghapus cosmetic tire" }
     }
 }
+
 

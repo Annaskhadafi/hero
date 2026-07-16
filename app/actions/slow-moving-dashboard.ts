@@ -88,7 +88,7 @@ export async function getSlowMovingDashboardData(
     }
 
     try {
-        await getAuthenticatedSession("marketing", "view")
+        await getAuthenticatedSession("marketing_slow_moving", "view")
     } catch {
         try {
             await getAuthenticatedSession()
@@ -371,7 +371,7 @@ export async function getSlowMovingDashboardData(
 }
 
 export async function getSlowMovingFilters() {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_slow_moving", "view")
 
     // Get slow moving material keys
     const products = await db.execute(sql`SELECT material_key FROM slow_moving_products`)
@@ -412,7 +412,7 @@ export async function getSlowMovingFilters() {
 
 export async function generateSlowMovingYoYInsight(trendData: any[], selectedYears: string[]): Promise<{ success: boolean; insight?: string; error?: string }> {
     try {
-        await getAuthenticatedSession("marketing", "view")
+        await getAuthenticatedSession("marketing_slow_moving", "view")
 
         const endpoint = process.env.NINEROUTER_URL 
             ? `${process.env.NINEROUTER_URL.replace(/\/$/, "")}/chat/completions` 
@@ -482,4 +482,5 @@ Aturan: Gunakan bahasa Indonesia profesional dan padat. Format output menggunaka
         return { success: false, error: err.message || "Terjadi kesalahan pada AI Service" }
     }
 }
+
 

@@ -33,7 +33,7 @@ async function ensureSlowMovingProductsTable() {
 }
 
 export async function getSlowMovingProducts() {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_slow_moving", "view")
     await ensureSlowMovingProductsTable()
 
     return await db
@@ -52,7 +52,7 @@ export async function getSlowMovingProducts() {
 
 export async function importSlowMovingProducts(items: SlowMovingProductInput[]) {
     try {
-        const session = await getAuthenticatedSession("marketing", "create")
+        const session = await getAuthenticatedSession("marketing_slow_moving", "create")
         await ensureSlowMovingProductsTable()
 
         const parsedItems = z.array(slowMovingProductSchema).parse(items)
@@ -93,7 +93,7 @@ export async function importSlowMovingProducts(items: SlowMovingProductInput[]) 
 
 export async function deleteSlowMovingProduct(materialKey: string) {
     try {
-        await getAuthenticatedSession("marketing", "delete")
+        await getAuthenticatedSession("marketing_slow_moving", "delete")
         await ensureSlowMovingProductsTable()
 
         await db
@@ -110,7 +110,7 @@ export async function deleteSlowMovingProduct(materialKey: string) {
 
 export async function updateSlowMovingProductInitialStock(materialKey: string, initialStock: number) {
     try {
-        await getAuthenticatedSession("marketing", "edit")
+        await getAuthenticatedSession("marketing_slow_moving", "edit")
         await ensureSlowMovingProductsTable()
 
         await db
@@ -131,7 +131,7 @@ export async function updateSlowMovingProductInitialStock(materialKey: string, i
 
 export async function deleteSlowMovingProducts(materialKeys: string[]) {
     try {
-        await getAuthenticatedSession("marketing", "delete")
+        await getAuthenticatedSession("marketing_slow_moving", "delete")
         await ensureSlowMovingProductsTable()
 
         const keys = Array.from(new Set(materialKeys.map((key) => key.trim()).filter(Boolean)))
@@ -233,4 +233,5 @@ export async function getSellingOutByMonth(materialKeys: string[]): Promise<Mont
         totalGrossProfit: summaryMap.get(k)?.totalGrossProfit ?? 0,
     }))
 }
+
 

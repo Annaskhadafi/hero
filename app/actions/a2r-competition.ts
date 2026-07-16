@@ -332,7 +332,7 @@ function buildMonthlyScore(accumulator: MonthlySalesmanAccumulator) {
 }
 
 export async function getA2RCompetitionFilterOptions() {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_a2r_competition", "view")
 
     const result = await db.execute(sql`
         SELECT DISTINCT
@@ -380,7 +380,7 @@ export async function getA2RCompetitionFilterOptions() {
 }
 
 export async function getA2RCompetitionTargetSetup(period: string) {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_a2r_competition", "view")
     await ensureA2RSalesTargetsTable()
 
     const [monthPart, yearPart] = period.split(".")
@@ -465,7 +465,7 @@ export async function getA2RCompetitionTargetSetup(period: string) {
 }
 
 export async function saveA2RCompetitionTargets(period: string, items: z.infer<typeof a2rSalesTargetItemSchema>[]) {
-    await getAuthenticatedSession("marketing", "edit")
+    await getAuthenticatedSession("marketing_a2r_competition", "edit")
     await ensureA2RSalesTargetsTable()
 
     const parsedItems = z.array(a2rSalesTargetItemSchema).parse(items)
@@ -512,7 +512,7 @@ export async function saveA2RCompetitionTargets(period: string, items: z.infer<t
 }
 
 export async function getA2RCompetitionData(rawFilters: z.input<typeof a2rCompetitionFiltersSchema>) {
-    await getAuthenticatedSession("marketing", "view")
+    await getAuthenticatedSession("marketing_a2r_competition", "view")
     await ensureA2RSalesTargetsTable()
 
     const filters = a2rCompetitionFiltersSchema.parse(rawFilters)
@@ -1137,5 +1137,6 @@ export async function getA2RCompetitionData(rawFilters: z.input<typeof a2rCompet
         },
     }
 }
+
 
 
