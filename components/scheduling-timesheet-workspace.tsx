@@ -153,6 +153,8 @@ type EmployeeOption = {
   email: string
   employeeSn?: string | null
   role: string
+  departmentId?: number | null
+  sectionId?: number | null
   department?: string | null
   section?: string | null
   manpower?: string | null
@@ -677,6 +679,22 @@ function isStaffRole(role?: string | null): boolean {
   return false
 }
 
+type ApprovalApproverDraft = {
+  pjoLeaderId: number | null
+  sectionHeadId: number | null
+  departmentHeadId: number | null
+}
+
+function approvalEmployeeOptions(
+  candidates: EmployeeOption[],
+  currentId: number | null,
+  currentName: string | null
+) {
+  const options = new Map(candidates.map((employee) => [employee.id, employee.name]))
+  if (currentId && currentName) options.set(currentId, currentName)
+  return [...options].map(([id, name]) => ({ value: String(id), label: name }))
+}
+
 function normalizeRosterSection(value?: string | null) {
   const normalized = normalizeLocation(value ?? '')
   if (normalized.includes('repair') || normalized.includes('retread')) return 'Repair Retread'
@@ -966,6 +984,7 @@ function NativeSelect({
   placeholder,
   className = '',
   disabled,
+  ariaLabel,
 }: {
   value?: string
   onValueChange: (value: string) => void
@@ -973,9 +992,11 @@ function NativeSelect({
   placeholder?: string
   className?: string
   disabled?: boolean
+  ariaLabel?: string
 }) {
   return (
     <select
+      aria-label={ariaLabel}
       className={`${nativeSelectClass} ${className}`}
       disabled={disabled}
       value={value ?? ''}
@@ -1054,6 +1075,7 @@ type SchedulingTimesheetMode =
 export function SchedulingTimesheetWorkspace({
   mode = 'overview',
   employees,
+  approvalEmployees = [],
   sites,
   savedPlans = EMPTY_SAVED_PLANS,
   fieldBreakPlans: initialFieldBreakPlans = EMPTY_FIELD_BREAK_PLANS,
@@ -1061,6 +1083,7 @@ export function SchedulingTimesheetWorkspace({
   attendanceOverrides = EMPTY_ATTENDANCE_OVERRIDES,
   schedulingConfigs = EMPTY_SCHEDULING_CONFIGS,
   schedulingStatuses = EMPTY_SCHEDULING_STATUSES,
+  approvalSections = [],
   approvedSplWindows = EMPTY_APPROVED_SPL_WINDOWS,
   activities = [],
   currentEmployeeSiteId = null,
@@ -1068,6 +1091,7 @@ export function SchedulingTimesheetWorkspace({
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
+  approvalEmployees?: Array<{ id: number; name: string }>
   sites: SiteOption[]
   currentEmployeeSiteId?: number | null
   currentEmployeeName?: string
@@ -1087,6 +1111,22 @@ export function SchedulingTimesheetWorkspace({
     allowanceVariables?: unknown
     overtimeVariables?: unknown
     pdfConfig?: unknown
+  }>
+  approvalSections?: Array<{
+    id: string
+    siteId: number
+    departmentId: number
+    departmentName: string | null
+    sectionId: number
+    sectionName: string
+    matrixId: number | null
+    matrixName: string | null
+    pjoLeaderId: number | null
+    pjoLeaderName: string | null
+    sectionHeadId: number | null
+    sectionHeadName: string | null
+    departmentHeadId: number | null
+    departmentHeadName: string | null
   }>
   approvedSplWindows?: ApprovedSplWindow[]
   schedulingStatuses?: Array<{
@@ -1190,6 +1230,9 @@ export function SchedulingTimesheetWorkspace({
   }, [fieldBreakSiteId, mode, period, router])
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({})
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({})
+  const [approvalApprovers, setApprovalApprovers] = useState<Record<string, ApprovalApproverDraft>>(
+    {}
+  )
   const [setupVariableTab, setSetupVariableTab] = useState<'roster' | 'allowance' | 'overtime'>(
     'roster'
   )
@@ -1308,6 +1351,35 @@ export function SchedulingTimesheetWorkspace({
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
+  const siteApprovalSections = useMemo(
+    () => approvalSections.filter((row) => row.siteId == null || String(row.siteId) === siteId),
+    [approvalSections, siteId]
+  )
+  const approvalEmployeeChoices = useMemo(
+    () =>
+      approvalEmployees.map((employee) => ({
+        ...employee,
+        email: '',
+        role: '',
+        siteId: null,
+      })),
+    [approvalEmployees]
+  )
+
+  useEffect(() => {
+    setApprovalApprovers(
+      Object.fromEntries(
+        approvalSections.map((row) => [
+          row.id,
+          {
+            pjoLeaderId: row.pjoLeaderId,
+            sectionHeadId: row.sectionHeadId,
+            departmentHeadId: row.departmentHeadId,
+          },
+        ])
+      )
+    )
+  }, [approvalSections])
   const pdfSignatures = useMemo(() => {
     const cfg = siteConfig.pdfConfig
     const pjoLeaderName =
@@ -2886,20 +2958,32 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     try {
-      await saveSchedulingConfigAction({
+      const result = await saveSchedulingConfigAction({
         siteId: Number(siteId),
         ...dbConfig,
         fieldBreakConfig,
         pdfConfig,
         allowanceVariables,
         overtimeVariables,
+        approvalSections: siteApprovalSections.map((row) => ({
+          sectionId: row.sectionId,
+          departmentId: row.departmentId,
+          matrixId: row.matrixId,
+          ...(approvalApprovers[row.id] ?? {
+            pjoLeaderId: row.pjoLeaderId,
+            sectionHeadId: row.sectionHeadId,
+            departmentHeadId: row.departmentHeadId,
+          }),
+        })),
       })
+      if (!result.ok) throw new Error(result.error || 'Setting site gagal disimpan.')
       setRoster(siteConfig.rosterType)
       setSiteScheduleTypes((current) => ({ ...current, [siteId]: siteConfig.scheduleType }))
       setOverrides({})
       setPermanentOverrides({})
       setSelectedCell(null)
       toast.success('Setting site tersimpan.')
+      router.refresh()
     } catch (error) {
       toast.error('Setting site gagal disimpan', {
         description: error instanceof Error ? error.message : 'Konfigurasi overtime tidak valid.',
@@ -2920,6 +3004,25 @@ export function SchedulingTimesheetWorkspace({
         },
       }
     })
+  }
+
+  function updateApprovalApprover(
+    rowId: string,
+    key: keyof ApprovalApproverDraft,
+    employeeId: number | null
+  ) {
+    if (!guardOpenPeriod('Edit approval settings')) return
+    setApprovalApprovers((current) => ({
+      ...current,
+      [rowId]: {
+        ...(current[rowId] ?? {
+          pjoLeaderId: null,
+          sectionHeadId: null,
+          departmentHeadId: null,
+        }),
+        [key]: employeeId,
+      },
+    }))
   }
 
   function updateSplPolicy<Key extends keyof SiteOvertimeConfig['splPolicy']>(
@@ -5830,6 +5933,99 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
+                  <div className="mb-4">
+                    <p className="font-display text-foreground text-sm font-semibold">
+                      Approval Daily Activity, Overtime/SPL &amp; Request Barang/APD
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Satu urutan approver per Section. Simpan Setting menyinkronkan ketiga workflow
+                      ke Approval Engine.
+                    </p>
+                  </div>
+                  {siteApprovalSections.length > 0 ? (
+                    <div className="border-border/40 overflow-x-auto rounded-xl border">
+                      <div className="min-w-[920px]">
+                        <div className="bg-surface-container-low text-muted-foreground grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] gap-3 px-4 py-2 text-[11px] font-semibold tracking-wide uppercase">
+                          <span>Section</span>
+                          <span>PJO Leader</span>
+                          <span>Section Head</span>
+                          <span>Dept Head</span>
+                        </div>
+                        <div className="divide-border/40 divide-y">
+                          {siteApprovalSections.map((row) => (
+                            <div
+                              key={row.id}
+                              className="grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] items-center gap-3 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">{row.sectionName}</p>
+                                <p className="text-muted-foreground truncate text-xs">
+                                  {row.departmentName}
+                                </p>
+                                <Badge
+                                  className="mt-1"
+                                  variant={row.matrixId ? 'secondary' : 'outline'}
+                                >
+                                  {row.matrixName || 'Belum sync'}
+                                </Badge>
+                              </div>
+                              {(
+                                [
+                                  [
+                                    'pjoLeaderId',
+                                    approvalEmployeeChoices,
+                                    'PJO Leader',
+                                    row.pjoLeaderId,
+                                    row.pjoLeaderName,
+                                  ],
+                                  [
+                                    'sectionHeadId',
+                                    approvalEmployeeChoices,
+                                    'Section Head',
+                                    row.sectionHeadId,
+                                    row.sectionHeadName,
+                                  ],
+                                  [
+                                    'departmentHeadId',
+                                    approvalEmployeeChoices,
+                                    'Dept Head',
+                                    row.departmentHeadId,
+                                    row.departmentHeadName,
+                                  ],
+                                ] as const
+                              ).map(([key, candidates, label, masterId, masterName]) => (
+                                <SearchableSelect
+                                  key={key}
+                                  label={`${label} ${row.sectionName}`}
+                                  value={String(approvalApprovers[row.id]?.[key] ?? '')}
+                                  onValueChange={(value) =>
+                                    updateApprovalApprover(
+                                      row.id,
+                                      key,
+                                      value ? Number(value) : null
+                                    )
+                                  }
+                                  options={approvalEmployeeOptions(
+                                    candidates,
+                                    masterId,
+                                    masterName
+                                  )}
+                                  placeholder="Belum dipilih"
+                                  widthClassName="w-full min-w-0"
+                                />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-surface-container-low text-muted-foreground rounded-xl px-4 py-5 text-sm">
+                      Belum ada Section dengan anggota aktif pada site ini.
+                    </div>
+                  )}
+                </div>
+                <div className="border-border/30 border-t px-4 py-4">
                   <div className="mb-3">
                     <p className="text-foreground text-sm font-semibold">Working Time</p>
                     <p className="text-muted-foreground text-xs">
@@ -6066,7 +6262,10 @@ export function SchedulingTimesheetWorkspace({
                           ['allowAfterMandatoryOt', 'Setelah OT wajib'],
                         ] as const
                       ).map(([key, label]) => (
-                        <label key={key} className="bg-surface-container-low flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold">
+                        <label
+                          key={key}
+                          className="bg-surface-container-low flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold"
+                        >
                           {label}
                           <Switch
                             aria-label={`Izinkan SPL ${label}`}

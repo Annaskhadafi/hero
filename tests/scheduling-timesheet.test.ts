@@ -109,15 +109,46 @@ describe('scheduling timesheet workflow', () => {
     const workbook = XLSX.utils.book_new()
     const sheet = XLSX.utils.aoa_to_sheet([
       [
-        'Nama', 'SN', 'Jabatan', 'Site',
-        'D1', 'Masuk 1', 'Pulang 1', 'D2', 'Masuk 2', 'Pulang 2',
-        'D3', 'Masuk 3', 'Pulang 3', 'D4', 'Masuk 4', 'Pulang 4',
-        'D5', 'Masuk 5', 'Pulang 5',
+        'Nama',
+        'SN',
+        'Jabatan',
+        'Site',
+        'D1',
+        'Masuk 1',
+        'Pulang 1',
+        'D2',
+        'Masuk 2',
+        'Pulang 2',
+        'D3',
+        'Masuk 3',
+        'Pulang 3',
+        'D4',
+        'Masuk 4',
+        'Pulang 4',
+        'D5',
+        'Masuk 5',
+        'Pulang 5',
       ],
       [
-        'Ari Anggara', '51097', 'Serviceman', 'CK MHU',
-        'Masuk', '06:00', '18:00', 'OFF', '', '',
-        '', '', '', '', '', '', '', '', '',
+        'Ari Anggara',
+        '51097',
+        'Serviceman',
+        'CK MHU',
+        'Masuk',
+        '06:00',
+        '18:00',
+        'OFF',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
       ],
     ])
     XLSX.utils.book_append_sheet(workbook, sheet, 'Attendance Real')
@@ -475,6 +506,51 @@ describe('scheduling timesheet workflow', () => {
     }
   })
 
+  it('shows every active Overtime section from Approval Engine in site setup', () => {
+    const workspaceSource = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
+      'utf8'
+    )
+    const optionsSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
+    const actionSource = fs.readFileSync(
+      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
+      'utf8'
+    )
+
+    expect(optionsSource).toContain('employee.sectionId == null')
+    expect(optionsSource).toContain('const activeSectionSites = new Map')
+    expect(optionsSource).toContain('.where(eq(masterSections.isActive, true))')
+    expect(optionsSource).toContain('sectionHeadEmployeeId: masterSections.headEmployeeId')
+    expect(optionsSource).toContain('departmentHeadEmployeeId: masterDepartments.headEmployeeId')
+    expect(optionsSource).toContain('const siteHeads = new Map')
+    expect(optionsSource).toContain('approvalEmployees: employeeRows.map')
+    expect(optionsSource).toContain("eq(approvalMatrices.transactionType, 'overtime_request')")
+    expect(optionsSource).toContain('isNotNull(approvalMatrices.sectionId)')
+    expect(optionsSource).toContain("matrix?.id ?? 'none'")
+    expect(workspaceSource).toContain('siteApprovalSections.map((row)')
+    expect(workspaceSource).toContain("row.matrixName || 'Belum sync'")
+    expect(workspaceSource).toContain(
+      'Approval Daily Activity, Overtime/SPL &amp; Request Barang/APD'
+    )
+    expect(workspaceSource).toContain('<span>PJO Leader</span>')
+    expect(workspaceSource).toContain('<span>Section Head</span>')
+    expect(workspaceSource).toContain('<span>Dept Head</span>')
+    expect(workspaceSource).toContain('<SearchableSelect')
+    expect(workspaceSource).toContain('approvalEmployeeOptions(')
+    expect(workspaceSource).toContain('approvalEmployeeChoices')
+    expect(workspaceSource).toContain('if (!result.ok) throw new Error(result.error')
+    expect(workspaceSource).toContain('approvalSections: siteApprovalSections.map')
+    expect(actionSource).toContain("scopeType: 'site'")
+    expect(actionSource).toContain("transactionType: 'overtime_request'")
+    expect(actionSource).toContain("transactionType: 'activity'")
+    expect(actionSource).toContain("transactionType: 'apd-request'")
+    expect(actionSource).toContain('Request Barang / APD - ${site.name} - ${sectionName}')
+    expect(actionSource).toContain("activityType: 'overtime_command_letter'")
+    expect(actionSource).toContain('for (const config of matrixConfigs)')
+    expect(actionSource).toContain('Section approval tidak memiliki anggota aktif pada site ini.')
+    expect(actionSource).toContain('Approver harus berasal dari karyawan aktif di User Management.')
+  })
+
   it('revalidates scheduling timesheet after face attendance submission', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'app/actions/attendance.ts'), 'utf8')
     expect(source).toContain('revalidatePath("/dashboard/scheduling-timesheet")')
@@ -676,7 +752,10 @@ describe('scheduling timesheet workflow', () => {
   })
 
   it('exposes scoped live attendance map with GPS activity controls', () => {
-    const actionSource = fs.readFileSync(path.join(process.cwd(), 'app/actions/attendance.ts'), 'utf8')
+    const actionSource = fs.readFileSync(
+      path.join(process.cwd(), 'app/actions/attendance.ts'),
+      'utf8'
+    )
     const mapSource = fs.readFileSync(
       path.join(process.cwd(), 'components/attendance/live-attendance-map.tsx'),
       'utf8'

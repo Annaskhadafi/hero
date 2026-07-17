@@ -43,6 +43,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     if (
       cleanPath.startsWith("upload/") ||
       cleanPath.startsWith("attendance-photos/") ||
+      cleanPath.startsWith("activity-photos/") ||
       cleanPath.startsWith("profile-photos/") ||
       cleanPath.startsWith("curhat/")
     ) {
@@ -90,7 +91,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:attendance-photos|profile-photos|upload)\/.+)$/,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload)\/.+)$/,
     );
 
     if (knownPrefixMatch) {
@@ -377,10 +378,9 @@ export function replaceS3UrlsInHtml(html: string | null | undefined): string {
   if (!html) return "";
 
   // Match any S3 upload/attendance-photos/profile-photos/curhat URLs inside HTML text
-  const s3UrlPattern = /https?:\/\/[^\s"'<>]+?\/(upload|attendance-photos|profile-photos|curhat)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)(?:\?[^\s"'<>]+)?/g;
+  const s3UrlPattern = /https?:\/\/[^\s"'<>]+?\/(upload|activity-photos|attendance-photos|profile-photos|curhat)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)(?:\?[^\s"'<>]+)?/g;
 
   return html.replace(s3UrlPattern, (match, prefix, fileName) => {
     return `/api/uploads/${prefix}/${fileName}`;
   });
 }
-

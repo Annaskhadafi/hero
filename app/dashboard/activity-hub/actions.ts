@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { z } from 'zod'
@@ -266,6 +266,7 @@ const submitActivitySchema = z.object({
   gpsLng: z.string().trim().max(80).optional().default(''),
   gpsValid: formBoolean(false),
   photoUrl: z.string().trim().max(1000).optional().default(''),
+  photoUrlsJson: z.string().trim().max(200000).optional().default('[]'),
 })
 
 const updateConfigSchema = z.object({
@@ -447,10 +448,17 @@ function buildDailySessionCode(
   return `DAS-${dateCode}-${employeeId}-${routeTemplateId ?? 0}-${overtimeCommandLetterId ?? 0}`
 }
 
-function buildSplNumber(siteId: number, employeeId: number, workDate: Date) {
+function buildSplNumber(
+  siteId: number,
+  employeeId: number,
+  workDate: Date,
+  plannedStartAt: Date,
+  plannedEndAt: Date
+) {
   const dateCode = workDate.toISOString().slice(0, 10).replaceAll('-', '')
-  const entropy = `${Date.now()}`.slice(-4)
-  return `SPL-${siteId}-${employeeId}-${dateCode}-${entropy}`
+  const timeCode = (value: Date) =>
+    `${String(value.getHours()).padStart(2, '0')}${String(value.getMinutes()).padStart(2, '0')}`
+  return `SPL-${siteId}-${employeeId}-${dateCode}-${timeCode(plannedStartAt)}-${timeCode(plannedEndAt)}`
 }
 
 function parseRouteSessionItems(value: string) {
@@ -515,9 +523,7 @@ async function assertOvertimeRequestCreationAccess(
     return permission
   }
 
-  throw new Error(
-    'Anda belum dipilih sebagai pemberi perintah lembur pada Settings SPL.'
-  )
+  throw new Error('Anda belum dipilih sebagai pemberi perintah lembur pada Settings SPL.')
 }
 
 async function sendSplSubmissionEmail(input: {
@@ -1518,7 +1524,8 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
 
   const payload = manageOvertimeCommandLetterSchema.parse(Object.fromEntries(formData))
   const currentEmployee = await getAuthenticatedEmployeeContext()
-  if (payload.origin === 'leader_command') await assertOvertimeRequestCreationAccess(currentEmployee)
+  if (payload.origin === 'leader_command')
+    await assertOvertimeRequestCreationAccess(currentEmployee)
 
   const existingDocument =
     payload.id == null
@@ -1598,6 +1605,14 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
     throw new Error('Jam selesai SPL harus setelah jam mulai.')
   }
   if (!plannedStartAt || !plannedEndAt) throw new Error('Jam mulai dan selesai SPL wajib diisi.')
+  if (
+    payload.origin === 'employee_request' &&
+    [plannedStartAt, plannedEndAt].some(
+      (value) => value.getMinutes() % 30 !== 0 || value.getSeconds() !== 0
+    )
+  ) {
+    throw new Error('Jam mulai dan selesai SPL harus menggunakan interval 30 menit.')
+  }
   const policy = await getSiteSplPolicy(currentEmployee.siteId)
   const requestWindowError = validateSplRequestWindow({
     now: new Date(),
@@ -1665,7 +1680,13 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         .insert(overtimeCommandLetters)
         .values({
           ...values,
-          splNumber: buildSplNumber(currentEmployee.siteId, currentEmployee.id, workDate),
+          splNumber: buildSplNumber(
+            currentEmployee.siteId,
+            currentEmployee.id,
+            workDate,
+            plannedStartAt,
+            plannedEndAt
+          ),
           createdAt: new Date(),
         })
         .returning({
@@ -1728,7 +1749,9 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
     if (payload.intent !== 'create') {
       await tx
         .delete(overtimeCommandLetterParticipants)
-        .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetterId!))
+        .where(
+          eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetterId!)
+        )
     }
     await tx.insert(overtimeCommandLetterParticipants).values(
       participantSnapshots.map((participant) => ({
@@ -1780,6 +1803,116 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   revalidateDailyActivitySurfaces()
 }
 
+export type MobileSplSubmitState = {
+  status: 'idle' | 'success' | 'error'
+  message: string
+  summary?: {
+    id: number
+    splNumber: string
+    title: string
+    status: string
+    workDate: string
+    plannedStartAt: string
+    plannedEndAt: string
+    totalMinutes: number
+  }
+}
+
+type MobileSplSummaryRow = {
+  id: number
+  splNumber: string
+  title: string
+  status: string
+  workDate: Date
+  plannedStartAt: Date | null
+  plannedEndAt: Date | null
+}
+
+function mobileSplSuccess(row: MobileSplSummaryRow): MobileSplSubmitState {
+  if (!row.plannedStartAt || !row.plannedEndAt) {
+    throw new Error('Ringkasan SPL yang baru diajukan tidak ditemukan.')
+  }
+
+  return {
+    status: 'success',
+    message: 'SPL sudah diajukan.',
+    summary: {
+      ...row,
+      workDate: row.workDate.toISOString(),
+      plannedStartAt: row.plannedStartAt.toISOString(),
+      plannedEndAt: row.plannedEndAt.toISOString(),
+      totalMinutes: Math.round(
+        (row.plannedEndAt.getTime() - row.plannedStartAt.getTime()) / 60_000
+      ),
+    },
+  }
+}
+
+async function findIdenticalMobileSpl(employeeId: number, formData: FormData) {
+  const plannedStartAt = new Date(String(formData.get('plannedStartAt') ?? ''))
+  const plannedEndAt = new Date(String(formData.get('plannedEndAt') ?? ''))
+  const parentSplId = Number(formData.get('parentSplId') ?? 0)
+
+  if (Number.isNaN(plannedStartAt.getTime()) || Number.isNaN(plannedEndAt.getTime())) return null
+
+  const [row] = await db
+    .select({
+      id: overtimeCommandLetters.id,
+      splNumber: overtimeCommandLetters.splNumber,
+      title: overtimeCommandLetters.title,
+      status: overtimeCommandLetters.status,
+      workDate: overtimeCommandLetters.workDate,
+      plannedStartAt: overtimeCommandLetters.plannedStartAt,
+      plannedEndAt: overtimeCommandLetters.plannedEndAt,
+    })
+    .from(overtimeCommandLetters)
+    .where(
+      and(
+        eq(overtimeCommandLetters.requestedByEmployeeId, employeeId),
+        eq(overtimeCommandLetters.origin, 'employee_request'),
+        eq(overtimeCommandLetters.plannedStartAt, plannedStartAt),
+        eq(overtimeCommandLetters.plannedEndAt, plannedEndAt),
+        eq(overtimeCommandLetters.requestKind, String(formData.get('requestKind') ?? 'base')),
+        parentSplId > 0
+          ? eq(overtimeCommandLetters.parentSplId, parentSplId)
+          : isNull(overtimeCommandLetters.parentSplId),
+        inArray(overtimeCommandLetters.status, ['draft', 'submitted', 'approved', 'closed'])
+      )
+    )
+    .orderBy(desc(overtimeCommandLetters.id))
+    .limit(1)
+
+  return row ?? null
+}
+
+export async function submitMobileOvertimeRequestAction(
+  _previousState: MobileSplSubmitState,
+  formData: FormData
+): Promise<MobileSplSubmitState> {
+  let currentEmployee: Awaited<ReturnType<typeof getAuthenticatedEmployeeContext>> | null = null
+
+  try {
+    currentEmployee = await getAuthenticatedEmployeeContext()
+    const existing = await findIdenticalMobileSpl(currentEmployee.id, formData)
+    if (existing) return mobileSplSuccess(existing)
+
+    await manageOvertimeCommandLetterAction(formData)
+    const created = await findIdenticalMobileSpl(currentEmployee.id, formData)
+    if (!created) throw new Error('Ringkasan SPL yang baru diajukan tidak ditemukan.')
+    return mobileSplSuccess(created)
+  } catch (error) {
+    if (currentEmployee) {
+      const existing = await findIdenticalMobileSpl(currentEmployee.id, formData)
+      if (existing) return mobileSplSuccess(existing)
+    }
+
+    return {
+      status: 'error',
+      message: getReadableActionError(error, 'SPL gagal diajukan.'),
+    }
+  }
+}
+
 export async function manageOvertimeRequestLeaderPermissionAction(formData: FormData) {
   await ensureDailyActivitySeedData()
 
@@ -1804,7 +1937,10 @@ export async function manageOvertimeRequestLeaderPermissionAction(formData: Form
     throw new Error('Leader yang dipilih tidak valid untuk site ini.')
   }
 
-  const managedEmployeeIds = await getHeadLocationManagedEmployeeIds(currentEmployee.siteId, leader.id)
+  const managedEmployeeIds = await getHeadLocationManagedEmployeeIds(
+    currentEmployee.siteId,
+    leader.id
+  )
   if (managedEmployeeIds.length === 0) {
     throw new Error('Orang ini bukan bagian hierarchy Head Area atau belum punya bawahan aktif.')
   }
@@ -2015,10 +2151,14 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
           )
         )
       if (!attendance?.clockIn || !attendance.clockOut) {
-        throw new Error('SPL belum dapat ditutup: clock-in dan clock-out Attendance Real belum lengkap.')
+        throw new Error(
+          'SPL belum dapat ditutup: clock-in dan clock-out Attendance Real belum lengkap.'
+        )
       }
       if (Number(evidence?.checkedCount ?? 0) < 1 || Number(evidence?.photoCount ?? 0) < 1) {
-        throw new Error('SPL belum dapat ditutup: aktivitas selesai dan minimal satu foto wajib tersedia.')
+        throw new Error(
+          'SPL belum dapat ditutup: aktivitas selesai dan minimal satu foto wajib tersedia.'
+        )
       }
     }
 
@@ -2049,7 +2189,13 @@ export async function submitDailyActivityAction(formData: FormData) {
   await ensureDailyActivitySeedData()
 
   const payload = submitActivitySchema.parse(Object.fromEntries(formData))
-  const photoFile = formData.get('photoFile')
+  const photoFiles = formData
+    .getAll('photoFiles')
+    .filter((file): file is File => file instanceof File && file.size > 0)
+  const legacyPhotoFile = formData.get('photoFile')
+  if (legacyPhotoFile instanceof File && legacyPhotoFile.size > 0) {
+    photoFiles.unshift(legacyPhotoFile)
+  }
   const employee = await getAuthenticatedEmployeeContext()
   const employeeId = employee.id
 
@@ -2117,6 +2263,11 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Pekerjaan aktual tidak sesuai dengan karyawan login.')
   }
 
+  const routeSessionItems = parseRouteSessionItems(payload.routeSessionItemsJson)
+  const isChecklistOnlySubmission =
+    routeSessionItems.some((item) => item.isChecked) &&
+    (payload.overtimeCommandLetterId != null || payload.routeTemplateId != null)
+
   const effectiveLibraryActivityId =
     payload.sourceMode === 'assigned'
       ? (selectedAssignment?.libraryActivityId ?? null)
@@ -2133,7 +2284,7 @@ export async function submitDailyActivityAction(formData: FormData) {
           .where(eq(activityLibraries.id, effectiveLibraryActivityId))
           .limit(1)
 
-  if (payload.sourceMode === 'self_input' && !library) {
+  if (payload.sourceMode === 'self_input' && !library && !isChecklistOnlySubmission) {
     throw new Error('Library activity has not been selected.')
   }
 
@@ -2155,7 +2306,6 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
   }
 
-  const routeSessionItems = parseRouteSessionItems(payload.routeSessionItemsJson)
   if (payload.overtimeCommandLetterId != null) {
     const [spl] = await db
       .select({
@@ -2271,12 +2421,26 @@ export async function submitDailyActivityAction(formData: FormData) {
   const projectedNet = projectedReward - penaltyPoints
   const autoApprove =
     Boolean(library?.autoApproveIfGpsValid) && payload.gpsValid && payload.sourceMode !== 'custom'
-  const needsApproval = payload.sourceMode === 'custom' || library?.approvalRequired !== false
-  const activityStatus = autoApprove ? 'Approved' : needsApproval ? 'Pending L1' : 'Approved'
+  const isSplEvidenceSubmission = payload.overtimeCommandLetterId != null
+  const needsApproval =
+    !isSplEvidenceSubmission &&
+    (payload.sourceMode === 'custom' || library?.approvalRequired !== false)
+  const activityStatus = isSplEvidenceSubmission
+    ? 'Submitted'
+    : autoApprove
+      ? 'Approved'
+      : needsApproval
+        ? 'Pending L1'
+        : 'Approved'
   const pointsAwarded = Math.max(projectedReward, 0)
 
-  let uploadedPhotoUrl = payload.photoUrl
-  if (photoFile instanceof File && photoFile.size > 0) {
+  const directPhotoUrls = z
+    .array(z.string().url().max(2000))
+    .parse(JSON.parse(payload.photoUrlsJson || '[]'))
+  const uploadedPhotoUrls = payload.photoUrl.trim()
+    ? [payload.photoUrl.trim(), ...directPhotoUrls]
+    : [...directPhotoUrls]
+  for (const photoFile of photoFiles) {
     if (!photoFile.type.startsWith('image/')) {
       throw new Error('Documentation file must be an image.')
     }
@@ -2286,10 +2450,10 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
 
     const uploaded = await uploadAnyFileToS3(photoFile, 'activity-photos')
-    uploadedPhotoUrl = uploaded.url
+    uploadedPhotoUrls.push(uploaded.url)
   }
 
-  if (requiresEvidencePhoto && uploadedPhotoUrl.trim().length === 0) {
+  if (requiresEvidencePhoto && uploadedPhotoUrls.length === 0) {
     throw new Error('Foto wajib diupload untuk activity / checklist yang dipilih.')
   }
 
@@ -2300,11 +2464,26 @@ export async function submitDailyActivityAction(formData: FormData) {
     library?.activityName ||
     selectedAssignment?.customJobName.trim() ||
     payload.customActivityName.trim() ||
-    'Custom activity'
+    routeSessionItems.find((item) => item.isChecked)?.snapshotLabel ||
+    'Checklist activity'
   const activityCode =
-    library?.activityCode ?? (payload.sourceMode === 'assigned' ? 'ASN-001' : 'CUS-001')
+    library?.activityCode ??
+    (isChecklistOnlySubmission
+      ? payload.overtimeCommandLetterId
+        ? 'SPL-CHECKLIST'
+        : 'ROUTE-CHECKLIST'
+      : payload.sourceMode === 'assigned'
+        ? 'ASN-001'
+        : 'CUS-001')
   const activityType =
-    library?.category ?? (payload.sourceMode === 'assigned' ? 'Assigned' : 'Custom')
+    library?.category ??
+    (isChecklistOnlySubmission
+      ? payload.overtimeCommandLetterId
+        ? 'SPL Checklist'
+        : 'Route Checklist'
+      : payload.sourceMode === 'assigned'
+        ? 'Assigned'
+        : 'Custom')
   const approvalRoute = needsApproval
     ? await resolveApprovalRouteForActivity({
         employeeId,
@@ -2353,7 +2532,7 @@ export async function submitDailyActivityAction(formData: FormData) {
         gpsLat: payload.gpsLat,
         gpsLng: payload.gpsLng,
         gpsValid: payload.gpsValid,
-        photoCount: uploadedPhotoUrl ? 1 : 0,
+        photoCount: uploadedPhotoUrls.length,
         remarks: payload.notes,
         pointsAwarded,
         penaltyDeducted: penaltyPoints,
@@ -2375,13 +2554,15 @@ export async function submitDailyActivityAction(formData: FormData) {
       startTime,
     })
 
-    if (uploadedPhotoUrl) {
-      await tx.insert(activityPhotos).values({
-        activityId: createdActivity.id,
-        fileUrl: uploadedPhotoUrl,
-        caption: 'Upload field documentation',
-        uploadedAt: submissionTime,
-      })
+    if (uploadedPhotoUrls.length > 0) {
+      await tx.insert(activityPhotos).values(
+        uploadedPhotoUrls.map((fileUrl, index) => ({
+          activityId: createdActivity.id,
+          fileUrl,
+          caption: `Upload field documentation ${index + 1}`,
+          uploadedAt: submissionTime,
+        }))
+      )
     }
 
     if (payload.assignmentId) {
@@ -2415,7 +2596,9 @@ export async function submitDailyActivityAction(formData: FormData) {
       })
     }
 
-    if (autoApprove || !needsApproval) {
+    if (isSplEvidenceSubmission) {
+      // Approval SPL owns the decision for its linked Daily Activity evidence.
+    } else if (autoApprove || !needsApproval) {
       await tx
         .update(dailyActivitySessions)
         .set({ status: 'approved', approvedAt: submissionTime, updatedAt: submissionTime })

@@ -5744,6 +5744,9 @@ export async function getSchedulingTimesheetOptions() {
     activitiesRows,
     trainingRecordsRows,
     sioCertificationsRows,
+    masterSectionRows,
+    approvalSectionRows,
+    approvalStepRows,
     approvedSplRows,
   ] = await Promise.all([
     db
@@ -5757,6 +5760,8 @@ export async function getSchedulingTimesheetOptions() {
         workLocation: employees.workLocation,
         role: employees.role,
         jobTitle: employees.jobTitle,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
         department: sql<string>`coalesce(${masterDepartments.name}, ${employees.department}, '')`,
         section: sql<string>`coalesce(${masterSections.name}, ${employees.section}, '')`,
         siteId: employees.siteId,
@@ -5859,6 +5864,61 @@ export async function getSchedulingTimesheetOptions() {
       })
       .from(sioCertifications)
       .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
+      .catch(() => []),
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+        departmentName: masterDepartments.name,
+        sectionHeadEmployeeId: masterSections.headEmployeeId,
+        departmentHeadEmployeeId: masterDepartments.headEmployeeId,
+      })
+      .from(masterSections)
+      .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterDepartments.name), asc(masterSections.name))
+      .catch(() => []),
+    db
+      .select({
+        id: approvalMatrices.id,
+        name: approvalMatrices.name,
+        siteId: approvalMatrices.siteId,
+        departmentId: approvalMatrices.departmentId,
+        departmentName: masterDepartments.name,
+        sectionId: approvalMatrices.sectionId,
+        sectionName: masterSections.name,
+      })
+      .from(approvalMatrices)
+      .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
+      .where(
+        and(
+          eq(approvalMatrices.isActive, true),
+          eq(approvalMatrices.transactionType, 'overtime_request'),
+          isNotNull(approvalMatrices.sectionId)
+        )
+      )
+      .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
+      .catch(() => []),
+    db
+      .select({
+        matrixId: approvalMatrixSteps.matrixId,
+        stepOrder: approvalMatrixSteps.stepOrder,
+        nodeEmployeeId: orgChartNodes.employeeId,
+        assignmentEmployeeId: orgNodeAssignments.employeeId,
+      })
+      .from(approvalMatrixSteps)
+      .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+      .leftJoin(
+        orgNodeAssignments,
+        and(
+          eq(orgNodeAssignments.nodeId, orgChartNodes.id),
+          eq(orgNodeAssignments.assignmentType, 'primary'),
+          eq(orgNodeAssignments.isActive, true)
+        )
+      )
+      .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
       .catch(() => []),
     db
       .select({
@@ -6037,9 +6097,76 @@ export async function getSchedulingTimesheetOptions() {
     }
   )
 
+  const employeeNames = new Map(employeeRows.map((employee) => [employee.id, employee.name]))
+  const siteHeads = new Map(siteRows.map((site) => [site.id, site.headEmployeeId]))
+
+  const activeSectionSites = new Map<
+    string,
+    { siteId: number; departmentId: number; sectionId: number }
+  >()
+  for (const employee of employeeRows) {
+    if (employee.siteId == null || employee.departmentId == null || employee.sectionId == null) {
+      continue
+    }
+    activeSectionSites.set(`${employee.siteId}:${employee.departmentId}:${employee.sectionId}`, {
+      siteId: employee.siteId,
+      departmentId: employee.departmentId,
+      sectionId: employee.sectionId,
+    })
+  }
+
+  const approvalSections = [...activeSectionSites.values()].flatMap((scope) =>
+    masterSectionRows
+      .filter(
+        (section) => section.id === scope.sectionId && section.departmentId === scope.departmentId
+      )
+      .map((section) => {
+        const matrix = approvalSectionRows
+          .filter(
+            (matrix) =>
+              matrix.sectionId === section.id &&
+              (matrix.siteId == null || matrix.siteId === scope.siteId)
+          )
+          .sort(
+            (left, right) =>
+              Number(right.siteId === scope.siteId) - Number(left.siteId === scope.siteId)
+          )[0]
+        const steps = matrix ? approvalStepRows.filter((step) => step.matrixId === matrix.id) : []
+        const approverId = (stepOrder: number) => {
+          const step = steps.find((item) => item.stepOrder === stepOrder)
+          return step?.assignmentEmployeeId ?? step?.nodeEmployeeId ?? null
+        }
+        const pjoLeaderId = approverId(1) ?? siteHeads.get(scope.siteId) ?? null
+        const sectionHeadId = approverId(2) ?? section.sectionHeadEmployeeId ?? null
+        const departmentHeadId = approverId(3) ?? section.departmentHeadEmployeeId ?? null
+        return {
+          id: `${scope.siteId}:${section.id}:${matrix?.id ?? 'none'}`,
+          siteId: scope.siteId,
+          departmentId: scope.departmentId,
+          departmentName: section.departmentName,
+          sectionId: section.id,
+          sectionName: section.name,
+          matrixId: matrix?.id ?? null,
+          matrixName: matrix?.name ?? null,
+          pjoLeaderId,
+          pjoLeaderName: pjoLeaderId ? (employeeNames.get(pjoLeaderId) ?? null) : null,
+          sectionHeadId,
+          sectionHeadName: sectionHeadId ? (employeeNames.get(sectionHeadId) ?? null) : null,
+          departmentHeadId,
+          departmentHeadName: departmentHeadId
+            ? (employeeNames.get(departmentHeadId) ?? null)
+            : null,
+        }
+      })
+  )
+
   return {
     currentEmployeeSiteId: currentEmployee?.siteId ?? null,
     currentEmployeeName: currentEmployee?.name ?? authSession?.user?.name ?? 'User Management',
+    approvalEmployees: employeeRows.map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+    })),
     employees: employeeRows
       .filter((employee) => canSeeSchedulingSite(employee.siteId))
       .map((employee) => ({
@@ -6052,6 +6179,8 @@ export async function getSchedulingTimesheetOptions() {
         workLocation: employee.workLocation,
         siteLocation: employee.siteLocation,
         role: employee.jobTitle || employee.role || '',
+        departmentId: employee.departmentId,
+        sectionId: employee.sectionId,
         department: employee.department ?? null,
         section: employee.section ?? null,
         siteId: employee.siteId,
@@ -6063,6 +6192,7 @@ export async function getSchedulingTimesheetOptions() {
           : null,
       })),
     sites: siteRows.filter((site) => canSeeSchedulingSite(site.id)),
+    approvalSections: approvalSections.filter((row) => canSeeSchedulingSite(row.siteId)),
     savedPlans: serializedV1Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
     activeSavedPlans: activeSavedPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
     savedPlansV2: serializedV2Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),

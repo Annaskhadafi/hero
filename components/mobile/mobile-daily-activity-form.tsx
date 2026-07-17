@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Camera,
   Check,
@@ -12,324 +12,356 @@ import {
   Search,
   SendHorizontal,
   X,
-} from "lucide-react";
+} from 'lucide-react'
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { SpeechInputButton } from "@/components/ui/speech-input-button";
-import { validateSiteBoundary } from "@/lib/location";
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { SpeechInputButton } from '@/components/ui/speech-input-button'
+import { validateSiteBoundary } from '@/lib/location'
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
   type ActivitySyncPayload,
   type RouteSessionSyncItem,
   type QueuedFilePayload,
-} from "@/lib/offline-sync";
+} from '@/lib/offline-sync'
 
 type AssignmentOption = {
-  id: number;
-  activityName: string | null;
-  customJobName: string;
-  priority?: string | null;
-  assignedByName?: string | null;
-  libraryActivityId?: number | null;
-  requiresPhoto?: boolean | null;
-};
+  id: number
+  activityName: string | null
+  customJobName: string
+  priority?: string | null
+  assignedByName?: string | null
+  libraryActivityId?: number | null
+  requiresPhoto?: boolean | null
+}
 
 type LibraryOption = {
-  id: number;
-  activityCode: string;
-  activityName: string;
-  basePoints: number;
-  requiresPhoto: boolean;
-  requiresEquipmentNo: boolean;
-  requiresDuration: boolean;
-  requiresMaterialUsed: boolean;
-  requiresLocationGps: boolean;
-  maxDailyCount: number;
-  maxPointsPerDay: number;
-  departmentId: number | null;
-  sectionId: number | null;
-};
+  id: number
+  activityCode: string
+  activityName: string
+  basePoints: number
+  requiresPhoto: boolean
+  requiresEquipmentNo: boolean
+  requiresDuration: boolean
+  requiresMaterialUsed: boolean
+  requiresLocationGps: boolean
+  maxDailyCount: number
+  maxPointsPerDay: number
+  departmentId: number | null
+  sectionId: number | null
+}
 
 type ChecklistRenderItem = {
-  id: number;
-  routeItemId: number | null;
-  overtimeCommandLetterItemId: number | null;
-  libraryActivityId: number | null;
-  itemCode: string | null;
-  itemLabel: string;
-  itemDescription: string | null;
-  sortOrder: number;
-  requiresUnit: boolean;
-  requiresTime: boolean;
-  requiresRemark: boolean;
-  requiresPhoto: boolean;
-  requiresChecklistEvidence: boolean;
-  pointOverride: number | null;
-  libraryCode: string | null;
-  libraryName: string | null;
-  libraryPoints: number | null;
-  isChecked: boolean;
-  unitNumber: string;
-  remark: string;
-  startedAt: string | Date | null;
-  endedAt: string | Date | null;
-  actualPoints: number;
-};
+  id: number
+  routeItemId: number | null
+  overtimeCommandLetterItemId: number | null
+  libraryActivityId: number | null
+  itemCode: string | null
+  itemLabel: string
+  itemDescription: string | null
+  sortOrder: number
+  requiresUnit: boolean
+  requiresTime: boolean
+  requiresRemark: boolean
+  requiresPhoto: boolean
+  requiresChecklistEvidence: boolean
+  pointOverride: number | null
+  libraryCode: string | null
+  libraryName: string | null
+  libraryPoints: number | null
+  isChecked: boolean
+  unitNumber: string
+  remark: string
+  startedAt: string | Date | null
+  endedAt: string | Date | null
+  actualPoints: number
+}
 
 type ChecklistRenderGroup = {
-  id: number;
-  groupKey: string;
-  groupName: string;
-  description: string | null;
-  items: ChecklistRenderItem[];
-};
+  id: number
+  groupKey: string
+  groupName: string
+  description: string | null
+  items: ChecklistRenderItem[]
+}
 
 type MobileDailyActivityFormProps = {
-  employeeId: number;
-  assignments: AssignmentOption[];
-  availableLibrary: LibraryOption[];
-  defaultStartTime: string;
-  defaultEndTime: string;
+  employeeId: number
+  assignments: AssignmentOption[]
+  availableLibrary: LibraryOption[]
+  defaultStartTime: string
+  defaultEndTime: string
   routeChecklist: {
-    id: number;
-    routeCode: string;
-    routeName: string;
-    shiftCode: string;
+    id: number
+    routeCode: string
+    routeName: string
+    shiftCode: string
     activeSpl: {
-      id: number;
-      splNumber: string;
-      title: string;
-      status: string;
-      lineCount: number;
-      plannedPointsTotal: number;
-      requestNotes: string;
+      id: number
+      splNumber: string
+      title: string
+      status: string
+      lineCount: number
+      plannedPointsTotal: number
+      requestNotes: string
       items: Array<{
-        id: number;
-        lineLabel: string;
-        targetUnit: string;
-        plannedPoints: number;
-      }>;
-    } | null;
+        id: number
+        lineLabel: string
+        targetUnit: string
+        plannedPoints: number
+      }>
+    } | null
     groups: Array<{
-      id: number;
-      groupKey: string;
-      groupName: string;
-      description: string | null;
+      id: number
+      groupKey: string
+      groupName: string
+      description: string | null
       items: Array<{
-        id: number;
-        libraryActivityId: number | null;
-        itemCode: string | null;
-        itemLabel: string;
-        itemDescription: string | null;
-        sortOrder: number;
-        requiresUnit: boolean;
-        requiresTime: boolean;
-        requiresRemark: boolean;
-        requiresPhoto: boolean;
-        requiresChecklistEvidence: boolean;
-        pointOverride: number | null;
-        libraryCode: string | null;
-        libraryName: string | null;
-        libraryPoints: number | null;
-        isChecked: boolean;
-        unitNumber: string;
-        remark: string;
-        startedAt: string | Date | null;
-        endedAt: string | Date | null;
-        actualPoints: number;
-      }>;
-    }>;
-  } | null;
+        id: number
+        libraryActivityId: number | null
+        itemCode: string | null
+        itemLabel: string
+        itemDescription: string | null
+        sortOrder: number
+        requiresUnit: boolean
+        requiresTime: boolean
+        requiresRemark: boolean
+        requiresPhoto: boolean
+        requiresChecklistEvidence: boolean
+        pointOverride: number | null
+        libraryCode: string | null
+        libraryName: string | null
+        libraryPoints: number | null
+        isChecked: boolean
+        unitNumber: string
+        remark: string
+        startedAt: string | Date | null
+        endedAt: string | Date | null
+        actualPoints: number
+      }>
+    }>
+  } | null
   standaloneOvertimeChecklist: {
-    id: number;
-    splNumber: string;
-    title: string;
-    status: string;
-    requestNotes: string;
-    executionNotes: string;
-    lineCount: number;
-    plannedPointsTotal: number;
-    sessionId: number | null;
-    sessionStatus: string | null;
-    checkedCount: number;
-    progressPercent: number;
+    id: number
+    splNumber: string
+    title: string
+    status: string
+    requestNotes: string
+    executionNotes: string
+    lineCount: number
+    plannedPointsTotal: number
+    sessionId: number | null
+    sessionStatus: string | null
+    checkedCount: number
+    progressPercent: number
     items: Array<{
-      id: number;
-      routeItemId: number | null;
-      libraryActivityId: number | null;
-      requiresPhoto: boolean;
-      lineLabel: string;
-      lineDescription: string;
-      targetUnit: string;
-      estimatedMinutes: number;
-      plannedPoints: number;
-      sortOrder: number;
-      isCustomLine: boolean;
-      isChecked: boolean;
-      unitNumber: string;
-      remark: string;
-      startedAt: string | Date | null;
-      endedAt: string | Date | null;
-      actualPoints: number;
-    }>;
-  } | null;
+      id: number
+      routeItemId: number | null
+      libraryActivityId: number | null
+      requiresPhoto: boolean
+      lineLabel: string
+      lineDescription: string
+      targetUnit: string
+      estimatedMinutes: number
+      plannedPoints: number
+      sortOrder: number
+      isCustomLine: boolean
+      isChecked: boolean
+      unitNumber: string
+      remark: string
+      startedAt: string | Date | null
+      endedAt: string | Date | null
+      actualPoints: number
+    }>
+  } | null
   site: {
-    name?: string | null;
-    geoLatitude?: string | null;
-    geoLongitude?: string | null;
-    geoRadiusMeters?: number | null;
-  } | null;
-};
+    name?: string | null
+    geoLatitude?: string | null
+    geoLongitude?: string | null
+    geoRadiusMeters?: number | null
+  } | null
+}
 
 type GeoState = {
-  latitude: string;
-  longitude: string;
-  accuracy: string;
-  locationName: string;
-  message: string;
-};
+  latitude: string
+  longitude: string
+  accuracy: string
+  locationName: string
+  message: string
+}
 
 type RouteItemState = {
-  isChecked: boolean;
-  unitNumber: string;
-  remark: string;
-  startedAt: string;
-  endedAt: string;
-  actualPoints: string;
+  isChecked: boolean
+  unitNumber: string
+  remark: string
+  startedAt: string
+  endedAt: string
+  actualPoints: string
 
-  photoFile?: File | null;
-  photoName?: string;
-  restoredPhotoPayload?: QueuedFilePayload | null;
-};
+  photoFile?: File | null
+  photoFiles?: File[]
+  photoName?: string
+  restoredPhotoPayload?: QueuedFilePayload | null
+}
 
 type SelfInputEntryState = {
-  equipmentNo: string;
-  startTime: string;
-  endTime: string;
-  materialUsed: string;
-  notes: string;
+  equipmentNo: string
+  startTime: string
+  endTime: string
+  materialUsed: string
+  notes: string
 
-  photoFile?: File | null;
-  photoName?: string;
-  restoredPhotoPayload?: QueuedFilePayload | null;
-};
+  photoFile?: File | null
+  photoFiles?: File[]
+  photoName?: string
+  restoredPhotoPayload?: QueuedFilePayload | null
+}
 
 const emptyRouteItemState: RouteItemState = {
   isChecked: false,
-  unitNumber: "",
-  remark: "",
-  startedAt: "",
-  endedAt: "",
-  actualPoints: "0",
-};
+  unitNumber: '',
+  remark: '',
+  startedAt: '',
+  endedAt: '',
+  actualPoints: '0',
+}
 
 const initialGeo: GeoState = {
-  latitude: "",
-  longitude: "",
-  accuracy: "",
-  locationName: "",
-  message: "GPS standby",
-};
+  latitude: '',
+  longitude: '',
+  accuracy: '',
+  locationName: '',
+  message: 'GPS standby',
+}
 
-async function fileToPayload(file: File) {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Gagal membaca file foto."));
-    reader.readAsDataURL(file);
-  });
+async function uploadActivityPhoto(file: File) {
+  if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
-  const payload: QueuedFilePayload = {
-    name: file.name,
-    type: file.type,
-    size: file.size,
-    dataUrl,
-  };
+  const ticketResponse = await fetch('/api/uploads/activity-presign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+  })
+  const ticket = (await ticketResponse.json()) as {
+    uploadUrl?: string
+    url?: string
+    error?: string
+  }
+  if (!ticketResponse.ok || !ticket.uploadUrl || !ticket.url) {
+    throw new Error(ticket.error || 'Gagal menyiapkan upload evidence.')
+  }
 
-  return payload;
+  const uploadResponse = await fetch(ticket.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  })
+  if (!uploadResponse.ok) throw new Error(`Gagal upload evidence ${file.name}.`)
+
+  return ticket.url
+}
+
+async function prepareEvidence(
+  files: File[] | undefined,
+  fallbackFile?: File | null,
+  restored?: QueuedFilePayload | null
+) {
+  const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
+  if (selectedFiles.length > 0) {
+    // ponytail: failed submissions may leave orphaned evidence; add cleanup when storage growth warrants it.
+    return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
+  }
+  return { payloads: restored ? [restored] : [], urls: [] }
 }
 
 function readDraft<T>(key: string) {
-  if (typeof window === "undefined") return null as T | null;
+  if (typeof window === 'undefined') return null as T | null
 
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as T
   } catch {
-    return null;
+    return null
   }
 }
 
 function writeDraft<T>(key: string, value: T) {
-  window.localStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(key, JSON.stringify(value))
 }
 
 function clearDraft(key: string) {
-  window.localStorage.removeItem(key);
+  window.localStorage.removeItem(key)
 }
 
 function toDateTimeLocalValue(value?: string | Date | null) {
-  if (!value) return "";
-  const dateValue = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(dateValue.getTime())) return "";
-  const local = new Date(dateValue.getTime() - dateValue.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  if (!value) return ''
+  const dateValue = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(dateValue.getTime())) return ''
+  const local = new Date(dateValue.getTime() - dateValue.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
+function timeInputValue(value: string) {
+  return value.slice(11, 16)
+}
+
+function replaceTimeValue(value: string, time: string) {
+  return `${value.slice(0, 10)}T${time}`
 }
 
 function shiftDateTimeLocalValue(value: string, minutes: number) {
-  if (!value) return "";
+  if (!value) return ''
 
-  const parsed = new Date(value);
+  const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
-    return value;
+    return value
   }
 
-  parsed.setMinutes(parsed.getMinutes() + minutes);
-  return toDateTimeLocalValue(parsed);
+  parsed.setMinutes(parsed.getMinutes() + minutes)
+  return toDateTimeLocalValue(parsed)
 }
 
 function getDurationMinutes(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const start = new Date(startTime)
+  const end = new Date(endTime)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 60;
+    return 60
   }
 
-  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
-  return minutes > 0 ? minutes : 60;
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000)
+  return minutes > 0 ? minutes : 60
 }
 
 function buildDefaultSelfInputEntry(
   index: number,
   defaultStartTime: string,
-  defaultEndTime: string,
+  defaultEndTime: string
 ): SelfInputEntryState {
-  const durationMinutes = getDurationMinutes(defaultStartTime, defaultEndTime);
-  const offsetMinutes = index * durationMinutes;
+  const durationMinutes = getDurationMinutes(defaultStartTime, defaultEndTime)
+  const offsetMinutes = index * durationMinutes
 
   return {
-    equipmentNo: "",
+    equipmentNo: '',
     startTime: shiftDateTimeLocalValue(defaultStartTime, offsetMinutes),
     endTime: shiftDateTimeLocalValue(defaultEndTime, offsetMinutes),
-    materialUsed: "",
-    notes: "",
-  };
+    materialUsed: '',
+    notes: '',
+  }
 }
 
 function normalizeSearch(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 export function MobileDailyActivityForm({
@@ -342,73 +374,76 @@ export function MobileDailyActivityForm({
   standaloneOvertimeChecklist,
   site,
 }: MobileDailyActivityFormProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const queuedDraftKey = searchParams.get("draft")?.trim() || "";
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const queuedDraftKey = searchParams.get('draft')?.trim() || ''
 
-  const [sourceMode, setSourceMode] = useState<"assigned" | "self_input" | "custom">("self_input");
-  const [assignmentId, setAssignmentId] = useState("");
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([]);
-  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
-  const [librarySearch, setLibrarySearch] = useState("");
-  const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>({});
-  const [customActivityName, setCustomActivityName] = useState("");
-  const [customActivityDescription, setCustomActivityDescription] = useState("");
-  const [equipmentNo, setEquipmentNo] = useState("");
-  const [startTime, setStartTime] = useState(defaultStartTime);
-  const [endTime, setEndTime] = useState(defaultEndTime);
-  const [materialUsed, setMaterialUsed] = useState("");
-  const [notes, setNotes] = useState("");
-  const [manualLocation, setManualLocation] = useState("");
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoName, setPhotoName] = useState("");
-  const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null);
-  const [photoCaptureMode, setPhotoCaptureMode] = useState<"camera" | "gallery">("gallery");
-  const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null);
-  const [geo, setGeo] = useState<GeoState>(initialGeo);
+  const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>('self_input')
+  const [assignmentId, setAssignmentId] = useState('')
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([])
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
+  const [librarySearch, setLibrarySearch] = useState('')
+  const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>({})
+  const [customActivityName, setCustomActivityName] = useState('')
+  const [customActivityDescription, setCustomActivityDescription] = useState('')
+  const [equipmentNo, setEquipmentNo] = useState('')
+  const [startTime, setStartTime] = useState(defaultStartTime)
+  const [endTime, setEndTime] = useState(defaultEndTime)
+  const [materialUsed, setMaterialUsed] = useState('')
+  const [notes, setNotes] = useState('')
+  const [manualLocation, setManualLocation] = useState('')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [photoName, setPhotoName] = useState('')
+  const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null)
+  const [photoCaptureMode, setPhotoCaptureMode] = useState<'camera' | 'gallery'>('gallery')
+  const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null)
+  const [geo, setGeo] = useState<GeoState>(initialGeo)
   const [submitState, setSubmitState] = useState<{
-    kind: "idle" | "success" | "error";
-    message: string;
-  }>({ kind: "idle", message: "" });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({});
+    kind: 'idle' | 'success' | 'error'
+    message: string
+  }>({ kind: 'idle', message: '' })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({})
 
   const availableLibraryMap = useMemo(
     () => new Map(availableLibrary.map((item) => [`${item.id}`, item])),
-    [availableLibrary],
-  );
+    [availableLibrary]
+  )
   const selectedLibraries = useMemo(
     () =>
       selectedLibraryIds
         .map((id) => availableLibraryMap.get(id))
         .filter((item): item is LibraryOption => Boolean(item)),
-    [availableLibraryMap, selectedLibraryIds],
-  );
+    [availableLibraryMap, selectedLibraryIds]
+  )
   const filteredLibraries = useMemo(() => {
-    const normalizedSearch = normalizeSearch(librarySearch);
+    const normalizedSearch = normalizeSearch(librarySearch)
     if (!normalizedSearch) {
-      return availableLibrary;
+      return availableLibrary
     }
 
     return availableLibrary.filter((item) =>
-      normalizeSearch(`${item.activityCode} ${item.activityName} ${item.basePoints}`).includes(normalizedSearch),
-    );
-  }, [availableLibrary, librarySearch]);
-  const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto);
+      normalizeSearch(`${item.activityCode} ${item.activityName} ${item.basePoints}`).includes(
+        normalizedSearch
+      )
+    )
+  }, [availableLibrary, librarySearch])
+  const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto)
   const selectedAssignment = useMemo(
     () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
-    [assignmentId, assignments],
-  );
+    [assignmentId, assignments]
+  )
   const checklistContext = useMemo(() => {
     if (routeChecklist) {
       return {
-        kind: "route" as const,
+        kind: 'route' as const,
         routeTemplateId: routeChecklist.id,
         overtimeCommandLetterId: routeChecklist.activeSpl?.id ?? null,
         shiftCode: routeChecklist.shiftCode,
         title: routeChecklist.routeName,
         code: routeChecklist.routeCode,
-        summaryLabel: "Route checklist",
+        summaryLabel: 'Route checklist',
         activeSpl: routeChecklist.activeSpl,
         groups: routeChecklist.groups.map((group) => ({
           ...group,
@@ -418,18 +453,18 @@ export function MobileDailyActivityForm({
             overtimeCommandLetterItemId: null,
           })),
         })),
-      };
+      }
     }
 
     if (!standaloneOvertimeChecklist) {
-      return null;
+      return null
     }
 
     const groups: ChecklistRenderGroup[] = [
       {
         id: standaloneOvertimeChecklist.id,
-        groupKey: "SPL",
-        groupName: "Checklist lembur",
+        groupKey: 'SPL',
+        groupName: 'Checklist lembur',
         description:
           standaloneOvertimeChecklist.requestNotes ||
           standaloneOvertimeChecklist.executionNotes ||
@@ -460,16 +495,16 @@ export function MobileDailyActivityForm({
           actualPoints: item.actualPoints,
         })),
       },
-    ];
+    ]
 
     return {
-      kind: "spl" as const,
+      kind: 'spl' as const,
       routeTemplateId: null,
       overtimeCommandLetterId: standaloneOvertimeChecklist.id,
-      shiftCode: "SPL",
+      shiftCode: 'SPL',
       title: standaloneOvertimeChecklist.title,
       code: standaloneOvertimeChecklist.splNumber,
-      summaryLabel: "Checklist SPL",
+      summaryLabel: 'Checklist SPL',
       activeSpl: {
         id: standaloneOvertimeChecklist.id,
         splNumber: standaloneOvertimeChecklist.splNumber,
@@ -486,26 +521,31 @@ export function MobileDailyActivityForm({
         })),
       },
       groups,
-    };
-  }, [routeChecklist, standaloneOvertimeChecklist]);
-  const assignmentNeedsPhoto = sourceMode === "assigned" && Boolean(selectedAssignment?.requiresPhoto);
+    }
+  }, [routeChecklist, standaloneOvertimeChecklist])
+  const assignmentNeedsPhoto =
+    sourceMode === 'assigned' && Boolean(selectedAssignment?.requiresPhoto)
   const checkedChecklistNeedsPhoto =
     checklistContext?.groups.some((group) =>
       group.items.some((item) => {
-        const itemState = routeItemState[item.id];
-        return (itemState?.isChecked ?? false) && item.requiresPhoto;
-      }),
-    ) ?? false;
-  
-  const renderPhotoWidget = (targetId: string, requiresPhoto: boolean, currentPhotoName?: string) => (
-    <div className="mt-3 space-y-2 rounded-xl bg-[#f6fbff] p-3 border border-[#e9f6fd]">
+        const itemState = routeItemState[item.id]
+        return (itemState?.isChecked ?? false) && item.requiresPhoto
+      })
+    ) ?? false
+
+  const renderPhotoWidget = (
+    targetId: string,
+    requiresPhoto: boolean,
+    currentPhotoName?: string
+  ) => (
+    <div className="mt-3 space-y-2 rounded-xl border border-[#e9f6fd] bg-[#f6fbff] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+        <p className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
           <Camera className="size-3.5 text-[#003f78]" />
           Photo Evidence
         </p>
         {requiresPhoto ? (
-          <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+          <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
             Wajib
           </Badge>
         ) : null}
@@ -514,11 +554,11 @@ export function MobileDailyActivityForm({
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-[#003f78] text-xs"
+          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-xs text-[#003f78]"
           onClick={() => {
-            setActivePhotoTarget(targetId);
-            setPhotoCaptureMode("camera");
-            document.getElementById("mobile-activity-photo")?.click();
+            setActivePhotoTarget(targetId)
+            setPhotoCaptureMode('camera')
+            document.getElementById('mobile-activity-photo')?.click()
           }}
         >
           <Camera className="size-3.5" />
@@ -527,11 +567,11 @@ export function MobileDailyActivityForm({
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-[#003f78] text-xs"
+          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-xs text-[#003f78]"
           onClick={() => {
-            setActivePhotoTarget(targetId);
-            setPhotoCaptureMode("gallery");
-            document.getElementById("mobile-activity-photo")?.click();
+            setActivePhotoTarget(targetId)
+            setPhotoCaptureMode('gallery')
+            document.getElementById('mobile-activity-photo')?.click()
           }}
         >
           <ImagePlus className="size-3.5" />
@@ -539,85 +579,91 @@ export function MobileDailyActivityForm({
         </Button>
       </div>
       {currentPhotoName ? (
-        <p className="text-[11px] font-semibold text-[#003f78] break-words truncate">
+        <p className="truncate text-[11px] font-semibold break-words text-[#003f78]">
           ✓ {currentPhotoName}
         </p>
       ) : null}
     </div>
-  );
+  )
 
-  const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto;
+  const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto
 
   useEffect(() => {
     const draft = queuedDraftKey
       ? readDraft<ActivitySyncPayload>(queuedDraftKey)
-      : readDraft<ActivitySyncPayload>(ACTIVITY_DRAFT_STORAGE_KEY);
+      : readDraft<ActivitySyncPayload>(ACTIVITY_DRAFT_STORAGE_KEY)
 
     if (!draft) {
-      return;
+      return
     }
 
     const restoredSourceMode =
-      draft.sourceMode === "assigned" || draft.sourceMode === "self_input" || draft.sourceMode === "custom"
+      draft.sourceMode === 'assigned' ||
+      draft.sourceMode === 'self_input' ||
+      draft.sourceMode === 'custom'
         ? draft.sourceMode
-        : "self_input";
+        : 'self_input'
     const restoredSelectedLibraryIds =
       Array.isArray(draft.selectedLibraryActivityIds) && draft.selectedLibraryActivityIds.length > 0
         ? draft.selectedLibraryActivityIds
         : draft.libraryActivityId
           ? [draft.libraryActivityId]
-          : [];
+          : []
     const restoredSelfInputEntries = Array.isArray(draft.selfInputActivities)
       ? Object.fromEntries(
           draft.selfInputActivities.map((item, index) => [
             item.libraryActivityId,
             {
-              equipmentNo: item.equipmentNo ?? "",
-              startTime: item.startTime || buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
-              endTime: item.endTime || buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
-              materialUsed: item.materialUsed ?? "",
-              notes: item.notes ?? "",
+              equipmentNo: item.equipmentNo ?? '',
+              startTime:
+                item.startTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+              endTime:
+                item.endTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+              materialUsed: item.materialUsed ?? '',
+              notes: item.notes ?? '',
             },
-          ]),
+          ])
         )
       : draft.libraryActivityId
         ? {
             [draft.libraryActivityId]: {
-              equipmentNo: draft.equipmentNo ?? "",
+              equipmentNo: draft.equipmentNo ?? '',
               startTime: draft.startTime || defaultStartTime,
               endTime: draft.endTime || defaultEndTime,
-              materialUsed: draft.materialUsed ?? "",
-              notes: draft.notes ?? "",
+              materialUsed: draft.materialUsed ?? '',
+              notes: draft.notes ?? '',
             },
           }
-        : {};
+        : {}
     const restoredRouteSessionItems: RouteSessionSyncItem[] = Array.isArray(
-      (draft as Partial<ActivitySyncPayload>).routeSessionItems,
+      (draft as Partial<ActivitySyncPayload>).routeSessionItems
     )
       ? ((draft as Partial<ActivitySyncPayload>).routeSessionItems as RouteSessionSyncItem[])
-      : [];
+      : []
 
-    setSourceMode(restoredSourceMode);
-    setAssignmentId(draft.assignmentId ?? "");
-    setSelectedLibraryIds(restoredSelectedLibraryIds);
-    setSelfInputEntries(restoredSelfInputEntries);
-    setCustomActivityName(draft.customActivityName ?? "");
-    setCustomActivityDescription(draft.customActivityDescription ?? "");
-    setEquipmentNo(draft.equipmentNo ?? "");
-    setStartTime(draft.startTime || defaultStartTime);
-    setEndTime(draft.endTime || defaultEndTime);
-    setMaterialUsed(draft.materialUsed ?? "");
-    setNotes(draft.notes ?? "");
-    setManualLocation(draft.manualLocation ?? "");
-    setPhotoName(draft.photo?.name ?? "");
-    setRestoredPhotoPayload(draft.photo ?? null);
+    setSourceMode(restoredSourceMode)
+    setAssignmentId(draft.assignmentId ?? '')
+    setSelectedLibraryIds(restoredSelectedLibraryIds)
+    setSelfInputEntries(restoredSelfInputEntries)
+    setCustomActivityName(draft.customActivityName ?? '')
+    setCustomActivityDescription(draft.customActivityDescription ?? '')
+    setEquipmentNo(draft.equipmentNo ?? '')
+    setStartTime(draft.startTime || defaultStartTime)
+    setEndTime(draft.endTime || defaultEndTime)
+    setMaterialUsed(draft.materialUsed ?? '')
+    setNotes(draft.notes ?? '')
+    setManualLocation(draft.manualLocation ?? '')
+    setPhotoName(draft.photo?.name ?? '')
+    setRestoredPhotoPayload(draft.photo ?? null)
     if (restoredRouteSessionItems.length > 0) {
       setRouteItemState(
         Object.fromEntries(
           restoredRouteSessionItems.flatMap((item) => {
-            const itemKey = item.overtimeCommandLetterItemId ?? item.routeItemId;
+            const itemKey = item.overtimeCommandLetterItemId ?? item.routeItemId
             if (itemKey == null) {
-              return [];
+              return []
             }
 
             return [
@@ -632,22 +678,22 @@ export function MobileDailyActivityForm({
                   actualPoints: `${item.actualPoints}`,
                 },
               ],
-            ];
-          }),
-        ) as Record<number, RouteItemState>,
-      );
+            ]
+          })
+        ) as Record<number, RouteItemState>
+      )
     }
-  }, [defaultEndTime, defaultStartTime, queuedDraftKey]);
+  }, [defaultEndTime, defaultStartTime, queuedDraftKey])
 
   useEffect(() => {
     if (!checklistContext) {
-      setRouteItemState({});
-      return;
+      setRouteItemState({})
+      return
     }
 
     setRouteItemState((current) => {
       if (Object.keys(current).length > 0) {
-        return current;
+        return current
       }
 
       return Object.fromEntries(
@@ -662,16 +708,16 @@ export function MobileDailyActivityForm({
               endedAt: toDateTimeLocalValue(item.endedAt),
               actualPoints: `${item.actualPoints || item.pointOverride || item.libraryPoints || 0}`,
             },
-          ]),
-        ),
-      ) as Record<number, RouteItemState>;
-    });
-  }, [checklistContext]);
+          ])
+        )
+      ) as Record<number, RouteItemState>
+    })
+  }, [checklistContext])
 
   useEffect(() => {
     if (!navigator.geolocation) {
-      setGeo((current) => ({ ...current, message: "GPS tidak didukung browser." }));
-      return;
+      setGeo((current) => ({ ...current, message: 'GPS tidak didukung browser.' }))
+      return
     }
 
     const watchId = navigator.geolocation.watchPosition(
@@ -680,27 +726,27 @@ export function MobileDailyActivityForm({
           latitude: String(position.coords.latitude),
           longitude: String(position.coords.longitude),
           accuracy: `${Math.round(position.coords.accuracy)}m`,
-          locationName: "",
-          message: "GPS lock aktif",
-        });
+          locationName: '',
+          message: 'GPS lock aktif',
+        })
       },
       (error) => {
         setGeo((current) => ({
           ...current,
-          message: error.message || "GPS butuh izin browser.",
-        }));
+          message: error.message || 'GPS butuh izin browser.',
+        }))
       },
-      { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 },
-    );
+      { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 }
+    )
 
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
 
   const boundary = validateSiteBoundary(
     site,
     geo.latitude ? Number(geo.latitude) : null,
-    geo.longitude ? Number(geo.longitude) : null,
-  );
+    geo.longitude ? Number(geo.longitude) : null
+  )
 
   function updateRouteItem(itemId: number, nextValue: Partial<RouteItemState>) {
     setRouteItemState((current) => ({
@@ -710,28 +756,35 @@ export function MobileDailyActivityForm({
         ...current[itemId],
         ...nextValue,
       },
-    }));
+    }))
   }
 
   function updateSelfInputEntry(libraryId: string, nextValue: Partial<SelfInputEntryState>) {
     setSelfInputEntries((current) => ({
       ...current,
       [libraryId]: {
-        ...(current[libraryId] ?? buildDefaultSelfInputEntry(selectedLibraryIds.indexOf(libraryId), defaultStartTime, defaultEndTime)),
+        ...(current[libraryId] ??
+          buildDefaultSelfInputEntry(
+            selectedLibraryIds.indexOf(libraryId),
+            defaultStartTime,
+            defaultEndTime
+          )),
         ...nextValue,
       },
-    }));
+    }))
   }
 
   function toggleLibrarySelection(libraryId: string) {
     setSelectedLibraryIds((current) => {
-      const exists = current.includes(libraryId);
-      const nextIds = exists ? current.filter((item) => item !== libraryId) : [...current, libraryId];
+      const exists = current.includes(libraryId)
+      const nextIds = exists
+        ? current.filter((item) => item !== libraryId)
+        : [...current, libraryId]
 
       setSelfInputEntries((previous) => {
         if (exists) {
-          const { [libraryId]: _removed, ...rest } = previous;
-          return rest;
+          const { [libraryId]: _removed, ...rest } = previous
+          return rest
         }
 
         return {
@@ -739,18 +792,18 @@ export function MobileDailyActivityForm({
           [libraryId]:
             previous[libraryId] ??
             buildDefaultSelfInputEntry(current.length, defaultStartTime, defaultEndTime),
-        };
-      });
+        }
+      })
 
-      return nextIds;
-    });
+      return nextIds
+    })
   }
 
   const routeSessionItems: RouteSessionSyncItem[] =
     checklistContext?.groups.flatMap((group) =>
       group.items.map((item) => {
-        const stateForItem = routeItemState[item.id];
-        const basePoints = item.pointOverride ?? item.libraryPoints ?? 0;
+        const stateForItem = routeItemState[item.id]
+        const basePoints = item.pointOverride ?? item.libraryPoints ?? 0
 
         return {
           routeItemId: item.routeItemId,
@@ -768,34 +821,36 @@ export function MobileDailyActivityForm({
             requiresPhoto: item.requiresPhoto,
             requiresChecklistEvidence: item.requiresChecklistEvidence,
           },
-          unitNumber: stateForItem?.unitNumber || "",
-          remark: stateForItem?.remark || "",
+          unitNumber: stateForItem?.unitNumber || '',
+          remark: stateForItem?.remark || '',
           startedAt:
             stateForItem?.isChecked && item.requiresTime
               ? stateForItem.startedAt || defaultStartTime
-              : "",
+              : '',
           endedAt:
             stateForItem?.isChecked && item.requiresTime
               ? stateForItem.endedAt || defaultEndTime
-              : "",
+              : '',
           isChecked: stateForItem?.isChecked ?? false,
-          actualPoints:
-            stateForItem?.isChecked
-              ? Number(stateForItem.actualPoints || basePoints || 0)
-              : 0,
+          actualPoints: stateForItem?.isChecked
+            ? Number(stateForItem.actualPoints || basePoints || 0)
+            : 0,
           sortOrder: item.sortOrder,
-        };
-      }),
-    ) ?? [];
+        }
+      })
+    ) ?? []
+  const hasCheckedChecklist = routeSessionItems.some((item) => item.isChecked)
 
   const draftPayload: ActivitySyncPayload = {
     employeeId,
     sourceMode,
     assignmentId,
-    libraryActivityId: selectedLibraryIds[0] ?? "",
+    libraryActivityId: selectedLibraryIds[0] ?? '',
     selectedLibraryActivityIds: selectedLibraryIds,
     selfInputActivities: selectedLibraryIds.map((libraryId, index) => {
-      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+      const entry =
+        selfInputEntries[libraryId] ??
+        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
       return {
         libraryActivityId: libraryId,
         equipmentNo: entry.equipmentNo,
@@ -803,12 +858,14 @@ export function MobileDailyActivityForm({
         endTime: entry.endTime,
         materialUsed: entry.materialUsed,
         notes: entry.notes,
-      };
+      }
     }),
-    routeTemplateId: checklistContext?.routeTemplateId ? `${checklistContext.routeTemplateId}` : "",
-    overtimeCommandLetterId: checklistContext?.overtimeCommandLetterId ? `${checklistContext.overtimeCommandLetterId}` : "",
-    routeShiftCode: checklistContext?.shiftCode ?? "",
-    routeSummaryRemark: "",
+    routeTemplateId: checklistContext?.routeTemplateId ? `${checklistContext.routeTemplateId}` : '',
+    overtimeCommandLetterId: checklistContext?.overtimeCommandLetterId
+      ? `${checklistContext.overtimeCommandLetterId}`
+      : '',
+    routeShiftCode: checklistContext?.shiftCode ?? '',
+    routeSummaryRemark: '',
     routeSessionItems,
     customActivityName,
     customActivityDescription,
@@ -820,281 +877,353 @@ export function MobileDailyActivityForm({
     manualLocation,
     locationName:
       geo.locationName ||
-      (geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : "") ||
+      (geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : '') ||
       manualLocation ||
       site?.name ||
-      "",
+      '',
     gpsLat: geo.latitude,
     gpsLng: geo.longitude,
     gpsValid: boundary.gpsValid,
     boundaryStatus: boundary.status,
     boundaryMessage: boundary.message,
     photo: null,
-  };
+    photos: [],
+  }
 
   useEffect(() => {
-    writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload);
-  }, [draftPayload]);
+    writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+  }, [draftPayload])
 
   function validatePayload() {
-    if (!geo.latitude && !manualLocation.trim()) {
-      return "Aktifkan GPS atau isi lokasi manual.";
-    }
-
     if (
       checklistContext &&
       routeSessionItems.length > 0 &&
       routeSessionItems.every((item) => !item.isChecked)
     ) {
-      return checklistContext.kind === "spl"
-        ? "Centang minimal satu item checklist SPL."
-        : "Centang minimal satu item checklist route.";
+      return checklistContext.kind === 'spl'
+        ? 'Centang minimal satu item checklist SPL.'
+        : 'Centang minimal satu item checklist route.'
     }
 
-    if (sourceMode === "assigned") {
+    if (sourceMode === 'assigned') {
       if (!assignmentId) {
-        return "Pilih assignment dulu.";
+        return 'Pilih assignment dulu.'
       }
 
       if (!startTime || !endTime) {
-        return "Waktu mulai dan selesai wajib diisi.";
+        return 'Waktu mulai dan selesai wajib diisi.'
       }
 
       if (new Date(endTime) <= new Date(startTime)) {
-        return "Waktu selesai harus setelah waktu mulai.";
+        return 'Waktu selesai harus setelah waktu mulai.'
       }
 
       if (selectedAssignment?.requiresPhoto && !photoFile && !restoredPhotoPayload) {
-        return "Foto wajib diupload karena assignment yang dipilih butuh image evidence.";
+        return 'Foto wajib diupload karena assignment yang dipilih butuh image evidence.'
       }
       if (checklistContext) {
-        let missingChecklistPhoto = false;
-        checklistContext.groups.forEach(group => group.items.forEach(item => {
-          const state = routeItemState[item.id];
-          if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
-        }));
-        if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
+        let missingChecklistPhoto = false
+        checklistContext.groups.forEach((group) =>
+          group.items.forEach((item) => {
+            const state = routeItemState[item.id]
+            if (
+              state?.isChecked &&
+              item.requiresPhoto &&
+              !state?.photoFile &&
+              !state?.restoredPhotoPayload
+            )
+              missingChecklistPhoto = true
+          })
+        )
+        if (missingChecklistPhoto)
+          return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
       }
 
-      return "";
+      return ''
     }
 
-    if (sourceMode === "custom") {
+    if (sourceMode === 'custom') {
       if (!customActivityName.trim()) {
-        return "Nama custom activity wajib diisi.";
+        return 'Nama custom activity wajib diisi.'
       }
 
       if (!startTime || !endTime) {
-        return "Waktu mulai dan selesai wajib diisi.";
+        return 'Waktu mulai dan selesai wajib diisi.'
       }
 
       if (new Date(endTime) <= new Date(startTime)) {
-        return "Waktu selesai harus setelah waktu mulai.";
+        return 'Waktu selesai harus setelah waktu mulai.'
       }
 
       if (checklistContext) {
-        let missingChecklistPhoto = false;
-        checklistContext.groups.forEach(group => group.items.forEach(item => {
-          const state = routeItemState[item.id];
-          if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
-        }));
-        if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
+        let missingChecklistPhoto = false
+        checklistContext.groups.forEach((group) =>
+          group.items.forEach((item) => {
+            const state = routeItemState[item.id]
+            if (
+              state?.isChecked &&
+              item.requiresPhoto &&
+              !state?.photoFile &&
+              !state?.restoredPhotoPayload
+            )
+              missingChecklistPhoto = true
+          })
+        )
+        if (missingChecklistPhoto)
+          return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
       }
 
-      return "";
+      return ''
     }
 
-    if (selectedLibraries.length === 0) {
-      return "Pilih minimal satu activity library.";
+    if (selectedLibraries.length === 0 && !hasCheckedChecklist) {
+      return 'Pilih minimal satu activity library.'
     }
 
-    let missingLibraryPhoto = false;
-    selectedLibraries.forEach(lib => {
-      const entry = selfInputEntries[`${lib.id}`];
-      if (lib.requiresPhoto && !entry?.photoFile && !entry?.restoredPhotoPayload) missingLibraryPhoto = true;
-    });
-    if (missingLibraryPhoto) return "Foto wajib diupload karena activity yang dipilih butuh image evidence.";
-    
+    let missingLibraryPhoto = false
+    selectedLibraries.forEach((lib) => {
+      const entry = selfInputEntries[`${lib.id}`]
+      if (lib.requiresPhoto && !entry?.photoFile && !entry?.restoredPhotoPayload)
+        missingLibraryPhoto = true
+    })
+    if (missingLibraryPhoto)
+      return 'Foto wajib diupload karena activity yang dipilih butuh image evidence.'
+
     if (checklistContext) {
-      let missingChecklistPhoto = false;
-      checklistContext.groups.forEach(group => group.items.forEach(item => {
-        const state = routeItemState[item.id];
-        if (state?.isChecked && item.requiresPhoto && !state?.photoFile && !state?.restoredPhotoPayload) missingChecklistPhoto = true;
-      }));
-      if (missingChecklistPhoto) return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
+      let missingChecklistPhoto = false
+      checklistContext.groups.forEach((group) =>
+        group.items.forEach((item) => {
+          const state = routeItemState[item.id]
+          if (
+            state?.isChecked &&
+            item.requiresPhoto &&
+            !state?.photoFile &&
+            !state?.restoredPhotoPayload
+          )
+            missingChecklistPhoto = true
+        })
+      )
+      if (missingChecklistPhoto)
+        return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
     }
 
-    const ranges: Array<{ code: string; start: Date; end: Date }> = [];
+    const ranges: Array<{ code: string; start: Date; end: Date }> = []
 
     for (const [index, library] of selectedLibraries.entries()) {
-      const libraryId = `${library.id}`;
-      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+      const libraryId = `${library.id}`
+      const entry =
+        selfInputEntries[libraryId] ??
+        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
 
       if (library.requiresEquipmentNo && !entry.equipmentNo.trim()) {
-        return `${library.activityCode} wajib isi nomor equipment / unit.`;
+        return `${library.activityCode} wajib isi nomor equipment / unit.`
       }
 
       if (library.requiresMaterialUsed && !entry.materialUsed.trim()) {
-        return `${library.activityCode} wajib isi material / tools.`;
+        return `${library.activityCode} wajib isi material / tools.`
       }
 
       if (!entry.startTime || !entry.endTime) {
-        return `${library.activityCode} wajib isi waktu mulai dan selesai.`;
+        return `${library.activityCode} wajib isi waktu mulai dan selesai.`
       }
 
-      const start = new Date(entry.startTime);
-      const end = new Date(entry.endTime);
+      const start = new Date(entry.startTime)
+      const end = new Date(entry.endTime)
 
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return `${library.activityCode} punya format waktu tidak valid.`;
+        return `${library.activityCode} punya format waktu tidak valid.`
       }
 
       if (end <= start) {
-        return `${library.activityCode} punya waktu selesai lebih kecil dari mulai.`;
+        return `${library.activityCode} punya waktu selesai lebih kecil dari mulai.`
       }
 
-      ranges.push({ code: library.activityCode, start, end });
+      ranges.push({ code: library.activityCode, start, end })
     }
 
-    const sortedRanges = [...ranges].sort((left, right) => left.start.getTime() - right.start.getTime());
+    const sortedRanges = [...ranges].sort(
+      (left, right) => left.start.getTime() - right.start.getTime()
+    )
     for (let index = 1; index < sortedRanges.length; index += 1) {
-      const previous = sortedRanges[index - 1];
-      const current = sortedRanges[index];
+      const previous = sortedRanges[index - 1]
+      const current = sortedRanges[index]
 
       if (current.start < previous.end) {
-        return `Waktu ${current.code} bentrok dengan ${previous.code}.`;
+        return `Waktu ${current.code} bentrok dengan ${previous.code}.`
       }
     }
 
-    return "";
+    return ''
   }
 
   async function sendPayload(submitPayload: ActivitySyncPayload) {
-    const response = await fetch("/api/mobile/sync/activity", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const response = await fetch('/api/mobile/sync/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(submitPayload),
-    });
+    })
 
     const result = (await response.json()) as {
-      success: boolean;
-      message?: string;
-      conflict?: boolean;
-    };
-
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || "Submit activity gagal.");
+      success: boolean
+      message?: string
+      conflict?: boolean
     }
 
-    return result;
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Submit activity gagal.')
+    }
+
+    return result
   }
 
   async function buildSelfInputPayloads() {
-    return Promise.all(selectedLibraries.map(async (library, index) => {
-      const libraryId = `${library.id}`;
-      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+    if (selectedLibraries.length === 0 && checklistContext && hasCheckedChecklist) {
+      const checkedItem = checklistContext.groups
+        .flatMap((group) => group.items)
+        .find((item) => routeItemState[item.id]?.isChecked)
+      const checkedState = checkedItem ? routeItemState[checkedItem.id] : null
+      const checklistEvidence = await prepareEvidence(
+        checkedState?.photoFiles,
+        checkedState?.photoFile,
+        checkedState?.restoredPhotoPayload
+      )
 
-      return {
-        label: `${library.activityCode} - ${library.activityName}`,
-        payload: {
-          ...draftPayload,
-          sourceMode: "self_input" as const,
-          libraryActivityId: libraryId,
-          assignmentId: "",
-          equipmentNo: entry.equipmentNo,
-          startTime: entry.startTime,
-          endTime: entry.endTime,
-          materialUsed: entry.materialUsed,
-          notes: entry.notes,
-          routeTemplateId: index === 0 ? draftPayload.routeTemplateId : "",
-          overtimeCommandLetterId: index === 0 ? draftPayload.overtimeCommandLetterId : "",
-          routeShiftCode: index === 0 ? draftPayload.routeShiftCode : "",
-          routeSummaryRemark: "",
-          routeSessionItems: index === 0 ? routeSessionItems : [],
-          photo: await (async () => {
-              if (entry?.photoFile) return await fileToPayload(entry.photoFile);
-              if (entry?.restoredPhotoPayload) return entry.restoredPhotoPayload;
-              return null;
-            })(),
+      return [
+        {
+          label: checklistContext.summaryLabel,
+          payload: {
+            ...draftPayload,
+            sourceMode: 'self_input' as const,
+            libraryActivityId: '',
+            assignmentId: '',
+            photo: checklistEvidence.payloads[0] ?? null,
+            photos: checklistEvidence.payloads,
+            photoUrls: checklistEvidence.urls,
+          },
         },
-      };
-    }));
+      ]
+    }
+
+    return Promise.all(
+      selectedLibraries.map(async (library, index) => {
+        const libraryId = `${library.id}`
+        const entry =
+          selfInputEntries[libraryId] ??
+          buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+        const entryEvidence = await prepareEvidence(
+          entry.photoFiles,
+          entry.photoFile,
+          entry.restoredPhotoPayload
+        )
+
+        return {
+          label: `${library.activityCode} - ${library.activityName}`,
+          payload: {
+            ...draftPayload,
+            sourceMode: 'self_input' as const,
+            libraryActivityId: libraryId,
+            assignmentId: '',
+            equipmentNo: entry.equipmentNo,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+            materialUsed: entry.materialUsed,
+            notes: entry.notes,
+            routeTemplateId: index === 0 ? draftPayload.routeTemplateId : '',
+            overtimeCommandLetterId: index === 0 ? draftPayload.overtimeCommandLetterId : '',
+            routeShiftCode: index === 0 ? draftPayload.routeShiftCode : '',
+            routeSummaryRemark: '',
+            routeSessionItems: index === 0 ? routeSessionItems : [],
+            photo: entryEvidence.payloads[0] ?? null,
+            photos: entryEvidence.payloads,
+            photoUrls: entryEvidence.urls,
+          },
+        }
+      })
+    )
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitState({ kind: "idle", message: "" });
+    event.preventDefault()
+    setSubmitState({ kind: 'idle', message: '' })
 
-    const validationError = validatePayload();
+    const validationError = validatePayload()
     if (validationError) {
-      setSubmitState({ kind: "error", message: validationError });
-      return;
+      setSubmitState({ kind: 'error', message: validationError })
+      return
     }
 
-    setIsSubmitting(true);
+    setIsSubmitting(true)
     try {
-      const sharedPhoto = photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload;
-
-      if (sourceMode === "self_input") {
-        const payloads = await buildSelfInputPayloads();
+      if (sourceMode === 'self_input') {
+        const payloads = await buildSelfInputPayloads()
 
         for (const item of payloads) {
           try {
-            await sendPayload(item.payload);
+            await sendPayload(item.payload)
           } catch (error) {
-            const message = error instanceof Error ? error.message : "Submit activity gagal.";
-            throw new Error(`Gagal kirim ${item.label}. ${message}`);
+            const message = error instanceof Error ? error.message : 'Submit activity gagal.'
+            throw new Error(`Gagal kirim ${item.label}. ${message}`)
           }
         }
 
         setSubmitState({
-          kind: "success",
+          kind: 'success',
           message: `${payloads.length} activity library berhasil dikirim.`,
-        });
+        })
       } else {
+        const sharedEvidence = await prepareEvidence(photoFiles, photoFile, restoredPhotoPayload)
         const payloadToSubmit = {
           ...draftPayload,
-          photo: sharedPhoto,
-          libraryActivityId: "",
-        };
-
-        if (checklistContext && payloadToSubmit.routeSessionItems) {
-            payloadToSubmit.routeSessionItems = await Promise.all(
-                payloadToSubmit.routeSessionItems.map(async (item) => {
-                    const state = routeItemState[item.routeItemId!];
-                    let itemPhoto = null;
-                    if (state?.photoFile) {
-                        itemPhoto = await fileToPayload(state.photoFile);
-                    } else if (state?.restoredPhotoPayload) {
-                        itemPhoto = state.restoredPhotoPayload;
-                    }
-                    return { ...item, photo: itemPhoto };
-                })
-            );
+          photo: sharedEvidence.payloads[0] ?? null,
+          photos: sharedEvidence.payloads,
+          photoUrls: sharedEvidence.urls,
+          libraryActivityId: '',
         }
 
-        await sendPayload(payloadToSubmit);
+        if (checklistContext && payloadToSubmit.routeSessionItems) {
+          const checklistEvidence = await Promise.all(
+            payloadToSubmit.routeSessionItems.map((item) => {
+              const state = routeItemState[item.routeItemId!]
+              return prepareEvidence(
+                state?.photoFiles,
+                state?.photoFile,
+                state?.restoredPhotoPayload
+              )
+            })
+          )
+          payloadToSubmit.photos = [
+            ...sharedEvidence.payloads,
+            ...checklistEvidence.flatMap((item) => item.payloads),
+          ]
+          payloadToSubmit.photoUrls = [
+            ...sharedEvidence.urls,
+            ...checklistEvidence.flatMap((item) => item.urls),
+          ]
+          payloadToSubmit.photo = payloadToSubmit.photos[0] ?? null
+        }
+
+        await sendPayload(payloadToSubmit)
 
         setSubmitState({
-          kind: "success",
-          message: "Activity berhasil dikirim ke Daily Activity System.",
-        });
+          kind: 'success',
+          message: 'Activity berhasil dikirim ke Daily Activity System.',
+        })
       }
 
-      clearDraft(ACTIVITY_DRAFT_STORAGE_KEY);
+      clearDraft(ACTIVITY_DRAFT_STORAGE_KEY)
       if (queuedDraftKey) {
-        clearDraft(queuedDraftKey);
+        clearDraft(queuedDraftKey)
       }
 
       window.setTimeout(() => {
-        router.push("/mobile/activity");
-        router.refresh();
-      }, 900);
+        router.push('/mobile/activity?submitted=1')
+        router.refresh()
+      }, 1200)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Submit activity gagal.";
-      setSubmitState({ kind: "error", message });
+      const message = error instanceof Error ? error.message : 'Submit activity gagal.'
+      setSubmitState({ kind: 'error', message })
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
   }
 
@@ -1104,9 +1233,7 @@ export function MobileDailyActivityForm({
         <DialogContent className="max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] gap-0 overflow-hidden rounded-[1.6rem] border-0 bg-white p-0 shadow-[0_28px_80px_rgba(8,32,51,0.22)] sm:max-w-xl">
           <DialogHeader className="bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-5 py-5 text-left text-white">
             <DialogTitle className="text-xl font-black">Pilih Kamus Aktivitas</DialogTitle>
-            <DialogDescription className="text-white/80">
-              
-            </DialogDescription>
+            <DialogDescription className="text-white/80"></DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 px-4 py-4">
@@ -1130,13 +1257,13 @@ export function MobileDailyActivityForm({
             <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
               {filteredLibraries.length > 0 ? (
                 filteredLibraries.map((item) => {
-                  const isSelected = selectedLibraryIds.includes(`${item.id}`);
+                  const isSelected = selectedLibraryIds.includes(`${item.id}`)
                   const requirementBadges = [
-                    item.requiresEquipmentNo ? "Equipment" : null,
-                    item.requiresDuration ? "Duration" : null,
-                    item.requiresMaterialUsed ? "Material" : null,
-                    item.requiresPhoto ? "Photo" : null,
-                  ].filter(Boolean);
+                    item.requiresEquipmentNo ? 'Equipment' : null,
+                    item.requiresDuration ? 'Duration' : null,
+                    item.requiresMaterialUsed ? 'Material' : null,
+                    item.requiresPhoto ? 'Photo' : null,
+                  ].filter(Boolean)
 
                   return (
                     <button
@@ -1145,15 +1272,23 @@ export function MobileDailyActivityForm({
                       onClick={() => toggleLibrarySelection(`${item.id}`)}
                       className={
                         isSelected
-                          ? "w-full rounded-[1rem] bg-[#003f78] px-4 py-4 text-left text-white shadow-[0_16px_30px_rgba(0,63,120,0.18)]"
-                          : "w-full rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                          ? 'w-full rounded-[1rem] bg-[#003f78] px-4 py-4 text-left text-white shadow-[0_16px_30px_rgba(0,63,120,0.18)]'
+                          : 'w-full rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]'
                       }
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-black">{item.activityCode}</p>
-                          <p className="mt-1 text-sm font-semibold leading-5">{item.activityName}</p>
-                          <p className={isSelected ? "mt-1 text-xs text-white/80" : "mt-1 text-xs text-[#486275]"}>
+                          <p className="mt-1 text-sm leading-5 font-semibold">
+                            {item.activityName}
+                          </p>
+                          <p
+                            className={
+                              isSelected
+                                ? 'mt-1 text-xs text-white/80'
+                                : 'mt-1 text-xs text-[#486275]'
+                            }
+                          >
                             {item.basePoints} pts • max {item.maxPointsPerDay} pts / hari
                           </p>
                           {requirementBadges.length > 0 ? (
@@ -1163,8 +1298,8 @@ export function MobileDailyActivityForm({
                                   key={badge}
                                   className={
                                     isSelected
-                                      ? "rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white"
-                                      : "rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]"
+                                      ? 'rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase'
+                                      : 'rounded-full bg-white px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase'
                                   }
                                 >
                                   {badge}
@@ -1176,15 +1311,19 @@ export function MobileDailyActivityForm({
                         <span
                           className={
                             isSelected
-                              ? "flex size-8 items-center justify-center rounded-full bg-white text-[#003f78]"
-                              : "flex size-8 items-center justify-center rounded-full bg-white text-[#9eb6c5]"
+                              ? 'flex size-8 items-center justify-center rounded-full bg-white text-[#003f78]'
+                              : 'flex size-8 items-center justify-center rounded-full bg-white text-[#9eb6c5]'
                           }
                         >
-                          {isSelected ? <Check className="size-4" /> : <ListFilter className="size-4" />}
+                          {isSelected ? (
+                            <Check className="size-4" />
+                          ) : (
+                            <ListFilter className="size-4" />
+                          )}
                         </span>
                       </div>
                     </button>
-                  );
+                  )
                 })
               ) : (
                 <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
@@ -1205,145 +1344,164 @@ export function MobileDailyActivityForm({
       </Dialog>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {submitState.kind !== "idle" ? (
+        {submitState.kind !== 'idle' ? (
           <div
             className={
-              submitState.kind === "success"
-                ? "rounded-[1.1rem] bg-[#dff4e8] px-4 py-3 text-xs font-semibold text-[#14532d]"
-                : "rounded-[1.1rem] bg-[#f4ddce] px-4 py-3 text-xs font-semibold text-[#5a2200]"
+              submitState.kind === 'success'
+                ? 'rounded-[1.1rem] bg-[#dff4e8] px-4 py-3 text-xs font-semibold text-[#14532d]'
+                : 'rounded-[1.1rem] bg-[#f4ddce] px-4 py-3 text-xs font-semibold text-[#5a2200]'
             }
           >
             {submitState.message}
           </div>
         ) : null}
 
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Source mode</span>
-            <select
-              value={sourceMode}
-              onChange={(event) => setSourceMode(event.target.value as typeof sourceMode)}
-              className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-            >
-              <option value="assigned">Assigned activity</option>
-              <option value="self_input">Self-input activity</option>
-              <option value="custom">Custom activity</option>
-            </select>
-          </Label>
-
-          {sourceMode === "assigned" ? (
+        {!checklistContext ? (
+          <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <Label className="block space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Assignment</span>
+              <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                Source mode
+              </span>
               <select
-                value={assignmentId}
-                onChange={(event) => setAssignmentId(event.target.value)}
+                value={sourceMode}
+                onChange={(event) => setSourceMode(event.target.value as typeof sourceMode)}
                 className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
               >
-                <option value="">Pilih assignment</option>
-                {assignments.map((assignment) => (
-                  <option key={assignment.id} value={assignment.id}>
-                    {(assignment.activityName ?? assignment.customJobName) || `Assignment #${assignment.id}`}
-                  </option>
-                ))}
+                <option value="assigned">Assigned activity</option>
+                <option value="self_input">Self-input activity</option>
+                <option value="custom">Custom activity</option>
               </select>
-              <p className="text-xs font-semibold leading-5 text-[#486275]">
-                {selectedAssignment?.requiresPhoto
-                  ? "Assignment ini wajib upload foto evidence."
-                  : "Pilih assignment yang sedang dikerjakan."}
-              </p>
-              {selectedAssignment ? renderPhotoWidget("single", !!selectedAssignment.requiresPhoto, photoName) : null}
             </Label>
-          ) : null}
 
-          {sourceMode === "self_input" ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Library activity</span>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                    
-                  </p>
-                </div>
-                <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]">
-                  {selectedLibraryIds.length} dipilih
-                </Badge>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 w-full justify-between rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                onClick={() => setLibraryPickerOpen(true)}
-              >
-                <span className="truncate text-left">
-                  {selectedLibraries.length > 0
-                    ? `${selectedLibraries.length} activity dipilih`
-                    : "Pilih activity library"}
+            {sourceMode === 'assigned' ? (
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Assignment
                 </span>
-                <Search className="size-4 text-[#486275]" />
-              </Button>
-
-              {selectedLibraries.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {selectedLibraries.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleLibrarySelection(`${item.id}`)}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
-                    >
-                      <span>{item.activityCode}</span>
-                      <X className="size-3.5" />
-                    </button>
+                <select
+                  value={assignmentId}
+                  onChange={(event) => setAssignmentId(event.target.value)}
+                  className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                >
+                  <option value="">Pilih assignment</option>
+                  {assignments.map((assignment) => (
+                    <option key={assignment.id} value={assignment.id}>
+                      {(assignment.activityName ?? assignment.customJobName) ||
+                        `Assignment #${assignment.id}`}
+                    </option>
                   ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {sourceMode === "custom" ? (
-            <>
-              <Label className="block space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Custom activity</span>
-                <Input
-                  value={customActivityName}
-                  onChange={(event) => setCustomActivityName(event.target.value)}
-                  placeholder="Custom activity name"
-                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                />
+                </select>
+                <p className="text-xs leading-5 font-semibold text-[#486275]">
+                  {selectedAssignment?.requiresPhoto
+                    ? 'Assignment ini wajib upload foto evidence.'
+                    : 'Pilih assignment yang sedang dikerjakan.'}
+                </p>
+                {selectedAssignment
+                  ? renderPhotoWidget('single', !!selectedAssignment.requiresPhoto, photoName)
+                  : null}
               </Label>
-              {renderPhotoWidget("single", false, photoName)}
-              <Label className="block space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
-                  <SpeechInputButton
-                    onFinalTranscript={(text) => setCustomActivityDescription((prev) => (prev ? prev + " " + text : text))}
-                    className="size-7"
+            ) : null}
+
+            {sourceMode === 'self_input' ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                      Library activity
+                    </span>
+                    <p className="mt-1 text-xs leading-5 font-semibold text-[#486275]"></p>
+                  </div>
+                  <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase">
+                    {selectedLibraryIds.length} dipilih
+                  </Badge>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full justify-between rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                  onClick={() => setLibraryPickerOpen(true)}
+                >
+                  <span className="truncate text-left">
+                    {selectedLibraries.length > 0
+                      ? `${selectedLibraries.length} activity dipilih`
+                      : 'Pilih activity library'}
+                  </span>
+                  <Search className="size-4 text-[#486275]" />
+                </Button>
+
+                {selectedLibraries.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedLibraries.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleLibrarySelection(`${item.id}`)}
+                        className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                      >
+                        <span>{item.activityCode}</span>
+                        <X className="size-3.5" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {sourceMode === 'custom' ? (
+              <>
+                <Label className="block space-y-2">
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    Custom activity
+                  </span>
+                  <Input
+                    value={customActivityName}
+                    onChange={(event) => setCustomActivityName(event.target.value)}
+                    placeholder="Custom activity name"
+                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                   />
-                </div>
-                <Textarea
-                  value={customActivityDescription}
-                  onChange={(event) => setCustomActivityDescription(event.target.value)}
-                  rows={4}
-                  placeholder="Jelaskan aktivitas custom."
-                  className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
-                />
-              </Label>
-            </>
-          ) : null}
-        </section>
+                </Label>
+                {renderPhotoWidget('single', false, photoName)}
+                <Label className="block space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                      Description
+                    </span>
+                    <SpeechInputButton
+                      onFinalTranscript={(text) =>
+                        setCustomActivityDescription((prev) => (prev ? prev + ' ' + text : text))
+                      }
+                      className="size-7"
+                    />
+                  </div>
+                  <Textarea
+                    value={customActivityDescription}
+                    onChange={(event) => setCustomActivityDescription(event.target.value)}
+                    rows={4}
+                    placeholder="Jelaskan aktivitas custom."
+                    className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
+                  />
+                </Label>
+              </>
+            ) : null}
+          </section>
+        ) : null}
 
-        {sourceMode === "self_input" ? (
+        {sourceMode === 'self_input' && !checklistContext ? (
           <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selected library checklist</p>
+                <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Selected library checklist
+                </p>
                 <p className="mt-1 text-base font-black text-[#082033]">
-                  {selectedLibraries.length > 0 ? `${selectedLibraries.length} activity siap diisi` : "Belum ada activity dipilih"}
+                  {selectedLibraries.length > 0
+                    ? `${selectedLibraries.length} activity siap diisi`
+                    : 'Belum ada activity dipilih'}
                 </p>
               </div>
               {needsGlobalPhoto ? (
-                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
                   Butuh foto
                 </Badge>
               ) : null}
@@ -1352,26 +1510,28 @@ export function MobileDailyActivityForm({
             {selectedLibraries.length > 0 ? (
               <div className="space-y-3">
                 {selectedLibraries.map((library, index) => {
-                  const libraryId = `${library.id}`;
+                  const libraryId = `${library.id}`
                   const entry =
                     selfInputEntries[libraryId] ??
-                    buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+                    buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
                   const requirementBadges = [
-                    library.requiresEquipmentNo ? "Equipment wajib" : null,
-                    library.requiresDuration ? "Waktu wajib" : null,
-                    library.requiresMaterialUsed ? "Material wajib" : null,
-                    library.requiresPhoto ? "Foto umum wajib" : null,
-                  ].filter(Boolean);
+                    library.requiresEquipmentNo ? 'Equipment wajib' : null,
+                    library.requiresDuration ? 'Waktu wajib' : null,
+                    library.requiresMaterialUsed ? 'Material wajib' : null,
+                    library.requiresPhoto ? 'Foto umum wajib' : null,
+                  ].filter(Boolean)
 
                   return (
                     <div key={library.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+                          <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                             #{index + 1} • {library.activityCode}
                           </p>
-                          <p className="mt-1 text-sm font-black text-[#082033]">{library.activityName}</p>
-                          <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+                          <p className="mt-1 text-sm font-black text-[#082033]">
+                            {library.activityName}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 font-semibold text-[#486275]">
                             {library.basePoints} pts • max {library.maxPointsPerDay} pts / hari
                           </p>
                         </div>
@@ -1389,7 +1549,7 @@ export function MobileDailyActivityForm({
                           {requirementBadges.map((badge) => (
                             <span
                               key={badge}
-                              className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]"
+                              className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase"
                             >
                               {badge}
                             </span>
@@ -1400,7 +1560,9 @@ export function MobileDailyActivityForm({
                       <div className="mt-4 grid gap-3">
                         {library.requiresEquipmentNo ? (
                           <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Equipment / unit no.</span>
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Equipment / unit no.
+                            </span>
                             <Input
                               value={entry.equipmentNo}
                               onChange={(event) =>
@@ -1414,7 +1576,9 @@ export function MobileDailyActivityForm({
 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Mulai
+                            </span>
                             <Input
                               type="datetime-local"
                               value={entry.startTime}
@@ -1425,7 +1589,9 @@ export function MobileDailyActivityForm({
                             />
                           </Label>
                           <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Selesai
+                            </span>
                             <Input
                               type="datetime-local"
                               value={entry.endTime}
@@ -1439,24 +1605,38 @@ export function MobileDailyActivityForm({
 
                         {library.requiresMaterialUsed ? (
                           <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Material used</span>
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Material used
+                            </span>
                             <Input
                               value={entry.materialUsed}
                               onChange={(event) =>
-                                updateSelfInputEntry(libraryId, { materialUsed: event.target.value })
+                                updateSelfInputEntry(libraryId, {
+                                  materialUsed: event.target.value,
+                                })
                               }
                               placeholder="Material / tools dipakai"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
-                          ) : null}
+                        ) : null}
 
-                          {renderPhotoWidget(`library:${libraryId}`, !!library.requiresPhoto, entry.photoName)}
-                          <Label className="block space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
+                        {renderPhotoWidget(
+                          `library:${libraryId}`,
+                          !!library.requiresPhoto,
+                          entry.photoName
+                        )}
+                        <Label className="block space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Catatan item
+                            </span>
                             <SpeechInputButton
-                              onFinalTranscript={(text) => updateSelfInputEntry(libraryId, { notes: (entry.notes ? entry.notes + " " + text : text) })}
+                              onFinalTranscript={(text) =>
+                                updateSelfInputEntry(libraryId, {
+                                  notes: entry.notes ? entry.notes + ' ' + text : text,
+                                })
+                              }
                               className="size-7"
                             />
                           </div>
@@ -1472,13 +1652,11 @@ export function MobileDailyActivityForm({
                         </Label>
                       </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             ) : (
-              <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
-                
-              </div>
+              <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]"></div>
             )}
           </section>
         ) : null}
@@ -1486,18 +1664,22 @@ export function MobileDailyActivityForm({
         {checklistContext ? (
           <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">{checklistContext.summaryLabel}</p>
+              <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                {checklistContext.summaryLabel}
+              </p>
               <p className="mt-1 text-base font-black text-[#082033]">{checklistContext.title}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
+              <p className="mt-2 text-xs leading-5 font-semibold text-[#486275]">
                 {checklistContext.code} • {checklistContext.shiftCode}
               </p>
               {checklistContext.activeSpl ? (
                 <>
-                  <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                    SPL aktif: {checklistContext.activeSpl.splNumber} • {checklistContext.activeSpl.title}
+                  <p className="mt-2 text-xs leading-5 font-semibold text-[#486275]">
+                    SPL aktif: {checklistContext.activeSpl.splNumber} •{' '}
+                    {checklistContext.activeSpl.title}
                   </p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                    {checklistContext.activeSpl.lineCount} line • {checklistContext.activeSpl.plannedPointsTotal} pts
+                  <p className="mt-1 text-xs leading-5 font-semibold text-[#486275]">
+                    {checklistContext.activeSpl.lineCount} line •{' '}
+                    {checklistContext.activeSpl.plannedPointsTotal} pts
                   </p>
                 </>
               ) : null}
@@ -1508,8 +1690,8 @@ export function MobileDailyActivityForm({
                 {checklistContext.activeSpl.items.map((item) => (
                   <div key={item.id}>
                     <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
-                    <p className="text-xs font-semibold leading-5 text-[#486275]">
-                      {item.targetUnit || "-"} • {item.plannedPoints} pts
+                    <p className="text-xs leading-5 font-semibold text-[#486275]">
+                      {item.targetUnit || '-'} • {item.plannedPoints} pts
                     </p>
                   </div>
                 ))}
@@ -1519,22 +1701,26 @@ export function MobileDailyActivityForm({
             <div className="space-y-3">
               {checklistContext.groups.map((group) => (
                 <div key={group.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{group.groupKey}</p>
+                  <p className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
+                    {group.groupKey}
+                  </p>
                   <p className="mt-1 text-sm font-black text-[#082033]">{group.groupName}</p>
                   {group.description ? (
-                    <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{group.description}</p>
+                    <p className="mt-1 text-xs leading-5 font-semibold text-[#486275]">
+                      {group.description}
+                    </p>
                   ) : null}
 
                   <div className="mt-3 space-y-3">
                     {group.items.map((item) => {
                       const itemState = routeItemState[item.id] ?? {
                         isChecked: false,
-                        unitNumber: "",
-                        remark: "",
-                        startedAt: "",
-                        endedAt: "",
+                        unitNumber: '',
+                        remark: '',
+                        startedAt: '',
+                        endedAt: '',
                         actualPoints: `${item.pointOverride ?? item.libraryPoints ?? 0}`,
-                      };
+                      }
 
                       return (
                         <div key={item.id} className="rounded-[0.9rem] bg-white px-3 py-3">
@@ -1549,16 +1735,18 @@ export function MobileDailyActivityForm({
                               }
                             />
                             <span className="min-w-0">
-                              <span className="block text-sm font-semibold text-[#082033]">{item.itemLabel}</span>
+                              <span className="block text-sm font-semibold text-[#082033]">
+                                {item.itemLabel}
+                              </span>
                               <span className="mt-1 block text-xs leading-5 text-[#486275]">
-                                {item.itemDescription || item.libraryName || "Checklist item"}
+                                {item.itemDescription || item.libraryName || 'Checklist item'}
                               </span>
                               {item.requiresPhoto ? (
-                                <span className="mt-1 inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#8a5a00]">
+                                <span className="mt-1 inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black tracking-[0.08em] text-[#8a5a00] uppercase">
                                   Foto wajib
                                 </span>
                               ) : null}
-                              <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-[#003f78]">
+                              <span className="mt-1 block text-[11px] font-black tracking-[0.12em] text-[#003f78] uppercase">
                                 {item.pointOverride ?? item.libraryPoints ?? 0} pts
                               </span>
                             </span>
@@ -1568,7 +1756,9 @@ export function MobileDailyActivityForm({
                             <div className="mt-3 grid gap-3">
                               {item.requiresUnit ? (
                                 <Label className="block space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Unit</span>
+                                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                    Unit
+                                  </span>
                                   <Input
                                     value={itemState.unitNumber}
                                     onChange={(event) =>
@@ -1583,23 +1773,39 @@ export function MobileDailyActivityForm({
                               {item.requiresTime ? (
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <Label className="block space-y-2">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
+                                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                      Mulai
+                                    </span>
                                     <Input
-                                      type="datetime-local"
-                                      value={itemState.startedAt || defaultStartTime}
+                                      type="time"
+                                      value={timeInputValue(
+                                        itemState.startedAt || defaultStartTime
+                                      )}
                                       onChange={(event) =>
-                                        updateRouteItem(item.id, { startedAt: event.target.value })
+                                        updateRouteItem(item.id, {
+                                          startedAt: replaceTimeValue(
+                                            itemState.startedAt || defaultStartTime,
+                                            event.target.value
+                                          ),
+                                        })
                                       }
                                       className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                                     />
                                   </Label>
                                   <Label className="block space-y-2">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
+                                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                      Selesai
+                                    </span>
                                     <Input
-                                      type="datetime-local"
-                                      value={itemState.endedAt || defaultEndTime}
+                                      type="time"
+                                      value={timeInputValue(itemState.endedAt || defaultEndTime)}
                                       onChange={(event) =>
-                                        updateRouteItem(item.id, { endedAt: event.target.value })
+                                        updateRouteItem(item.id, {
+                                          endedAt: replaceTimeValue(
+                                            itemState.endedAt || defaultEndTime,
+                                            event.target.value
+                                          ),
+                                        })
                                       }
                                       className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                                     />
@@ -1607,13 +1813,25 @@ export function MobileDailyActivityForm({
                                 </div>
                               ) : null}
 
-                              {renderPhotoWidget(`route:${item.id}`, !!item.requiresPhoto, itemState.photoName)}
+                              {renderPhotoWidget(
+                                `route:${item.id}`,
+                                !!item.requiresPhoto,
+                                itemState.photoName
+                              )}
                               {item.requiresRemark ? (
                                 <Label className="block space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Keterangan</span>
+                                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                      Keterangan
+                                    </span>
                                     <SpeechInputButton
-                                      onFinalTranscript={(text) => updateRouteItem(item.id, { remark: (itemState.remark ? itemState.remark + " " + text : text) })}
+                                      onFinalTranscript={(text) =>
+                                        updateRouteItem(item.id, {
+                                          remark: itemState.remark
+                                            ? itemState.remark + ' ' + text
+                                            : text,
+                                        })
+                                      }
                                       className="size-7"
                                     />
                                   </div>
@@ -1631,7 +1849,7 @@ export function MobileDailyActivityForm({
                             </div>
                           ) : null}
                         </div>
-                      );
+                      )
                     })}
                   </div>
                 </div>
@@ -1640,12 +1858,14 @@ export function MobileDailyActivityForm({
           </section>
         ) : null}
 
-        {sourceMode !== "self_input" ? (
+        {sourceMode !== 'self_input' ? (
           <>
             <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Label className="block space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Start time</span>
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    Start time
+                  </span>
                   <Input
                     type="datetime-local"
                     value={startTime}
@@ -1654,7 +1874,9 @@ export function MobileDailyActivityForm({
                   />
                 </Label>
                 <Label className="block space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">End time</span>
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    End time
+                  </span>
                   <Input
                     type="datetime-local"
                     value={endTime}
@@ -1665,7 +1887,9 @@ export function MobileDailyActivityForm({
               </div>
 
               <Label className="block space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Equipment / unit no.</span>
+                <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Equipment / unit no.
+                </span>
                 <Input
                   value={equipmentNo}
                   onChange={(event) => setEquipmentNo(event.target.value)}
@@ -1675,7 +1899,9 @@ export function MobileDailyActivityForm({
               </Label>
 
               <Label className="block space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Material used</span>
+                <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Material used
+                </span>
                 <Input
                   value={materialUsed}
                   onChange={(event) => setMaterialUsed(event.target.value)}
@@ -1688,9 +1914,13 @@ export function MobileDailyActivityForm({
             <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
               <Label className="block space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Notes / hasil kerja</span>
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    Notes / hasil kerja
+                  </span>
                   <SpeechInputButton
-                    onFinalTranscript={(text) => setNotes((prev) => (prev ? prev + " " + text : text))}
+                    onFinalTranscript={(text) =>
+                      setNotes((prev) => (prev ? prev + ' ' + text : text))
+                    }
                     className="size-7"
                   />
                 </div>
@@ -1709,19 +1939,21 @@ export function MobileDailyActivityForm({
         <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+              <p className="flex items-center gap-2 text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                 <Navigation className="size-3.5 text-[#003f78]" />
                 GPS Auto-Capture
               </p>
-              <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
-                {boundary.message}
+              <p className="mt-2 text-sm leading-6 font-semibold text-[#486275]">
+                {geo.latitude
+                  ? boundary.message
+                  : 'GPS dicoba otomatis. Anda tetap bisa submit tanpa lokasi.'}
               </p>
             </div>
             <span
               className={
                 boundary.gpsValid
-                  ? "rounded-full bg-[#dff4e8] px-3 py-1 text-[10px] font-black uppercase text-[#14532d]"
-                  : "rounded-full bg-[#fff1cf] px-3 py-1 text-[10px] font-black uppercase text-[#8a5a00]"
+                  ? 'rounded-full bg-[#dff4e8] px-3 py-1 text-[10px] font-black text-[#14532d] uppercase'
+                  : 'rounded-full bg-[#fff1cf] px-3 py-1 text-[10px] font-black text-[#8a5a00] uppercase'
               }
             >
               {boundary.status}
@@ -1730,19 +1962,27 @@ export function MobileDailyActivityForm({
 
           <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
             <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Coordinates</p>
+              <p className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
+                Coordinates
+              </p>
               <p className="mt-1 text-sm text-[#082033]">
-                {geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : "Waiting GPS"}
+                {geo.latitude && geo.longitude
+                  ? `${geo.latitude}, ${geo.longitude}`
+                  : 'Waiting GPS'}
               </p>
             </div>
             <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Accuracy</p>
+              <p className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
+                Accuracy
+              </p>
               <p className="mt-1 text-sm text-[#082033]">{geo.accuracy || geo.message}</p>
             </div>
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Lokasi Manual</span>
+            <span className="text-[10px] font-medium tracking-wider text-gray-500 uppercase">
+              Lokasi Manual (Opsional)
+            </span>
             <Input
               value={manualLocation}
               onChange={(event) => setManualLocation(event.target.value)}
@@ -1758,11 +1998,11 @@ export function MobileDailyActivityForm({
             variant="outline"
             className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
             onClick={() => {
-              writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload);
+              writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
               setSubmitState({
-                kind: "success",
-                message: "Draft activity disimpan ke local storage.",
-              });
+                kind: 'success',
+                message: 'Draft activity disimpan ke local storage.',
+              })
             }}
           >
             <Save className="size-4" />
@@ -1774,39 +2014,55 @@ export function MobileDailyActivityForm({
             disabled={isSubmitting}
           >
             <SendHorizontal className="size-4" />
-            {isSubmitting ? "Submitting..." : "Submit Activity"}
+            {isSubmitting ? 'Submitting...' : 'Submit Activity'}
           </Button>
         </div>
-          <input
-            id="mobile-activity-photo"
-            type="file"
-            accept="image/*"
-            capture={photoCaptureMode === "camera" ? "environment" : undefined}
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              if (!file || !activePhotoTarget) return;
+        <input
+          id="mobile-activity-photo"
+          type="file"
+          accept="image/*"
+          multiple
+          capture={photoCaptureMode === 'camera' ? 'environment' : undefined}
+          className="hidden"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? [])
+            const file = files[0] ?? null
+            if (!file || !activePhotoTarget) return
+            const names = files.map((item) => item.name).join(', ')
 
-              if (activePhotoTarget === "single") {
-                setPhotoFile(file);
-                setPhotoName(file.name);
-                setRestoredPhotoPayload(null);
-              } else if (activePhotoTarget.startsWith("route:")) {
-                const id = parseInt(activePhotoTarget.split(":")[1], 10);
-                setRouteItemState((prev) => ({
-                  ...prev,
-                  [id]: { ...prev[id], photoFile: file, photoName: file.name, restoredPhotoPayload: null },
-                }));
-              } else if (activePhotoTarget.startsWith("library:")) {
-                const id = activePhotoTarget.split(":")[1];
-                setSelfInputEntries((prev) => ({
-                  ...prev,
-                  [id]: { ...prev[id], photoFile: file, photoName: file.name, restoredPhotoPayload: null },
-                }));
-              }
-            }}
-          />
+            if (activePhotoTarget === 'single') {
+              setPhotoFile(file)
+              setPhotoFiles(files)
+              setPhotoName(names)
+              setRestoredPhotoPayload(null)
+            } else if (activePhotoTarget.startsWith('route:')) {
+              const id = parseInt(activePhotoTarget.split(':')[1], 10)
+              setRouteItemState((prev) => ({
+                ...prev,
+                [id]: {
+                  ...prev[id],
+                  photoFile: file,
+                  photoFiles: files,
+                  photoName: names,
+                  restoredPhotoPayload: null,
+                },
+              }))
+            } else if (activePhotoTarget.startsWith('library:')) {
+              const id = activePhotoTarget.split(':')[1]
+              setSelfInputEntries((prev) => ({
+                ...prev,
+                [id]: {
+                  ...prev[id],
+                  photoFile: file,
+                  photoFiles: files,
+                  photoName: names,
+                  restoredPhotoPayload: null,
+                },
+              }))
+            }
+          }}
+        />
       </form>
     </>
-  );
+  )
 }

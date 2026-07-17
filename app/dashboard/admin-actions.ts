@@ -88,6 +88,8 @@ import { account, session, user } from '@/db/schema/auth'
 import {
   activities,
   approvals,
+  approvalMatrices,
+  approvalMatrixSteps,
   approvalComments,
   approvalRequestActors,
   formSubmissions,
@@ -111,6 +113,7 @@ import {
   navbarThemes,
   orgChartNodes,
   orgChartStructures,
+  orgNodeAssignments,
   overtimeCommandLetters,
   overtimeCommandLetterItems,
   overtimeCommandLetterParticipants,
@@ -2637,10 +2640,22 @@ const saveSchedulingConfigSchema = z.object({
   overtimeVariables: z.array(z.unknown()).default([]),
   overtimeConfig: siteOvertimeConfigSchema,
   pdfConfig: z.unknown().optional(),
+  approvalSections: z
+    .array(
+      z.object({
+        sectionId: z.number().int().positive(),
+        departmentId: z.number().int().positive(),
+        matrixId: z.number().int().positive().nullable(),
+        pjoLeaderId: z.number().int().positive().nullable(),
+        sectionHeadId: z.number().int().positive().nullable(),
+        departmentHeadId: z.number().int().positive().nullable(),
+      })
+    )
+    .default([]),
 })
 
 export async function saveSchedulingConfigAction(
-  input: z.infer<typeof saveSchedulingConfigSchema>
+  input: z.input<typeof saveSchedulingConfigSchema>
 ) {
   const payload = saveSchedulingConfigSchema.parse(input)
   await assertSchedulingSiteScope(payload.siteId, 'edit')
@@ -2650,18 +2665,66 @@ export async function saveSchedulingConfigAction(
   const now = new Date()
   // Validate site exists in sites table
   const [site] = await db
-    .select({ id: sites.id })
+    .select({ id: sites.id, name: sites.name })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
   if (!site) return { ok: false, error: 'Site not found' }
 
-  await db
-    .insert(timesheetSchedulingConfigs)
-    .values({ ...payload, savedByUserId, updatedAt: now })
-    .onConflictDoUpdate({
-      target: [timesheetSchedulingConfigs.siteId],
-      set: {
+  const sectionIds = [...new Set(payload.approvalSections.map((row) => row.sectionId))]
+  const scopedSections = sectionIds.length
+    ? await db
+        .select({
+          sectionId: employees.sectionId,
+          departmentId: employees.departmentId,
+          sectionName: masterSections.name,
+        })
+        .from(employees)
+        .innerJoin(masterSections, eq(employees.sectionId, masterSections.id))
+        .where(
+          and(
+            eq(employees.siteId, payload.siteId),
+            eq(employees.isActive, true),
+            inArray(employees.sectionId, sectionIds)
+          )
+        )
+    : []
+  const validSectionKeys = new Set(
+    scopedSections.map((row) => `${row.departmentId}:${row.sectionId}`)
+  )
+  const sectionNames = new Map(scopedSections.map((row) => [row.sectionId, row.sectionName]))
+  if (
+    payload.approvalSections.some(
+      (row) => !validSectionKeys.has(`${row.departmentId}:${row.sectionId}`)
+    )
+  ) {
+    throw new Error('Section approval tidak memiliki anggota aktif pada site ini.')
+  }
+
+  const approverIds = [
+    ...new Set(
+      payload.approvalSections.flatMap((row) =>
+        [row.pjoLeaderId, row.sectionHeadId, row.departmentHeadId].filter(
+          (id): id is number => id != null
+        )
+      )
+    ),
+  ]
+  const validApprovers = approverIds.length
+    ? await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(and(eq(employees.isActive, true), inArray(employees.id, approverIds)))
+    : []
+  if (validApprovers.length !== approverIds.length) {
+    throw new Error('Approver harus berasal dari karyawan aktif di User Management.')
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(timesheetSchedulingConfigs)
+      .values({
+        siteId: payload.siteId,
         scheduleType: payload.scheduleType,
         rosterType: payload.rosterType,
         msaType: payload.msaType,
@@ -2674,8 +2737,237 @@ export async function saveSchedulingConfigAction(
         pdfConfig: payload.pdfConfig,
         savedByUserId,
         updatedAt: now,
-      },
-    })
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingConfigs.siteId],
+        set: {
+          scheduleType: payload.scheduleType,
+          rosterType: payload.rosterType,
+          msaType: payload.msaType,
+          mealsType: payload.mealsType,
+          overtimeType: payload.overtimeType,
+          fieldBreakConfig: payload.fieldBreakConfig,
+          allowanceVariables: payload.allowanceVariables,
+          overtimeVariables: payload.overtimeVariables,
+          overtimeConfig: payload.overtimeConfig,
+          pdfConfig: payload.pdfConfig,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
+
+    let structureId: number | null = null
+    const getStructureId = async () => {
+      if (structureId) return structureId
+      const structureName = `Overtime & SPL - ${site.name}`
+      const [existing] = await tx
+        .select({ id: orgChartStructures.id })
+        .from(orgChartStructures)
+        .where(eq(orgChartStructures.name, structureName))
+        .limit(1)
+      if (existing) {
+        structureId = existing.id
+        return structureId
+      }
+      const [created] = await tx
+        .insert(orgChartStructures)
+        .values({
+          name: structureName,
+          scopeType: 'site',
+          scopeValue: site.name,
+          description: 'Approval Overtime dan SPL dari Konfigurasi Site.',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: orgChartStructures.id })
+      structureId = created.id
+      return structureId
+    }
+
+    for (const row of payload.approvalSections) {
+      const sectionName = sectionNames.get(row.sectionId) ?? `Section ${row.sectionId}`
+      const matrixConfigs = [
+        {
+          transactionType: 'overtime_request',
+          activityType: 'overtime_command_letter',
+          name: `Overtime & SPL - ${site.name} - ${sectionName}`,
+        },
+        {
+          transactionType: 'activity',
+          activityType: '',
+          name: `Daily Activity - ${site.name} - ${sectionName}`,
+        },
+        {
+          transactionType: 'apd-request',
+          activityType: '',
+          name: `Request Barang / APD - ${site.name} - ${sectionName}`,
+        },
+      ] as const
+      const existingMatrices = await tx
+        .select({ id: approvalMatrices.id, transactionType: approvalMatrices.transactionType })
+        .from(approvalMatrices)
+        .where(
+          and(
+            inArray(
+              approvalMatrices.transactionType,
+              matrixConfigs.map((config) => config.transactionType)
+            ),
+            eq(approvalMatrices.siteId, payload.siteId),
+            eq(approvalMatrices.sectionId, row.sectionId)
+          )
+        )
+      const existingOvertimeMatrix = existingMatrices.find(
+        (matrix) => matrix.transactionType === 'overtime_request'
+      )
+      const overtimeMatrixId =
+        row.matrixId != null && row.matrixId === existingOvertimeMatrix?.id
+          ? row.matrixId
+          : (existingOvertimeMatrix?.id ?? null)
+      const roles = [
+        { key: 'pjo', label: 'PJO Leader', stepOrder: 1, employeeId: row.pjoLeaderId },
+        { key: 'section-head', label: 'Section Head', stepOrder: 2, employeeId: row.sectionHeadId },
+        { key: 'dept-head', label: 'Dept Head', stepOrder: 3, employeeId: row.departmentHeadId },
+      ] as const
+      if (roles.every((role) => role.employeeId == null)) {
+        if (existingMatrices.length > 0) {
+          await tx
+            .update(approvalMatrices)
+            .set({ isActive: false, updatedAt: now })
+            .where(
+              inArray(
+                approvalMatrices.id,
+                existingMatrices.map((matrix) => matrix.id)
+              )
+            )
+        }
+        continue
+      }
+
+      const activeStructureId = await getStructureId()
+      const nodes: Array<{
+        id: number
+        label: string
+        stepOrder: number
+        employeeId: number | null
+      }> = []
+      for (const role of roles) {
+        const nodeCode = `overtime-spl:${payload.siteId}:${row.sectionId}:${role.key}`
+        const [existingNode] = await tx
+          .select({ id: orgChartNodes.id })
+          .from(orgChartNodes)
+          .where(
+            and(
+              eq(orgChartNodes.structureId, activeStructureId),
+              eq(orgChartNodes.nodeCode, nodeCode)
+            )
+          )
+          .limit(1)
+        const node = existingNode
+          ? (
+              await tx
+                .update(orgChartNodes)
+                .set({
+                  employeeId: role.employeeId,
+                  approvalRole: role.label,
+                  canApprove: true,
+                  isActive: true,
+                  updatedAt: now,
+                })
+                .where(eq(orgChartNodes.id, existingNode.id))
+                .returning({ id: orgChartNodes.id })
+            )[0]
+          : (
+              await tx
+                .insert(orgChartNodes)
+                .values({
+                  structureId: activeStructureId,
+                  employeeId: role.employeeId,
+                  nodeCode,
+                  nodeType: 'employee',
+                  approvalRole: role.label,
+                  canApprove: true,
+                  label: `${role.label} - ${sectionName}`,
+                  sortOrder: role.stepOrder,
+                  isActive: true,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                .returning({ id: orgChartNodes.id })
+            )[0]
+        await tx.delete(orgNodeAssignments).where(eq(orgNodeAssignments.nodeId, node.id))
+        if (role.employeeId) {
+          await tx.insert(orgNodeAssignments).values({
+            nodeId: node.id,
+            employeeId: role.employeeId,
+            assignmentType: 'primary',
+            notes: 'Synced from Scheduling Timesheet Site Configuration.',
+            effectiveFrom: now,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+        nodes.push({ ...role, id: node.id })
+      }
+
+      const activeNodes = nodes.filter((node) => node.employeeId != null)
+      for (const config of matrixConfigs) {
+        const existingMatrixId =
+          config.transactionType === 'overtime_request'
+            ? overtimeMatrixId
+            : (existingMatrices.find((matrix) => matrix.transactionType === config.transactionType)
+                ?.id ?? null)
+        const matrixValues = {
+          name: config.name,
+          structureId: activeStructureId,
+          transactionType: config.transactionType,
+          siteId: payload.siteId,
+          departmentId: row.departmentId,
+          sectionId: row.sectionId,
+          activityType: config.activityType,
+          priority: 'any',
+          minOvertimeMinutes: 0,
+          description:
+            'Synced from Scheduling Timesheet Site Configuration for Daily Activity, Overtime/SPL, and Request Barang/APD.',
+          isActive: true,
+          updatedAt: now,
+        }
+        const savedMatrixId = existingMatrixId
+          ? (
+              await tx
+                .update(approvalMatrices)
+                .set(matrixValues)
+                .where(eq(approvalMatrices.id, existingMatrixId))
+                .returning({ id: approvalMatrices.id })
+            )[0].id
+          : (
+              await tx
+                .insert(approvalMatrices)
+                .values({ ...matrixValues, effectiveFrom: now, createdAt: now })
+                .returning({ id: approvalMatrices.id })
+            )[0].id
+
+        await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
+        if (activeNodes.length > 0) {
+          await tx.insert(approvalMatrixSteps).values(
+            activeNodes.map((node) => ({
+              matrixId: savedMatrixId,
+              stepOrder: node.stepOrder,
+              label: node.label,
+              nodeId: node.id,
+              approvalMode: 'sequential',
+              slaHours: 24,
+              canDelegate: true,
+              isRequired: true,
+              createdAt: now,
+              updatedAt: now,
+            }))
+          )
+        }
+      }
+    }
+  })
 
   await logAuditEvent({
     actorEmail,
@@ -2685,6 +2977,8 @@ export async function saveSchedulingConfigAction(
     description: 'Saved scheduling timesheet configuration.',
   })
   revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/setup')
+  revalidatePath('/dashboard/master-data')
   return { ok: true }
 }
 
@@ -3182,6 +3476,42 @@ async function updateLegacyEntityForSubmissionDecision(params: {
         updatedAt: params.now,
       })
       .where(eq(overtimeCommandLetters.id, legacyRecordId))
+
+    const linkedSessions = await params.tx
+      .select({ activityId: dailyActivitySessions.activityId })
+      .from(dailyActivitySessions)
+      .where(eq(dailyActivitySessions.overtimeCommandLetterId, legacyRecordId))
+    const linkedActivityIds = linkedSessions.flatMap((session) =>
+      session.activityId == null ? [] : [session.activityId]
+    )
+    const linkedActivityStatus =
+      params.decision === 'approved'
+        ? 'Approved'
+        : params.decision === 'rejected'
+          ? 'Rejected'
+          : 'Needs Correction'
+    const linkedSessionStatus =
+      params.decision === 'approved'
+        ? 'approved'
+        : params.decision === 'rejected'
+          ? 'rejected'
+          : 'returned'
+
+    if (linkedActivityIds.length > 0) {
+      await params.tx
+        .update(activities)
+        .set({ status: linkedActivityStatus })
+        .where(inArray(activities.id, linkedActivityIds))
+    }
+    await params.tx
+      .update(dailyActivitySessions)
+      .set({
+        status: linkedSessionStatus,
+        approvedAt: params.decision === 'approved' ? params.now : null,
+        updatedAt: params.now,
+      })
+      .where(eq(dailyActivitySessions.overtimeCommandLetterId, legacyRecordId))
+
     if (params.decision === 'approved') {
       const [spl] = await params.tx
         .select({ siteId: overtimeCommandLetters.siteId })
@@ -3219,7 +3549,10 @@ async function updateLegacyEntityForSubmissionDecision(params: {
         const applyOff = (rows: ScheduleV2Row[]) =>
           rows.map((row) =>
             row.employeeId === replacement.employeeId
-              ? { ...row, schedule: row.schedule.map((code, index) => (index === day - 1 ? 'OFF' : code)) }
+              ? {
+                  ...row,
+                  schedule: row.schedule.map((code, index) => (index === day - 1 ? 'OFF' : code)),
+                }
               : row
           )
         await params.tx
@@ -3699,7 +4032,9 @@ async function applyLegacySubmissionDecision(params: {
               title,
               intro: `${spl?.splNumber ?? 'SPL'} - ${spl?.title ?? ''}`,
               ctaLabel: finalApproved ? 'Lengkapi Evidence SPL' : 'Buka Riwayat SPL',
-              ctaUrl: getAppUrl(finalApproved ? '/mobile/activity/input' : '/mobile/overtime?tab=history'),
+              ctaUrl: getAppUrl(
+                finalApproved ? '/mobile/activity/input' : '/mobile/overtime?tab=history'
+              ),
             })
             await sendWorkflowEmailToMany({
               recipients: recipientEmails,
@@ -3815,6 +4150,7 @@ async function applyApprovalDecision(params: {
     .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
     .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
     .leftJoin(employees, eq(formSubmissions.requesterEmployeeId, employees.id))
+    .leftJoin(apdRequests, eq(approvals.apdRequestId, apdRequests.id))
     .where(eq(approvals.id, params.approvalId))
     .limit(1)
 
@@ -5174,7 +5510,7 @@ export async function reviewApprovalAction(formData: FormData) {
     note: formData.get('note'),
   })
   if (payload.decision !== 'approved' && payload.note.trim().length < 3) {
-    throw new Error('Alasan wajib diisi untuk reject atau return.')
+    throw new Error('Alasan revisi atau tolak wajib diisi minimal 3 karakter.')
   }
 
   // Check if a signature file is provided

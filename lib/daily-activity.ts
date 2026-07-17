@@ -1484,9 +1484,15 @@ async function ensureDailyActivityTables() {
     );
   `)
 
-  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists origin text not null default 'leader_command'`)
-  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists request_kind text not null default 'base'`)
-  await db.execute(sql`alter table hero_overtime_command_letters add column if not exists parent_spl_id integer references hero_overtime_command_letters(id) on delete set null`)
+  await db.execute(
+    sql`alter table hero_overtime_command_letters add column if not exists origin text not null default 'leader_command'`
+  )
+  await db.execute(
+    sql`alter table hero_overtime_command_letters add column if not exists request_kind text not null default 'base'`
+  )
+  await db.execute(
+    sql`alter table hero_overtime_command_letters add column if not exists parent_spl_id integer references hero_overtime_command_letters(id) on delete set null`
+  )
 
   await db.execute(sql`
     create table if not exists hero_overtime_command_letter_participants (
@@ -2539,6 +2545,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         executionNotes: overtimeCommandLetters.executionNotes,
         origin: overtimeCommandLetters.origin,
         requestKind: overtimeCommandLetters.requestKind,
+        requestSubmissionId: overtimeCommandLetters.requestSubmissionId,
+        pendingApproverName: approvals.approverName,
         parentSplId: overtimeCommandLetters.parentSplId,
         requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
         sectionId: overtimeCommandLetters.sectionId,
@@ -2550,6 +2558,13 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       .from(overtimeCommandLetters)
       .leftJoin(masterSections, eq(overtimeCommandLetters.sectionId, masterSections.id))
       .leftJoin(masterPositions, eq(overtimeCommandLetters.positionId, masterPositions.id))
+      .leftJoin(
+        approvals,
+        and(
+          eq(approvals.submissionId, overtimeCommandLetters.requestSubmissionId),
+          eq(approvals.status, 'pending')
+        )
+      )
       .where(eq(overtimeCommandLetters.siteId, currentEmployee.siteId))
       .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.id))
       .limit(20),

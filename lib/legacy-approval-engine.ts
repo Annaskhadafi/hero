@@ -226,6 +226,13 @@ async function createPendingArtifactsForSubmission(params: {
     return
   }
 
+  const [submission] = await db
+    .select({ requestNumber: formSubmissions.requestNumber })
+    .from(formSubmissions)
+    .where(eq(formSubmissions.id, params.submissionId))
+    .limit(1)
+  const requestNumber = submission?.requestNumber || `REQ-${params.submissionId}`
+
   const notificationsToSend: Array<{
     approvalId: number
     approverEmail: string
@@ -410,6 +417,8 @@ async function createPendingArtifactsForSubmission(params: {
           templateCode: 'approval_assignment',
           templateName: 'Approval Assignment',
           variables: {
+            requestId: requestNumber,
+            requestNumber,
             requestTitle: params.requestTitle,
             approverName: target.approverName,
             requesterName: params.requesterName,
