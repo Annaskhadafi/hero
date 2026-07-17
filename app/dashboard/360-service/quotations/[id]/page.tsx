@@ -6,6 +6,7 @@ import Image from "next/image"
 import { PrintButton } from "./print-button"
 import { Suspense } from "react"
 import { resolveUploadUrl } from "@/lib/s3-storage"
+import { calculateRunningMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 function abbreviatePeriod(period: string | null) {
@@ -92,12 +93,6 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   const dateStr = new Date(quotation.quotationDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const formattedDate = dateStr // "June, 2026" based on the image format
 
-  const getDaysInStartMonth = (dateStr: string | null) => {
-    if (!dateStr) return 31;
-    const d = new Date(dateStr);
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  };
-
   const rentalItems = quotation.items.filter(i => {
     const cat = i.item?.category || '';
     const desc = (i.quotationItem.customDescription || '').toLowerCase();
@@ -107,9 +102,10 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   rentalItems.forEach(item => {
     let backupProrate = 0;
     if (item.quotationItem.isBackup) {
-      const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
-      const daysInMonth = getDaysInStartMonth(item.quotationItem.backupStartDate);
-      backupProrate = (backupDays / daysInMonth) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      backupProrate = calculateRunningMonthProrateFactor(
+        item.quotationItem.backupStartDate,
+        item.quotationItem.backupEndDate,
+      ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
     }
     const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
     totalRental += quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate;
@@ -348,9 +344,10 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
                           let backupProrate = 0;
                           if (item.quotationItem.isBackup && isProrateEligible) {
-                            const backupDays = calculateDays(item.quotationItem.backupStartDate, item.quotationItem.backupEndDate);
-                            const daysInMonth = getDaysInStartMonth(item.quotationItem.backupStartDate);
-                            backupProrate = (backupDays / daysInMonth) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            backupProrate = calculateRunningMonthProrateFactor(
+                              item.quotationItem.backupStartDate,
+                              item.quotationItem.backupEndDate,
+                            ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
                           }
                           const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
 

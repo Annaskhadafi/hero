@@ -33,6 +33,7 @@ import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
+import { calculateRunningMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 
 const itemSchema = z.object({
   id: z.number(),
@@ -497,9 +498,8 @@ const router = useRouter()
 
   const getBackupProrate = (item: SelectedItem) => {
     if (isProrateEligible(item.category) && item.isBackup) {
-      const backupDays = calculateDays(item.backupStartDate, item.backupEndDate)
-      const daysInMonth = getDaysInMonthOfStartDate(item.backupStartDate)
-      return (backupDays / daysInMonth) * (item.backupPrice || 0) * item.quantity
+      return calculateRunningMonthProrateFactor(item.backupStartDate, item.backupEndDate)
+        * (item.backupPrice || 0) * item.quantity
     }
     return 0
   }
