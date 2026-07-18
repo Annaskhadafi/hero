@@ -1786,6 +1786,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         plannedStartAt: plannedStartAt.toISOString(),
         plannedEndAt: plannedEndAt.toISOString(),
       },
+      overtimeMinutes: Math.round((plannedEndAt.getTime() - plannedStartAt.getTime()) / 60000),
     })
     await db
       .update(overtimeCommandLetters)
@@ -2067,6 +2068,9 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
         plannedStartAt: document.plannedStartAt?.toISOString() ?? null,
         plannedEndAt: document.plannedEndAt?.toISOString() ?? null,
       },
+      overtimeMinutes: document.plannedEndAt && document.plannedStartAt 
+        ? Math.round((document.plannedEndAt.getTime() - document.plannedStartAt.getTime()) / 60000) 
+        : 0,
     })
 
     await db

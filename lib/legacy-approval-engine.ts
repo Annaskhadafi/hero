@@ -93,6 +93,7 @@ type CreateLegacyApprovalRequestInput = {
   payloadSnapshot: Record<string, unknown>
   previewSnapshot: Record<string, unknown>
   submittedAt?: Date
+  overtimeMinutes?: number
 }
 
 function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
@@ -487,7 +488,7 @@ export async function createLegacyApprovalRequest(input: CreateLegacyApprovalReq
     activityType: input.activityType,
     priority: input.priority ?? 'normal',
     transactionType: input.transactionType ?? undefined,
-    overtimeMinutes: 0,
+    overtimeMinutes: input.overtimeMinutes ?? 0,
   })
 
   if (route.steps.length === 0) {
