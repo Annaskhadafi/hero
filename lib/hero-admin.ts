@@ -641,6 +641,28 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'Roster & Timesheet',
+    title: 'EWH Dashboard',
+    url: '/dashboard/ewh',
+    iconName: 'clock',
+    resource: 'ewh_dashboard',
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Roster & Timesheet',
+    title: 'Unit Utility',
+    url: '/dashboard/unit-utility',
+    iconName: 'settings',
+    resource: 'unit_utility',
+    sortOrder: 8,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Approval
   {
     menuArea: 'main',
@@ -1384,6 +1406,30 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'report',
     resource: 'site_condition_report',
     sortOrder: 15,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Work Hours',
+    title: 'Effective Working Hours (EWH)',
+    url: '/dashboard/ewh',
+    iconName: 'clock',
+    resource: 'ewh',
+    sortOrder: 16,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Work Hours',
+    title: 'Unit Utility',
+    url: '/dashboard/unit-utility',
+    iconName: 'checklist',
+    resource: 'unit_utility',
+    sortOrder: 17,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4826,8 +4872,8 @@ export async function ensureHeroGovernanceSeedData() {
         existingMenuItem.iconName !== menuSeed.iconName ||
         existingMenuItem.resource !== menuSeed.resource ||
         existingMenuItem.sortOrder !== menuSeed.sortOrder ||
-        existingMenuItem.isVisible !== menuSeed.isVisible ||
-        existingMenuItem.openInNewTab !== menuSeed.openInNewTab ||
+        existingMenuItem.isVisible !== (menuSeed as any).isVisible ||
+        existingMenuItem.openInNewTab !== (menuSeed as any).openInNewTab ||
         existingMenuItem.groupLabel !== (menuSeed as any).groupLabel
       ) {
         await db
