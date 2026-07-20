@@ -85,6 +85,9 @@ const quotationSchema = z.object({
   showQty: z.boolean(),
   hideBackupPrice: z.boolean().optional(),
   hideBackupDate: z.boolean().optional(),
+  hideMonthColumn: z.boolean().optional(),
+  discountType: z.enum(['percent', 'fixed']).nullable().optional(),
+  discountValue: z.number().min(0).optional(),
   showDays: z.boolean().optional(),
   showIntro: z.boolean().optional(),
   customIntro: z.string().optional(),
@@ -219,6 +222,9 @@ const router = useRouter()
       showQty: initialData?.showQty ?? false,
       hideBackupPrice: initialData?.hideBackupPrice ?? false,
       hideBackupDate: initialData?.hideBackupDate ?? false,
+      hideMonthColumn: initialData?.hideMonthColumn ?? false,
+      discountType: initialData?.discountType ?? null,
+      discountValue: initialData?.discountValue ? Number(initialData.discountValue) : 0,
       showDays: initialData?.showDays ?? true,
       attn: initialData?.attn || "",
       cc: initialData?.cc || "",
@@ -282,6 +288,9 @@ const router = useRouter()
   const customIntro = watch("customIntro")
   const hideBackupPrice = watch("hideBackupPrice")
   const hideBackupDate = watch("hideBackupDate")
+  const hideMonthColumn = watch("hideMonthColumn")
+  const discountType = watch("discountType")
+  const discountValue = watch("discountValue") || 0
   const showDays = watch("showDays")
   const poPeriodEnd = watch("poPeriodEnd")
   const selectedCustomerId = watch("customerId")
@@ -624,8 +633,12 @@ const router = useRouter()
     try {
       // Calculate totals for the payload
       const calculatedSubTotal = data.items.reduce((acc, item) => acc + getRowSubtotal(item), 0);
-      const calculatedTaxAmount = (calculatedSubTotal * data.taxRate) / 100;
-      const calculatedTotalAmount = calculatedSubTotal + calculatedTaxAmount;
+      const calculatedDiscount = data.discountType === 'percent'
+        ? calculatedSubTotal * (data.discountValue || 0) / 100
+        : (data.discountValue || 0);
+      const discountedSubTotal = Math.max(0, calculatedSubTotal - calculatedDiscount);
+      const calculatedTaxAmount = (discountedSubTotal * data.taxRate) / 100;
+      const calculatedTotalAmount = discountedSubTotal + calculatedTaxAmount;
       
       let finalProjectName = data.projectName;
       if (data.selectedProjectSite && data.selectedProjectSite !== "manual") {
@@ -695,8 +708,10 @@ const router = useRouter()
   };
 
   const subTotal = formItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
-  const taxAmount = (subTotal * taxRate) / 100
-  const totalAmount = subTotal + taxAmount
+  const discountAmount = discountType === 'percent' ? subTotal * discountValue / 100 : discountValue
+  const discountedSubTotal = Math.max(0, subTotal - discountAmount)
+  const taxAmount = (discountedSubTotal * taxRate) / 100
+  const grandTotal = discountedSubTotal + taxAmount
   const lineItemColumnCount = 7 + (showLevel ? 1 : 0)
   return (
     <div className="w-full pb-20">
@@ -836,6 +851,12 @@ const router = useRouter()
                     <label className="text-xs leading-tight">Show<br/>Level<br/>Column</label>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Switch checked={!!discountType} onCheckedChange={(v) => setValue("discountType", v ? "percent" : null)} />
+                    <label className="text-xs leading-tight">Discount</label>
+                    {discountType && <select className="h-8 rounded border px-1 text-xs" value={discountType} onChange={(e) => setValue("discountType", e.target.value as "percent" | "fixed")}><option value="percent">%</option><option value="fixed">Fixed</option></select>}
+                    {discountType && <Input className="h-8 w-24" type="number" min="0" {...register("discountValue", { valueAsNumber: true })} />}
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Switch checked={showQty} onCheckedChange={(v) => setValue("showQty", v)} />
                     <label className="text-xs leading-tight">Show<br/>QTY<br/>Column</label>
                   </div>
@@ -846,6 +867,10 @@ const router = useRouter()
                   <div className="flex items-center gap-2">
                     <Switch checked={hideBackupDate} onCheckedChange={(v) => setValue("hideBackupDate", v)} />
                     <label className="text-xs leading-tight">Hide Backup<br/>Date<br/>(PDF)</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={hideMonthColumn} onCheckedChange={(v) => setValue("hideMonthColumn", v)} />
+                    <label className="text-xs leading-tight">Hide Month<br/>Column<br/>(PDF)</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showDays} onCheckedChange={(v) => setValue("showDays", v)} />
@@ -1260,13 +1285,19 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                   <span className="text-muted-foreground">AMOUNT</span>
                   <span className="font-medium">{subTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
+                {discountType && discountValue > 0 && (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>DISCOUNT {discountType === 'percent' ? `(${discountValue}%)` : '(FIXED)'}</span>
+                    <span className="font-medium">-{discountAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">VAT TAX {taxRate}%</span>
                   <span className="font-medium">{taxAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
                 <div className="border-t pt-3 flex justify-between text-lg text-primary">
                   <span className="font-bold">TOTAL</span>
-                  <span className="font-bold">{totalAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  <span className="font-bold">{grandTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
             </div>

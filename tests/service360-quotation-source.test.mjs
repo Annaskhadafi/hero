@@ -85,6 +85,22 @@ test('service 360 quotation only auto-downloads from the download button', () =>
   assert.match(tableSource, /quotations\/\$\{row\.id\}\?download=true/)
 })
 
+test('service 360 quotation can hide the PDF month column', () => {
+  const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
+  const actionSource = read('app/actions/service360.ts')
+  const schemaSource = read('db/schema/service360.ts')
+  const pageSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
+
+  assert.match(schemaSource, /hideMonthColumn: boolean\("hide_month_column"\)/)
+  assert.match(formSource, /hideMonthColumn: z\.boolean\(\)\.optional\(\)/)
+  assert.match(formSource, /initialData\?\.hideMonthColumn \?\? false/)
+  assert.match(formSource, /checked=\{hideMonthColumn\}/)
+  assert.match(actionSource, /hideMonthColumn, discountType, discountValue, showDays/)
+  assert.match(actionSource, /hideMonthColumn: hideMonthColumn \?\? false/)
+  assert.match(pageSource, /!quotation\.hideMonthColumn && <th/)
+  assert.match(pageSource, /!quotation\.hideMonthColumn && <td/)
+})
+
 test('service 360 BAST keeps closing and signatures on-page through 10 rows', () => {
   const pageSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
 
