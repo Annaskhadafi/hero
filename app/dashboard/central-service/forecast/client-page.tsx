@@ -81,6 +81,9 @@ const getForecastAmountIdr = (item: any) => {
   )
 }
 
+const isCancelStatusDoc = (status?: string | null) =>
+  (status || '').trim().toLowerCase() === 'cancel'
+
 export function DashboardClientPage({
   periods,
   allItems,
@@ -133,7 +136,9 @@ export function DashboardClientPage({
   }
 
   const itemsInPeriod = allItems.filter((i) => i.periodId.toString() === selectedPeriodId)
-  const actualsInPeriod = allActuals.filter((a) => a.periodId.toString() === selectedPeriodId)
+  const actualsInPeriod = allActuals.filter(
+    (a) => a.periodId.toString() === selectedPeriodId && !isCancelStatusDoc(a.itemStatus)
+  )
 
   const kpi = useMemo(() => {
     let totalForecast = 0

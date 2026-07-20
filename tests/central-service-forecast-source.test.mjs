@@ -41,3 +41,13 @@ test("daily SAP actual syncs latest remark and locks submitted USD amount", () =
   assert.match(dailySource, /USD tersimpan mengikuti kurs saat submit/);
   assert.match(dailySource, /amountUsd: amountIdr > 0 \? \(amountIdr \/ Number\(rate\)\)\.toFixed\(2\) : prev\.amountUsd/);
 });
+
+test("forecast dashboard scorecards exclude cancelled daily actuals", () => {
+  const pageSource = read("app/dashboard/central-service/forecast/client-page.tsx");
+
+  assert.match(pageSource, /const isCancelStatusDoc =/);
+  assert.match(
+    pageSource,
+    /a\.periodId\.toString\(\) === selectedPeriodId && !isCancelStatusDoc\(a\.itemStatus\)/
+  );
+});
