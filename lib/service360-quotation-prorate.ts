@@ -9,23 +9,17 @@ function parseDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-export function calculateRunningMonthProrateFactor(start?: string | null, end?: string | null) {
-  let periodStart = parseDate(start)
+export function calculateStartMonthProrateFactor(start?: string | null, end?: string | null) {
+  const periodStart = parseDate(start)
   const periodEnd = parseDate(end)
   if (!periodStart || !periodEnd || periodEnd < periodStart) return 0
 
-  let factor = 0
-  while (periodStart <= periodEnd) {
-    const daysInRunningMonth = new Date(Date.UTC(
-      periodStart.getUTCFullYear(),
-      periodStart.getUTCMonth() + 1,
-      0,
-    )).getUTCDate()
-    const cycleEnd = new Date(periodStart.getTime() + (daysInRunningMonth - 1) * DAY_MS)
-    const billedEnd = cycleEnd < periodEnd ? cycleEnd : periodEnd
-    factor += ((billedEnd.getTime() - periodStart.getTime()) / DAY_MS + 1) / daysInRunningMonth
-    periodStart = new Date(cycleEnd.getTime() + DAY_MS)
-  }
+  const daysInStartMonth = new Date(Date.UTC(
+    periodStart.getUTCFullYear(),
+    periodStart.getUTCMonth() + 1,
+    0,
+  )).getUTCDate()
+  const inclusiveDays = (periodEnd.getTime() - periodStart.getTime()) / DAY_MS + 1
 
-  return factor
+  return inclusiveDays / daysInStartMonth
 }

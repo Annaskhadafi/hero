@@ -6,7 +6,7 @@ import Image from "next/image"
 import { PrintButton } from "./print-button"
 import { Suspense } from "react"
 import { resolveUploadUrl } from "@/lib/s3-storage"
-import { calculateRunningMonthProrateFactor } from "@/lib/service360-quotation-prorate"
+import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 function abbreviatePeriod(period: string | null) {
@@ -102,7 +102,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   rentalItems.forEach(item => {
     let backupProrate = 0;
     if (item.quotationItem.isBackup) {
-      backupProrate = calculateRunningMonthProrateFactor(
+      backupProrate = calculateStartMonthProrateFactor(
         item.quotationItem.backupStartDate,
         item.quotationItem.backupEndDate,
       ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
@@ -344,7 +344,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
                           let backupProrate = 0;
                           if (item.quotationItem.isBackup && isProrateEligible) {
-                            backupProrate = calculateRunningMonthProrateFactor(
+                            backupProrate = calculateStartMonthProrateFactor(
                               item.quotationItem.backupStartDate,
                               item.quotationItem.backupEndDate,
                             ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);

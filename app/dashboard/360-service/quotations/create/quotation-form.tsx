@@ -33,7 +33,7 @@ import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
-import { calculateRunningMonthProrateFactor } from "@/lib/service360-quotation-prorate"
+import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 
 const itemSchema = z.object({
   id: z.number(),
@@ -451,14 +451,6 @@ const router = useRouter()
     return diffDays > 0 ? diffDays : 0;
   }
 
-  const getDaysInMonthOfStartDate = (start?: string) => {
-    if (!start) return 31;
-    const date = new Date(start);
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    return new Date(year, month + 1, 0).getDate();
-  }
-
   const getRowSubtotal = (item: SelectedItem) => {
     return getPrimaryProrate(item) + getBackupProrate(item)
   }
@@ -478,16 +470,12 @@ const router = useRouter()
       if (item.category.toLowerCase().trim() === "labour cost" && !hasPeriod) return 0
       let totalProrate = 0;
       if (item.startDate && item.endDate) {
-        const primaryDays = calculateDays(item.startDate, item.endDate)
-        const daysInMonth = getDaysInMonthOfStartDate(item.startDate)
-        totalProrate += (primaryDays / daysInMonth) * item.price * item.quantity
+        totalProrate += calculateStartMonthProrateFactor(item.startDate, item.endDate) * item.price * item.quantity
       }
       if (item.extraDateRanges && item.extraDateRanges.length > 0) {
         item.extraDateRanges.forEach(range => {
           if (range.start && range.end) {
-            const extraDays = calculateDays(range.start, range.end)
-            const extraDaysInMonth = getDaysInMonthOfStartDate(range.start)
-            totalProrate += (extraDays / extraDaysInMonth) * item.price * item.quantity
+            totalProrate += calculateStartMonthProrateFactor(range.start, range.end) * item.price * item.quantity
           }
         })
       }
@@ -498,7 +486,7 @@ const router = useRouter()
 
   const getBackupProrate = (item: SelectedItem) => {
     if (isProrateEligible(item.category) && item.isBackup) {
-      return calculateRunningMonthProrateFactor(item.backupStartDate, item.backupEndDate)
+      return calculateStartMonthProrateFactor(item.backupStartDate, item.backupEndDate)
         * (item.backupPrice || 0) * item.quantity
     }
     return 0
