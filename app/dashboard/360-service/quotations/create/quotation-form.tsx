@@ -1282,8 +1282,8 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
               </div>
               <div className="w-full md:w-64 space-y-3 shrink-0">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">AMOUNT</span>
-                  <span className="font-medium">{subTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                  <span className="text-muted-foreground">TOTAL SEBELUM VAT</span>
+                  <span className="font-medium">{discountedSubTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
                 {discountType && discountValue > 0 && (
                   <div className="flex justify-between text-sm text-red-600">
@@ -1296,7 +1296,7 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                   <span className="font-medium">{taxAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
                 <div className="border-t pt-3 flex justify-between text-lg text-primary">
-                  <span className="font-bold">TOTAL</span>
+                  <span className="font-bold">TOTAL AFTER DISCOUNT</span>
                   <span className="font-bold">{grandTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
