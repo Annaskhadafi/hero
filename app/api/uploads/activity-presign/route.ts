@@ -1,7 +1,9 @@
 import { getServerSession } from '@/lib/auth-session'
-import { createDirectS3UploadUrl, isS3UploadConfigured } from '@/lib/s3-storage'
+import { isS3UploadConfigured, uploadAnyFileToS3 } from '@/lib/s3-storage'
 
 export const runtime = 'nodejs'
+
+const MAX_EVIDENCE_SIZE = 10 * 1024 * 1024
 
 export async function POST(request: Request) {
   const session = await getServerSession()
@@ -11,20 +13,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { fileName, contentType } = await request.json()
-    if (
-      typeof fileName !== 'string' ||
-      !fileName.trim() ||
-      typeof contentType !== 'string' ||
-      !contentType.startsWith('image/')
-    ) {
+    const file = (await request.formData()).get('file')
+    if (!(file instanceof File) || file.size === 0 || !file.type.startsWith('image/')) {
       return Response.json({ error: 'Evidence harus berupa gambar.' }, { status: 400 })
     }
+    if (file.size > MAX_EVIDENCE_SIZE) {
+      return Response.json({ error: 'Ukuran evidence maksimal 10 MB.' }, { status: 413 })
+    }
 
-    return Response.json(
-      await createDirectS3UploadUrl(fileName.slice(0, 200), contentType, 'activity-photos')
-    )
-  } catch {
-    return Response.json({ error: 'Gagal menyiapkan upload evidence.' }, { status: 500 })
+    return Response.json(await uploadAnyFileToS3(file, 'activity-photos'))
+  } catch (error) {
+    console.error('Activity evidence upload failed:', error)
+    return Response.json({ error: 'Gagal upload evidence.' }, { status: 500 })
   }
 }

@@ -31,6 +31,7 @@ import {
   streakRecords,
 } from '@/db/schema/hero'
 import { ensureHeroGovernanceSeedData } from '@/lib/hero-admin'
+import { resolveUploadUrl } from '@/lib/s3-storage'
 
 let dailyActivitySeedPromise: Promise<void> | null = null
 
@@ -479,34 +480,53 @@ async function getActiveOvertimeCommandLetterForEmployee(
   }
 
   const splIds = splRows.map((row) => row.id)
-  const itemRows = await db
-    .select({
-      id: overtimeCommandLetterItems.id,
-      overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
-      assignedEmployeeId: overtimeCommandLetterItems.assignedEmployeeId,
-      routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
-      routeItemId: overtimeCommandLetterItems.routeItemId,
-      libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
-      requiresPhoto: sql<boolean>`coalesce(${activityLibraries.requiresPhoto}, false)`,
-      lineLabel: overtimeCommandLetterItems.lineLabel,
-      lineDescription: overtimeCommandLetterItems.lineDescription,
-      targetUnit: overtimeCommandLetterItems.targetUnit,
-      estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
-      plannedPoints: overtimeCommandLetterItems.plannedPoints,
-      sortOrder: overtimeCommandLetterItems.sortOrder,
-      isCustomLine: overtimeCommandLetterItems.isCustomLine,
-    })
-    .from(overtimeCommandLetterItems)
-    .leftJoin(
-      activityLibraries,
-      eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id)
-    )
-    .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
-    .orderBy(
-      asc(overtimeCommandLetterItems.overtimeCommandLetterId),
-      asc(overtimeCommandLetterItems.sortOrder),
-      asc(overtimeCommandLetterItems.id)
-    )
+  const [itemRows, employeeSessionRows] = await Promise.all([
+    db
+      .select({
+        id: overtimeCommandLetterItems.id,
+        overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+        assignedEmployeeId: overtimeCommandLetterItems.assignedEmployeeId,
+        routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
+        routeItemId: overtimeCommandLetterItems.routeItemId,
+        libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
+        requiresPhoto: sql<boolean>`coalesce(${activityLibraries.requiresPhoto}, false)`,
+        lineLabel: overtimeCommandLetterItems.lineLabel,
+        lineDescription: overtimeCommandLetterItems.lineDescription,
+        targetUnit: overtimeCommandLetterItems.targetUnit,
+        estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+        plannedPoints: overtimeCommandLetterItems.plannedPoints,
+        sortOrder: overtimeCommandLetterItems.sortOrder,
+        isCustomLine: overtimeCommandLetterItems.isCustomLine,
+      })
+      .from(overtimeCommandLetterItems)
+      .leftJoin(
+        activityLibraries,
+        eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id)
+      )
+      .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
+      .orderBy(
+        asc(overtimeCommandLetterItems.overtimeCommandLetterId),
+        asc(overtimeCommandLetterItems.sortOrder),
+        asc(overtimeCommandLetterItems.id)
+      ),
+    db
+      .select({
+        overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+        status: dailyActivitySessions.status,
+      })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.employeeId, employee.id),
+          inArray(dailyActivitySessions.overtimeCommandLetterId, splIds)
+        )
+      ),
+  ])
+  const submittedSplIds = new Set(
+    employeeSessionRows
+      .filter((row) => ['submitted', 'approved'].includes(row.status.toLowerCase()))
+      .map((row) => row.overtimeCommandLetterId)
+  )
 
   const itemsBySplId = new Map<number, typeof itemRows>()
   for (const item of itemRows) {
@@ -541,7 +561,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
           score,
         }
       })
-      .filter((row) => row.items.length > 0)
+      .filter((row) => row.items.length > 0 && !submittedSplIds.has(row.id))
       .sort((left, right) => {
         if (right.score !== left.score) {
           return right.score - left.score
@@ -2272,8 +2292,10 @@ export async function getDailyActivityEmployeeData(
         .where(
           and(
             eq(activities.employeeId, employee.id),
-            gte(activities.startTime, dayStart),
-            lte(activities.startTime, dayEnd)
+            or(
+              and(gte(activities.startTime, dayStart), lte(activities.startTime, dayEnd)),
+              and(gte(activities.submissionTime, dayStart), lte(activities.submissionTime, dayEnd))
+            )
           )
         )
         .orderBy(desc(activities.startTime), desc(activities.id)),
@@ -2367,6 +2389,31 @@ export async function getDailyActivityEmployeeData(
     routeChecklist == null
       ? await getStandaloneOvertimeChecklistForEmployee(employee, new Date())
       : null
+  const activityIds = activityRows.map((row) => row.id)
+  const activityPhotoRows =
+    activityIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: activityPhotos.id,
+            activityId: activityPhotos.activityId,
+            fileUrl: activityPhotos.fileUrl,
+            caption: activityPhotos.caption,
+          })
+          .from(activityPhotos)
+          .where(inArray(activityPhotos.activityId, activityIds))
+          .orderBy(asc(activityPhotos.uploadedAt), asc(activityPhotos.id))
+  const photosByActivityId = new Map<number, Array<{ id: number; url: string; caption: string }>>()
+
+  for (const photo of activityPhotoRows) {
+    const photos = photosByActivityId.get(photo.activityId) ?? []
+    photos.push({
+      id: photo.id,
+      url: resolveUploadUrl(photo.fileUrl),
+      caption: photo.caption,
+    })
+    photosByActivityId.set(photo.activityId, photos)
+  }
 
   const approvedOrSubmitted = activityRows.filter((row) =>
     ['approved', 'pending l1', 'pending approval', 'submitted'].includes(row.status.toLowerCase())
@@ -2405,6 +2452,7 @@ export async function getDailyActivityEmployeeData(
     })),
     activities: activityRows.map((row) => ({
       ...row,
+      photos: photosByActivityId.get(row.id) ?? [],
       durationMinutes: minutesBetween(row.startTime, row.endTime),
       durationLabel: formatDurationLabel(minutesBetween(row.startTime, row.endTime)),
       pointsNet: row.pointsAwarded - row.penaltyDeducted,

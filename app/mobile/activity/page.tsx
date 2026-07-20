@@ -29,11 +29,13 @@ function statusBadgeClass(status: string) {
 export default async function MobileActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ submitted?: string }>;
+  searchParams: Promise<{ submitted?: string; spl?: string }>;
 }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
-  const submitted = (await searchParams).submitted === "1";
+  const query = await searchParams;
+  const submitted = query.submitted === "1";
+  const submittedSpl = submitted && query.spl === "1";
 
   const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
   if (!data) {
@@ -57,9 +59,13 @@ export default async function MobileActivityPage({
         <section className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
           <CheckCircle2 className="mt-0.5 size-5 shrink-0" />
           <div>
-            <p className="text-sm font-bold">Daily Activity berhasil disubmit</p>
+            <p className="text-sm font-bold">
+              {submittedSpl ? "Submitted, waiting approval" : "Daily Activity berhasil disubmit"}
+            </p>
             <p className="mt-1 text-xs text-emerald-700">
-              Data pekerjaan dan evidence sudah tersimpan.
+              {submittedSpl
+                ? "SPL dan Activity sudah disubmit. Menunggu keputusan approver."
+                : "Data pekerjaan dan evidence sudah tersimpan."}
             </p>
           </div>
         </section>

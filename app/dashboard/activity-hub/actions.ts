@@ -2317,6 +2317,7 @@ export async function submitDailyActivityAction(formData: FormData) {
         siteId: overtimeCommandLetters.siteId,
         status: overtimeCommandLetters.status,
         workDate: overtimeCommandLetters.workDate,
+        plannedStartAt: overtimeCommandLetters.plannedStartAt,
       })
       .from(overtimeCommandLetters)
       .where(eq(overtimeCommandLetters.id, payload.overtimeCommandLetterId))
@@ -2329,7 +2330,9 @@ export async function submitDailyActivityAction(formData: FormData) {
     ) {
       throw new Error('SPL tidak valid atau belum diajukan untuk site Anda.')
     }
-    if (startOfDay(spl.workDate).getTime() !== startOfDay(startTime).getTime()) {
+    if (
+      startOfDay(spl.plannedStartAt ?? spl.workDate).getTime() !== startOfDay(startTime).getTime()
+    ) {
       throw new Error('Tanggal aktivitas tidak sesuai dengan tanggal SPL.')
     }
 
@@ -2462,6 +2465,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   let createdActivityId: number | null = null
+  let reusedExistingActivity: boolean = false
   let pendingApproverName: string | null = null
   let pendingApproverEmail: string | null = null
   const activityTitle =
@@ -2510,6 +2514,62 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   await db.transaction(async (tx) => {
+    if (isSplEvidenceSubmission) {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${employeeId}, ${payload.overtimeCommandLetterId!})`
+      )
+      const [existingSession] = await tx
+        .select({
+          activityId: dailyActivitySessions.activityId,
+          status: dailyActivitySessions.status,
+        })
+        .from(dailyActivitySessions)
+        .where(
+          and(
+            eq(dailyActivitySessions.employeeId, employeeId),
+            eq(
+              dailyActivitySessions.overtimeCommandLetterId,
+              payload.overtimeCommandLetterId!
+            )
+          )
+        )
+        .orderBy(desc(dailyActivitySessions.updatedAt))
+        .limit(1)
+
+      if (
+        existingSession?.activityId &&
+        ['submitted', 'approved'].includes(existingSession.status.toLowerCase())
+      ) {
+        const existingPhotos = await tx
+          .select({ fileUrl: activityPhotos.fileUrl })
+          .from(activityPhotos)
+          .where(eq(activityPhotos.activityId, existingSession.activityId))
+        const existingUrls = new Set(existingPhotos.map((photo) => photo.fileUrl))
+        const newPhotoUrls = Array.from(new Set(uploadedPhotoUrls)).filter(
+          (fileUrl) => !existingUrls.has(fileUrl)
+        )
+
+        if (newPhotoUrls.length > 0) {
+          await tx.insert(activityPhotos).values(
+            newPhotoUrls.map((fileUrl, index) => ({
+              activityId: existingSession.activityId!,
+              fileUrl,
+              caption: `Upload field documentation ${existingPhotos.length + index + 1}`,
+              uploadedAt: submissionTime,
+            }))
+          )
+          await tx
+            .update(activities)
+            .set({ photoCount: existingPhotos.length + newPhotoUrls.length })
+            .where(eq(activities.id, existingSession.activityId))
+        }
+
+        createdActivityId = existingSession.activityId
+        reusedExistingActivity = true
+        return
+      }
+    }
+
     const [createdActivity] = await tx
       .insert(activities)
       .values({
@@ -2663,8 +2723,31 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
   })
 
+  if (reusedExistingActivity) {
+    revalidateDailyActivitySurfaces()
+    return
+  }
+
   await updateStreakForEmployee(employeeId, endTime)
   revalidateDailyActivitySurfaces()
+
+  // EWH & Unit Utility: Trigger realtime recalculation
+  try {
+    const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
+    await recalculateEwhForEmployee(employeeId, employee.siteId, startTime)
+
+    const uniqueUnits = Array.from(new Set(
+      routeSessionItems
+        .map((item) => item.unitNumber?.trim())
+        .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+    ))
+
+    await Promise.allSettled(
+      uniqueUnits.map((unit) => recalculateUnitUtility(unit, employee.siteId, startTime))
+    )
+  } catch (err) {
+    console.error('[EWH/Utility] Recalculate after daily activity save failed:', err)
+  }
 
   await logAuditEvent({
     actorEmail: employee.email,

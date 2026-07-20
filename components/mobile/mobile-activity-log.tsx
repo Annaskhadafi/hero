@@ -1,76 +1,105 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Camera, CheckCircle2, Clock3, MapPin, Sparkles } from "lucide-react";
+import { type ReactNode, useEffect, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Camera, CheckCircle2, Clock3, ImageIcon, ZoomIn } from 'lucide-react'
 
 type ActivityLogItem = {
-  id: number;
-  activityCode?: string | null;
-  activityType?: string | null;
-  title: string;
-  unitNumber?: string | null;
-  sourceMode: string;
-  status: string;
-  statusLabel: string;
-  priority?: string | null;
-  startTime: string;
-  endTime: string;
-  submissionTime: string | null;
-  submissionCategory?: string | null;
-  pointsAwarded: number;
-  penaltyDeducted: number;
-  equipmentNo?: string | null;
-  materialUsed?: string | null;
-  gpsValid?: boolean | null;
-  photoCount: number;
-  remarks?: string | null;
-  assignmentId?: number | null;
-  libraryName?: string | null;
-  durationLabel: string;
-  pointsNet: number;
-};
+  id: number
+  activityCode?: string | null
+  activityType?: string | null
+  title: string
+  unitNumber?: string | null
+  sourceMode: string
+  status: string
+  statusLabel: string
+  priority?: string | null
+  startTime: string
+  endTime: string
+  submissionTime: string | null
+  submissionCategory?: string | null
+  pointsAwarded: number
+  penaltyDeducted: number
+  equipmentNo?: string | null
+  materialUsed?: string | null
+  gpsValid?: boolean | null
+  photoCount: number
+  photos: Array<{
+    id: number
+    url: string
+    caption: string
+  }>
+  remarks?: string | null
+  assignmentId?: number | null
+  libraryName?: string | null
+  durationLabel: string
+  pointsNet: number
+}
 
 type MobileActivityLogProps = {
-  activities: ActivityLogItem[];
-};
+  activities: ActivityLogItem[]
+}
 
 function formatTime(value?: string | null) {
-  if (!value) return "--:--";
-  return new Date(value).toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (!value) return '--:--'
+  return new Date(value).toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase();
+  const normalized = status.toLowerCase()
 
-  if (normalized.includes("approved")) {
-    return "border-0 bg-[#dff4e8] text-[#14532d]";
+  if (normalized.includes('approved')) {
+    return 'border-0 bg-[#dff4e8] text-[#14532d]'
   }
 
-  if (normalized.includes("pending")) {
-    return "border-0 bg-[#fff1cf] text-[#8a5a00]";
+  if (normalized.includes('pending')) {
+    return 'border-0 bg-[#fff1cf] text-[#8a5a00]'
   }
 
-  return "border-0 bg-[#eaf4fb] text-[#003f78]";
+  return 'border-0 bg-[#eaf4fb] text-[#003f78]'
+}
+
+function DetailField({
+  label,
+  children,
+  className = '',
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <p className="text-[10px] font-black tracking-[0.12em] text-[#607789] uppercase">{label}</p>
+      <div className="mt-1 text-sm font-semibold break-words text-[#082033]">{children}</div>
+    </div>
+  )
 }
 
 export function MobileActivityLog({ activities }: MobileActivityLogProps) {
-  const [selected, setSelected] = useState<ActivityLogItem | null>(null);
-  const [page, setPage] = useState(1);
-  const pageSize = 6;
-  const totalPages = Math.max(1, Math.ceil(Math.max(activities.length, 1) / pageSize));
-  const paginatedActivities = activities.slice((page - 1) * pageSize, page * pageSize);
+  const [selected, setSelected] = useState<ActivityLogItem | null>(null)
+  const [previewPhoto, setPreviewPhoto] = useState<ActivityLogItem['photos'][number] | null>(null)
+  const [page, setPage] = useState(1)
+  const pageSize = 6
+  const totalPages = Math.max(1, Math.ceil(Math.max(activities.length, 1) / pageSize))
+  const paginatedActivities = activities.slice((page - 1) * pageSize, page * pageSize)
 
   useEffect(() => {
     if (page > totalPages) {
-      setPage(totalPages);
+      setPage(totalPages)
     }
-  }, [page, totalPages, pageSize]);
+  }, [page, totalPages, pageSize])
 
   return (
     <>
@@ -81,34 +110,45 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
               key={activity.id}
               type="button"
               onClick={() => setSelected(activity)}
-              className="w-full text-left rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] transition hover:shadow-[0_18px_36px_rgba(8,32,51,0.12)]"
+              className="w-full rounded-[1.25rem] bg-white p-4 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)] transition hover:shadow-[0_18px_36px_rgba(8,32,51,0.12)]"
             >
               <div className="flex items-start gap-3">
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-                  {activity.photoCount > 0 ? <Camera className="size-4" /> : <CheckCircle2 className="size-4" />}
+                  {activity.photoCount > 0 ? (
+                    <Camera className="size-4" />
+                  ) : (
+                    <CheckCircle2 className="size-4" />
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <h3 className="text-sm font-black text-[#082033]">{activity.title}</h3>
                       <p className="mt-1 text-xs font-semibold text-[#486275]">
-                        {activity.activityCode ?? "-"} • {activity.sourceMode} • {activity.unitNumber ?? "-"}
+                        {activity.activityCode ?? '-'} • {activity.sourceMode} •{' '}
+                        {activity.unitNumber ?? '-'}
                       </p>
                     </div>
-                    <Badge className={statusBadgeClass(activity.statusLabel)}>{activity.statusLabel}</Badge>
+                    <Badge className={statusBadgeClass(activity.statusLabel)}>
+                      {activity.statusLabel}
+                    </Badge>
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
                     <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Waktu</p>
+                      <p className="text-[10px] font-black tracking-[0.12em] text-[#486275] uppercase">
+                        Waktu
+                      </p>
                       <p className="mt-1 text-sm text-[#082033]">
                         {formatTime(activity.startTime)} - {formatTime(activity.endTime)}
                       </p>
                     </div>
                     <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Net Point</p>
+                      <p className="text-[10px] font-black tracking-[0.12em] text-[#486275] uppercase">
+                        Net Point
+                      </p>
                       <p className="mt-1 text-sm text-[#082033]">
-                        {activity.pointsNet >= 0 ? "+" : ""}
+                        {activity.pointsNet >= 0 ? '+' : ''}
                         {activity.pointsNet}
                       </p>
                     </div>
@@ -146,7 +186,7 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
               >
                 Prev
               </Button>
-              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
+              <span className="text-[11px] font-black tracking-[0.12em] text-[#486275] uppercase">
                 Page {page}/{totalPages}
               </span>
               <Button
@@ -168,114 +208,197 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
         </div>
       )}
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="w-[min(96vw,640px)] max-w-[min(96vw,640px)] overflow-hidden p-0">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>Detail Activity</DialogTitle>
-            <DialogDescription>{selected ? selected.title : ""}</DialogDescription>
+      <Dialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelected(null)
+            setPreviewPhoto(null)
+          }
+        }}
+      >
+        <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-[1.5rem] p-0 [&_[data-slot=dialog-close]]:flex [&_[data-slot=dialog-close]]:size-10 [&_[data-slot=dialog-close]]:items-center [&_[data-slot=dialog-close]]:justify-center">
+          <DialogHeader className="border-b border-[#dbe8f0] px-5 py-4 pr-14 text-left">
+            <DialogTitle className="text-lg text-[#064f50]">Detail Activity</DialogTitle>
+            <DialogDescription className="line-clamp-2 font-medium text-[#486275]">
+              {selected ? selected.title : ''}
+            </DialogDescription>
           </DialogHeader>
 
           {selected ? (
-            <div className="grid gap-4 px-6 pb-6">
+            <div className="overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1rem] bg-[#f6fbff] p-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Status</p>
-                    <Badge className={statusBadgeClass(selected.statusLabel)}>
-                      {selected.statusLabel}
-                    </Badge>
+                <section className="rounded-[1.25rem] bg-[#f3f9fd] p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-[0.9rem] bg-white text-[#003f78] ring-1 ring-black/10">
+                      {selected.photos.length > 0 ? (
+                        <Camera className="size-5" />
+                      ) : (
+                        <CheckCircle2 className="size-5" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-snug font-black text-[#082033]">
+                        {selected.title}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-[#607789]">
+                        {selected.activityCode ?? '-'} · {selected.sourceMode}
+                      </p>
+                      <Badge className={`mt-2 ${statusBadgeClass(selected.statusLabel)}`}>
+                        {selected.statusLabel}
+                      </Badge>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[10px] font-black tracking-[0.12em] text-[#607789] uppercase">
+                        Net Point
+                      </p>
+                      <p className="mt-1 text-lg font-black text-[#082033] tabular-nums">
+                        {selected.pointsNet >= 0 ? '+' : ''}
+                        {selected.pointsNet}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Net Point</p>
-                    <p className="text-sm font-black text-[#082033]">
-                      {selected.pointsNet >= 0 ? "+" : ""}
-                      {selected.pointsNet}
+                </section>
+
+                <section aria-labelledby="activity-evidence-title">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <h3
+                      id="activity-evidence-title"
+                      className="text-xs font-black tracking-[0.12em] text-[#486275] uppercase"
+                    >
+                      Evidence
+                    </h3>
+                    <span className="text-xs font-semibold text-[#607789] tabular-nums">
+                      {selected.photos.length} foto
+                    </span>
+                  </div>
+                  {selected.photos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {selected.photos.map((photo, index) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => setPreviewPhoto(photo)}
+                          className="group relative min-h-40 overflow-hidden rounded-[1rem] bg-[#eef6fb] text-left ring-1 ring-black/10 focus-visible:ring-2 focus-visible:ring-[#0b6bcb] focus-visible:outline-none"
+                          aria-label={`Preview evidence ${index + 1}`}
+                        >
+                          {/* ponytail: native img keeps the authenticated upload proxy compatible; upgrade to a custom Next image loader if optimization becomes necessary. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={photo.url}
+                            alt={photo.caption || `Evidence activity ${index + 1}`}
+                            className="h-40 w-full object-cover"
+                          />
+                          <span className="absolute right-2 bottom-2 flex size-10 items-center justify-center rounded-full bg-[#082033]/80 text-white ring-1 ring-white/30">
+                            <ZoomIn className="size-4" />
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex min-h-24 items-center justify-center gap-2 rounded-[1rem] bg-[#f3f7fa] px-4 text-sm font-semibold text-[#607789] ring-1 ring-black/5">
+                      <ImageIcon className="size-5" /> Belum ada foto evidence
+                    </div>
+                  )}
+                </section>
+
+                <section className="rounded-[1.25rem] bg-white p-4 ring-1 ring-[#dbe8f0]">
+                  <h3 className="mb-3 text-xs font-black tracking-[0.12em] text-[#486275] uppercase">
+                    Informasi Activity
+                  </h3>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+                    <DetailField label="Activity Code">{selected.activityCode ?? '-'}</DetailField>
+                    <DetailField label="Source">{selected.sourceMode}</DetailField>
+                    <DetailField label="Unit">{selected.unitNumber ?? '-'}</DetailField>
+                    <DetailField label="Priority">{selected.priority ?? '-'}</DetailField>
+                    <DetailField label="Library" className="col-span-2">
+                      {selected.libraryName ?? '-'}
+                    </DetailField>
+                  </div>
+                </section>
+
+                <section className="rounded-[1.25rem] bg-[#fff8e8] p-4 ring-1 ring-[#f4e4bd]">
+                  <h3 className="mb-3 text-xs font-black tracking-[0.12em] text-[#8a5a00] uppercase">
+                    Waktu & Point
+                  </h3>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-4 tabular-nums">
+                    <DetailField label="Mulai">{formatTime(selected.startTime)}</DetailField>
+                    <DetailField label="Selesai">{formatTime(selected.endTime)}</DetailField>
+                    <DetailField label="Durasi">{selected.durationLabel}</DetailField>
+                    <DetailField label="Point / Penalty">
+                      {selected.pointsAwarded} / -{selected.penaltyDeducted}
+                    </DetailField>
+                  </div>
+                </section>
+
+                <section className="rounded-[1.25rem] bg-white p-4 ring-1 ring-[#dbe8f0]">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+                    <DetailField label="GPS">
+                      {selected.gpsValid === false
+                        ? 'Tidak valid'
+                        : selected.gpsValid === true
+                          ? 'Valid'
+                          : '-'}
+                    </DetailField>
+                    <DetailField label="Kategori Submit">
+                      {selected.submissionCategory ?? '-'}
+                    </DetailField>
+                    {selected.equipmentNo ? (
+                      <DetailField label="Equipment">{selected.equipmentNo}</DetailField>
+                    ) : null}
+                    {selected.materialUsed ? (
+                      <DetailField label="Material">{selected.materialUsed}</DetailField>
+                    ) : null}
+                  </div>
+                </section>
+
+                {selected.remarks ? (
+                  <section className="rounded-[1.25rem] bg-[#f3f9fd] p-4">
+                    <p className="text-[10px] font-black tracking-[0.12em] text-[#486275] uppercase">
+                      Remarks
                     </p>
-                  </div>
+                    <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-[#082033]">
+                      {selected.remarks}
+                    </p>
+                  </section>
+                ) : null}
+
+                <div className="sticky bottom-0 -mx-4 bg-white/95 px-4 pt-2 pb-1 backdrop-blur-sm sm:-mx-5 sm:px-5">
+                  <Button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    className="h-11 w-full rounded-xl"
+                  >
+                    Tutup
+                  </Button>
                 </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Activity Code</p>
-                    <p className="mt-1 text-sm text-[#082033]">{selected.activityCode ?? "-"}</p>
-                  </div>
-                  <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Source</p>
-                    <p className="mt-1 text-sm text-[#082033]">{selected.sourceMode}</p>
-                  </div>
-                  <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Unit</p>
-                    <p className="mt-1 text-sm text-[#082033]">{selected.unitNumber ?? "-"}</p>
-                  </div>
-                  <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Priority</p>
-                    <p className="mt-1 text-sm text-[#082033]">{selected.priority ?? "-"}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1rem] bg-[#fff8e8] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#8a5a00]">Waktu Mulai</p>
-                  <p className="mt-1 text-sm text-[#082033]">{formatTime(selected.startTime)}</p>
-                </div>
-                <div className="rounded-[1rem] bg-[#fff8e8] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#8a5a00]">Waktu Selesai</p>
-                  <p className="mt-1 text-sm text-[#082033]">{formatTime(selected.endTime)}</p>
-                </div>
-              </div>
-
-              <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Durasi</p>
-                <p className="mt-1 text-sm text-[#082033]">{selected.durationLabel}</p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Points Awarded</p>
-                  <p className="mt-1 text-sm text-[#082033]">{selected.pointsAwarded}</p>
-                </div>
-                <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Penalty</p>
-                  <p className="mt-1 text-sm text-[#082033]">{selected.penaltyDeducted}</p>
-                </div>
-              </div>
-
-              <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Library Activity</p>
-                <p className="mt-1 text-sm text-[#082033]">{selected.libraryName ?? "-"}</p>
-              </div>
-
-              <div className="rounded-[1rem] bg-[#f6fbff] p-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">GPS</p>
-                <p className="mt-1 text-sm text-[#082033]">
-                  {selected.gpsValid === false ? "Tidak valid" : selected.gpsValid === true ? "Valid" : "-"}
-                </p>
-              </div>
-
-              {selected.remarks ? (
-                <div className="rounded-[1rem] bg-[#f6fbff] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Remarks</p>
-                  <p className="mt-1 text-sm text-[#082033]">{selected.remarks}</p>
-                </div>
-              ) : null}
-
-              {selected.photoCount > 0 ? (
-                <div className="rounded-[1rem] bg-[#eef6fb] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Photo Count</p>
-                  <p className="mt-1 text-sm text-[#082033]">{selected.photoCount} foto</p>
-                </div>
-              ) : null}
-
-              <div className="flex justify-end">
-                <Button type="button" onClick={() => setSelected(null)}>
-                  Tutup
-                </Button>
               </div>
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(previewPhoto)} onOpenChange={(open) => !open && setPreviewPhoto(null)}>
+        <DialogContent
+          className="w-[calc(100vw-1rem)] max-w-3xl gap-3 rounded-[1.25rem] bg-[#071b27] p-3 text-white [&_[data-slot=dialog-close]]:flex [&_[data-slot=dialog-close]]:size-10 [&_[data-slot=dialog-close]]:items-center [&_[data-slot=dialog-close]]:justify-center [&_[data-slot=dialog-close]]:text-white"
+          showCloseButton={true}
+        >
+          <DialogHeader className="pr-12 text-left">
+            <DialogTitle className="text-base text-white">Preview Evidence</DialogTitle>
+            <DialogDescription className="text-white/70">
+              {previewPhoto?.caption || 'Foto activity'}
+            </DialogDescription>
+          </DialogHeader>
+          {previewPhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewPhoto.url}
+              alt={previewPhoto.caption || 'Preview evidence activity'}
+              className="max-h-[75dvh] w-full rounded-[0.9rem] bg-black/20 object-contain ring-1 ring-white/15"
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </>
-  );
+  )
 }

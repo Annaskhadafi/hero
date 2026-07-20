@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Copy, Download, Edit, FileText, Trash2, Users, MapPin } from 'lucide-react'
+import { Copy, Download, Edit, FileText, FileSpreadsheet, Trash2, Users, MapPin } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 
 import { deleteQuotation } from '@/app/actions/service360'
@@ -73,6 +73,11 @@ function QuotationRowActions({ row, onDeleted }: { row: QuotationSummaryRow; onD
           <Download className="h-4 w-4 text-teal-600" />
         </Button>
       </Link>
+      <a href={`/api/service360/quotation-excel/${row.id}`}>
+        <Button variant="outline" size="icon" className="h-8 w-8" title="Export Excel">
+          <FileSpreadsheet className="h-4 w-4 text-green-600" />
+        </Button>
+      </a>
       <Link href={`/dashboard/360-service/quotations/${row.id}/edit`}>
         <Button variant="outline" size="icon" className="h-8 w-8" title="Edit">
           <Edit className="h-4 w-4 text-blue-600" />

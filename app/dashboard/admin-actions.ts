@@ -3567,6 +3567,29 @@ async function updateLegacyEntityForSubmissionDecision(params: {
           .where(eq(timesheetSchedulingPlansV2.id, plan.id))
       }
     }
+
+    // EWH: Recalculate EWH for all SPL participants on approval/status change
+    try {
+      const [splData] = await params.tx
+        .select({ siteId: overtimeCommandLetters.siteId, workDate: overtimeCommandLetters.workDate })
+        .from(overtimeCommandLetters)
+        .where(eq(overtimeCommandLetters.id, legacyRecordId))
+        .limit(1)
+      if (splData) {
+        const parts = await params.tx
+          .select({ employeeId: overtimeCommandLetterParticipants.employeeId })
+          .from(overtimeCommandLetterParticipants)
+          .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, legacyRecordId))
+
+        const { recalculateEwhForEmployee } = await import('@/app/dashboard/ewh/actions')
+        await Promise.allSettled(
+          parts.map((p) => recalculateEwhForEmployee(p.employeeId, splData.siteId, splData.workDate))
+        )
+      }
+    } catch (ewhErr) {
+      console.error('[EWH] Recalculate after SPL approval failed:', ewhErr)
+    }
+
     return
   }
 

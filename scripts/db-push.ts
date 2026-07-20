@@ -15,9 +15,10 @@ p.stdout.on("data", (data: Buffer) => {
   const output = data.toString();
 
   const createColumnPrompt = output.includes("create column") && output.includes("rename column");
+  const createTablePrompt = output.includes("table created or renamed from another table");
 
-  if (createColumnPrompt) {
-    // Default already "create column", just press Enter
+  if (createColumnPrompt || createTablePrompt) {
+    // Default already "create table" or "create column", just press Enter
     p.stdin.write("\r");
     return;
   }

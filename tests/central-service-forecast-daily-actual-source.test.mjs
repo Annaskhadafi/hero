@@ -35,6 +35,8 @@ test("daily actual dialog supports outstanding and remark-only rows", () => {
   assert.match(dailySource, /<SelectItem value="Invoice">Invoice<\/SelectItem>/);
   assert.match(dailySource, /<SelectItem value="Cancel">Cancel<\/SelectItem>/);
   assert.match(dailySource, /<Label className="text-xs">No PO<\/Label>/);
+  assert.match(dailySource, /\['PO Release', 'Invoice'\]\.includes\(selectedStatus\)/);
+  assert.match(dailySource, /\['PO Release', 'Invoice'\]\.includes\(itemStatus\)/);
   assert.match(dailySource, /invoiceNumber: poNumber/);
   assert.match(dailySource, /const hasPayload =\s*amtIdr > 0 \|\|\s*String\(actualsForm\[remarkKey\]/);
   assert.match(dailySource, /jobCode: cat === 'Outstanding' \? actualsForm\[sectionKey\] : ''/);
@@ -47,4 +49,13 @@ test("daily actual dialog supports outstanding and remark-only rows", () => {
   assert.match(dailySource, /a\.invoiceNumber/);
   assert.match(dailySource, /formatStatusDoc\(entry\.status, entry\.poNumber\)/);
   assert.match(dailySource, /os\.hasData \? os\.section : '—'/);
+});
+
+test("daily update search includes saved and SAP PO numbers", () => {
+  const dailySource = read("app/dashboard/central-service/forecast/daily/client-page.tsx");
+
+  assert.match(dailySource, /wrapper\.actuals\?\.some\(\(actual: any\) => actual\.invoiceNumber\?\.toLowerCase\(\)\.includes\(query\)\)/);
+  assert.match(dailySource, /r\.poNo\?\.toLowerCase\(\)\.includes\(q\)/);
+  assert.match(dailySource, /Search customer \/ No PO\.\.\./);
+  assert.match(dailySource, /Search billing, material, No PO\.\.\./);
 });

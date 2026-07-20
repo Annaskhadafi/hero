@@ -27,6 +27,12 @@ function badgeClass(status: string) {
   return 'border-0 bg-amber-100 text-amber-900'
 }
 
+function statusLabel(row: MobileSplHistoryRow) {
+  return row.status === 'submitted' && row.progressPercent > 0
+    ? 'Submitted, waiting approval'
+    : row.status
+}
+
 export function MobileSplHistory({
   rows,
   activeOnly = false,
@@ -92,7 +98,7 @@ export function MobileSplHistory({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge className={badgeClass(row.status)}>{row.status}</Badge>
+              <Badge className={badgeClass(row.status)}>{statusLabel(row)}</Badge>
               <ChevronDown className="size-4 text-[#486275] transition group-open:rotate-180" />
             </div>
           </summary>
@@ -115,7 +121,7 @@ export function MobileSplHistory({
                 {row.status === 'draft' ? 'menunggu submit' : 'submitted'}
               </li>
               <li className="flex items-center gap-2">
-                <FileCheck2 className="size-4" /> Status saat ini: {row.status}
+                <FileCheck2 className="size-4" /> Status saat ini: {statusLabel(row)}
               </li>
               {row.status === 'submitted' ? (
                 <li className="flex items-center gap-2">

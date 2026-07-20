@@ -127,11 +127,12 @@ export function DailyClientPage({
   const filteredItems = React.useMemo(() => {
     return initialItems.filter((wrapper) => {
       if (wrapper.period.id.toString() !== selectedPeriodId) return false
+      const query = customerFilter.trim().toLowerCase()
       if (
-        customerFilter &&
-        !wrapper.item.customer.toLowerCase().includes(customerFilter.toLowerCase())
-      )
-        return false
+        query &&
+        !wrapper.item.customer.toLowerCase().includes(query) &&
+        !wrapper.actuals?.some((actual: any) => actual.invoiceNumber?.toLowerCase().includes(query))
+      ) return false
       return true
     })
   }, [initialItems, selectedPeriodId, customerFilter])
@@ -342,7 +343,9 @@ export function DailyClientPage({
         const existingId = editingActualIds[cat]
         const amtIdr = Number(actualsForm[idrKey])
         const itemStatus = normalizeStatusDoc(String(actualsForm[statusKey] || '-'))
-        const poNumber = itemStatus === 'PO Release' ? String(actualsForm[poKey] || '').trim() : ''
+        const poNumber = ['PO Release', 'Invoice'].includes(itemStatus)
+          ? String(actualsForm[poKey] || '').trim()
+          : ''
         const hasPayload =
           amtIdr > 0 ||
           String(actualsForm[remarkKey] || '').trim().length > 0 ||
@@ -511,7 +514,8 @@ export function DailyClientPage({
         if (
           !r.billingNo?.toLowerCase().includes(q) &&
           !r.materialNo?.toLowerCase().includes(q) &&
-          !r.customerName?.toLowerCase().includes(q)
+          !r.customerName?.toLowerCase().includes(q) &&
+          !r.poNo?.toLowerCase().includes(q)
         )
           return false
       }
@@ -610,7 +614,7 @@ export function DailyClientPage({
             </Select>
           </div>
           <Input
-            placeholder="Filter Customer..."
+            placeholder="Search customer / No PO..."
             value={customerFilter}
             onChange={(e) => setCustomerFilter(e.target.value)}
             className="h-9 w-[200px]"
@@ -1199,7 +1203,7 @@ export function DailyClientPage({
             </div>
             <div className="flex flex-wrap items-center gap-3 border-b p-4">
               <Input
-                placeholder="Search billing no, material..."
+                placeholder="Search billing, material, No PO..."
                 className="h-8 w-[200px] text-xs"
                 value={sapSearch}
                 onChange={(e) => setSapSearch(e.target.value)}
@@ -1480,7 +1484,9 @@ export function DailyClientPage({
                           setActualsForm({
                             ...actualsForm,
                             [statusKey]: v,
-                            [poKey]: v === 'PO Release' ? actualsForm[poKey] : '',
+                            [poKey]: ['PO Release', 'Invoice'].includes(v)
+                              ? actualsForm[poKey]
+                              : '',
                           })
                         }
                       >
@@ -1516,7 +1522,7 @@ export function DailyClientPage({
                       </div>
                     )}
                   </div>
-                  {selectedStatus === 'PO Release' && (
+                  {['PO Release', 'Invoice'].includes(selectedStatus) && (
                     <div className="mt-3 space-y-1">
                       <Label className="text-xs">No PO</Label>
                       <Input

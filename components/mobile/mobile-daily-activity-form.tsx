@@ -247,28 +247,21 @@ const initialGeo: GeoState = {
 async function uploadActivityPhoto(file: File) {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
-  const ticketResponse = await fetch('/api/uploads/activity-presign', {
+  const formData = new FormData()
+  formData.append('file', file)
+  const uploadResponse = await fetch('/api/uploads/activity-presign', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+    body: formData,
   })
-  const ticket = (await ticketResponse.json()) as {
-    uploadUrl?: string
+  const result = (await uploadResponse.json()) as {
     url?: string
     error?: string
   }
-  if (!ticketResponse.ok || !ticket.uploadUrl || !ticket.url) {
-    throw new Error(ticket.error || 'Gagal menyiapkan upload evidence.')
+  if (!uploadResponse.ok || !result.url) {
+    throw new Error(result.error || `Gagal upload evidence ${file.name}.`)
   }
 
-  const uploadResponse = await fetch(ticket.uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type },
-    body: file,
-  })
-  if (!uploadResponse.ok) throw new Error(`Gagal upload evidence ${file.name}.`)
-
-  return ticket.url
+  return result.url
 }
 
 async function prepareEvidence(
@@ -330,6 +323,11 @@ function shiftDateTimeLocalValue(value: string, minutes: number) {
 
   parsed.setMinutes(parsed.getMinutes() + minutes)
   return toDateTimeLocalValue(parsed)
+}
+
+function alignDateTimeToReference(value: string, reference: string) {
+  const time = value.match(/^\d{4}-\d{2}-\d{2}(T.+)$/)?.[1]
+  return time ? `${reference.slice(0, 10)}${time}` : reference
 }
 
 function getDurationMinutes(startTime: string, endTime: string) {
@@ -650,8 +648,16 @@ export function MobileDailyActivityForm({
     setCustomActivityName(draft.customActivityName ?? '')
     setCustomActivityDescription(draft.customActivityDescription ?? '')
     setEquipmentNo(draft.equipmentNo ?? '')
-    setStartTime(draft.startTime || defaultStartTime)
-    setEndTime(draft.endTime || defaultEndTime)
+    setStartTime(
+      checklistContext
+        ? alignDateTimeToReference(draft.startTime, defaultStartTime)
+        : draft.startTime || defaultStartTime
+    )
+    setEndTime(
+      checklistContext
+        ? alignDateTimeToReference(draft.endTime, defaultEndTime)
+        : draft.endTime || defaultEndTime
+    )
     setMaterialUsed(draft.materialUsed ?? '')
     setNotes(draft.notes ?? '')
     setManualLocation(draft.manualLocation ?? '')
@@ -673,8 +679,12 @@ export function MobileDailyActivityForm({
                   isChecked: item.isChecked,
                   unitNumber: item.unitNumber,
                   remark: item.remark,
-                  startedAt: item.startedAt,
-                  endedAt: item.endedAt,
+                  startedAt: checklistContext
+                    ? alignDateTimeToReference(item.startedAt, defaultStartTime)
+                    : item.startedAt,
+                  endedAt: checklistContext
+                    ? alignDateTimeToReference(item.endedAt, defaultEndTime)
+                    : item.endedAt,
                   actualPoints: `${item.actualPoints}`,
                 },
               ],
@@ -683,7 +693,7 @@ export function MobileDailyActivityForm({
         ) as Record<number, RouteItemState>
       )
     }
-  }, [defaultEndTime, defaultStartTime, queuedDraftKey])
+  }, [checklistContext, defaultEndTime, defaultStartTime, queuedDraftKey])
 
   useEffect(() => {
     if (!checklistContext) {
@@ -895,6 +905,13 @@ export function MobileDailyActivityForm({
   }, [draftPayload])
 
   function validatePayload() {
+    if (
+      checklistContext?.overtimeCommandLetterId &&
+      startTime.slice(0, 10) !== defaultStartTime.slice(0, 10)
+    ) {
+      return 'Tanggal aktivitas tidak sesuai dengan jadwal SPL.'
+    }
+
     if (
       checklistContext &&
       routeSessionItems.length > 0 &&
@@ -1216,7 +1233,9 @@ export function MobileDailyActivityForm({
       }
 
       window.setTimeout(() => {
-        router.push('/mobile/activity?submitted=1')
+        router.push(
+          `/mobile/activity?submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
+        )
         router.refresh()
       }, 1200)
     } catch (error) {
