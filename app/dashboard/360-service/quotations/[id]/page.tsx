@@ -136,6 +136,36 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return new Date(dateStr).getFullYear().toString();
   };
 
+  const BAST_MAX_ROWS_WITH_SIGNATURE = 10
+  const bastClosing = (
+    <>
+      <div className="leading-relaxed mb-10 mt-10">
+        Demikian Berita Acara ini dibuat dan ditanda tangani oleh kedua belah pihak.<br/>
+        Sebagai dasar lampiran invoice untuk tagihan rental Bulan <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span><br/>
+        <span className="font-bold">Reff PO {quotation.poNumber || '-'}</span>
+      </div>
+
+      <div className="flex justify-between w-full mt-auto pt-10">
+        <div className="flex flex-col items-center w-[250px] text-center">
+          <p className="mb-20">Yang menerima,<br/>Untuk dan Atas Nama<br/><span className="font-bold">{quotation.customer?.customerName || '-'}</span></p>
+          <div className="border-b border-slate-800 w-full mb-1 border-dashed"></div>
+          <p className="font-bold">( {quotation.attn || "Nama Tanda tangan & Cap"} )</p>
+        </div>
+        <div className="flex flex-col items-center w-[250px] text-center">
+          <p className="mb-20">Yang menyerahkan,<br/>Untuk dan Atas Nama<br/><span className="font-bold">PT. Chitra Paratama</span></p>
+          <div className="border-b border-slate-800 w-full mb-1 border-dashed relative">
+            {signatureUrl && (
+              <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
+                <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+              </div>
+            )}
+          </div>
+          <p className="font-bold">( {quotation.fromName || "Nama Tanda tangan & Cap"} )</p>
+        </div>
+      </div>
+    </>
+  )
+
 
   // Pagination: A4 page capacity estimates
   // First page has a tall header so fewer items fit
@@ -604,10 +634,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 </table>
               </div>
 
+              {rentalItems.length <= BAST_MAX_ROWS_WITH_SIGNATURE && bastClosing}
             </div>
             </div>
 
-          {/* Keep the BAST closing text and signatures off the table page. */}
+          {rentalItems.length > BAST_MAX_ROWS_WITH_SIGNATURE && (
             <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             <div className="absolute inset-0 z-0 pointer-events-none">
               <Image
@@ -619,32 +650,10 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             </div>
 
             <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
-              <div className="leading-relaxed mb-10 mt-10">
-                Demikian Berita Acara ini dibuat dan ditanda tangani oleh kedua belah pihak.<br/>
-                Sebagai dasar lampiran invoice untuk tagihan rental Bulan <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span><br/>
-                <span className="font-bold">Reff PO {quotation.poNumber || '-'}</span>
-              </div>
-
-              <div className="flex justify-between w-full mt-auto pt-10">
-                <div className="flex flex-col items-center w-[250px] text-center">
-                  <p className="mb-20">Yang menerima,<br/>Untuk dan Atas Nama<br/><span className="font-bold">{quotation.customer?.customerName || '-'}</span></p>
-                  <div className="border-b border-slate-800 w-full mb-1 border-dashed"></div>
-                  <p className="font-bold">( {quotation.attn || "Nama Tanda tangan & Cap"} )</p>
-                </div>
-                <div className="flex flex-col items-center w-[250px] text-center">
-                  <p className="mb-20">Yang menyerahkan,<br/>Untuk dan Atas Nama<br/><span className="font-bold">PT. Chitra Paratama</span></p>
-                  <div className="border-b border-slate-800 w-full mb-1 border-dashed relative">
-                    {signatureUrl && (
-                      <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
-                        <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="font-bold">( {quotation.fromName || "Nama Tanda tangan & Cap"} )</p>
-                </div>
-              </div>
+              {bastClosing}
             </div>
             </div>
+          )}
           </>
         )}
       </div>

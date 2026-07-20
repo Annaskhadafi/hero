@@ -659,7 +659,7 @@ const router = useRouter()
         toast.success(isEdit ? "Quotation updated" : "Quotation created");
         setIsSubmitting(false);
         setLoading(false);
-        router.push(`/dashboard/360-service/quotations/${res.id}?download=true`);
+        router.push(`/dashboard/360-service/quotations/${res.id}`);
       } else {
         toast.error("Error saving quotation: Unknown error");
         setIsSubmitting(false);

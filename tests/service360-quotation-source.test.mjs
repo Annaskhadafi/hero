@@ -74,6 +74,25 @@ test('service 360 quotation list supports PO column and selected PDF summary', (
   assert.match(tableSource, /['"]Periode['"]/)
 })
 
+test('service 360 quotation only auto-downloads from the download button', () => {
+  const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
+  const previewSource = read('app/dashboard/360-service/quotations/quotation-preview-dialog.tsx')
+  const tableSource = read('app/dashboard/360-service/quotations/quotations-summary-table.tsx')
+
+  assert.match(formSource, /router\.push\(`\/dashboard\/360-service\/quotations\/\$\{res\.id\}`\)/)
+  assert.doesNotMatch(formSource, /download=true/)
+  assert.doesNotMatch(previewSource, /download=true/)
+  assert.match(tableSource, /quotations\/\$\{row\.id\}\?download=true/)
+})
+
+test('service 360 BAST keeps closing and signatures on-page through 10 rows', () => {
+  const pageSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
+
+  assert.match(pageSource, /const BAST_MAX_ROWS_WITH_SIGNATURE = 10/)
+  assert.match(pageSource, /rentalItems\.length <= BAST_MAX_ROWS_WITH_SIGNATURE && bastClosing/)
+  assert.match(pageSource, /rentalItems\.length > BAST_MAX_ROWS_WITH_SIGNATURE && \(/)
+})
+
 test('service 360 quotation syncs Labour Cost after period and labour rows exist', () => {
   const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
   const actionSource = read('app/actions/service360.ts')
