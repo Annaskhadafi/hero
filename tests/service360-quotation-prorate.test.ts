@@ -14,4 +14,9 @@ describe('quotation backup prorate', () => {
   it('uses 31 days when the period starts in a 31-day month', () => {
     expect(calculateStartMonthProrateFactor('2026-07-01', '2026-07-15')).toBeCloseTo(15 / 31)
   })
+
+  it('keeps extra and backup dates on the main start month divisor', () => {
+    expect(calculateStartMonthProrateFactor('2026-07-01', '2026-07-01', '2026-06-29')).toBeCloseTo(1 / 30)
+    expect(calculateStartMonthProrateFactor('2026-07-01', '2026-07-31', '2026-06-29')).toBeCloseTo(31 / 30)
+  })
 })

@@ -9,14 +9,19 @@ function parseDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-export function calculateStartMonthProrateFactor(start?: string | null, end?: string | null) {
+export function calculateStartMonthProrateFactor(
+  start?: string | null,
+  end?: string | null,
+  billingStart = start,
+) {
   const periodStart = parseDate(start)
   const periodEnd = parseDate(end)
-  if (!periodStart || !periodEnd || periodEnd < periodStart) return 0
+  const billingPeriodStart = parseDate(billingStart)
+  if (!periodStart || !periodEnd || !billingPeriodStart || periodEnd < periodStart) return 0
 
   const daysInStartMonth = new Date(Date.UTC(
-    periodStart.getUTCFullYear(),
-    periodStart.getUTCMonth() + 1,
+    billingPeriodStart.getUTCFullYear(),
+    billingPeriodStart.getUTCMonth() + 1,
     0,
   )).getUTCDate()
   const inclusiveDays = (periodEnd.getTime() - periodStart.getTime()) / DAY_MS + 1

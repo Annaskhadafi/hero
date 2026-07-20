@@ -72,6 +72,23 @@ test('service 360 quotation list supports PO column and selected PDF summary', (
   assert.match(tableSource, /['"]Customer['"]/)
   assert.match(tableSource, /['"]Total Amount['"]/)
   assert.match(tableSource, /['"]Periode['"]/)
+  assert.match(pageSource, /totalAmount: grandTotal/)
+  assert.match(pageSource, /subTotal: discountedSubTotal/)
+})
+
+test('service 360 quotation uses the main start month for extra and backup prorate', () => {
+  const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
+  const printSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
+
+  assert.match(formSource, /range\.start, range\.end, item\.startDate \|\| range\.start/)
+  assert.match(formSource, /item\.backupEndDate, item\.startDate \|\| item\.backupStartDate/)
+  assert.match(formSource, />GRAND TOTAL<\/span>/)
+  assert.match(formSource, /if \(!v\) setValue\("discountValue", 0\)/)
+  assert.match(printSource, /billingStart \|\| item\.quotationItem\.backupStartDate/)
+  assert.match(printSource, />Grand Total<\/div>/)
+  assert.match(printSource, /const hasDiscount = Boolean\(quotation\.discountType\) && Number\(quotation\.discountValue\) > 0/)
+  assert.match(printSource, /\{hasDiscount && \([\s\S]*?Total Sebelum VAT/)
+  assert.match(printSource, /quotationTotals\.grandTotal/)
 })
 
 test('service 360 quotation only auto-downloads from the download button', () => {

@@ -541,7 +541,7 @@ export async function createQuotation(data: any) {
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
     discountType: discountType || null,
-    discountValue: discountValue ?? 0,
+    discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
   }).returning()
@@ -606,7 +606,7 @@ export async function updateQuotation(id: number, data: any) {
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
     discountType: discountType || null,
-    discountValue: discountValue ?? 0,
+    discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
     updatedAt: new Date()

@@ -7,6 +7,7 @@ import { PrintButton } from "./print-button"
 import { Suspense } from "react"
 import { resolveUploadUrl } from "@/lib/s3-storage"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
+import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 function abbreviatePeriod(period: string | null) {
@@ -52,6 +53,14 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   if (!quotation) {
     return notFound()
   }
+
+  const quotationTotals = calculateQuotationTotal(
+    Number(quotation.subTotal),
+    Number(quotation.taxRate),
+    quotation.discountType,
+    Number(quotation.discountValue),
+  )
+  const hasDiscount = Boolean(quotation.discountType) && Number(quotation.discountValue) > 0
 
   const signatureUrl = quotation.fromSignatureUrl ? resolveUploadUrl(quotation.fromSignatureUrl) : null;
 
@@ -102,9 +111,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   rentalItems.forEach(item => {
     let backupProrate = 0;
     if (item.quotationItem.isBackup) {
+      const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
       backupProrate = calculateStartMonthProrateFactor(
         item.quotationItem.backupStartDate,
         item.quotationItem.backupEndDate,
+        billingStart || item.quotationItem.backupStartDate,
       ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
     }
     const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
@@ -374,9 +385,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
                           let backupProrate = 0;
                           if (item.quotationItem.isBackup && isProrateEligible) {
+                            const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
                             backupProrate = calculateStartMonthProrateFactor(
                               item.quotationItem.backupStartDate,
                               item.quotationItem.backupEndDate,
+                              billingStart || item.quotationItem.backupStartDate,
                             ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
                           }
                           const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
@@ -491,25 +504,27 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           <span>{Number(quotation.subTotal).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                         </div>
                       </div>
-                      {Number(quotation.discountValue) > 0 && (
+                      {hasDiscount && (
                         <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
                           <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">Discount{quotation.discountType === 'percent' ? ` (${Number(quotation.discountValue)}%)` : ''}</div>
-                          <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>-{Number(quotation.discountType === 'percent' ? Number(quotation.subTotal) * Number(quotation.discountValue) / 100 : quotation.discountValue).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
+                          <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>-{quotationTotals.discountAmount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
+                        </div>
+                      )}
+                      {hasDiscount && (
+                        <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
+                          <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">Total Sebelum VAT</div>
+                          <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>{quotationTotals.discountedSubTotal.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
                         </div>
                       )}
                       <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
-                        <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">Total Sebelum VAT</div>
-                        <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>{Math.max(0, Number(quotation.subTotal) - Number(quotation.discountType === 'percent' ? Number(quotation.subTotal) * Number(quotation.discountValue) / 100 : quotation.discountValue)).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
-                      </div>
-                      <div className="flex items-center text-slate-600 py-1.5 border-b border-slate-200/60">
                         <div className="w-[100px] text-right pr-4 text-[8pt] font-bold uppercase tracking-wider text-slate-500">VAT ({Number(quotation.taxRate)}%)</div>
-                        <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>{Number(quotation.taxAmount).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
+                        <div className="flex-1 flex justify-between font-semibold text-[9pt]"><span className="text-slate-400">Rp</span><span>{quotationTotals.taxAmount.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>
                       </div>
                       <div className="flex items-center bg-teal-600 text-white py-2.5 mt-3 rounded-lg px-3 shadow-md shadow-teal-600/20">
-                        <div className="w-[90px] text-right pr-3 text-[9pt] font-black uppercase tracking-widest text-teal-50">Total After Discount</div>
+                        <div className="w-[90px] text-right pr-3 text-[9pt] font-black uppercase tracking-widest text-teal-50">Grand Total</div>
                         <div className="flex-1 flex justify-between font-black text-[11pt]">
                           <span className="text-teal-200">Rp</span>
-                          <span>{Number(quotation.totalAmount).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          <span>{quotationTotals.grandTotal.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                         </div>
                       </div>
                     </div>

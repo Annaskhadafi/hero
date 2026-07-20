@@ -34,6 +34,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
+import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
 
 const itemSchema = z.object({
   id: z.number(),
@@ -484,7 +485,7 @@ const router = useRouter()
       if (item.extraDateRanges && item.extraDateRanges.length > 0) {
         item.extraDateRanges.forEach(range => {
           if (range.start && range.end) {
-            totalProrate += calculateStartMonthProrateFactor(range.start, range.end) * item.price * item.quantity
+            totalProrate += calculateStartMonthProrateFactor(range.start, range.end, item.startDate || range.start) * item.price * item.quantity
           }
         })
       }
@@ -495,7 +496,7 @@ const router = useRouter()
 
   const getBackupProrate = (item: SelectedItem) => {
     if (isProrateEligible(item.category) && item.isBackup) {
-      return calculateStartMonthProrateFactor(item.backupStartDate, item.backupEndDate)
+      return calculateStartMonthProrateFactor(item.backupStartDate, item.backupEndDate, item.startDate || item.backupStartDate)
         * (item.backupPrice || 0) * item.quantity
     }
     return 0
@@ -633,12 +634,12 @@ const router = useRouter()
     try {
       // Calculate totals for the payload
       const calculatedSubTotal = data.items.reduce((acc, item) => acc + getRowSubtotal(item), 0);
-      const calculatedDiscount = data.discountType === 'percent'
-        ? calculatedSubTotal * (data.discountValue || 0) / 100
-        : (data.discountValue || 0);
-      const discountedSubTotal = Math.max(0, calculatedSubTotal - calculatedDiscount);
-      const calculatedTaxAmount = (discountedSubTotal * data.taxRate) / 100;
-      const calculatedTotalAmount = discountedSubTotal + calculatedTaxAmount;
+      const { taxAmount: calculatedTaxAmount, grandTotal: calculatedTotalAmount } = calculateQuotationTotal(
+        calculatedSubTotal,
+        data.taxRate,
+        data.discountType,
+        data.discountValue,
+      );
       
       let finalProjectName = data.projectName;
       if (data.selectedProjectSite && data.selectedProjectSite !== "manual") {
@@ -650,6 +651,7 @@ const router = useRouter()
 
       const payload = {
         ...data,
+        discountValue: data.discountType ? data.discountValue : 0,
         projectName: finalProjectName,
         status: isDraft ? 'Draft' : 'Sent',
         poPeriod: (data.poPeriodStart && data.poPeriodEnd) ? `${data.poPeriodStart} - ${data.poPeriodEnd}` : null,
@@ -708,10 +710,12 @@ const router = useRouter()
   };
 
   const subTotal = formItems.reduce((acc, item) => acc + getRowSubtotal(item), 0)
-  const discountAmount = discountType === 'percent' ? subTotal * discountValue / 100 : discountValue
-  const discountedSubTotal = Math.max(0, subTotal - discountAmount)
-  const taxAmount = (discountedSubTotal * taxRate) / 100
-  const grandTotal = discountedSubTotal + taxAmount
+  const { discountAmount, discountedSubTotal, taxAmount, grandTotal } = calculateQuotationTotal(
+    subTotal,
+    taxRate,
+    discountType,
+    discountValue,
+  )
   const lineItemColumnCount = 7 + (showLevel ? 1 : 0)
   return (
     <div className="w-full pb-20">
@@ -851,7 +855,10 @@ const router = useRouter()
                     <label className="text-xs leading-tight">Show<br/>Level<br/>Column</label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Switch checked={!!discountType} onCheckedChange={(v) => setValue("discountType", v ? "percent" : null)} />
+                    <Switch checked={!!discountType} onCheckedChange={(v) => {
+                      setValue("discountType", v ? "percent" : null)
+                      if (!v) setValue("discountValue", 0)
+                    }} />
                     <label className="text-xs leading-tight">Discount</label>
                     {discountType && <select className="h-8 rounded border px-1 text-xs" value={discountType} onChange={(e) => setValue("discountType", e.target.value as "percent" | "fixed")}><option value="percent">%</option><option value="fixed">Fixed</option></select>}
                     {discountType && <Input className="h-8 w-24" type="number" min="0" {...register("discountValue", { valueAsNumber: true })} />}
@@ -1296,7 +1303,7 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                   <span className="font-medium">{taxAmount.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
                 <div className="border-t pt-3 flex justify-between text-lg text-primary">
-                  <span className="font-bold">TOTAL AFTER DISCOUNT</span>
+                  <span className="font-bold">GRAND TOTAL</span>
                   <span className="font-bold">{grandTotal.toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
