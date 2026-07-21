@@ -122,6 +122,8 @@ export async function getWarehouseRepairInbound() {
         storageLocation: warehouseRepairItems.storageLocation,
         storageLocationDesc: warehouseRepairItems.storageLocationDesc,
         quantity: warehouseRepairInbound.quantity,
+        targetSLoc: warehouseRepairInbound.targetSLoc,
+        targetSLocDesc: warehouseRepairInbound.targetSLocDesc,
         note: warehouseRepairInbound.note,
         createdAt: warehouseRepairInbound.createdAt,
       })
@@ -329,6 +331,9 @@ export async function deleteWarehouseRepairItem(id: number) {
 // 14. Create Inbound
 export async function createWarehouseRepairInbound(input: any) {
   try {
+    const targetSLoc = input.targetSLoc || ""
+    const targetSLocDesc = input.targetSLocDesc || ""
+
     await db.transaction(async (tx) => {
       const [item] = await tx.select().from(warehouseRepairItems).where(eq(warehouseRepairItems.id, input.itemId)).limit(1)
       if (!item) throw new Error("Barang tidak ditemukan")
@@ -340,15 +345,23 @@ export async function createWarehouseRepairInbound(input: any) {
         transactionDate: input.transactionDate,
         itemId: input.itemId,
         quantity: input.quantity,
+        targetSLoc,
+        targetSLocDesc,
         note: input.note || "",
       })
 
+      const updateData: any = {
+        stock: item.stock + input.quantity,
+        updatedAt: new Date(),
+      }
+      if (input.updateItemLocation && targetSLoc) {
+        updateData.storageLocation = targetSLoc
+        updateData.storageLocationDesc = targetSLocDesc
+      }
+
       await tx
         .update(warehouseRepairItems)
-        .set({
-          stock: item.stock + input.quantity,
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(warehouseRepairItems.id, input.itemId))
     })
     revalidateAll()

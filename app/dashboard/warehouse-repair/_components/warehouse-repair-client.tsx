@@ -664,6 +664,9 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
     transactionDate: fmtDate(row?.transactionDate ?? today()),
     itemId: row?.itemId ? String(row.itemId) : "",
     quantity: Number(row?.quantity ?? 1),
+    targetSLoc: row?.targetSLoc || "RS01",
+    targetSLocDesc: row?.targetSLocDesc || "Balikpapan",
+    updateItemLocation: false,
     outboundType: row?.outboundType ?? "Pemakaian Internal",
     destinationSLoc: row?.destinationSLoc ?? "RS02",
     destinationSLocDesc: row?.destinationSLocDesc ?? "Samarinda",
@@ -671,8 +674,12 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
   })
   const selectedItem = items.find((i) => String(i.id) === String(form.itemId))
 
-  const handleSelectPreset = (code: string, desc: string) => {
-    setForm((f) => ({ ...f, destinationSLoc: code, destinationSLocDesc: desc }))
+  const handleSelectPreset = (code: string, desc: string, target: "in" | "out") => {
+    if (target === "in") {
+      setForm((f) => ({ ...f, targetSLoc: code, targetSLocDesc: desc }))
+    } else {
+      setForm((f) => ({ ...f, destinationSLoc: code, destinationSLocDesc: desc }))
+    }
   }
 
   const save = () => start(async () => {
@@ -680,6 +687,9 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
       transactionDate: form.transactionDate,
       itemId: Number(form.itemId),
       quantity: Number(form.quantity),
+      targetSLoc: form.targetSLoc,
+      targetSLocDesc: form.targetSLocDesc,
+      updateItemLocation: form.updateItemLocation,
       outboundType: form.outboundType,
       destinationSLoc: form.outboundType === "Stock Transfer" ? form.destinationSLoc : "",
       destinationSLocDesc: form.outboundType === "Stock Transfer" ? form.destinationSLocDesc : "",
@@ -706,9 +716,59 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
             <div className="grid grid-cols-2 gap-2 text-muted-foreground pt-1">
               <div><span className="font-medium">Category:</span> {selectedItem.typeName || "-"}</div>
               <div><span className="font-medium">Satuan:</span> {selectedItem.unitName || "-"}</div>
-              <div><span className="font-medium">S-Loc:</span> {selectedItem.storageLocation || "-"} ({selectedItem.storageLocationDesc || "-"})</div>
+              <div><span className="font-medium">S-Loc Utama:</span> {selectedItem.storageLocation || "-"} ({selectedItem.storageLocationDesc || "-"})</div>
               <div><span className="font-medium">Stok Saat Ini:</span> <Badge variant="outline" className="ml-1">{selectedItem.stock}</Badge></div>
             </div>
+          </div>
+        )}
+
+        {kind === "in" && (
+          <div className="col-span-full space-y-3 rounded-xl border border-emerald-200/70 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">S-Loc / Warehouse Penambahan Stok</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground">Preset S-Loc Warehouse</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESET_SLOCS.map((preset) => (
+                  <Button
+                    key={preset.code}
+                    type="button"
+                    variant={form.targetSLoc === preset.code ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7 px-2.5"
+                    onClick={() => handleSelectPreset(preset.code, preset.desc, "in")}
+                  >
+                    {preset.code} - {preset.desc}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="S-Loc Kode">
+                <Input
+                  value={form.targetSLoc}
+                  placeholder="Contoh: RS01"
+                  onChange={(e) => setForm((f) => ({ ...f, targetSLoc: e.target.value }))}
+                />
+              </Field>
+              <Field label="S-Loc Deskripsi">
+                <Input
+                  value={form.targetSLocDesc}
+                  placeholder="Contoh: Balikpapan Warehouse"
+                  onChange={(e) => setForm((f) => ({ ...f, targetSLocDesc: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={form.updateItemLocation}
+                onChange={(e) => setForm((f) => ({ ...f, updateItemLocation: e.target.checked }))}
+                className="rounded border-border"
+              />
+              Update lokasi utama barang ke S-Loc ini ({form.targetSLoc} - {form.targetSLocDesc})
+            </label>
           </div>
         )}
 
@@ -752,7 +812,7 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
                         variant={form.destinationSLoc === preset.code ? "default" : "outline"}
                         size="sm"
                         className="text-xs h-7 px-2.5"
-                        onClick={() => handleSelectPreset(preset.code, preset.desc)}
+                        onClick={() => handleSelectPreset(preset.code, preset.desc, "out")}
                       >
                         {preset.code} - {preset.desc}
                       </Button>

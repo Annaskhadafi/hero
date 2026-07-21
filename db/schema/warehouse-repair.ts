@@ -41,6 +41,8 @@ export const warehouseRepairInbound = pgTable("hero_warehouse_repair_inbound", {
   transactionDate: date("transaction_date").notNull(),
   itemId: integer("item_id").notNull().references(() => warehouseRepairItems.id, { onDelete: "cascade" }),
   quantity: integer("quantity").notNull(),
+  targetSLoc: text("target_sloc").notNull().default(""),
+  targetSLocDesc: text("target_sloc_desc").notNull().default(""),
   note: text("note").notNull().default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({ transactionNoIdx: uniqueIndex("hero_wr_inbound_no_idx").on(table.transactionNo) }))
