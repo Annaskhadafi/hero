@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react"
 import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { uploadFile } from "@/app/actions/upload"
-import { resolveUploadUrl } from "@/lib/s3-storage"
 
 import {
   createWarehouseRepairInbound,
@@ -37,6 +36,15 @@ import { TableMultiFilter } from "@/components/ui/table-multi-filter"
 import { Textarea } from "@/components/ui/textarea"
 
 type Mode = "overview" | "items" | "types" | "units" | "inbound" | "outbound" | "stock-report" | "inbound-report" | "outbound-report"
+function resolveClientPhotoUrl(url: string | null | undefined): string {
+  if (!url) return ""
+  const trimmed = url.trim()
+  if (trimmed.startsWith("blob:") || trimmed.startsWith("/api/uploads/")) return trimmed
+  const match = trimmed.match(/(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload)\/.+)$/)
+  if (match) return `/api/uploads/${match[1]}`
+  return trimmed
+}
+
 type Row = Record<string, any>
 type Props = { mode: Mode; data: { items: Row[]; types: Row[]; units: Row[]; inbound: Row[]; outbound: Row[]; metrics?: Record<string, number> } }
 type ActionResult = { success: boolean; error?: string }
@@ -138,7 +146,7 @@ function ViewDialog({
             <div className="relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/30 flex items-center justify-center">
               {!imgError ? (
                 <img
-                  src={resolveUploadUrl(row.photoUrl)}
+                  src={resolveClientPhotoUrl(row.photoUrl)}
                   alt={row.itemName || "Foto produk"}
                   className="h-full w-full object-contain"
                   onError={() => setImgError(true)}
@@ -260,7 +268,7 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
               {(previewUrl || form.photoUrl) && (
                 <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border bg-muted/20">
                   <img
-                    src={resolveUploadUrl(previewUrl || form.photoUrl)}
+                    src={resolveClientPhotoUrl(previewUrl || form.photoUrl)}
                     alt="Preview produk"
                     className="h-full w-full object-cover"
                     onError={() => console.error("Error loading preview:", previewUrl || form.photoUrl)}
