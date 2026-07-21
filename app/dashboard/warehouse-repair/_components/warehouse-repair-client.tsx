@@ -840,7 +840,6 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
             )}
           </div>
         )}
-
         <Field label="Jumlah (Qty)"><Input type="number" min={1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} /></Field>
         <Field label="Keterangan"><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan transaksi..." /></Field>
       </EnterpriseFormGrid>
@@ -848,13 +847,23 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
   )
 }
 
+const masterColumns = ["Kode", "Nama", "Status", "Aksi"]
+const inboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Tujuan", "Deskripsi S-Loc", "Qty", "Keterangan"]
+const outboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Asal", "Deskripsi S-Loc Asal", "Tipe Keluar", "S-Loc Tujuan", "Deskripsi S-Loc Tujuan", "Qty", "Keterangan"]
+
 function TransactionTable({ rows, items, title, kind, report = false }: { rows: Row[]; items: Row[]; title: string; kind: "in" | "out"; report?: boolean }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [bulkManifest, setBulkManifest] = useState<CargoManifestRecord | null>(null)
   const [bulkPdfOpen, setBulkPdfOpen] = useState(false)
   const [loadingBulk, startBulk] = useTransition()
 
-  const columns = report ? reportTrxColumns : kind === "out" ? ["Sel", ...trxColumns] : trxColumns
+  const baseColumns = kind === "in" ? inboundTrxColumns : outboundTrxColumns
+  const columns = report
+    ? baseColumns
+    : kind === "out"
+      ? ["Sel", ...baseColumns, "Aksi"]
+      : [...baseColumns, "Aksi"]
+
   const deleteAction = kind === "in" ? deleteWarehouseRepairInbound : deleteWarehouseRepairOutbound
   const itemOptions = useMemo(() => items.map((i) => ({ value: i.itemName, label: i.itemName })), [items])
 
@@ -886,22 +895,36 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
     })
   }
 
-  const detailLabels: Array<[string, string]> = [
-    ["transactionNo", "No Transaksi"],
-    ["date", "Tanggal"],
-    ["itemCode", "Kode Barang"],
-    ["materialDesc", "Material Desc"],
-    ["itemName", "Nama Barang"],
-    ["typeName", "Category/Jenis"],
-    ["unitName", "Satuan/UOM"],
-    ["storageLocation", "S-Loc"],
-    ["storageLocationDesc", "S-Loc Desc"],
-    ["quantity", "Qty"],
-    ["outboundType", "Tipe Keluar"],
-    ["destinationSLoc", "S-Loc Tujuan"],
-    ["destinationSLocDesc", "S-Loc Deskripsi Tujuan"],
-    ["note", "Keterangan"]
-  ]
+  const detailLabels: Array<[string, string]> = kind === "in"
+    ? [
+        ["transactionNo", "No Transaksi"],
+        ["date", "Tanggal"],
+        ["itemCode", "Kode Barang"],
+        ["materialDesc", "Material Desc"],
+        ["itemName", "Nama Barang"],
+        ["typeName", "Category/Jenis"],
+        ["unitName", "Satuan/UOM"],
+        ["targetSLoc", "S-Loc Tujuan"],
+        ["targetSLocDesc", "Deskripsi S-Loc Tujuan"],
+        ["quantity", "Qty"],
+        ["note", "Keterangan"],
+      ]
+    : [
+        ["transactionNo", "No Transaksi"],
+        ["date", "Tanggal"],
+        ["itemCode", "Kode Barang"],
+        ["materialDesc", "Material Desc"],
+        ["itemName", "Nama Barang"],
+        ["typeName", "Category/Jenis"],
+        ["unitName", "Satuan/UOM"],
+        ["storageLocation", "S-Loc Asal"],
+        ["storageLocationDesc", "Deskripsi S-Loc Asal"],
+        ["outboundType", "Tipe Keluar"],
+        ["destinationSLoc", "S-Loc Tujuan"],
+        ["destinationSLocDesc", "Deskripsi S-Loc Tujuan"],
+        ["quantity", "Qty"],
+        ["note", "Keterangan"],
+      ]
 
   return (
     <MinimalTableShell
@@ -944,22 +967,31 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="rounded border-border cursor-pointer" />
               </TableHead>
             )}
-            {columns.filter((c) => c !== "Sel").map((c) => (
+            {columns.filter((c) => c !== "Sel" && c !== "Aksi").map((c) => (
               <TableHead key={c}>{c}</TableHead>
             ))}
+            {!report && <TableHead>Aksi</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length ? (
             rows.map((r) => {
-              const detailRow = {
-                ...r,
-                date: fmtDate(r.transactionDate),
-                outboundType: r.outboundType || "Pemakaian Internal",
-                destinationSLoc: r.destinationSLoc || "-",
-                destinationSLocDesc: r.destinationSLocDesc || "-",
-                note: r.note || "-"
-              }
+              const detailRow = kind === "in"
+                ? {
+                    ...r,
+                    date: fmtDate(r.transactionDate),
+                    targetSLoc: r.targetSLoc || r.storageLocation || "-",
+                    targetSLocDesc: r.targetSLocDesc || r.storageLocationDesc || "-",
+                    note: r.note || "-",
+                  }
+                : {
+                    ...r,
+                    date: fmtDate(r.transactionDate),
+                    outboundType: r.outboundType || "Pemakaian Internal",
+                    destinationSLoc: r.destinationSLoc || "-",
+                    destinationSLocDesc: r.destinationSLocDesc || "-",
+                    note: r.note || "-",
+                  }
               const isSelected = selectedIds.includes(r.id)
               return (
                 <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""} className={isSelected ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}>
@@ -975,13 +1007,31 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
                   <TableCell>{r.itemName}</TableCell>
                   <TableCell>{r.typeName ?? "-"}</TableCell>
                   <TableCell>{r.unitName ?? "-"}</TableCell>
-                  <TableCell>{r.storageLocation ?? "-"}</TableCell>
-                  <TableCell>{r.storageLocationDesc ?? "-"}</TableCell>
-                  <TableCell>{r.quantity}</TableCell>
+                  
+                  {kind === "in" ? (
+                    <>
+                      <TableCell>{r.targetSLoc || r.storageLocation || "-"}</TableCell>
+                      <TableCell>{r.targetSLocDesc || r.storageLocationDesc || "-"}</TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell>{r.storageLocation || "-"}</TableCell>
+                      <TableCell>{r.storageLocationDesc || "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant={r.outboundType === "Stock Transfer" ? "default" : "outline"} className="text-[10px]">
+                          {r.outboundType || "Pemakaian Internal"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{r.destinationSLoc || "-"}</TableCell>
+                      <TableCell>{r.destinationSLocDesc || "-"}</TableCell>
+                    </>
+                  )}
+
+                  <TableCell className="font-semibold">{r.quantity}</TableCell>
                   <TableCell>{r.note || "-"}</TableCell>
                   {!report ? (
                     <TableCell>
-                      <TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} />
+                      <TransactionActions kind={kind} row={detailRow} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} />
                     </TableCell>
                   ) : null}
                 </TableRow>
