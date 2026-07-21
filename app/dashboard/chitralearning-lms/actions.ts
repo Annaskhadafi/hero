@@ -1234,7 +1234,8 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
     finalScore = course.gradingType === 'weighted' 
         ? Math.round((score * (course.pretestWeight || 0) / 100) + ((enrollment.posttestScore || 0) * (course.posttestWeight || 100) / 100))
         : (enrollment.posttestScore || 0);
-    passed = finalScore >= course.passingScore;
+    // ponytail: pretest doesn't count toward grading, always pass so user can continue
+    passed = true;
 
     await db
       .update(chitraLearningEnrollments)
