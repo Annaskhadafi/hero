@@ -874,12 +874,19 @@ function TransactionActions({
 
   const handleCreateCargo = () => {
     startCargo(async () => {
-      const res = await createCargoManifestFromOutbound(row.id)
-      if (res.success && res.manifest) {
-        setCargoManifest(res.manifest)
-        setOpenCargoPdf(true)
-      } else {
-        toast.error(res.error || "Gagal membuat Cargo Manifest")
+      const toastId = toast.loading("Menyiapkan dokumen Cargo Manifest...")
+      try {
+        const res = await createCargoManifestFromOutbound(row.id)
+        if (res.success && res.manifest) {
+          toast.success("Cargo Manifest siap dicetak", { id: toastId })
+          setCargoManifest(res.manifest)
+          setOpenView(false)
+          setOpenCargoPdf(true)
+        } else {
+          toast.error(res.error || "Gagal membuat Cargo Manifest", { id: toastId })
+        }
+      } catch (err: any) {
+        toast.error(err.message || "Gagal membuat Cargo Manifest", { id: toastId })
       }
     })
   }

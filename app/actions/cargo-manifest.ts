@@ -510,15 +510,19 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
     const [outbound] = await db
       .select({
         id: warehouseRepairOutbound.id,
-        trxNo: warehouseRepairOutbound.transactionNumber,
+        trxNo: warehouseRepairOutbound.transactionNo,
         trxDate: warehouseRepairOutbound.transactionDate,
         quantity: warehouseRepairOutbound.quantity,
-        location: warehouseRepairOutbound.location,
-        notes: warehouseRepairOutbound.notes,
+        outboundType: warehouseRepairOutbound.outboundType,
+        destinationSLoc: warehouseRepairOutbound.destinationSLoc,
+        destinationSLocDesc: warehouseRepairOutbound.destinationSLocDesc,
+        note: warehouseRepairOutbound.note,
         itemName: warehouseRepairItems.itemName,
         itemCode: warehouseRepairItems.itemCode,
         materialDesc: warehouseRepairItems.materialDesc,
         unitName: warehouseRepairUnits.unitName,
+        storageLocation: warehouseRepairItems.storageLocation,
+        storageLocationDesc: warehouseRepairItems.storageLocationDesc,
       })
       .from(warehouseRepairOutbound)
       .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
@@ -542,6 +546,12 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       return { success: true, manifest };
     }
 
+    const finalDest = outbound.destinationSLoc
+      ? `${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`
+      : outbound.storageLocation
+      ? `${outbound.storageLocation} (${outbound.storageLocationDesc})`
+      : "Site / Operations";
+
     const [inserted] = await db
       .insert(cargoManifests)
       .values({
@@ -550,7 +560,7 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
         attention: "Penerima Cargo / Operations",
         transportVia: "Land Transport / Expediter",
         shippedVia: "Warehouse Repair Outbound",
-        finalDestination: outbound.location || "Location",
+        finalDestination: finalDest,
         status: "draft",
         updatedAt: new Date(),
       })
@@ -560,6 +570,12 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       ? `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.materialDesc}`
       : `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.itemName || "Barang Repair"}`;
 
+    const remarkParts = [];
+    if (outbound.outboundType) remarkParts.push(`Tipe: ${outbound.outboundType}`);
+    if (outbound.destinationSLoc) remarkParts.push(`Ke S-Loc: ${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`);
+    if (outbound.unitName) remarkParts.push(`Satuan: ${outbound.unitName}`);
+    if (outbound.note) remarkParts.push(outbound.note);
+
     await db.insert(cargoManifestItems).values({
       manifestId: inserted.id,
       no: 1,
@@ -567,7 +583,7 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       serialNumber: outbound.itemCode || "-",
       qty: outbound.quantity || 1,
       brand: "Chitra Paratama",
-      remark: `${outbound.unitName ? `Satuan: ${outbound.unitName} | ` : ""}${outbound.notes || "Outbound Cargo Item"}`,
+      remark: remarkParts.join(" | "),
     });
 
     revalidatePath("/dashboard/cargo-manifest");
