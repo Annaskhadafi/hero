@@ -54,3 +54,18 @@ export const warehouseRepairOutbound = pgTable("hero_warehouse_repair_outbound",
   note: text("note").notNull().default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({ transactionNoIdx: uniqueIndex("hero_wr_outbound_no_idx").on(table.transactionNo) }))
+
+export const warehouseRepairTransfers = pgTable("hero_warehouse_repair_transfers", {
+  id: serial("id").primaryKey(),
+  transactionNo: text("transaction_no").notNull(),
+  transactionDate: date("transaction_date").notNull(),
+  itemId: integer("item_id").notNull().references(() => warehouseRepairItems.id, { onDelete: "cascade" }),
+  fromSLoc: text("from_sloc").notNull(),
+  fromSLocDesc: text("from_sloc_desc").notNull(),
+  toSLoc: text("to_sloc").notNull(),
+  toSLocDesc: text("to_sloc_desc").notNull(),
+  quantity: integer("quantity").notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({ transactionNoIdx: uniqueIndex("hero_wr_transfer_no_idx").on(table.transactionNo) }))
+

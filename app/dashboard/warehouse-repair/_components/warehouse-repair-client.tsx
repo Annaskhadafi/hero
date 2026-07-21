@@ -1,7 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
-import { Boxes, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
+import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { uploadFile } from "@/app/actions/upload"
 
@@ -19,14 +18,17 @@ import {
   upsertWarehouseRepairType,
   upsertWarehouseRepairUnit,
   bulkImportWarehouseRepairItems,
+  createWarehouseRepairTransfer,
 } from "@/app/actions/warehouse-repair"
 import { Badge } from "@/components/ui/badge"
 import { AdminImportDialog } from "@/components/admin/admin-import-dialog"
 import { Button } from "@/components/ui/button"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { TableMultiFilter } from "@/components/ui/table-multi-filter"
@@ -266,6 +268,286 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
   )
 }
 
+function ItemCombobox({
+  items,
+  value,
+  onChange,
+}: {
+  items: Row[]
+  value: string
+  onChange: (val: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+
+  const selectedItem = items.find((i) => String(i.id) === String(value))
+
+  const filteredItems = useMemo(() => {
+    if (!search.trim()) return items
+    const q = search.toLowerCase()
+    return items.filter(
+      (i) =>
+        (i.itemCode && i.itemCode.toLowerCase().includes(q)) ||
+        (i.itemName && i.itemName.toLowerCase().includes(q)) ||
+        (i.materialDesc && i.materialDesc.toLowerCase().includes(q)) ||
+        (i.storageLocation && i.storageLocation.toLowerCase().includes(q)) ||
+        (i.typeName && i.typeName.toLowerCase().includes(q))
+    )
+  }, [items, search])
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between h-9 px-3 text-xs font-normal"
+        >
+          <span className="truncate">
+            {selectedItem
+              ? `${selectedItem.itemCode} - ${selectedItem.materialDesc ? selectedItem.materialDesc + " | " : ""}${selectedItem.itemName}`
+              : "Cari & Pilih Barang..."}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[480px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Ketik kode, nama, material desc, s-loc..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList className="max-h-[280px] overflow-y-auto p-1">
+            {filteredItems.length === 0 ? (
+              <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">
+                Barang tidak ditemukan.
+              </CommandEmpty>
+            ) : (
+              <CommandGroup>
+                {filteredItems.map((i) => {
+                  const isSelected = String(i.id) === String(value)
+                  return (
+                    <CommandItem
+                      key={i.id}
+                      value={String(i.id)}
+                      onSelect={() => {
+                        onChange(String(i.id))
+                        setOpen(false)
+                      }}
+                      className="flex items-start justify-between gap-2 p-2.5 text-xs cursor-pointer rounded-md hover:bg-accent"
+                    >
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-primary font-semibold">{i.itemCode}</span>
+                          <span className="font-semibold text-foreground">{i.itemName}</span>
+                        </div>
+                        {i.materialDesc && (
+                          <div className="text-[11px] text-muted-foreground truncate max-w-[340px]">
+                            {i.materialDesc}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                          <span>S-Loc: {i.storageLocation || "-"}</span>
+                          <span>Jenis: {i.typeName || "-"}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant="outline" className="text-[10px]">
+                          Stok: {i.stock}
+                        </Badge>
+                        {isSelected && <Check className="size-3.5 text-primary" />}
+                      </div>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+const PRESET_SLOCS = [
+  { code: "RS01", desc: "Balikpapan" },
+  { code: "RS02", desc: "Samarinda" },
+  { code: "RS03", desc: "Sangatta" },
+  { code: "RS04", desc: "Tabang" },
+  { code: "RS05", desc: "Berau" },
+  { code: "HO01", desc: "Jakarta Head Office" },
+]
+
+function TransferDialog({
+  items,
+  defaultItem,
+  trigger,
+  open,
+  onOpenChange,
+}: {
+  items: Row[]
+  defaultItem?: Row
+  trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const [pending, start] = useTransition()
+  const [itemId, setItemId] = useState(defaultItem ? String(defaultItem.id) : "")
+  const [transactionDate, setTransactionDate] = useState(today())
+  const [toSLoc, setToSLoc] = useState("RS02")
+  const [toSLocDesc, setToSLocDesc] = useState("Samarinda")
+  const [quantity, setQuantity] = useState(1)
+  const [note, setNote] = useState("")
+  const [updateItemLocation, setUpdateItemLocation] = useState(false)
+
+  const selectedItem = items.find((i) => String(i.id) === String(itemId))
+
+  const handleSelectPreset = (code: string, desc: string) => {
+    setToSLoc(code)
+    setToSLocDesc(desc)
+  }
+
+  const save = () =>
+    start(async () => {
+      if (!selectedItem) return toast.error("Pilih barang terlebih dahulu")
+      if (quantity > selectedItem.stock)
+        return toast.error(`Stok tidak mencukupi (stok saat ini: ${selectedItem.stock})`)
+
+      const res = await createWarehouseRepairTransfer({
+        transactionDate,
+        itemId: Number(itemId),
+        fromSLoc: selectedItem.storageLocation || "RS01",
+        fromSLocDesc: selectedItem.storageLocationDesc || "Balikpapan",
+        toSLoc,
+        toSLocDesc,
+        quantity: Number(quantity),
+        note,
+        updateItemLocation,
+      })
+
+      if (res.success) {
+        toast.success("Transfer stok berhasil dilakukan")
+        reload()
+      } else {
+        toast.error(res.error)
+      }
+    })
+
+  return (
+    <EnterpriseRecordDialog
+      trigger={trigger}
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Transfer Stok Antar Warehouse (S-Loc)"
+      mode="form"
+      access={access}
+      footer={
+        <Button disabled={pending || !itemId || quantity <= 0} onClick={save}>
+          Proses Transfer
+        </Button>
+      }
+    >
+      <EnterpriseFormGrid>
+        <Field label="Tanggal Transfer">
+          <Input
+            type="date"
+            value={transactionDate}
+            onChange={(e) => setTransactionDate(e.target.value)}
+          />
+        </Field>
+
+        <Field label="Pilih Barang">
+          <ItemCombobox items={items} value={itemId} onChange={(val) => setItemId(val)} />
+        </Field>
+
+        {selectedItem && (
+          <div className="col-span-full rounded-xl border border-border/70 bg-muted/20 p-3.5 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-primary">
+                {selectedItem.itemCode} — {selectedItem.itemName}
+              </span>
+              <Badge variant="outline">Stok Tersedia: {selectedItem.stock}</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-muted-foreground pt-1">
+              <div>
+                <span className="font-medium text-foreground">S-Loc Asal:</span>{" "}
+                {selectedItem.storageLocation || "-"} ({selectedItem.storageLocationDesc || "-"})
+              </div>
+              <div>
+                <span className="font-medium text-foreground">Material Desc:</span>{" "}
+                {selectedItem.materialDesc || "-"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="col-span-full space-y-2">
+          <Label className="text-xs font-medium">Pilih Preset S-Loc Tujuan (Warehouse)</Label>
+          <div className="flex flex-wrap gap-2">
+            {PRESET_SLOCS.map((preset) => (
+              <Button
+                key={preset.code}
+                type="button"
+                variant={toSLoc === preset.code ? "default" : "outline"}
+                size="sm"
+                className="text-xs h-8"
+                onClick={() => handleSelectPreset(preset.code, preset.desc)}
+              >
+                {preset.code} - {preset.desc}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <Field label="S-Loc Kode Tujuan">
+          <Input
+            value={toSLoc}
+            placeholder="Contoh: RS02"
+            onChange={(e) => setToSLoc(e.target.value)}
+          />
+        </Field>
+        <Field label="S-Loc Deskripsi Tujuan">
+          <Input
+            value={toSLocDesc}
+            placeholder="Contoh: Samarinda Warehouse"
+            onChange={(e) => setToSLocDesc(e.target.value)}
+          />
+        </Field>
+
+        <Field label="Jumlah Transfer (Qty)">
+          <Input
+            type="number"
+            min={1}
+            max={selectedItem?.stock || 99999}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+          />
+        </Field>
+
+        <Field label="Keterangan">
+          <Textarea
+            value={note}
+            placeholder="Catatan transfer stok..."
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+
+        <label className="col-span-full flex items-center gap-2 text-xs text-muted-foreground cursor-pointer pt-2">
+          <input
+            type="checkbox"
+            checked={updateItemLocation}
+            onChange={(e) => setUpdateItemLocation(e.target.checked)}
+            className="rounded border-border"
+          />
+          Update lokasi utama barang ke S-Loc Tujuan ({toSLoc} - {toSLocDesc})
+        </label>
+      </EnterpriseFormGrid>
+    </EnterpriseRecordDialog>
+  )
+}
+
 function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { kind: "in" | "out"; items: Row[]; row?: Row; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
   const [form, setForm] = useState({ transactionDate: fmtDate(row?.transactionDate ?? today()), itemId: row?.itemId ? String(row.itemId) : "", quantity: Number(row?.quantity ?? 1), note: row?.note ?? "" })
@@ -281,17 +563,8 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
     <EnterpriseRecordDialog trigger={trigger} open={open} onOpenChange={onOpenChange} title={`${row ? "Edit" : "Entri"} Barang ${kind === "in" ? "Masuk" : "Keluar"}`} mode="form" access={access} footer={<Button disabled={pending || !form.itemId} onClick={save}>Simpan</Button>}>
       <EnterpriseFormGrid>
         <Field label="Tanggal"><Input type="date" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} /></Field>
-        <Field label="Pilih Barang">
-          <Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}>
-            <SelectTrigger><SelectValue placeholder="Pilih barang..." /></SelectTrigger>
-            <SelectContent>
-              {items.map((i) => (
-                <SelectItem key={i.id} value={String(i.id)}>
-                  {i.itemCode} - {i.materialDesc ? `${i.materialDesc} | ` : ""}{i.itemName} (Stok: {i.stock})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Field label="Pilih Barang (Cari)">
+          <ItemCombobox items={items} value={form.itemId} onChange={(val) => setForm({ ...form, itemId: val })} />
         </Field>
 
         {selectedItem && (
@@ -404,7 +677,7 @@ function ItemTable({ rows, types, units, title, report = false }: { rows: Row[];
     />
   )
 
-  return <MinimalTableShell label={title.toLowerCase()} fileName={title} searchPlaceholder={`Cari ${title.toLowerCase()}...`} showImport={!report} importAction={importAction} access={access} filters={<><TableMultiFilter label="jenis" filterKey="type" options={typeOptions} /><TableMultiFilter label="satuan" filterKey="unit" options={unitOptions} /><TableMultiFilter label="status stok" filterKey="stock" options={[{ value: "low", label: "Low stock" }, { value: "safe", label: "Stok aman" }]} /></>} primaryAction={!report ? <MasterDialog kind="item" types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false} scorecards={[{ label: "Barang", value: rows.length, icon: <Boxes className="size-4 text-primary" />, tone: "info" }, { label: "Total Stok", value: rows.reduce((s, i) => s + Number(i.stock ?? 0), 0), tone: "default" }, { label: "Low Stock", value: rows.filter((i) => Number(i.stock ?? 0) <= Number(i.minimumStock ?? 0)).length, tone: "warning" }, { label: "Aktif", value: rows.filter((i) => i.isActive).length, tone: "success" }]}>
+  return <MinimalTableShell label={title.toLowerCase()} fileName={title} searchPlaceholder={`Cari ${title.toLowerCase()}...`} showImport={!report} importAction={importAction} access={access} filters={<><TableMultiFilter label="jenis" filterKey="type" options={typeOptions} /><TableMultiFilter label="satuan" filterKey="unit" options={unitOptions} /><TableMultiFilter label="status stok" filterKey="stock" options={[{ value: "low", label: "Low stock" }, { value: "safe", label: "Stok aman" }]} /></>} primaryAction={!report ? <div className="flex items-center gap-2"><MasterDialog kind="item" types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} /><TransferDialog items={rows} trigger={<Button variant="outline"><ArrowRightLeft className="mr-2 h-4 w-4" />Transfer Stok</Button>} /></div> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false} scorecards={[{ label: "Barang", value: rows.length, icon: <Boxes className="size-4 text-primary" />, tone: "info" }, { label: "Total Stok", value: rows.reduce((s, i) => s + Number(i.stock ?? 0), 0), tone: "default" }, { label: "Low Stock", value: rows.filter((i) => Number(i.stock ?? 0) <= Number(i.minimumStock ?? 0)).length, tone: "warning" }, { label: "Aktif", value: rows.filter((i) => i.isActive).length, tone: "success" }]}>
     <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, status: statusLabel(r.isActive) }; return <TableRow key={r.id} data-filter-type={r.typeName ?? ""} data-filter-unit={r.unitName ?? ""} data-filter-stock={Number(r.stock ?? 0) <= Number(r.minimumStock ?? 0) ? "low" : "safe"}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.materialDesc ?? "-"}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.storageLocation ?? "-"}</TableCell><TableCell>{r.storageLocationDesc ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{statusLabel(r.isActive)}</Badge></TableCell>{!report ? <TableCell><ItemActions row={r} types={types} units={units} labels={detailLabels} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data barang.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }

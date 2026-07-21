@@ -9,6 +9,7 @@ import {
   warehouseRepairItems,
   warehouseRepairInbound,
   warehouseRepairOutbound,
+  warehouseRepairTransfers,
 } from "@/db/schema/warehouse-repair"
 
 // Revalidation paths
@@ -744,4 +745,124 @@ export async function bulkImportWarehouseRepairItems(items: any[]) {
     return { success: false, error: error.message || "Gagal mengimport data barang" };
   }
 }
+
+// 24. Create Stock Transfer
+export async function createWarehouseRepairTransfer(input: {
+  transactionDate: string;
+  itemId: number;
+  fromSLoc: string;
+  fromSLocDesc: string;
+  toSLoc: string;
+  toSLocDesc: string;
+  quantity: number;
+  note?: string;
+  updateItemLocation?: boolean;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      const [item] = await tx
+        .select()
+        .from(warehouseRepairItems)
+        .where(eq(warehouseRepairItems.id, input.itemId))
+        .limit(1)
+
+      if (!item) throw new Error("Barang tidak ditemukan")
+      if (item.stock < input.quantity) {
+        throw new Error(`Stok tidak mencukupi (stok saat ini: ${item.stock})`)
+      }
+
+      const transactionNo = `WR-TRF-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}-${Math.floor(1000 + Math.random() * 9000)}`
+
+      // 1. Insert transfer log
+      await tx.insert(warehouseRepairTransfers).values({
+        transactionNo,
+        transactionDate: input.transactionDate,
+        itemId: input.itemId,
+        fromSLoc: input.fromSLoc || item.storageLocation || "-",
+        fromSLocDesc: input.fromSLocDesc || item.storageLocationDesc || "-",
+        toSLoc: input.toSLoc,
+        toSLocDesc: input.toSLocDesc,
+        quantity: input.quantity,
+        note: input.note || `Transfer dari ${input.fromSLoc || item.storageLocation} ke ${input.toSLoc}`,
+      })
+
+      // 2. Insert Outbound transaction for auditing
+      const outboundNo = `WR-OUT-TRF-${Math.floor(10000 + Math.random() * 90000)}`
+      await tx.insert(warehouseRepairOutbound).values({
+        transactionNo: outboundNo,
+        transactionDate: input.transactionDate,
+        itemId: input.itemId,
+        quantity: input.quantity,
+        note: `Transfer ke ${input.toSLoc} (${input.toSLocDesc})`,
+      })
+
+      // 3. Deduct stock or update storage location
+      const newStock = item.stock - input.quantity
+      const updatePayload: any = {
+        stock: newStock,
+        updatedAt: new Date(),
+      }
+
+      if (input.updateItemLocation || newStock === 0) {
+        updatePayload.storageLocation = input.toSLoc
+        updatePayload.storageLocationDesc = input.toSLocDesc
+      }
+
+      await tx
+        .update(warehouseRepairItems)
+        .set(updatePayload)
+        .where(eq(warehouseRepairItems.id, input.itemId))
+    })
+
+    revalidateAll()
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error transferring stock:", error)
+    return { success: false, error: error.message || "Gagal melakukan transfer stok" }
+  }
+}
+
+// 25. Get Stock Transfers
+export async function getWarehouseRepairTransfers() {
+  try {
+    const rows = await db
+      .select({
+        id: warehouseRepairTransfers.id,
+        transactionNo: warehouseRepairTransfers.transactionNo,
+        transactionDate: warehouseRepairTransfers.transactionDate,
+        itemId: warehouseRepairTransfers.itemId,
+        itemCode: warehouseRepairItems.itemCode,
+        materialDesc: warehouseRepairItems.materialDesc,
+        itemName: warehouseRepairItems.itemName,
+        typeName: warehouseRepairItemTypes.typeName,
+        unitName: warehouseRepairUnits.unitName,
+        fromSLoc: warehouseRepairTransfers.fromSLoc,
+        fromSLocDesc: warehouseRepairTransfers.fromSLocDesc,
+        toSLoc: warehouseRepairTransfers.toSLoc,
+        toSLocDesc: warehouseRepairTransfers.toSLocDesc,
+        quantity: warehouseRepairTransfers.quantity,
+        note: warehouseRepairTransfers.note,
+        createdAt: warehouseRepairTransfers.createdAt,
+      })
+      .from(warehouseRepairTransfers)
+      .leftJoin(
+        warehouseRepairItems,
+        eq(warehouseRepairTransfers.itemId, warehouseRepairItems.id)
+      )
+      .leftJoin(
+        warehouseRepairItemTypes,
+        eq(warehouseRepairItems.typeId, warehouseRepairItemTypes.id)
+      )
+      .leftJoin(
+        warehouseRepairUnits,
+        eq(warehouseRepairItems.unitId, warehouseRepairUnits.id)
+      )
+      .orderBy(desc(warehouseRepairTransfers.transactionDate), desc(warehouseRepairTransfers.id))
+    return rows
+  } catch (error) {
+    console.error("[Postgres] Error fetching transfers:", error)
+    return []
+  }
+}
+
 
