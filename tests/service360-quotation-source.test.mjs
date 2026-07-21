@@ -118,12 +118,17 @@ test('service 360 quotation can hide the PDF month column', () => {
   assert.match(pageSource, /!quotation\.hideMonthColumn && <td/)
 })
 
-test('service 360 BAST keeps closing and signatures on-page through 10 rows', () => {
+test('service 360 BAST moves closing and signatures when they cross the footer margin', () => {
   const pageSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
+  const printSource = read('app/dashboard/360-service/quotations/[id]/print-button.tsx')
 
-  assert.match(pageSource, /const BAST_MAX_ROWS_WITH_SIGNATURE = 10/)
-  assert.match(pageSource, /rentalItems\.length <= BAST_MAX_ROWS_WITH_SIGNATURE && bastClosing/)
-  assert.match(pageSource, /rentalItems\.length > BAST_MAX_ROWS_WITH_SIGNATURE && \(/)
+  assert.match(pageSource, /data-bast-closing/)
+  assert.match(pageSource, /data-bast-closing className="mt-4 text-\[9pt\]"/)
+  assert.match(pageSource, /className="mb-12">Yang menerima/)
+  assert.match(pageSource, /data-bast-overflow-page/)
+  assert.match(printSource, /function balanceBastPages\(\)/)
+  assert.match(printSource, /closing\.getBoundingClientRect\(\)\.bottom <= limit/)
+  assert.match(printSource, /overflowContent\.append\(closing\)/)
 })
 
 test('service 360 quotation pagination reserves the footer and keeps tall rows intact', () => {
@@ -135,12 +140,19 @@ test('service 360 quotation pagination reserves the footer and keeps tall rows i
   assert.match(pageSource, /const maxUnitsWithFooter = maxUnits - FOOTER_UNITS/)
   assert.match(pageSource, /pageUnits \+ itemUnits > maxUnits/)
   assert.match(pageSource, /pb-\[50mm\]/)
+  assert.match(pageSource, /chunk\.length === 0 \? 'justify-start' : 'justify-between'/)
+  assert.match(pageSource, /chunk\.length === 0 \? 'pt-4' : 'pt-8'/)
   assert.match(pageSource, /data-quotation-page/)
+  assert.match(pageSource, /data-quotation-table/)
   assert.match(pageSource, /data-quotation-items/)
   assert.match(printSource, /function balanceQuotationPages\(\)/)
   assert.match(printSource, /while \(nextBody\.firstElementChild\)/)
   assert.match(printSource, /if \(fits\(page\)\) continue/)
   assert.match(printSource, /nextBody\.prepend\(row\)/)
+  assert.match(printSource, /previousContent\.append\(summary\)/)
+  assert.match(printSource, /if \(fits\(previousPage\)\) summaryPage\.remove\(\)/)
+  assert.match(printSource, /classList\.toggle\('hidden', !body\?\.children\.length\)/)
+  assert.match(printSource, /document\.fonts\?\.ready\.then/)
   assert.match(printSource, /balanceQuotationPages\(\)/)
 })
 

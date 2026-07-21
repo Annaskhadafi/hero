@@ -147,23 +147,22 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return new Date(dateStr).getFullYear().toString();
   };
 
-  const BAST_MAX_ROWS_WITH_SIGNATURE = 10
   const bastClosing = (
-    <>
-      <div className="leading-relaxed mb-10 mt-10">
+    <div data-bast-closing className="mt-4 text-[9pt]">
+      <div className="leading-relaxed mb-4">
         Demikian Berita Acara ini dibuat dan ditanda tangani oleh kedua belah pihak.<br/>
         Sebagai dasar lampiran invoice untuk tagihan rental Bulan <span className="font-bold">{abbreviatePeriod(quotation.poPeriod)}</span><br/>
         <span className="font-bold">Reff PO {quotation.poNumber || '-'}</span>
       </div>
 
-      <div className="flex justify-between w-full mt-auto pt-10">
+      <div className="flex justify-between w-full pt-4 text-[8.5pt]">
         <div className="flex flex-col items-center w-[250px] text-center">
-          <p className="mb-20">Yang menerima,<br/>Untuk dan Atas Nama<br/><span className="font-bold">{quotation.customer?.customerName || '-'}</span></p>
+          <p className="mb-12">Yang menerima,<br/>Untuk dan Atas Nama<br/><span className="font-bold">{quotation.customer?.customerName || '-'}</span></p>
           <div className="border-b border-slate-800 w-full mb-1 border-dashed"></div>
           <p className="font-bold">( {quotation.attn || "Nama Tanda tangan & Cap"} )</p>
         </div>
         <div className="flex flex-col items-center w-[250px] text-center">
-          <p className="mb-20">Yang menyerahkan,<br/>Untuk dan Atas Nama<br/><span className="font-bold">PT. Chitra Paratama</span></p>
+          <p className="mb-12">Yang menyerahkan,<br/>Untuk dan Atas Nama<br/><span className="font-bold">PT. Chitra Paratama</span></p>
           <div className="border-b border-slate-800 w-full mb-1 border-dashed relative">
             {signatureUrl && (
               <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
@@ -174,7 +173,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
           <p className="font-bold">( {quotation.fromName || "Nama Tanda tangan & Cap"} )</p>
         </div>
       </div>
-    </>
+    </div>
   )
 
 
@@ -279,7 +278,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             </div>
 
             {/* Document Content */}
-            <div data-quotation-content className="relative z-10 px-[15mm] pt-[35mm] pb-[50mm] h-full flex flex-col font-sans text-slate-800 justify-between">
+            <div data-quotation-content className={`relative z-10 px-[15mm] pt-[35mm] pb-[50mm] h-full flex flex-col font-sans text-slate-800 ${chunk.length === 0 ? 'justify-start' : 'justify-between'}`}>
               <div data-quotation-main>
                 {pageIndex > 0 && (
                   <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100 text-slate-400 text-[8pt] uppercase tracking-wider font-semibold">
@@ -378,7 +377,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 )}
 
                 {chunk.length > 0 && (
-                  <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                  <div data-quotation-table className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
                     <table className="w-full border-collapse text-[9pt]">
                       <thead>
                         <tr className="bg-slate-100 text-slate-700 uppercase tracking-wider text-[7.5pt]">
@@ -506,7 +505,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
               {/* FOOTER REDESIGN */}
               {pageIndex === chunks.length - 1 && (
-                <div data-quotation-summary className="pt-8">
+                <div data-quotation-summary className={chunk.length === 0 ? 'pt-4' : 'pt-8'}>
                   <div className="flex justify-between w-full items-end gap-6">
                     <div className="flex-1 text-[8pt] text-slate-500 mb-2 whitespace-pre-wrap">
                       {quotation.notes && (
@@ -582,7 +581,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
         {/* BAST PAGE */}
         {quotation.includeBast && rentalItems.length > 0 && (
           <>
-            <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+            <div data-bast-page className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             <div className="absolute inset-0 z-0 pointer-events-none">
               <Image 
                 src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" 
@@ -592,7 +591,8 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
               />
             </div>
             
-            <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
+            <div data-bast-content className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
+              <div data-bast-main>
               <div className="text-center font-bold text-[14pt] underline mb-8 mt-10 uppercase">
                 BERITA ACARA SERAH TERIMA RENTAL
               </div>
@@ -668,13 +668,13 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                   </tbody>
                 </table>
               </div>
+              </div>
 
-              {rentalItems.length <= BAST_MAX_ROWS_WITH_SIGNATURE && bastClosing}
+              {bastClosing}
             </div>
             </div>
 
-          {rentalItems.length > BAST_MAX_ROWS_WITH_SIGNATURE && (
-            <div className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+            <div data-bast-overflow-page className="pdf-wrapper relative hidden bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             <div className="absolute inset-0 z-0 pointer-events-none">
               <Image
                 src="/ChitraParatama_Stationery_Letterhead_jkt.jpg"
@@ -684,11 +684,8 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
               />
             </div>
 
-            <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800">
-              {bastClosing}
+            <div data-bast-overflow-content className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800" />
             </div>
-            </div>
-          )}
           </>
         )}
       </div>

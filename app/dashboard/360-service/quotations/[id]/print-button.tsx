@@ -9,16 +9,17 @@ import { Download, Loader2 } from "lucide-react"
 
 function balanceQuotationPages() {
   const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
+  pages.forEach((page) => page.querySelector<HTMLElement>('[data-quotation-table]')?.classList.remove('hidden'))
   const fits = (page: HTMLElement) => {
     const content = page.querySelector<HTMLElement>('[data-quotation-content]')
     const main = page.querySelector<HTMLElement>('[data-quotation-main]')
     if (!content || !main) return true
     const summary = page.querySelector<HTMLElement>('[data-quotation-summary]')
     const paddingBottom = Number.parseFloat(getComputedStyle(content).paddingBottom) || 0
-    const limit = summary
-      ? summary.getBoundingClientRect().top - 8
-      : content.getBoundingClientRect().bottom - paddingBottom
+    const contentBottom = content.getBoundingClientRect().bottom - paddingBottom
+    const limit = summary ? summary.getBoundingClientRect().top - 8 : contentBottom
     return main.getBoundingClientRect().bottom <= limit
+      && (!summary || summary.getBoundingClientRect().bottom <= contentBottom)
   }
 
   for (let index = 0; index < pages.length - 1; index++) {
@@ -46,12 +47,52 @@ function balanceQuotationPages() {
     const body = page.querySelector('[data-quotation-items]')
     if (body && !body.children.length && !page.querySelector('[data-quotation-summary]')) page.remove()
   })
+  const remainingPages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
+  const summaryPage = remainingPages.find((page) => page.querySelector('[data-quotation-summary]'))
+  const summaryPageIndex = summaryPage ? remainingPages.indexOf(summaryPage) : -1
+  const previousPage = summaryPageIndex > 0 ? remainingPages[summaryPageIndex - 1] : null
+  const summary = summaryPage?.querySelector<HTMLElement>('[data-quotation-summary]')
+  const summaryContent = summaryPage?.querySelector<HTMLElement>('[data-quotation-content]')
+  const previousContent = previousPage?.querySelector<HTMLElement>('[data-quotation-content]')
+  if (summaryPage && previousPage && summary && summaryContent && previousContent) {
+    previousContent.append(summary)
+    if (fits(previousPage)) summaryPage.remove()
+    else summaryContent.append(summary)
+  }
   const visiblePages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
   visiblePages.forEach((page, index) => {
+    const body = page.querySelector('[data-quotation-items]')
+    page.querySelector<HTMLElement>('[data-quotation-table]')?.classList.toggle('hidden', !body?.children.length)
     page.querySelectorAll<HTMLElement>('[data-quotation-page-counter]').forEach((counter) => {
       counter.textContent = `Page ${index + 1} of ${visiblePages.length}`
     })
   })
+}
+
+function balanceBastPages() {
+  const page = document.querySelector<HTMLElement>('[data-bast-page]')
+  const content = page?.querySelector<HTMLElement>('[data-bast-content]')
+  const main = page?.querySelector<HTMLElement>('[data-bast-main]')
+  const closing = document.querySelector<HTMLElement>('[data-bast-closing]')
+  const overflowPage = document.querySelector<HTMLElement>('[data-bast-overflow-page]')
+  const overflowContent = overflowPage?.querySelector<HTMLElement>('[data-bast-overflow-content]')
+  if (!content || !main || !closing || !overflowPage || !overflowContent) return
+  if (overflowContent.contains(closing)) {
+    overflowPage.classList.remove('hidden')
+    return
+  }
+
+  const paddingBottom = Number.parseFloat(getComputedStyle(content).paddingBottom) || 0
+  const limit = content.getBoundingClientRect().bottom - paddingBottom
+  const fits = main.getBoundingClientRect().bottom + 8 <= closing.getBoundingClientRect().top
+    && closing.getBoundingClientRect().bottom <= limit
+  if (fits) {
+    overflowPage.remove()
+    return
+  }
+
+  overflowContent.append(closing)
+  overflowPage.classList.remove('hidden')
 }
 
 export function PrintButton() {
@@ -59,11 +100,25 @@ export function PrintButton() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false)
 
+  useEffect(() => {
+    let active = true
+    void document.fonts?.ready.then(() => {
+      if (active) {
+        balanceQuotationPages()
+        balanceBastPages()
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
   const handleDownload = async () => {
     setIsGenerating(true)
     try {
       await document.fonts?.ready
       balanceQuotationPages()
+      balanceBastPages()
       const pages = document.querySelectorAll('.pdf-wrapper')
       
       if (!pages || pages.length === 0) {
