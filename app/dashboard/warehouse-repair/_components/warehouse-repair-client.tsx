@@ -847,7 +847,6 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
   )
 }
 
-const masterColumns = ["Kode", "Nama", "Status", "Aksi"]
 const inboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Tujuan", "Deskripsi S-Loc", "Qty", "Keterangan"]
 const outboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Asal", "Deskripsi S-Loc Asal", "Tipe Keluar", "S-Loc Tujuan", "Deskripsi S-Loc Tujuan", "Qty", "Keterangan"]
 
