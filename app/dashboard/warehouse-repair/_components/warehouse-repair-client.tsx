@@ -299,6 +299,25 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
                       setPreviewUrl("");
                       setPreviewError(false);
                       set("photoUrl", "");
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Field>
+        </> : kind === "type" ? <><Field label="Kode Jenis"><Input value={form.typeCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("typeCode", e.target.value)} /></Field><Field label="Nama Jenis"><Input value={form.typeName ?? ""} onChange={(e) => set("typeName", e.target.value)} /></Field></> : <><Field label="Kode Satuan"><Input value={form.unitCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("unitCode", e.target.value)} /></Field><Field label="Nama Satuan"><Input value={form.unitName ?? ""} onChange={(e) => set("unitName", e.target.value)} /></Field></>}
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive ?? true} onChange={(e) => set("isActive", e.target.checked)} /> Aktif</label>
+      </EnterpriseFormGrid>
+    </EnterpriseRecordDialog>
+  )
+}
+
+function ItemTable({ rows, types, units, title, report = false }: { rows: Row[]; types: Row[]; units: Row[]; title: string; report?: boolean }) {
+  const typeOptions = useMemo(() => types.map((t) => ({ value: t.typeName, label: t.typeName })), [types])
+  const unitOptions = useMemo(() => units.map((u) => ({ value: u.unitName, label: u.unitName })), [units])
+  const columns = report ? itemReportColumns : itemColumns
   const detailLabels: Array<[string, string]> = [["itemCode", "Kode Barang"], ["materialDesc", "Material Desc"], ["itemName", "Nama Barang"], ["typeName", "Jenis"], ["unitName", "Satuan"], ["storageLocation", "S-Loc"], ["storageLocationDesc", "S-Loc Desc"], ["stock", "Stok"], ["minimumStock", "Minimum"], ["status", "Status"], ["photoUrl", "Foto URL"]]
   
   const importFields = [
