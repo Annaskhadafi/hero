@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { uploadFile } from "@/app/actions/upload"
+import { resolveUploadUrl } from "@/lib/s3-storage"
 
 import {
   createWarehouseRepairInbound,
@@ -137,7 +138,7 @@ function ViewDialog({
             <div className="relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/30 flex items-center justify-center">
               {!imgError ? (
                 <img
-                  src={row.photoUrl}
+                  src={resolveUploadUrl(row.photoUrl)}
                   alt={row.itemName || "Foto produk"}
                   className="h-full w-full object-contain"
                   onError={() => setImgError(true)}
@@ -259,7 +260,7 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
               {(previewUrl || form.photoUrl) && (
                 <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border bg-muted/20">
                   <img
-                    src={previewUrl || form.photoUrl}
+                    src={resolveUploadUrl(previewUrl || form.photoUrl)}
                     alt="Preview produk"
                     className="h-full w-full object-cover"
                     onError={() => console.error("Error loading preview:", previewUrl || form.photoUrl)}

@@ -93,12 +93,10 @@ export async function getWarehouseRepairItems() {
       )
       .orderBy(desc(warehouseRepairItems.id))
 
-    const items = await Promise.all(
-      rows.map(async (item) => ({
-        ...item,
-        photoUrl: item.photoUrl ? (await getS3ObjectReadUrl(item.photoUrl)) || item.photoUrl : "",
-      }))
-    )
+    const items = rows.map((item) => ({
+      ...item,
+      photoUrl: item.photoUrl ? resolveUploadUrl(item.photoUrl) : "",
+    }))
 
     return items
   } catch (error) {
