@@ -4,6 +4,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
+import { getCurrentEmployee } from "@/lib/get-current-employee";
 import {
   cargoManifests,
   cargoManifestItems,
@@ -506,6 +507,8 @@ export async function importCargoManifestsAction(
 export async function createCargoManifestFromOutbound(outboundId: number): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
     await ensureCargoManifestTables();
+    const currentEmp = await getCurrentEmployee();
+    const creatorName = currentEmp?.name || "Administrator";
 
     const [outbound] = await db
       .select({
@@ -546,11 +549,13 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       return { success: true, manifest };
     }
 
-    const finalDest = outbound.destinationSLoc
+    const rawLoc = outbound.destinationSLoc
       ? `${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`
       : outbound.storageLocation
       ? `${outbound.storageLocation} (${outbound.storageLocationDesc})`
       : "Site / Operations";
+
+    const finalDest = `PT Chitra Paratama Site | ${rawLoc}`;
 
     const [inserted] = await db
       .insert(cargoManifests)
@@ -561,6 +566,7 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
         transportVia: "Land Transport / Expediter",
         shippedVia: "Warehouse Repair Outbound",
         finalDestination: finalDest,
+        signatureName: creatorName,
         status: "draft",
         updatedAt: new Date(),
       })
@@ -600,6 +606,8 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
 export async function createCargoManifestFromMultipleOutbound(outboundIds: number[]): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
     await ensureCargoManifestTables();
+    const currentEmp = await getCurrentEmployee();
+    const creatorName = currentEmp?.name || "Administrator";
 
     if (!outboundIds || outboundIds.length === 0) {
       return { success: false, error: "Pilih setidaknya 1 transaksi barang keluar." };
@@ -635,7 +643,8 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
     const destSlocs = Array.from(new Set(records.map(r => r.destinationSLoc).filter(Boolean))).join(", ");
     const destSlocDescs = Array.from(new Set(records.map(r => r.destinationSLocDesc).filter(Boolean))).join(", ");
 
-    const finalDestination = destSlocs ? `${destSlocs} (${destSlocDescs})` : "Site / Operations";
+    const rawLoc = destSlocs ? `${destSlocs} (${destSlocDescs})` : "Site / Operations";
+    const finalDestination = `PT Chitra Paratama Site | ${rawLoc}`;
 
     const [inserted] = await db
       .insert(cargoManifests)
@@ -646,6 +655,7 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
         transportVia: "Land Transport / Expediter",
         shippedVia: "Warehouse Repair Outbound",
         finalDestination,
+        signatureName: creatorName,
         status: "draft",
         updatedAt: new Date(),
       })
