@@ -226,13 +226,15 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
+                  const localPreview = URL.createObjectURL(file);
+                  set("photoUrl", localPreview);
                   const formData = new FormData();
                   formData.append("file", file);
                   const toastId = toast.loading("Mengunggah foto...");
                   try {
                     const res = await uploadFile(formData);
-                    if (res.success) {
-                      set("photoUrl", res.url);
+                    if (res.success && (res.readableUrl || res.url)) {
+                      set("photoUrl", res.readableUrl || res.url);
                       toast.success("Foto berhasil diunggah", { id: toastId });
                     } else {
                       toast.error(res.error || "Gagal mengunggah foto", { id: toastId });
@@ -243,11 +245,14 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
                 }}
               />
               {form.photoUrl && (
-                <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border">
+                <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border bg-muted/20">
                   <img
                     src={form.photoUrl}
                     alt="Preview produk"
                     className="h-full w-full object-cover"
+                    onError={(e) => {
+                      console.error("Gagal memuat image preview:", form.photoUrl);
+                    }}
                   />
                   <Button
                     type="button"
