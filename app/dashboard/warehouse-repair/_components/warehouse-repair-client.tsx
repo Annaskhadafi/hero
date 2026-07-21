@@ -378,6 +378,45 @@ function MasterTable({ kind, rows, types, units, title }: { kind: "type" | "unit
   </MinimalTableShell>
 }
 
+function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { kind: "in" | "out"; items: Row[]; row?: Row; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
+  const [pending, start] = useTransition()
+  const [form, setForm] = useState({ transactionDate: fmtDate(row?.transactionDate ?? today()), itemId: row?.itemId ? String(row.itemId) : "", quantity: Number(row?.quantity ?? 1), note: row?.note ?? "" })
+  const selectedItem = items.find((i) => String(i.id) === String(form.itemId))
+  const save = () => start(async () => {
+    const input = { transactionDate: form.transactionDate, itemId: Number(form.itemId), quantity: Number(form.quantity), note: form.note }
+    const res = row
+      ? kind === "in" ? await updateWarehouseRepairInbound(row.id, input) : await updateWarehouseRepairOutbound(row.id, input)
+      : kind === "in" ? await createWarehouseRepairInbound(input) : await createWarehouseRepairOutbound(input)
+    if (res.success) { toast.success("Transaksi tersimpan"); reload() } else toast.error(res.error)
+  })
+  return (
+    <EnterpriseRecordDialog trigger={trigger} open={open} onOpenChange={onOpenChange} title={`${row ? "Edit" : "Entri"} Barang ${kind === "in" ? "Masuk" : "Keluar"}`} mode="form" access={access} footer={<Button disabled={pending || !form.itemId} onClick={save}>Simpan</Button>}>
+      <EnterpriseFormGrid>
+        <Field label="Tanggal"><Input type="date" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} /></Field>
+        <Field label="Pilih Barang (Cari)">
+          <ItemCombobox items={items} value={form.itemId} onChange={(val) => setForm({ ...form, itemId: val })} />
+        </Field>
+
+        {selectedItem && (
+          <div className="col-span-full rounded-xl border border-border/70 bg-muted/20 p-3.5 text-xs space-y-1.5">
+            <div className="font-semibold text-primary">{selectedItem.itemCode} — {selectedItem.itemName}</div>
+            {selectedItem.materialDesc && <div className="text-muted-foreground"><span className="font-medium">Material Desc:</span> {selectedItem.materialDesc}</div>}
+            <div className="grid grid-cols-2 gap-2 text-muted-foreground pt-1">
+              <div><span className="font-medium">Category:</span> {selectedItem.typeName || "-"}</div>
+              <div><span className="font-medium">Satuan:</span> {selectedItem.unitName || "-"}</div>
+              <div><span className="font-medium">S-Loc:</span> {selectedItem.storageLocation || "-"} ({selectedItem.storageLocationDesc || "-"})</div>
+              <div><span className="font-medium">Stok Saat Ini:</span> <Badge variant="outline" className="ml-1">{selectedItem.stock}</Badge></div>
+            </div>
+          </div>
+        )}
+
+        <Field label="Jumlah (Qty)"><Input type="number" min={1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} /></Field>
+        <Field label="Keterangan"><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan transaksi..." /></Field>
+      </EnterpriseFormGrid>
+    </EnterpriseRecordDialog>
+  )
+}
+
 function TransactionTable({ rows, items, title, kind, report = false }: { rows: Row[]; items: Row[]; title: string; kind: "in" | "out"; report?: boolean }) {
   const columns = report ? reportTrxColumns : trxColumns
   const deleteAction = kind === "in" ? deleteWarehouseRepairInbound : deleteWarehouseRepairOutbound
