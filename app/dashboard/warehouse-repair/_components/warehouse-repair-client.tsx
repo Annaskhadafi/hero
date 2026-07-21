@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react"
 import { Boxes, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { uploadFile } from "@/app/actions/upload"
 
 import {
   createWarehouseRepairInbound,
@@ -17,6 +18,7 @@ import {
   upsertWarehouseRepairItem,
   upsertWarehouseRepairType,
   upsertWarehouseRepairUnit,
+  bulkImportWarehouseRepairItems,
 } from "@/app/actions/warehouse-repair"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,12 +36,12 @@ type Row = Record<string, any>
 type Props = { mode: Mode; data: { items: Row[]; types: Row[]; units: Row[]; inbound: Row[]; outbound: Row[]; metrics?: Record<string, number> } }
 type ActionResult = { success: boolean; error?: string }
 
-const access: TableRbacAccess = { canView: true, canEdit: false, canDelete: false, canSelectAll: false }
-const itemColumns = ["Kode", "Nama Barang", "Jenis", "Satuan", "Stok", "Minimum", "Status", "Aksi"]
+const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true, canSelectAll: false }
+const itemColumns = ["Kode", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc", "S-Loc Desc", "Stok/Qty", "Minimum", "Status", "Aksi"]
 const itemReportColumns = itemColumns.slice(0, -1)
 const masterColumns = ["Kode", "Nama", "Status", "Aksi"]
-const trxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Nama Barang", "Qty", "Keterangan", "Aksi"]
-const reportTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Nama Barang", "Qty", "Keterangan"]
+const trxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc", "S-Loc Desc", "Qty", "Keterangan", "Aksi"]
+const reportTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc", "S-Loc Desc", "Qty", "Keterangan"]
 
 function today() { return new Date().toISOString().slice(0, 10) }
 function fmtDate(value: unknown) { return value ? String(value).slice(0, 10) : "-" }
@@ -99,22 +101,102 @@ function DeleteDialog({ title, description, open, onOpenChange, row, labels, act
   )
 }
 
-function ViewDialog({ title, open, onOpenChange, row, labels }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; row: Row; labels: Array<[string, string]> }) {
+function ViewDialog({
+  title,
+  open,
+  onOpenChange,
+  row,
+  labels,
+  onEditClick,
+}: {
+  title: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  row: Row
+  labels: Array<[string, string]>
+  onEditClick?: () => void
+}) {
   return (
-    <EnterpriseRecordDialog open={open} onOpenChange={onOpenChange} title={title} mode="view" access={access}>
-      <DetailGrid row={row} labels={labels} />
+    <EnterpriseRecordDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      mode="view"
+      access={access}
+      className="sm:max-w-4xl"
+    >
+      <div className="flex flex-col gap-6 md:flex-row">
+        {row.photoUrl ? (
+          <div className="flex flex-col items-center gap-2 md:w-1/3">
+            <div className="relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/30">
+              <img
+                src={row.photoUrl}
+                alt={row.itemName || "Foto produk"}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">Foto Produk</div>
+          </div>
+        ) : null}
+
+        <div className="flex-1 space-y-6">
+          <div className="rounded-xl border border-border/70 bg-muted/10 p-5">
+            <div className="mb-4 flex items-center justify-between border-b border-border/50 pb-3">
+              <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Spesifikasi Item
+              </span>
+              {onEditClick && (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false)
+                    onEditClick()
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                >
+                  <FilePenLine className="size-4" /> Edit Data
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {labels.map(([key, label]) => {
+                if (key === "photoUrl" || key === "status") return null
+                return (
+                  <div key={key} className="space-y-1">
+                    <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                    <p className="break-words text-sm font-semibold text-foreground">
+                      {String(row[key] ?? "-")}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/10 p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Status Aktif:</span>
+              <Badge variant={row.isActive ? "default" : "outline"}>
+                {row.isActive ? "Aktif" : "Nonaktif"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </div>
     </EnterpriseRecordDialog>
   )
 }
 
 function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: { kind: "item" | "type" | "unit"; row?: Row; types: Row[]; units: Row[]; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
-  const [form, setForm] = useState<Row>(row ?? { itemName: "", minimumStock: 0, typeId: null, unitId: null, typeName: "", unitName: "", isActive: true })
+  const [form, setForm] = useState<Row>(row ?? { itemName: "", materialDesc: "", storageLocation: "", storageLocationDesc: "", minimumStock: 0, typeId: null, unitId: null, typeName: "", unitName: "", isActive: true })
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }))
   const title = `${row ? "Edit" : "Tambah"} ${kind === "item" ? "Barang" : kind === "type" ? "Jenis Barang" : "Satuan"}`
   const save = () => start(async () => {
     const res = kind === "item"
-      ? await upsertWarehouseRepairItem({ itemCode: form.itemCode, itemName: form.itemName, minimumStock: Number(form.minimumStock || 0), typeId: form.typeId ? Number(form.typeId) : null, unitId: form.unitId ? Number(form.unitId) : null, photoUrl: form.photoUrl ?? "", isActive: form.isActive ?? true }, row?.id)
+      ? await upsertWarehouseRepairItem({ itemCode: form.itemCode, itemName: form.itemName, materialDesc: form.materialDesc, storageLocation: form.storageLocation, storageLocationDesc: form.storageLocationDesc, minimumStock: Number(form.minimumStock || 0), typeId: form.typeId ? Number(form.typeId) : null, unitId: form.unitId ? Number(form.unitId) : null, photoUrl: form.photoUrl ?? "", isActive: form.isActive ?? true }, row?.id)
       : kind === "type"
         ? await upsertWarehouseRepairType({ typeCode: form.typeCode, typeName: form.typeName, isActive: form.isActive ?? true }, row?.id)
         : await upsertWarehouseRepairUnit({ unitCode: form.unitCode, unitName: form.unitName, isActive: form.isActive ?? true }, row?.id)
@@ -125,11 +207,57 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
       <EnterpriseFormGrid>
         {kind === "item" ? <>
           <Field label="Kode Barang"><Input value={form.itemCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("itemCode", e.target.value)} /></Field>
+          <Field label="Material Desc"><Input value={form.materialDesc ?? ""} onChange={(e) => set("materialDesc", e.target.value)} /></Field>
           <Field label="Nama Barang"><Input value={form.itemName ?? ""} onChange={(e) => set("itemName", e.target.value)} /></Field>
           <Field label="Jenis"><Select value={String(form.typeId ?? "none")} onValueChange={(v) => set("typeId", v === "none" ? null : Number(v))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">-</SelectItem>{types.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.typeName}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="Satuan"><Select value={String(form.unitId ?? "none")} onValueChange={(v) => set("unitId", v === "none" ? null : Number(v))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">-</SelectItem>{units.map((u) => <SelectItem key={u.id} value={String(u.id)}>{u.unitName}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="S-Loc"><Input value={form.storageLocation ?? ""} onChange={(e) => set("storageLocation", e.target.value)} /></Field>
+          <Field label="S-Loc Desc"><Input value={form.storageLocationDesc ?? ""} onChange={(e) => set("storageLocationDesc", e.target.value)} /></Field>
           <Field label="Stok Minimum"><Input type="number" value={form.minimumStock ?? 0} onChange={(e) => set("minimumStock", e.target.value)} /></Field>
-          <Field label="Foto URL"><Input value={form.photoUrl ?? ""} onChange={(e) => set("photoUrl", e.target.value)} /></Field>
+          <Field label="Foto Produk">
+            <div className="flex flex-col gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  const toastId = toast.loading("Mengunggah foto...");
+                  try {
+                    const res = await uploadFile(formData);
+                    if (res.success) {
+                      set("photoUrl", res.url);
+                      toast.success("Foto berhasil diunggah", { id: toastId });
+                    } else {
+                      toast.error(res.error || "Gagal mengunggah foto", { id: toastId });
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || "Gagal mengunggah foto", { id: toastId });
+                  }
+                }}
+              />
+              {form.photoUrl && (
+                <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border">
+                  <img
+                    src={form.photoUrl}
+                    alt="Preview produk"
+                    className="h-full w-full object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="denseIcon"
+                    className="absolute right-1 top-1"
+                    onClick={() => set("photoUrl", "")}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Field>
         </> : kind === "type" ? <><Field label="Kode Jenis"><Input value={form.typeCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("typeCode", e.target.value)} /></Field><Field label="Nama Jenis"><Input value={form.typeName ?? ""} onChange={(e) => set("typeName", e.target.value)} /></Field></> : <><Field label="Kode Satuan"><Input value={form.unitCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("unitCode", e.target.value)} /></Field><Field label="Nama Satuan"><Input value={form.unitName ?? ""} onChange={(e) => set("unitName", e.target.value)} /></Field></>}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive ?? true} onChange={(e) => set("isActive", e.target.checked)} /> Aktif</label>
       </EnterpriseFormGrid>
@@ -165,7 +293,7 @@ function ItemActions({ row, types, units, labels }: { row: Row; types: Row[]; un
   return (
     <>
       <DialogActionButtons onView={() => setOpen("view")} onEdit={() => setOpen("edit")} onDelete={() => setOpen("delete")} />
-      <ViewDialog title={`Detail Barang ${row.itemCode}`} row={detailRow} labels={labels} open={open === "view"} onOpenChange={(v) => setOpen(v ? "view" : null)} />
+      <ViewDialog title={`Detail Barang ${row.itemCode}`} row={detailRow} labels={labels} open={open === "view"} onOpenChange={(v) => setOpen(v ? "view" : null)} onEditClick={() => setOpen("edit")} />
       <MasterDialog kind="item" row={row} types={types} units={units} open={open === "edit"} onOpenChange={(v) => setOpen(v ? "edit" : null)} />
       <DeleteDialog title={`Hapus Barang ${row.itemCode}`} description="Data barang akan dihapus dari Warehouse Repair." row={detailRow} labels={labels} action={() => deleteWarehouseRepairItem(row.id)} open={open === "delete"} onOpenChange={(v) => setOpen(v ? "delete" : null)} />
     </>
@@ -202,9 +330,55 @@ function ItemTable({ rows, types, units, title, report = false }: { rows: Row[];
   const typeOptions = useMemo(() => types.map((t) => ({ value: t.typeName, label: t.typeName })), [types])
   const unitOptions = useMemo(() => units.map((u) => ({ value: u.unitName, label: u.unitName })), [units])
   const columns = report ? itemReportColumns : itemColumns
-  const detailLabels: Array<[string, string]> = [["itemCode", "Kode Barang"], ["itemName", "Nama Barang"], ["typeName", "Jenis"], ["unitName", "Satuan"], ["stock", "Stok"], ["minimumStock", "Minimum"], ["status", "Status"], ["photoUrl", "Foto URL"]]
-  return <MinimalTableShell label={title.toLowerCase()} fileName={title} searchPlaceholder={`Cari ${title.toLowerCase()}...`} showImport={!report} access={access} filters={<><TableMultiFilter label="jenis" filterKey="type" options={typeOptions} /><TableMultiFilter label="satuan" filterKey="unit" options={unitOptions} /><TableMultiFilter label="status stok" filterKey="stock" options={[{ value: "low", label: "Low stock" }, { value: "safe", label: "Stok aman" }]} /></>} primaryAction={!report ? <MasterDialog kind="item" types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false} scorecards={[{ label: "Barang", value: rows.length, icon: <Boxes className="size-4 text-primary" />, tone: "info" }, { label: "Total Stok", value: rows.reduce((s, i) => s + Number(i.stock ?? 0), 0), tone: "default" }, { label: "Low Stock", value: rows.filter((i) => Number(i.stock ?? 0) <= Number(i.minimumStock ?? 0)).length, tone: "warning" }, { label: "Aktif", value: rows.filter((i) => i.isActive).length, tone: "success" }]}>
-    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, status: statusLabel(r.isActive) }; return <TableRow key={r.id} data-filter-type={r.typeName ?? ""} data-filter-unit={r.unitName ?? ""} data-filter-stock={Number(r.stock ?? 0) <= Number(r.minimumStock ?? 0) ? "low" : "safe"}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{statusLabel(r.isActive)}</Badge></TableCell>{!report ? <TableCell><ItemActions row={r} types={types} units={units} labels={detailLabels} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data barang.</TableCell></TableRow>}</TableBody></Table>
+  const detailLabels: Array<[string, string]> = [["itemCode", "Kode Barang"], ["materialDesc", "Material Desc"], ["itemName", "Nama Barang"], ["typeName", "Jenis"], ["unitName", "Satuan"], ["storageLocation", "S-Loc"], ["storageLocationDesc", "S-Loc Desc"], ["stock", "Stok"], ["minimumStock", "Minimum"], ["status", "Status"], ["photoUrl", "Foto URL"]]
+  
+  const importFields = [
+    { key: "itemCode", label: "Kode Barang (Material Number)", required: true },
+    { key: "itemName", label: "Nama Barang", required: true },
+    { key: "materialDesc", label: "Material Desc (Technical Description)", required: false },
+    { key: "categoryName", label: "Category / Jenis", required: false },
+    { key: "unitName", label: "UOM / Satuan", required: false },
+    { key: "storageLocation", label: "S-Loc", required: false },
+    { key: "storageLocationDesc", label: "S-Loc Description", required: false },
+    { key: "stock", label: "Stok / Qty", required: false },
+    { key: "minimumStock", label: "Stok Minimum", required: false },
+  ]
+
+  const handleImport = async (payload: any) => {
+    const toastId = toast.loading("Mengimport data barang...");
+    const items = payload.rows.map((row: any) => {
+      const item: any = {};
+      for (const field of importFields) {
+        const fileCol = payload.mapping[field.key];
+        const colIndex = payload.headers.indexOf(fileCol);
+        item[field.key] = colIndex !== -1 ? row[colIndex] : "";
+      }
+      return item;
+    });
+
+    try {
+      const res = await bulkImportWarehouseRepairItems(items);
+      if (res.success) {
+        toast.success("Data barang berhasil diimport", { id: toastId });
+        reload();
+      } else {
+        toast.error(res.error || "Gagal mengimport data barang", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengimport data barang", { id: toastId });
+    }
+  };
+
+  const importAction = (
+    <AdminImportDialog
+      title="Import Data Barang"
+      fields={importFields}
+      onConfirm={handleImport}
+    />
+  )
+
+  return <MinimalTableShell label={title.toLowerCase()} fileName={title} searchPlaceholder={`Cari ${title.toLowerCase()}...`} showImport={!report} importAction={importAction} access={access} filters={<><TableMultiFilter label="jenis" filterKey="type" options={typeOptions} /><TableMultiFilter label="satuan" filterKey="unit" options={unitOptions} /><TableMultiFilter label="status stok" filterKey="stock" options={[{ value: "low", label: "Low stock" }, { value: "safe", label: "Stok aman" }]} /></>} primaryAction={!report ? <MasterDialog kind="item" types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false} scorecards={[{ label: "Barang", value: rows.length, icon: <Boxes className="size-4 text-primary" />, tone: "info" }, { label: "Total Stok", value: rows.reduce((s, i) => s + Number(i.stock ?? 0), 0), tone: "default" }, { label: "Low Stock", value: rows.filter((i) => Number(i.stock ?? 0) <= Number(i.minimumStock ?? 0)).length, tone: "warning" }, { label: "Aktif", value: rows.filter((i) => i.isActive).length, tone: "success" }]}>
+    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, status: statusLabel(r.isActive) }; return <TableRow key={r.id} data-filter-type={r.typeName ?? ""} data-filter-unit={r.unitName ?? ""} data-filter-stock={Number(r.stock ?? 0) <= Number(r.minimumStock ?? 0) ? "low" : "safe"}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.materialDesc ?? "-"}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.storageLocation ?? "-"}</TableCell><TableCell>{r.storageLocationDesc ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{statusLabel(r.isActive)}</Badge></TableCell>{!report ? <TableCell><ItemActions row={r} types={types} units={units} labels={detailLabels} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data barang.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }
 
@@ -220,15 +394,27 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
   const columns = report ? reportTrxColumns : trxColumns
   const deleteAction = kind === "in" ? deleteWarehouseRepairInbound : deleteWarehouseRepairOutbound
   const itemOptions = useMemo(() => items.map((i) => ({ value: i.itemName, label: i.itemName })), [items])
-  const detailLabels: Array<[string, string]> = [["transactionNo", "No Transaksi"], ["date", "Tanggal"], ["itemCode", "Kode Barang"], ["itemName", "Nama Barang"], ["quantity", "Qty"], ["note", "Keterangan"]]
+  const detailLabels: Array<[string, string]> = [
+    ["transactionNo", "No Transaksi"],
+    ["date", "Tanggal"],
+    ["itemCode", "Kode Barang"],
+    ["materialDesc", "Material Desc"],
+    ["itemName", "Nama Barang"],
+    ["typeName", "Category/Jenis"],
+    ["unitName", "Satuan/UOM"],
+    ["storageLocation", "S-Loc"],
+    ["storageLocationDesc", "S-Loc Desc"],
+    ["quantity", "Qty"],
+    ["note", "Keterangan"]
+  ]
   return <MinimalTableShell label={title.toLowerCase()} fileName={title} showImport={false} access={access} dateFilter filters={<TableMultiFilter label="barang" filterKey="item" options={itemOptions} />} primaryAction={!report ? <TransactionDialog kind={kind} items={items} trigger={<Button><Plus className="mr-2 h-4 w-4" />Entri Data</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} scorecards={[{ label: "Transaksi", value: rows.length, tone: "info", icon: kind === "in" ? <PackagePlus className="size-4 text-primary" /> : <PackageMinus className="size-4 text-primary" /> }, { label: "Total Qty", value: rows.reduce((s, r) => s + Number(r.quantity ?? 0), 0), tone: "default" }, { label: "Barang", value: new Set(rows.map((r) => r.itemId ?? r.itemCode)).size, tone: "success" }, { label: "Export", value: <Download className="size-5" />, tone: "warning" }]}>
-    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, date: fmtDate(r.transactionDate), note: r.note || "-" }; return <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""}><TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell><TableCell>{fmtDate(r.transactionDate)}</TableCell><TableCell>{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.quantity}</TableCell><TableCell>{r.note || "-"}</TableCell>{!report ? <TableCell><TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data transaksi.</TableCell></TableRow>}</TableBody></Table>
+    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, date: fmtDate(r.transactionDate), note: r.note || "-" }; return <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""}><TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell><TableCell>{fmtDate(r.transactionDate)}</TableCell><TableCell>{r.itemCode}</TableCell><TableCell>{r.materialDesc ?? "-"}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.storageLocation ?? "-"}</TableCell><TableCell>{r.storageLocationDesc ?? "-"}</TableCell><TableCell>{r.quantity}</TableCell><TableCell>{r.note || "-"}</TableCell>{!report ? <TableCell><TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data transaksi.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }
 
 export function WarehouseRepairClient({ mode, data }: Props) {
   const metrics = data.metrics ?? { items: data.items.length, lowStock: data.items.filter((i) => i.stock <= i.minimumStock).length, inbound: data.inbound.length, outbound: data.outbound.length, totalStock: data.items.reduce((s, i) => s + i.stock, 0) }
-  if (mode === "overview") return <PageShell title="Dashboard" description="Ringkasan stok, transaksi masuk, dan transaksi keluar warehouse repair."><MinimalTableShell label="stok minimum" fileName="warehouse-repair-low-stock" showImport={false} searchPlaceholder="Cari stok minimum..." dateFilter={false} scorecards={[{ label: "Barang", value: metrics.items, tone: "info", icon: <Boxes className="size-4 text-primary" /> }, { label: "Total Stok", value: metrics.totalStock, tone: "default" }, { label: "Low Stock", value: metrics.lowStock, tone: "warning" }, { label: "Transaksi", value: Number(metrics.inbound ?? 0) + Number(metrics.outbound ?? 0), tone: "success" }]}><Table><TableHeader><TableRow>{itemReportColumns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{data.items.filter((i) => i.stock <= i.minimumStock).map((r) => <TableRow key={r.id}><TableCell>{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant="outline">Low stock</Badge></TableCell></TableRow>)}</TableBody></Table></MinimalTableShell></PageShell>
+  if (mode === "overview") return <PageShell title="Dashboard" description="Ringkasan stok, transaksi masuk, dan transaksi keluar warehouse repair."><MinimalTableShell label="stok minimum" fileName="warehouse-repair-low-stock" showImport={false} searchPlaceholder="Cari stok minimum..." dateFilter={false} scorecards={[{ label: "Barang", value: metrics.items, tone: "info", icon: <Boxes className="size-4 text-primary" /> }, { label: "Total Stok", value: metrics.totalStock, tone: "default" }, { label: "Low Stock", value: metrics.lowStock, tone: "warning" }, { label: "Transaksi", value: Number(metrics.inbound ?? 0) + Number(metrics.outbound ?? 0), tone: "success" }]}><Table><TableHeader><TableRow>{itemReportColumns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{data.items.filter((i) => i.stock <= i.minimumStock).map((r) => <TableRow key={r.id}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.materialDesc ?? "-"}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.storageLocation ?? "-"}</TableCell><TableCell>{r.storageLocationDesc ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant="outline">Low stock</Badge></TableCell></TableRow>)}</TableBody></Table></MinimalTableShell></PageShell>
   if (mode === "items") return <PageShell title="Data Barang" description="Master barang dan posisi stok warehouse repair."><ItemTable rows={data.items} types={data.types} units={data.units} title="Data Barang" /></PageShell>
   if (mode === "types") return <PageShell title="Jenis Barang" description="Master kategori/jenis barang warehouse repair."><MasterTable kind="type" rows={data.types} types={data.types} units={data.units} title="Jenis Barang" /></PageShell>
   if (mode === "units") return <PageShell title="Satuan" description="Master satuan barang warehouse repair."><MasterTable kind="unit" rows={data.units} types={data.types} units={data.units} title="Satuan" /></PageShell>
