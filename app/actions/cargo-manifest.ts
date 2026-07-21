@@ -580,3 +580,92 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
     return { success: false, error: error.message || "Gagal membuat Cargo Manifest" };
   }
 }
+
+export async function createCargoManifestFromMultipleOutbound(outboundIds: number[]): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+  try {
+    await ensureCargoManifestTables();
+
+    if (!outboundIds || outboundIds.length === 0) {
+      return { success: false, error: "Pilih setidaknya 1 transaksi barang keluar." };
+    }
+
+    const records = await db
+      .select({
+        id: warehouseRepairOutbound.id,
+        trxNo: warehouseRepairOutbound.transactionNo,
+        trxDate: warehouseRepairOutbound.transactionDate,
+        quantity: warehouseRepairOutbound.quantity,
+        outboundType: warehouseRepairOutbound.outboundType,
+        destinationSLoc: warehouseRepairOutbound.destinationSLoc,
+        destinationSLocDesc: warehouseRepairOutbound.destinationSLocDesc,
+        notes: warehouseRepairOutbound.note,
+        itemName: warehouseRepairItems.itemName,
+        itemCode: warehouseRepairItems.itemCode,
+        materialDesc: warehouseRepairItems.materialDesc,
+        unitName: warehouseRepairUnits.unitName,
+      })
+      .from(warehouseRepairOutbound)
+      .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
+      .leftJoin(warehouseRepairUnits, eq(warehouseRepairItems.unitId, warehouseRepairUnits.id))
+      .where(sql`${warehouseRepairOutbound.id} IN ${outboundIds}`);
+
+    if (records.length === 0) {
+      return { success: false, error: "Data transaksi barang keluar tidak ditemukan." };
+    }
+
+    const cleanDate = records[0].trxDate || new Date().toISOString().slice(0, 10);
+    const manifestNumber = `CM-OUT-${Date.now().toString().slice(-6)}`;
+
+    const destSlocs = Array.from(new Set(records.map(r => r.destinationSLoc).filter(Boolean))).join(", ");
+    const destSlocDescs = Array.from(new Set(records.map(r => r.destinationSLocDesc).filter(Boolean))).join(", ");
+
+    const finalDestination = destSlocs ? `${destSlocs} (${destSlocDescs})` : "Site / Operations";
+
+    const [inserted] = await db
+      .insert(cargoManifests)
+      .values({
+        manifestNumber,
+        date: cleanDate,
+        attention: "Penerima Cargo / Operations",
+        transportVia: "Land Transport / Expediter",
+        shippedVia: "Warehouse Repair Outbound",
+        finalDestination,
+        status: "draft",
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    const manifestItemsPayload = records.map((r, index) => {
+      const itemDesc = r.materialDesc
+        ? `${r.itemCode ? `[${r.itemCode}] ` : ""}${r.materialDesc}`
+        : `${r.itemCode ? `[${r.itemCode}] ` : ""}${r.itemName || "Barang Repair"}`;
+
+      const remarkParts = [];
+      if (r.outboundType) remarkParts.push(`Tipe: ${r.outboundType}`);
+      if (r.destinationSLoc) remarkParts.push(`Ke S-Loc: ${r.destinationSLoc} (${r.destinationSLocDesc})`);
+      if (r.unitName) remarkParts.push(`Satuan: ${r.unitName}`);
+      if (r.notes) remarkParts.push(r.notes);
+
+      return {
+        manifestId: inserted.id,
+        no: index + 1,
+        description: itemDesc,
+        serialNumber: r.itemCode || "-",
+        qty: r.quantity || 1,
+        brand: "Chitra Paratama",
+        remark: remarkParts.join(" | "),
+      };
+    });
+
+    await db.insert(cargoManifestItems).values(manifestItemsPayload);
+
+    revalidatePath("/dashboard/cargo-manifest");
+    revalidatePath("/dashboard/warehouse-repair/barang-keluar");
+
+    const manifest = await getCargoManifestById(inserted.id);
+    return { success: true, manifest };
+  } catch (error: any) {
+    console.error("[createCargoManifestFromMultipleOutbound]", error);
+    return { success: false, error: error.message || "Gagal membuat Cargo Manifest" };
+  }
+}

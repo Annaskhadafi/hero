@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react"
 import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, FileText, Package, PackageMinus, PackagePlus, Plus, Printer, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { uploadFile } from "@/app/actions/upload"
-import { createCargoManifestFromOutbound, type CargoManifestRecord } from "@/app/actions/cargo-manifest"
+import { createCargoManifestFromOutbound, createCargoManifestFromMultipleOutbound, type CargoManifestRecord } from "@/app/actions/cargo-manifest"
 import { CargoManifestPdfDialog } from "@/components/cargo-manifest-panels"
 import { resolveClientUploadUrl } from "@/lib/client-url"
 
@@ -660,15 +660,37 @@ function TransferDialog({
 
 function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { kind: "in" | "out"; items: Row[]; row?: Row; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
-  const [form, setForm] = useState({ transactionDate: fmtDate(row?.transactionDate ?? today()), itemId: row?.itemId ? String(row.itemId) : "", quantity: Number(row?.quantity ?? 1), note: row?.note ?? "" })
+  const [form, setForm] = useState({
+    transactionDate: fmtDate(row?.transactionDate ?? today()),
+    itemId: row?.itemId ? String(row.itemId) : "",
+    quantity: Number(row?.quantity ?? 1),
+    outboundType: row?.outboundType ?? "Pemakaian Internal",
+    destinationSLoc: row?.destinationSLoc ?? "RS02",
+    destinationSLocDesc: row?.destinationSLocDesc ?? "Samarinda",
+    note: row?.note ?? "",
+  })
   const selectedItem = items.find((i) => String(i.id) === String(form.itemId))
+
+  const handleSelectPreset = (code: string, desc: string) => {
+    setForm((f) => ({ ...f, destinationSLoc: code, destinationSLocDesc: desc }))
+  }
+
   const save = () => start(async () => {
-    const input = { transactionDate: form.transactionDate, itemId: Number(form.itemId), quantity: Number(form.quantity), note: form.note }
+    const input = {
+      transactionDate: form.transactionDate,
+      itemId: Number(form.itemId),
+      quantity: Number(form.quantity),
+      outboundType: form.outboundType,
+      destinationSLoc: form.outboundType === "Stock Transfer" ? form.destinationSLoc : "",
+      destinationSLocDesc: form.outboundType === "Stock Transfer" ? form.destinationSLocDesc : "",
+      note: form.note,
+    }
     const res = row
       ? kind === "in" ? await updateWarehouseRepairInbound(row.id, input) : await updateWarehouseRepairOutbound(row.id, input)
       : kind === "in" ? await createWarehouseRepairInbound(input) : await createWarehouseRepairOutbound(input)
     if (res.success) { toast.success("Transaksi tersimpan"); reload() } else toast.error(res.error)
   })
+
   return (
     <EnterpriseRecordDialog trigger={trigger} open={open} onOpenChange={onOpenChange} title={`${row ? "Edit" : "Entri"} Barang ${kind === "in" ? "Masuk" : "Keluar"}`} mode="form" access={access} footer={<Button disabled={pending || !form.itemId} onClick={save}>Simpan</Button>}>
       <EnterpriseFormGrid>
@@ -690,6 +712,75 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
           </div>
         )}
 
+        {kind === "out" && (
+          <div className="col-span-full space-y-3 rounded-xl border border-blue-200/70 bg-blue-50/40 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+            <Label className="text-xs font-semibold text-blue-900 dark:text-blue-200">Tujuan / Jenis Pengeluaran Barang</Label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-foreground">
+                <input
+                  type="radio"
+                  name="outboundType"
+                  value="Pemakaian Internal"
+                  checked={form.outboundType === "Pemakaian Internal"}
+                  onChange={() => setForm((f) => ({ ...f, outboundType: "Pemakaian Internal" }))}
+                  className="text-primary"
+                />
+                Pemakaian Internal
+              </label>
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-foreground">
+                <input
+                  type="radio"
+                  name="outboundType"
+                  value="Stock Transfer"
+                  checked={form.outboundType === "Stock Transfer"}
+                  onChange={() => setForm((f) => ({ ...f, outboundType: "Stock Transfer" }))}
+                  className="text-primary"
+                />
+                Stock Transfer (Pindah S-Loc)
+              </label>
+            </div>
+
+            {form.outboundType === "Stock Transfer" && (
+              <div className="pt-2 space-y-3 border-t border-blue-200/60 dark:border-blue-900/40">
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground">Preset S-Loc Tujuan (Warehouse)</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRESET_SLOCS.map((preset) => (
+                      <Button
+                        key={preset.code}
+                        type="button"
+                        variant={form.destinationSLoc === preset.code ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7 px-2.5"
+                        onClick={() => handleSelectPreset(preset.code, preset.desc)}
+                      >
+                        {preset.code} - {preset.desc}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="S-Loc Kode Tujuan">
+                    <Input
+                      value={form.destinationSLoc}
+                      placeholder="Contoh: RS02"
+                      onChange={(e) => setForm((f) => ({ ...f, destinationSLoc: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="S-Loc Deskripsi Tujuan">
+                    <Input
+                      value={form.destinationSLocDesc}
+                      placeholder="Contoh: Samarinda Warehouse"
+                      onChange={(e) => setForm((f) => ({ ...f, destinationSLocDesc: e.target.value }))}
+                    />
+                  </Field>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <Field label="Jumlah (Qty)"><Input type="number" min={1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} /></Field>
         <Field label="Keterangan"><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Catatan transaksi..." /></Field>
       </EnterpriseFormGrid>
@@ -698,9 +789,43 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
 }
 
 function TransactionTable({ rows, items, title, kind, report = false }: { rows: Row[]; items: Row[]; title: string; kind: "in" | "out"; report?: boolean }) {
-  const columns = report ? reportTrxColumns : trxColumns
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [bulkManifest, setBulkManifest] = useState<CargoManifestRecord | null>(null)
+  const [bulkPdfOpen, setBulkPdfOpen] = useState(false)
+  const [loadingBulk, startBulk] = useTransition()
+
+  const columns = report ? reportTrxColumns : kind === "out" ? ["Sel", ...trxColumns] : trxColumns
   const deleteAction = kind === "in" ? deleteWarehouseRepairInbound : deleteWarehouseRepairOutbound
   const itemOptions = useMemo(() => items.map((i) => ({ value: i.itemName, label: i.itemName })), [items])
+
+  const allSelected = rows.length > 0 && selectedIds.length === rows.length
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(rows.map((r) => r.id))
+    }
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    )
+  }
+
+  const handleConvertBulkToCargo = () => {
+    if (selectedIds.length === 0) return toast.error("Pilih setidaknya 1 transaksi barang keluar")
+    startBulk(async () => {
+      const res = await createCargoManifestFromMultipleOutbound(selectedIds)
+      if (res.success && res.manifest) {
+        setBulkManifest(res.manifest)
+        setBulkPdfOpen(true)
+      } else {
+        toast.error(res.error || "Gagal membuat Cargo Manifest dari item terpilih")
+      }
+    })
+  }
+
   const detailLabels: Array<[string, string]> = [
     ["transactionNo", "No Transaksi"],
     ["date", "Tanggal"],
@@ -712,11 +837,108 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
     ["storageLocation", "S-Loc"],
     ["storageLocationDesc", "S-Loc Desc"],
     ["quantity", "Qty"],
+    ["outboundType", "Tipe Keluar"],
+    ["destinationSLoc", "S-Loc Tujuan"],
+    ["destinationSLocDesc", "S-Loc Deskripsi Tujuan"],
     ["note", "Keterangan"]
   ]
-  return <MinimalTableShell label={title.toLowerCase()} fileName={title} showImport={false} access={access} dateFilter filters={<TableMultiFilter label="barang" filterKey="item" options={itemOptions} />} primaryAction={!report ? <TransactionDialog kind={kind} items={items} trigger={<Button><Plus className="mr-2 h-4 w-4" />Entri Data</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} scorecards={[{ label: "Transaksi", value: rows.length, tone: "info", icon: kind === "in" ? <PackagePlus className="size-4 text-primary" /> : <PackageMinus className="size-4 text-primary" /> }, { label: "Total Qty", value: rows.reduce((s, r) => s + Number(r.quantity ?? 0), 0), tone: "default" }, { label: "Barang", value: new Set(rows.map((r) => r.itemId ?? r.itemCode)).size, tone: "success" }, { label: "Export", value: <Download className="size-5" />, tone: "warning" }]}>
-    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, date: fmtDate(r.transactionDate), note: r.note || "-" }; return <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""}><TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell><TableCell>{fmtDate(r.transactionDate)}</TableCell><TableCell>{r.itemCode}</TableCell><TableCell>{r.materialDesc ?? "-"}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.storageLocation ?? "-"}</TableCell><TableCell>{r.storageLocationDesc ?? "-"}</TableCell><TableCell>{r.quantity}</TableCell><TableCell>{r.note || "-"}</TableCell>{!report ? <TableCell><TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data transaksi.</TableCell></TableRow>}</TableBody></Table>
-  </MinimalTableShell>
+
+  return (
+    <MinimalTableShell
+      label={title.toLowerCase()}
+      fileName={title}
+      showImport={false}
+      access={access}
+      dateFilter
+      filters={<TableMultiFilter label="barang" filterKey="item" options={itemOptions} />}
+      primaryAction={
+        !report ? (
+          <div className="flex items-center gap-2">
+            {kind === "out" && selectedIds.length > 0 && (
+              <Button
+                variant="default"
+                disabled={loadingBulk}
+                onClick={handleConvertBulkToCargo}
+                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs"
+              >
+                <FileText className="size-4" /> Convert Selected ({selectedIds.length}) to Cargo Manifest
+              </Button>
+            )}
+            <TransactionDialog kind={kind} items={items} trigger={<Button><Plus className="mr-2 h-4 w-4" />Entri Data</Button>} />
+          </div>
+        ) : undefined
+      }
+      columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))}
+      scorecards={[
+        { label: "Transaksi", value: rows.length, tone: "info", icon: kind === "in" ? <PackagePlus className="size-4 text-primary" /> : <PackageMinus className="size-4 text-primary" /> },
+        { label: "Total Qty", value: rows.reduce((s, r) => s + Number(r.quantity ?? 0), 0), tone: "default" },
+        { label: "Barang", value: new Set(rows.map((r) => r.itemId ?? r.itemCode)).size, tone: "success" },
+        { label: "Terpilih", value: selectedIds.length, tone: "warning" }
+      ]}
+    >
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {kind === "out" && !report && (
+              <TableHead className="w-10 text-center">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="rounded border-border cursor-pointer" />
+              </TableHead>
+            )}
+            {columns.filter((c) => c !== "Sel").map((c) => (
+              <TableHead key={c}>{c}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length ? (
+            rows.map((r) => {
+              const detailRow = {
+                ...r,
+                date: fmtDate(r.transactionDate),
+                outboundType: r.outboundType || "Pemakaian Internal",
+                destinationSLoc: r.destinationSLoc || "-",
+                destinationSLocDesc: r.destinationSLocDesc || "-",
+                note: r.note || "-"
+              }
+              const isSelected = selectedIds.includes(r.id)
+              return (
+                <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""} className={isSelected ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}>
+                  {kind === "out" && !report && (
+                    <TableCell className="w-10 text-center">
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)} className="rounded border-border cursor-pointer" />
+                    </TableCell>
+                  )}
+                  <TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell>
+                  <TableCell>{fmtDate(r.transactionDate)}</TableCell>
+                  <TableCell>{r.itemCode}</TableCell>
+                  <TableCell>{r.materialDesc ?? "-"}</TableCell>
+                  <TableCell>{r.itemName}</TableCell>
+                  <TableCell>{r.typeName ?? "-"}</TableCell>
+                  <TableCell>{r.unitName ?? "-"}</TableCell>
+                  <TableCell>{r.storageLocation ?? "-"}</TableCell>
+                  <TableCell>{r.storageLocationDesc ?? "-"}</TableCell>
+                  <TableCell>{r.quantity}</TableCell>
+                  <TableCell>{r.note || "-"}</TableCell>
+                  {!report ? (
+                    <TableCell>
+                      <TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} />
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              )
+            })
+          ) : (
+            <TableRow>
+              <TableCell colSpan={columns.length + (kind === "out" && !report ? 1 : 0)} className="h-24 text-center text-muted-foreground">
+                Belum ada data transaksi.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+      {bulkManifest && <CargoManifestPdfDialog row={bulkManifest} open={bulkPdfOpen} onOpenChange={setBulkPdfOpen} trigger={null} />}
+    </MinimalTableShell>
+  )
 }
 
 export function WarehouseRepairClient({ mode, data }: Props) {

@@ -11,7 +11,7 @@ import {
   warehouseRepairOutbound,
   warehouseRepairTransfers,
 } from "@/db/schema/warehouse-repair"
-import { getS3ObjectReadUrl, resolveUploadUrl } from "@/lib/s3-storage"
+import { resolveUploadUrl } from "@/lib/s3-storage"
 
 // Revalidation paths
 const REVAL_PATHS = [
@@ -163,6 +163,9 @@ export async function getWarehouseRepairOutbound() {
         storageLocation: warehouseRepairItems.storageLocation,
         storageLocationDesc: warehouseRepairItems.storageLocationDesc,
         quantity: warehouseRepairOutbound.quantity,
+        outboundType: warehouseRepairOutbound.outboundType,
+        destinationSLoc: warehouseRepairOutbound.destinationSLoc,
+        destinationSLocDesc: warehouseRepairOutbound.destinationSLocDesc,
         note: warehouseRepairOutbound.note,
         createdAt: warehouseRepairOutbound.createdAt,
       })
@@ -359,6 +362,10 @@ export async function createWarehouseRepairInbound(input: any) {
 // 15. Create Outbound
 export async function createWarehouseRepairOutbound(input: any) {
   try {
+    const outboundType = input.outboundType || "Pemakaian Internal"
+    const destinationSLoc = input.destinationSLoc || ""
+    const destinationSLocDesc = input.destinationSLocDesc || ""
+
     await db.transaction(async (tx) => {
       const [item] = await tx.select().from(warehouseRepairItems).where(eq(warehouseRepairItems.id, input.itemId)).limit(1)
       if (!item) throw new Error("Barang tidak ditemukan")
@@ -370,6 +377,9 @@ export async function createWarehouseRepairOutbound(input: any) {
         transactionDate: input.transactionDate,
         itemId: input.itemId,
         quantity: input.quantity,
+        outboundType,
+        destinationSLoc,
+        destinationSLocDesc,
         note: input.note || "",
       })
 
@@ -380,6 +390,20 @@ export async function createWarehouseRepairOutbound(input: any) {
           updatedAt: new Date(),
         })
         .where(eq(warehouseRepairItems.id, input.itemId))
+
+      if (outboundType === "Stock Transfer" && destinationSLoc) {
+        await tx.insert(warehouseRepairTransfers).values({
+          transactionNo: `TRF-${transactionNo}`,
+          transactionDate: input.transactionDate,
+          itemId: input.itemId,
+          fromSLoc: item.storageLocation || "RS01",
+          fromSLocDesc: item.storageLocationDesc || "Balikpapan",
+          toSLoc: destinationSLoc,
+          toSLocDesc: destinationSLocDesc,
+          quantity: input.quantity,
+          note: `Stock Transfer via Outbound: ${input.note || ""}`,
+        })
+      }
     })
     revalidateAll()
     return { success: true }
@@ -871,5 +895,4 @@ export async function getWarehouseRepairTransfers() {
     return []
   }
 }
-
 
