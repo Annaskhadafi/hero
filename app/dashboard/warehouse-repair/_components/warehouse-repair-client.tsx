@@ -850,6 +850,98 @@ function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { 
 const inboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Tujuan", "Deskripsi S-Loc", "Qty", "Keterangan"]
 const outboundTrxColumns = ["No Transaksi", "Tanggal", "Kode Barang", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc Asal", "Deskripsi S-Loc Asal", "Tipe Keluar", "S-Loc Tujuan", "Deskripsi S-Loc Tujuan", "Qty", "Keterangan"]
 
+function TransactionActions({
+  kind,
+  row,
+  items,
+  title,
+  labels,
+  deleteAction,
+}: {
+  kind: "in" | "out"
+  row: Row
+  items: Row[]
+  title: string
+  labels: Array<[string, string]>
+  deleteAction: (id: number) => Promise<{ success: boolean; error?: string }>
+}) {
+  const [openView, setOpenView] = useState(false)
+  const [openEdit, setOpenEdit] = useState(false)
+  const [openDelete, setOpenDelete] = useState(false)
+  const [openCargoPdf, setOpenCargoPdf] = useState(false)
+  const [cargoManifest, setCargoManifest] = useState<CargoManifestRecord | null>(null)
+  const [loadingCargo, startCargo] = useTransition()
+
+  const handleCreateCargo = () => {
+    startCargo(async () => {
+      const res = await createCargoManifestFromOutbound(row.id)
+      if (res.success && res.manifest) {
+        setCargoManifest(res.manifest)
+        setOpenCargoPdf(true)
+      } else {
+        toast.error(res.error || "Gagal membuat Cargo Manifest")
+      }
+    })
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-end gap-1">
+        {kind === "out" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="denseIcon"
+            title="Print Cargo Manifest PDF"
+            disabled={loadingCargo}
+            onClick={handleCreateCargo}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          >
+            <FileText className="size-4" />
+          </Button>
+        )}
+        <ActionIconButton kind="view" label="Detail" onClick={() => setOpenView(true)} />
+        <ActionIconButton kind="edit" label="Edit" onClick={() => setOpenEdit(true)} />
+        <ActionIconButton kind="delete" label="Hapus" onClick={() => setOpenDelete(true)} />
+      </div>
+
+      <ViewDialog
+        title={`Detail ${title}`}
+        open={openView}
+        onOpenChange={setOpenView}
+        row={row}
+        labels={labels}
+        onEditClick={() => setOpenEdit(true)}
+        onPrintCargo={kind === "out" ? handleCreateCargo : undefined}
+      />
+      <TransactionDialog
+        kind={kind}
+        items={items}
+        row={row}
+        open={openEdit}
+        onOpenChange={setOpenEdit}
+      />
+      <DeleteDialog
+        title={`Hapus ${title}`}
+        description="Apakah Anda yakin ingin menghapus data transaksi ini?"
+        open={openDelete}
+        onOpenChange={setOpenDelete}
+        row={row}
+        labels={labels}
+        action={() => deleteAction(row.id)}
+      />
+      {cargoManifest && (
+        <CargoManifestPdfDialog
+          row={cargoManifest}
+          open={openCargoPdf}
+          onOpenChange={setOpenCargoPdf}
+          trigger={null}
+        />
+      )}
+    </>
+  )
+}
+
 function TransactionTable({ rows, items, title, kind, report = false }: { rows: Row[]; items: Row[]; title: string; kind: "in" | "out"; report?: boolean }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [bulkManifest, setBulkManifest] = useState<CargoManifestRecord | null>(null)
