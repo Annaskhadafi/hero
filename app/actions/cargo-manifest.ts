@@ -14,6 +14,11 @@ import {
   masterSections,
   employees,
 } from "@/db/schema/hero";
+import {
+  warehouseRepairOutbound,
+  warehouseRepairItems,
+  warehouseRepairUnits,
+} from "@/db/schema/warehouse-repair";
 
 // ─── Ensure tables exist ──────────────────────────────────────────────────────
 
@@ -495,5 +500,83 @@ export async function importCargoManifestsAction(
   } catch (error) {
     console.error("[importCargoManifestsAction]", error);
     return { status: "error", message: "Gagal mengimpor data CSV." };
+  }
+}
+
+export async function createCargoManifestFromOutbound(outboundId: number): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+  try {
+    await ensureCargoManifestTables();
+
+    const [outbound] = await db
+      .select({
+        id: warehouseRepairOutbound.id,
+        trxNo: warehouseRepairOutbound.transactionNumber,
+        trxDate: warehouseRepairOutbound.transactionDate,
+        quantity: warehouseRepairOutbound.quantity,
+        location: warehouseRepairOutbound.location,
+        notes: warehouseRepairOutbound.notes,
+        itemName: warehouseRepairItems.itemName,
+        itemCode: warehouseRepairItems.itemCode,
+        materialDesc: warehouseRepairItems.materialDesc,
+        unitName: warehouseRepairUnits.unitName,
+      })
+      .from(warehouseRepairOutbound)
+      .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
+      .leftJoin(warehouseRepairUnits, eq(warehouseRepairItems.unitId, warehouseRepairUnits.id))
+      .where(eq(warehouseRepairOutbound.id, outboundId));
+
+    if (!outbound) {
+      return { success: false, error: "Data transaksi barang keluar tidak ditemukan." };
+    }
+
+    const cleanTrxNo = (outbound.trxNo || `OUT-${outboundId}`).replace(/[^a-zA-Z0-9-]/g, "_");
+    const manifestNumber = `CM-${cleanTrxNo}`;
+
+    const existing = await db
+      .select({ id: cargoManifests.id })
+      .from(cargoManifests)
+      .where(eq(cargoManifests.manifestNumber, manifestNumber));
+
+    if (existing.length > 0) {
+      const manifest = await getCargoManifestById(existing[0].id);
+      return { success: true, manifest };
+    }
+
+    const [inserted] = await db
+      .insert(cargoManifests)
+      .values({
+        manifestNumber,
+        date: outbound.trxDate || new Date().toISOString().slice(0, 10),
+        attention: "Penerima Cargo / Operations",
+        transportVia: "Land Transport / Expediter",
+        shippedVia: "Warehouse Repair Outbound",
+        finalDestination: outbound.location || "Location",
+        status: "draft",
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    const itemDesc = outbound.materialDesc
+      ? `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.materialDesc}`
+      : `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.itemName || "Barang Repair"}`;
+
+    await db.insert(cargoManifestItems).values({
+      manifestId: inserted.id,
+      no: 1,
+      description: itemDesc,
+      serialNumber: outbound.itemCode || "-",
+      qty: outbound.quantity || 1,
+      brand: "Chitra Paratama",
+      remark: `${outbound.unitName ? `Satuan: ${outbound.unitName} | ` : ""}${outbound.notes || "Outbound Cargo Item"}`,
+    });
+
+    revalidatePath("/dashboard/cargo-manifest");
+    revalidatePath("/dashboard/warehouse-repair/barang-keluar");
+
+    const manifest = await getCargoManifestById(inserted.id);
+    return { success: true, manifest };
+  } catch (error: any) {
+    console.error("[createCargoManifestFromOutbound]", error);
+    return { success: false, error: error.message || "Gagal membuat Cargo Manifest" };
   }
 }

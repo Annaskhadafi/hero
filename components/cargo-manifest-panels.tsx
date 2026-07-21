@@ -665,8 +665,20 @@ export function CargoManifestStatusAction({ id, currentStatus }: { id: number; c
 
 // ─── PDF Preview Dialog ───────────────────────────────────────────────────────
 
-export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
-  const [open, setOpen] = useState(false);
+export function CargoManifestPdfDialog({
+  row,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  trigger,
+}: {
+  row: CargoManifestRecord;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  trigger?: React.ReactNode;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
 
   const handleDownloadPdf = () => {
     const content = document.getElementById("cargo-pdf-content");
@@ -709,12 +721,16 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Preview PDF">
-          <FileText className="size-4" />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={setOpen}>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button variant="ghost" size="icon" aria-label="Preview PDF">
+              <FileText className="size-4" />
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-[1.4rem] border-0 bg-white p-0">
         <DialogHeader className="flex flex-row items-center justify-between px-6 pt-4 pb-2 no-print">
           <DialogTitle className="font-display text-lg">Preview — {row.manifestNumber}</DialogTitle>
