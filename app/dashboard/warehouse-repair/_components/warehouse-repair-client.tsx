@@ -4,6 +4,7 @@
 import { useMemo, useState, useTransition } from "react"
 import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, FileText, Package, PackageMinus, PackagePlus, Plus, Printer, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useSession } from "@/lib/auth-client"
 import { uploadFile } from "@/app/actions/upload"
 import { createCargoManifestFromOutbound, createCargoManifestFromMultipleOutbound, type CargoManifestRecord } from "@/app/actions/cargo-manifest"
 import { CargoManifestPdfDialog } from "@/components/cargo-manifest-panels"
@@ -872,11 +873,14 @@ function TransactionActions({
   const [cargoManifest, setCargoManifest] = useState<CargoManifestRecord | null>(null)
   const [loadingCargo, startCargo] = useTransition()
 
+  const { data: session } = useSession()
+  const userSignerName = session?.user?.name || ""
+
   const handleCreateCargo = () => {
     startCargo(async () => {
       const toastId = toast.loading("Menyiapkan dokumen Cargo Manifest...")
       try {
-        const res = await createCargoManifestFromOutbound(row.id)
+        const res = await createCargoManifestFromOutbound(row.id, userSignerName)
         if (res.success && res.manifest) {
           toast.success("Cargo Manifest siap dicetak", { id: toastId })
           setCargoManifest(res.manifest)
@@ -954,6 +958,8 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
   const [bulkManifest, setBulkManifest] = useState<CargoManifestRecord | null>(null)
   const [bulkPdfOpen, setBulkPdfOpen] = useState(false)
   const [loadingBulk, startBulk] = useTransition()
+  const { data: session } = useSession()
+  const userSignerName = session?.user?.name || ""
 
   const baseColumns = kind === "in" ? inboundTrxColumns : outboundTrxColumns
   const columns = report
@@ -983,7 +989,7 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
   const handleConvertBulkToCargo = () => {
     if (selectedIds.length === 0) return toast.error("Pilih setidaknya 1 transaksi barang keluar")
     startBulk(async () => {
-      const res = await createCargoManifestFromMultipleOutbound(selectedIds)
+      const res = await createCargoManifestFromMultipleOutbound(selectedIds, userSignerName)
       if (res.success && res.manifest) {
         setBulkManifest(res.manifest)
         setBulkPdfOpen(true)

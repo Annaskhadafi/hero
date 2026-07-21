@@ -472,7 +472,6 @@ export async function importCargoManifestsAction(
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-
       const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
       const date = getCol(cols, "date") || getCol(cols, "tanggal") || new Date().toISOString().split("T")[0];
       const attention = getCol(cols, "attention");
@@ -504,11 +503,13 @@ export async function importCargoManifestsAction(
   }
 }
 
-export async function createCargoManifestFromOutbound(outboundId: number): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+export async function createCargoManifestFromOutbound(outboundId: number, creatorNameOverride?: string): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
     await ensureCargoManifestTables();
     const currentEmp = await getCurrentEmployee();
-    const creatorName = currentEmp?.name || "Administrator";
+    const creatorName = (creatorNameOverride && creatorNameOverride.trim()) 
+      ? creatorNameOverride 
+      : (currentEmp?.name || "Administrator");
 
     const [outbound] = await db
       .select({
@@ -537,6 +538,7 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
     }
 
     const cleanTrxNo = (outbound.trxNo || `OUT-${outboundId}`).replace(/[^a-zA-Z0-9-]/g, "_");
+    const manifestNumber = `CM-${cleanTrxNo}`;
     const rawLoc = outbound.destinationSLoc
       ? `${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`
       : outbound.storageLocation
@@ -595,7 +597,7 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       description: itemDesc,
       serialNumber: outbound.itemCode || "-",
       qty: outbound.quantity || 1,
-      brand: "Chitra Paratama",
+      brand: "",
       remark: remarkParts.join(" | "),
     });
 
@@ -610,11 +612,13 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
   }
 }
 
-export async function createCargoManifestFromMultipleOutbound(outboundIds: number[]): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+export async function createCargoManifestFromMultipleOutbound(outboundIds: number[], creatorNameOverride?: string): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
     await ensureCargoManifestTables();
     const currentEmp = await getCurrentEmployee();
-    const creatorName = currentEmp?.name || "Administrator";
+    const creatorName = (creatorNameOverride && creatorNameOverride.trim())
+      ? creatorNameOverride
+      : (currentEmp?.name || "Administrator");
 
     if (!outboundIds || outboundIds.length === 0) {
       return { success: false, error: "Pilih setidaknya 1 transaksi barang keluar." };
@@ -685,7 +689,7 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
         description: itemDesc,
         serialNumber: r.itemCode || "-",
         qty: r.quantity || 1,
-        brand: "Chitra Paratama",
+        brand: "",
         remark: remarkParts.join(" | "),
       };
     });

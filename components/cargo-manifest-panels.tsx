@@ -734,9 +734,12 @@ export function CargoManifestPdfDialog({
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-[1.4rem] border-0 bg-white p-0">
         <DialogHeader className="flex flex-row items-center justify-between px-6 pt-4 pb-2 no-print">
           <DialogTitle className="font-display text-lg">Preview — {row.manifestNumber}</DialogTitle>
-          <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={handleDownloadPdf}>
-            <Printer className="size-4" /> Cetak / Download PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            <CargoManifestEditDialog row={row} />
+            <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={handleDownloadPdf}>
+              <Printer className="size-4" /> Cetak / Download PDF
+            </Button>
+          </div>
         </DialogHeader>
         <div
           id="cargo-pdf-content"
