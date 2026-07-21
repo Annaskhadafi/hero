@@ -126,6 +126,24 @@ test('service 360 BAST keeps closing and signatures on-page through 10 rows', ()
   assert.match(pageSource, /rentalItems\.length > BAST_MAX_ROWS_WITH_SIGNATURE && \(/)
 })
 
+test('service 360 quotation pagination reserves the footer and keeps tall rows intact', () => {
+  const pageSource = read('app/dashboard/360-service/quotations/[id]/page.tsx')
+  const printSource = read('app/dashboard/360-service/quotations/[id]/print-button.tsx')
+
+  assert.match(pageSource, /const getItemPageUnits =/)
+  assert.match(pageSource, /return wrappedLines \+ \(item\.quotationItem\.isBackup \? 1 : 0\)/)
+  assert.match(pageSource, /const maxUnitsWithFooter = maxUnits - FOOTER_UNITS/)
+  assert.match(pageSource, /pageUnits \+ itemUnits > maxUnits/)
+  assert.match(pageSource, /pb-\[50mm\]/)
+  assert.match(pageSource, /data-quotation-page/)
+  assert.match(pageSource, /data-quotation-items/)
+  assert.match(printSource, /function balanceQuotationPages\(\)/)
+  assert.match(printSource, /while \(nextBody\.firstElementChild\)/)
+  assert.match(printSource, /if \(fits\(page\)\) continue/)
+  assert.match(printSource, /nextBody\.prepend\(row\)/)
+  assert.match(printSource, /balanceQuotationPages\(\)/)
+})
+
 test('service 360 quotation syncs Labour Cost after period and labour rows exist', () => {
   const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
   const actionSource = read('app/actions/service360.ts')

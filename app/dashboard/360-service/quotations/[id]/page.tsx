@@ -179,11 +179,23 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
 
   // Pagination: A4 page capacity estimates
-  // First page has a tall header so fewer items fit
-  // Footer (Total box + TTD) takes ~4 row-heights worth of space
-  const ITEMS_PER_PAGE_FIRST = 6;   // conservative for first page (header is tall)
-  const ITEMS_PER_PAGE_REST = 11;   // conservative for subsequent pages
-  const FOOTER_ROWS = 4;             // rows worth of space the footer+total+signature needs
+  // First page has a tall header so fewer row units fit.
+  // ponytail: estimate wrapped row height server-side; use DOM measurement only if item content becomes arbitrary rich text.
+  const ITEM_UNITS_FIRST_PAGE = 6
+  const ITEM_UNITS_NEXT_PAGE = 11
+  const FOOTER_UNITS = 4
+  const getItemPageUnits = (item: (typeof quotation.items)[number]) => {
+    const description = item.quotationItem.customDescription || item.item?.name || ''
+    const period = item.quotationItem.monthPeriod || ''
+    const wrappedLines = Math.max(
+      1,
+      Math.ceil(description.length / 55),
+      quotation.hideMonthColumn ? 1 : Math.ceil(period.length / 32),
+    )
+    return wrappedLines + (item.quotationItem.isBackup ? 1 : 0)
+  }
+  const getPageUnits = (items: typeof quotation.items) =>
+    items.reduce((total, item) => total + getItemPageUnits(item), 0)
 
   const chunks: any[][] = [];
   let remaining = [...quotation.items];
@@ -191,8 +203,8 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
   while (remaining.length > 0 || pageIndexCounter === 0) {
     const isFirstPage = pageIndexCounter === 0;
-    const maxItems = isFirstPage ? ITEMS_PER_PAGE_FIRST : ITEMS_PER_PAGE_REST;
-    const maxItemsWithFooter = maxItems - FOOTER_ROWS; // space needed for footer on last page
+    const maxUnits = isFirstPage ? ITEM_UNITS_FIRST_PAGE : ITEM_UNITS_NEXT_PAGE
+    const maxUnitsWithFooter = maxUnits - FOOTER_UNITS
 
     if (remaining.length === 0) {
       // No items left but we need at least one page
@@ -200,10 +212,10 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
       break;
     }
 
-    const isLastBatch = remaining.length <= maxItems;
+    const remainingUnits = getPageUnits(remaining)
 
-    if (isLastBatch) {
-      if (remaining.length <= maxItemsWithFooter) {
+    if (remainingUnits <= maxUnits) {
+      if (remainingUnits <= maxUnitsWithFooter) {
         // Fits with footer on same page
         chunks.push(remaining);
         remaining = [];
@@ -214,9 +226,17 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
         chunks.push([]); // dedicated footer page
       }
     } else {
-      // More pages needed, fill this page fully
-      chunks.push(remaining.slice(0, maxItems));
-      remaining = remaining.slice(maxItems);
+      // More pages needed: keep each item intact and repeat the table header on the next page.
+      let pageUnits = 0
+      let takeCount = 0
+      while (takeCount < remaining.length) {
+        const itemUnits = getItemPageUnits(remaining[takeCount])
+        if (takeCount > 0 && pageUnits + itemUnits > maxUnits) break
+        pageUnits += itemUnits
+        takeCount++
+      }
+      chunks.push(remaining.slice(0, takeCount))
+      remaining = remaining.slice(takeCount)
     }
     pageIndexCounter++;
   }
@@ -245,7 +265,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
       <div className="flex flex-col items-center overflow-auto p-4 bg-muted no-print rounded-xl gap-8">
         {chunks.map((chunk, pageIndex) => (
-          <div key={pageIndex} className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
+          <div key={pageIndex} data-quotation-page className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             
             {/* Background Image for Letterhead */}
             <div className="absolute inset-0 z-0 pointer-events-none">
@@ -259,12 +279,12 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             </div>
 
             {/* Document Content */}
-            <div className="relative z-10 px-[15mm] pt-[35mm] pb-[45mm] h-full flex flex-col font-sans text-slate-800 justify-between">
-              <div>
+            <div data-quotation-content className="relative z-10 px-[15mm] pt-[35mm] pb-[50mm] h-full flex flex-col font-sans text-slate-800 justify-between">
+              <div data-quotation-main>
                 {pageIndex > 0 && (
                   <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100 text-slate-400 text-[8pt] uppercase tracking-wider font-semibold">
                     <span>Ref: {quotation.quotationNumber}</span>
-                    <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Page {pageIndex + 1} of {chunks.length}</span>
+                    <span data-quotation-page-counter className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Page {pageIndex + 1} of {chunks.length}</span>
                   </div>
                 )}
 
@@ -330,7 +350,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                         <p className="text-[9pt] font-bold text-slate-800">Ref: {quotation.quotationNumber}</p>
                         <p className="text-[8pt] font-medium text-slate-500">{formattedDate}</p>
                         {chunks.length > 1 && (
-                          <div className="mt-2 inline-block bg-teal-100/80 text-teal-800 px-2 py-0.5 rounded text-[7.5pt] font-bold uppercase">
+                          <div data-quotation-page-counter className="mt-2 inline-block bg-teal-100/80 text-teal-800 px-2 py-0.5 rounded text-[7.5pt] font-bold uppercase">
                             Page 1 of {chunks.length}
                           </div>
                         )}
@@ -371,7 +391,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           <th className="border-b border-slate-200 py-2 px-2 w-[110px] font-bold text-right">Total</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white">
+                      <tbody data-quotation-items className="bg-white">
                         {chunk.map((item: any, idx: number) => {
                           const desc = item.quotationItem.customDescription || item.item?.name || ''
                           const isAccomodation = desc.toLowerCase().includes("accomodation") || desc.toLowerCase().includes("accommodation")
@@ -486,7 +506,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
               {/* FOOTER REDESIGN */}
               {pageIndex === chunks.length - 1 && (
-                <div className="pt-8">
+                <div data-quotation-summary className="pt-8">
                   <div className="flex justify-between w-full items-end gap-6">
                     <div className="flex-1 text-[8pt] text-slate-500 mb-2 whitespace-pre-wrap">
                       {quotation.notes && (

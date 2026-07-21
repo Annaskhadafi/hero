@@ -7,6 +7,53 @@ import { jsPDF } from "jspdf"
 import html2canvas from "html2canvas-pro"
 import { Download, Loader2 } from "lucide-react"
 
+function balanceQuotationPages() {
+  const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
+  const fits = (page: HTMLElement) => {
+    const content = page.querySelector<HTMLElement>('[data-quotation-content]')
+    const main = page.querySelector<HTMLElement>('[data-quotation-main]')
+    if (!content || !main) return true
+    const summary = page.querySelector<HTMLElement>('[data-quotation-summary]')
+    const paddingBottom = Number.parseFloat(getComputedStyle(content).paddingBottom) || 0
+    const limit = summary
+      ? summary.getBoundingClientRect().top - 8
+      : content.getBoundingClientRect().bottom - paddingBottom
+    return main.getBoundingClientRect().bottom <= limit
+  }
+
+  for (let index = 0; index < pages.length - 1; index++) {
+    const page = pages[index]
+    const body = page.querySelector<HTMLTableSectionElement>('[data-quotation-items]')
+    const nextBody = pages
+      .slice(index + 1)
+      .map((nextPage) => nextPage.querySelector<HTMLTableSectionElement>('[data-quotation-items]'))
+      .find(Boolean)
+    if (!body || !nextBody) continue
+
+    while (!fits(page) && body.lastElementChild) {
+      nextBody.prepend(body.lastElementChild)
+    }
+    while (nextBody.firstElementChild) {
+      const row = nextBody.firstElementChild
+      body.append(row)
+      if (fits(page)) continue
+      nextBody.prepend(row)
+      break
+    }
+  }
+
+  pages.slice(1).forEach((page) => {
+    const body = page.querySelector('[data-quotation-items]')
+    if (body && !body.children.length && !page.querySelector('[data-quotation-summary]')) page.remove()
+  })
+  const visiblePages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
+  visiblePages.forEach((page, index) => {
+    page.querySelectorAll<HTMLElement>('[data-quotation-page-counter]').forEach((counter) => {
+      counter.textContent = `Page ${index + 1} of ${visiblePages.length}`
+    })
+  })
+}
+
 export function PrintButton() {
   const searchParams = useSearchParams()
   const [isGenerating, setIsGenerating] = useState(false)
@@ -15,6 +62,8 @@ export function PrintButton() {
   const handleDownload = async () => {
     setIsGenerating(true)
     try {
+      await document.fonts?.ready
+      balanceQuotationPages()
       const pages = document.querySelectorAll('.pdf-wrapper')
       
       if (!pages || pages.length === 0) {

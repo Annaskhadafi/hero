@@ -188,7 +188,7 @@ export function DailyClientPage({
   const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
     const normalized = normalizeStatusDoc(status)
     const po = (poNumber || '').trim()
-    return normalized === 'PO Release' && po ? `${normalized} / ${po}` : normalized
+    return ['PO Release', 'Invoice'].includes(normalized) && po ? `${normalized} / ${po}` : normalized
   }
 
   const isCancelStatusDoc = (status?: string | null) =>
