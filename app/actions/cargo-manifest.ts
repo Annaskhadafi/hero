@@ -556,6 +556,7 @@ export async function createCargoManifestFromOutbound(outboundId: number, creato
       await db
         .update(cargoManifests)
         .set({
+          sectionId: 29,
           finalDestination: finalDest,
           signatureName: creatorName,
           updatedAt: new Date(),
@@ -571,6 +572,7 @@ export async function createCargoManifestFromOutbound(outboundId: number, creato
       .values({
         manifestNumber,
         date: outbound.trxDate || new Date().toISOString().slice(0, 10),
+        sectionId: 29,
         attention: "Penerima Cargo / Operations",
         transportVia: "Land Transport / Expediter",
         shippedVia: "Warehouse Repair Outbound",
@@ -662,6 +664,7 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
       .values({
         manifestNumber,
         date: cleanDate,
+        sectionId: 29,
         attention: "Penerima Cargo / Operations",
         transportVia: "Land Transport / Expediter",
         shippedVia: "Warehouse Repair Outbound",
