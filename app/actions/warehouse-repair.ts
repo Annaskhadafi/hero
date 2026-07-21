@@ -11,6 +11,7 @@ import {
   warehouseRepairOutbound,
   warehouseRepairTransfers,
 } from "@/db/schema/warehouse-repair"
+import { getS3ObjectReadUrl } from "@/lib/s3-storage"
 
 // Revalidation paths
 const REVAL_PATHS = [
@@ -91,7 +92,15 @@ export async function getWarehouseRepairItems() {
         eq(warehouseRepairItems.unitId, warehouseRepairUnits.id)
       )
       .orderBy(desc(warehouseRepairItems.id))
-    return rows
+
+    const items = await Promise.all(
+      rows.map(async (item) => ({
+        ...item,
+        photoUrl: item.photoUrl ? (await getS3ObjectReadUrl(item.photoUrl)) || item.photoUrl : "",
+      }))
+    )
+
+    return items
   } catch (error) {
     console.error("[Postgres] Error fetching items:", error)
     return []
@@ -263,7 +272,7 @@ export async function upsertWarehouseRepairItem(input: any, id?: number) {
       typeId: input.typeId,
       unitId: input.unitId,
       minimumStock: input.minimumStock ?? 0,
-      photoUrl: input.photoUrl ?? "",
+      photoUrl: (input.photoUrl ?? "").split("?")[0],
       isActive: input.isActive ?? true,
       updatedAt: new Date(),
     }
