@@ -11,7 +11,7 @@ import {
   warehouseRepairOutbound,
   warehouseRepairTransfers,
 } from "@/db/schema/warehouse-repair"
-import { getS3ObjectReadUrl } from "@/lib/s3-storage"
+import { getS3ObjectReadUrl, resolveUploadUrl } from "@/lib/s3-storage"
 
 // Revalidation paths
 const REVAL_PATHS = [
