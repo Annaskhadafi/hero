@@ -537,18 +537,6 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
     }
 
     const cleanTrxNo = (outbound.trxNo || `OUT-${outboundId}`).replace(/[^a-zA-Z0-9-]/g, "_");
-    const manifestNumber = `CM-${cleanTrxNo}`;
-
-    const existing = await db
-      .select({ id: cargoManifests.id })
-      .from(cargoManifests)
-      .where(eq(cargoManifests.manifestNumber, manifestNumber));
-
-    if (existing.length > 0) {
-      const manifest = await getCargoManifestById(existing[0].id);
-      return { success: true, manifest };
-    }
-
     const rawLoc = outbound.destinationSLoc
       ? `${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`
       : outbound.storageLocation
@@ -556,6 +544,25 @@ export async function createCargoManifestFromOutbound(outboundId: number): Promi
       : "Site / Operations";
 
     const finalDest = `PT Chitra Paratama Site | ${rawLoc}`;
+
+    const existing = await db
+      .select({ id: cargoManifests.id })
+      .from(cargoManifests)
+      .where(eq(cargoManifests.manifestNumber, manifestNumber));
+
+    if (existing.length > 0) {
+      await db
+        .update(cargoManifests)
+        .set({
+          finalDestination: finalDest,
+          signatureName: creatorName,
+          updatedAt: new Date(),
+        })
+        .where(eq(cargoManifests.id, existing[0].id));
+
+      const manifest = await getCargoManifestById(existing[0].id);
+      return { success: true, manifest };
+    }
 
     const [inserted] = await db
       .insert(cargoManifests)

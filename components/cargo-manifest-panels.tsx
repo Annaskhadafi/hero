@@ -869,7 +869,14 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <strong>Shipped Via:</strong> {row.shippedVia || "-"}
                 </div>
                 <div>
-                  <strong>Final Destination:</strong> <span style={{ fontWeight: 600 }}>{row.finalDestination || "-"}</span>
+                  <strong>Final Destination:</strong>{" "}
+                  <span style={{ fontWeight: 600 }}>
+                    {row.finalDestination
+                      ? row.finalDestination.startsWith("PT Chitra Paratama Site")
+                        ? row.finalDestination
+                        : `PT Chitra Paratama Site | ${row.finalDestination}`
+                      : "PT Chitra Paratama Site | Site / Operations"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -930,7 +937,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             />
           )}
           <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderTop: "1px solid #000", paddingTop: "6px" }}>
-            <div style={{ fontWeight: 600 }}>{row.signatureName || "\u00a0"}</div>
+            <div style={{ fontWeight: 600 }}>{row.signatureName && row.signatureName.trim() ? row.signatureName : "Administrator"}</div>
           </div>
         </div>
         <div style={{ position: "relative", minHeight: "118px", textAlign: "center" }}>
