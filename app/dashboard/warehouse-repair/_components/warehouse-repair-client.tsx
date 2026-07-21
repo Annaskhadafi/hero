@@ -120,6 +120,8 @@ function ViewDialog({
   labels: Array<[string, string]>
   onEditClick?: () => void
 }) {
+  const [imgError, setImgError] = useState(false)
+
   return (
     <EnterpriseRecordDialog
       open={open}
@@ -130,14 +132,22 @@ function ViewDialog({
       className="sm:max-w-4xl"
     >
       <div className="flex flex-col gap-6 md:flex-row">
-        {row.photoUrl ? (
+        {row.photoUrl && row.photoUrl.trim() ? (
           <div className="flex flex-col items-center gap-2 md:w-1/3">
-            <div className="relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/30">
-              <img
-                src={row.photoUrl}
-                alt={row.itemName || "Foto produk"}
-                className="h-full w-full object-contain"
-              />
+            <div className="relative h-64 w-full overflow-hidden rounded-xl border border-border bg-muted/30 flex items-center justify-center">
+              {!imgError ? (
+                <img
+                  src={row.photoUrl}
+                  alt={row.itemName || "Foto produk"}
+                  className="h-full w-full object-contain"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-muted-foreground p-4 text-center gap-2">
+                  <Package className="size-12 opacity-30" />
+                  <span className="text-xs font-medium">Foto tidak dapat dimuat</span>
+                </div>
+              )}
             </div>
             <div className="text-xs text-muted-foreground">Foto Produk</div>
           </div>
@@ -196,6 +206,7 @@ function ViewDialog({
 function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: { kind: "item" | "type" | "unit"; row?: Row; types: Row[]; units: Row[]; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
   const [form, setForm] = useState<Row>(row ?? { itemName: "", materialDesc: "", storageLocation: "", storageLocationDesc: "", minimumStock: 0, typeId: null, unitId: null, typeName: "", unitName: "", isActive: true })
+  const [previewUrl, setPreviewUrl] = useState("")
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }))
   const title = `${row ? "Edit" : "Tambah"} ${kind === "item" ? "Barang" : kind === "type" ? "Jenis Barang" : "Satuan"}`
   const save = () => start(async () => {
@@ -227,14 +238,15 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
                   const file = e.target.files?.[0];
                   if (!file) return;
                   const localPreview = URL.createObjectURL(file);
-                  set("photoUrl", localPreview);
+                  setPreviewUrl(localPreview);
                   const formData = new FormData();
                   formData.append("file", file);
                   const toastId = toast.loading("Mengunggah foto...");
                   try {
                     const res = await uploadFile(formData);
                     if (res.success && (res.readableUrl || res.url)) {
-                      set("photoUrl", res.readableUrl || res.url);
+                      const finalUrl = res.readableUrl || res.url;
+                      set("photoUrl", finalUrl);
                       toast.success("Foto berhasil diunggah", { id: toastId });
                     } else {
                       toast.error(res.error || "Gagal mengunggah foto", { id: toastId });
@@ -244,22 +256,23 @@ function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: 
                   }
                 }}
               />
-              {form.photoUrl && (
+              {(previewUrl || form.photoUrl) && (
                 <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-lg border border-border bg-muted/20">
                   <img
-                    src={form.photoUrl}
+                    src={previewUrl || form.photoUrl}
                     alt="Preview produk"
                     className="h-full w-full object-cover"
-                    onError={(e) => {
-                      console.error("Gagal memuat image preview:", form.photoUrl);
-                    }}
+                    onError={() => console.error("Error loading preview:", previewUrl || form.photoUrl)}
                   />
                   <Button
                     type="button"
                     variant="destructive"
                     size="denseIcon"
                     className="absolute right-1 top-1"
-                    onClick={() => set("photoUrl", "")}
+                    onClick={() => {
+                      setPreviewUrl("");
+                      set("photoUrl", "");
+                    }}
                   >
                     <Trash2 className="size-4" />
                   </Button>
