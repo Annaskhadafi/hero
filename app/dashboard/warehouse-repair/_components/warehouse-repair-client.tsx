@@ -1,4 +1,5 @@
 "use client"
+// Invalidate Turbopack HMR cache
 
 import { useMemo, useState, useTransition } from "react"
 import { ArrowRightLeft, Boxes, Check, ChevronsUpDown, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
