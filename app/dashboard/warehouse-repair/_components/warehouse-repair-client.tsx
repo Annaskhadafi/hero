@@ -371,6 +371,42 @@ function ItemTable({ rows, types, units, title, report = false }: { rows: Row[];
   </MinimalTableShell>
 }
 
+function ItemActions({ row, types, units, labels }: { row: Row; types: Row[]; units: Row[]; labels: Array<[string, string]> }) {
+  const [openView, setOpenView] = useState(false)
+  const [openEdit, setOpenEdit] = useState(false)
+  const [openDelete, setOpenDelete] = useState(false)
+  return (
+    <>
+      <div className="flex items-center justify-end gap-1">
+        <ActionIconButton kind="view" label="Detail" onClick={() => setOpenView(true)} />
+        <ActionIconButton kind="edit" label="Edit" onClick={() => setOpenEdit(true)} />
+        <ActionIconButton kind="delete" label="Hapus" onClick={() => setOpenDelete(true)} />
+      </div>
+      <ViewDialog title="Detail Barang" open={openView} onOpenChange={setOpenView} row={row} labels={labels} onEditClick={() => { setOpenView(false); setOpenEdit(true) }} />
+      <MasterDialog kind="item" row={row} types={types} units={units} open={openEdit} onOpenChange={setOpenEdit} />
+      <DeleteDialog title="Hapus Barang" description="Apakah Anda yakin ingin menghapus data barang ini?" open={openDelete} onOpenChange={setOpenDelete} row={row} labels={labels} action={() => deleteWarehouseRepairItem(row.id)} />
+    </>
+  )
+}
+
+function MasterActions({ kind, row, types, units, title, labels, deleteAction }: { kind: "type" | "unit"; row: Row; types: Row[]; units: Row[]; title: string; labels: Array<[string, string]>; deleteAction: (id: number) => Promise<{ success: boolean; error?: string }> }) {
+  const [openView, setOpenView] = useState(false)
+  const [openEdit, setOpenEdit] = useState(false)
+  const [openDelete, setOpenDelete] = useState(false)
+  return (
+    <>
+      <div className="flex items-center justify-end gap-1">
+        <ActionIconButton kind="view" label="Detail" onClick={() => setOpenView(true)} />
+        <ActionIconButton kind="edit" label="Edit" onClick={() => setOpenEdit(true)} />
+        <ActionIconButton kind="delete" label="Hapus" onClick={() => setOpenDelete(true)} />
+      </div>
+      <ViewDialog title={`Detail ${title}`} open={openView} onOpenChange={setOpenView} row={row} labels={labels} onEditClick={() => { setOpenView(false); setOpenEdit(true) }} />
+      <MasterDialog kind={kind} row={row} types={types} units={units} open={openEdit} onOpenChange={setOpenEdit} />
+      <DeleteDialog title={`Hapus ${title}`} description="Apakah Anda yakin ingin menghapus data ini?" open={openDelete} onOpenChange={setOpenDelete} row={row} labels={labels} action={() => deleteAction(row.id)} />
+    </>
+  )
+}
+
 function MasterTable({ kind, rows, types, units, title }: { kind: "type" | "unit"; rows: Row[]; types: Row[]; units: Row[]; title: string }) {
   const deleteAction = kind === "type" ? deleteWarehouseRepairType : deleteWarehouseRepairUnit
   const detailLabels: Array<[string, string]> = [["code", "Kode"], ["name", "Nama"], ["status", "Status"]]
