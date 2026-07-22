@@ -79,6 +79,10 @@ const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
 const isCancelStatusDoc = (status?: string | null) =>
   (status || '').trim().toLowerCase() === 'cancel'
 
+// ponytail: carry-over = next month, exclude from current scorecards
+const isCarryOverStatus = (status?: string | null) =>
+  (status || '').trim().toLowerCase() === 'carry over'
+
 const resolveLatestNonCancelStatusDoc = (actuals: any[], category: string) => {
   const categoryActuals = actuals.filter((actual) => actual.category === category)
   const latestNonCancel = categoryActuals.find((actual) => !isCancelStatusDoc(actual.itemStatus))
@@ -222,203 +226,12 @@ export function ReportClientPage({
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<'picSales' | 'customer' | 'actual'>('picSales')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [docTab, setDocTab] = useState<'pending' | 'carryOver'>('pending')
   const [sapRevenue, setSapRevenue] = useState(initialSapRevenue)
   const [isLoadingSap, setIsLoadingSap] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const rate = Number(exchangeRate) || 15000
-
-  const handleExportJpeg = async () => {
-    if (!reportRef.current) return
-    try {
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        margin: { top: 40, bottom: 40, left: 40, right: 40 },
-      } as any)
-      const link = document.createElement('a')
-      link.download = `daily-report-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || 'export'}.jpeg`
-      link.href = canvas.toDataURL('image/jpeg', 0.95)
-      link.click()
-    } catch (err) {
-      console.error('Export failed:', err)
-    }
-  }
-
-  const handleExportExcel = () => {
-    const wb = XLSX.utils.book_new()
-    const period = periods.find((p) => p.id.toString() === selectedPeriodId)
-    const periodLabel = period?.monthYear || 'Export'
-
-    // --- Sheet 1: Revenue SAP ---
-    const revenueRows = [
-      ['Revenue SAP - Daily Report', '', '', '', '', '', ''],
-      [`Period: ${periodLabel}`, '', '', '', '', '', ''],
-      [],
-      ['Category', 'Forecast IDR', 'Forecast USD', 'Actual IDR (SAP)', 'Actual USD (SAP)'],
-      [
-        'Total',
-        totalScore.forecast,
-        totalScore.forecast / rate,
-        totalScore.actual,
-        totalScore.actualUsd,
-      ],
-      [
-        'Service',
-        totals.serviceFc,
-        totals.serviceFc / rate,
-        sapRevenue.service.idr,
-        sapRevenue.service.usd,
-      ],
-      [
-        'Repair',
-        totals.repairFc,
-        totals.repairFc / rate,
-        sapRevenue.repair.idr,
-        sapRevenue.repair.usd,
-      ],
-      [
-        'Retread',
-        totals.retreadFc,
-        totals.retreadFc / rate,
-        sapRevenue.retread.idr,
-        sapRevenue.retread.usd,
-      ],
-    ]
-    const wsRevenue = XLSX.utils.aoa_to_sheet(revenueRows)
-    wsRevenue['!cols'] = [
-      { wch: 12 },
-      { wch: 20 },
-      { wch: 15 },
-      { wch: 20 },
-      { wch: 15 },
-    ]
-    XLSX.utils.book_append_sheet(wb, wsRevenue, 'Revenue SAP')
-
-    // --- Sheet 2: Pending Document ---
-    const headers = [
-      'No',
-      'Customer',
-      'PIC',
-      'Remark Monthly',
-      'Forecast IDR',
-      'Forecast USD',
-      'Category',
-      'Remark Daily',
-      'Amount',
-      'Amount USD',
-      'Status Doc',
-      'Sisa Amount',
-      'Sisa USD',
-      'Status Forecast',
-    ]
-
-    const dataRows: any[][] = []
-    let rowNum = 0
-
-    groupedData.forEach((group, gi) => {
-      const catLen = group.categories.length
-      group.categories.forEach((cat, ci) => {
-        rowNum++
-        const isFirst = ci === 0
-        dataRows.push([
-          isFirst ? gi + 1 : '',
-          isFirst ? group.customer : '',
-          isFirst ? group.pic : '',
-          isFirst ? (group.remarkMonthly || '') : '',
-          isFirst && group.totalAmountIdr > 0 ? group.totalAmountIdr : '',
-          isFirst && group.totalAmountUsd > 0 ? Math.round(group.totalAmountUsd) : '',
-          cat.category,
-          getRemarkDaily(cat) || '',
-          cat.forecastIdr > 0 ? cat.forecastIdr : '',
-          cat.forecastIdr > 0 ? Math.round(cat.forecastIdr / rate) : '',
-          formatStatusDoc(cat.status, cat.poNumber),
-          cat.forecastIdr > 0 ? getRemainingAmount(cat) : '',
-          cat.forecastIdr > 0 ? Math.round(getRemainingAmount(cat) / rate) : '',
-          isFirst ? group.forecastStatus : '',
-        ])
-      })
-    })
-
-    // Total row
-    dataRows.push([
-      '',
-      '',
-      '',
-      'TOTAL',
-      groupedData.reduce((s, g) => s + g.totalAmountIdr, 0),
-      Math.round(groupedData.reduce((s, g) => s + g.totalAmountUsd, 0)),
-      '',
-      '',
-      groupedData.reduce(
-        (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
-        0
-      ),
-      Math.round(
-        groupedData.reduce(
-          (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
-          0
-        ) / rate
-      ),
-      '',
-      groupedData.reduce(
-        (s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
-        0
-      ),
-      Math.round(
-        groupedData.reduce(
-          (s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
-          0
-        ) / rate
-      ),
-      '',
-    ])
-
-    const allRows = [headers, ...dataRows]
-    const wsPending = XLSX.utils.aoa_to_sheet(allRows)
-
-    // --- Merge cells for grouped columns (No, Customer, PIC, Remark Monthly, Forecast IDR, Forecast USD, Status Forecast) ---
-    const mergeCols = [0, 1, 2, 3, 4, 5, 13] // 0-indexed columns to merge
-    let currentRow = 1 // skip header (row 0)
-    groupedData.forEach((group) => {
-      const catLen = group.categories.length
-      if (catLen > 1) {
-        mergeCols.forEach((col) => {
-          XLSX.utils.book_append_sheet // no-op, just reference
-          wsPending['!merges'] = wsPending['!merges'] || []
-          wsPending['!merges'].push({
-            s: { r: currentRow, c: col },
-            e: { r: currentRow + catLen - 1, c: col },
-          })
-        })
-      }
-      currentRow += catLen
-    })
-
-    wsPending['!cols'] = [
-      { wch: 5 },   // No
-      { wch: 28 },  // Customer
-      { wch: 16 },  // PIC
-      { wch: 20 },  // Remark Monthly
-      { wch: 18 },  // Forecast IDR
-      { wch: 14 },  // Forecast USD
-      { wch: 14 },  // Category
-      { wch: 22 },  // Remark Daily
-      { wch: 18 },  // Amount
-      { wch: 14 },  // Amount USD
-      { wch: 18 },  // Status Doc
-      { wch: 16 },  // Sisa Amount
-      { wch: 14 },  // Sisa USD
-      { wch: 16 },  // Status Forecast
-    ]
-
-    XLSX.utils.book_append_sheet(wb, wsPending, 'Pending Document')
-
-    // Download
-    const fileName = `daily-report-${periodLabel.replace(/\s/g, '-')}.xlsx`
-    XLSX.writeFile(wb, fileName)
-  }
 
   const filtered = useMemo(() => {
     return dailyItems.filter((w: any) => {
@@ -432,6 +245,12 @@ export function ReportClientPage({
       return true
     })
   }, [dailyItems, selectedPeriodId, searchQuery])
+
+  // ponytail: scorecards only non carry-over items
+  const scoredFiltered = useMemo(
+    () => filtered.filter((w: any) => !isCarryOverStatus(w.item?.status)),
+    [filtered]
+  )
 
   useEffect(() => {
     const period = periods.find((p) => p.id.toString() === selectedPeriodId)
@@ -451,7 +270,7 @@ export function ReportClientPage({
       retreadAct = 0
     let osFc = 0
 
-    filtered.forEach((w: any) => {
+    scoredFiltered.forEach((w: any) => {
       const item = w.item
       osFc += Number(item.osInvoicePrevMonth || 0)
       serviceFc += Number(item.serviceForecast || 0)
@@ -459,6 +278,7 @@ export function ReportClientPage({
       retreadFc += Number(item.retreadForecast || 0)
 
       w.actuals?.forEach((a: any) => {
+        if (isCancelStatusDoc(a.itemStatus)) return
         const amt = Number(a.amountIdr)
         if (a.category === 'Service') serviceAct += amt
         else if (a.category === 'Repair') repairAct += amt
@@ -467,7 +287,7 @@ export function ReportClientPage({
     })
 
     return { serviceFc, serviceAct, repairFc, repairAct, retreadFc, retreadAct, osFc }
-  }, [filtered])
+  }, [scoredFiltered])
 
   const categoryData = useMemo(() => {
     return [
@@ -496,10 +316,10 @@ export function ReportClientPage({
     [totals, sapRevenue]
   )
 
-  const groupedData = useMemo(() => {
+  const buildGroups = (source: any[]): CustomerGroup[] => {
     const map = new Map<string, CustomerGroup>()
 
-    filtered.forEach((w: any) => {
+    source.forEach((w: any) => {
       const item = w.item
       const period = w.period
       const key = `${item.customer}-${item.id}`
@@ -595,15 +415,14 @@ export function ReportClientPage({
         }
       }
 
-      // Overlay actuals if they exist (already sorted by updateDate DESC from server)
-      // Track which categories already got their daily remark so we keep only the latest
       const seenDailyRemark = new Set<string>()
       w.actuals?.forEach((a: any) => {
         const existing = categories.find((c) => c.category === a.category)
         if (existing) {
-          existing.actualIdr += Number(a.amountIdr)
-          existing.actualUsd += Number(a.amountUsd)
-          // Only set remarkDaily from the first (latest) actual per category
+          if (!isCancelStatusDoc(a.itemStatus)) {
+            existing.actualIdr += Number(a.amountIdr)
+            existing.actualUsd += Number(a.amountUsd)
+          }
           if (!seenDailyRemark.has(a.category)) {
             existing.remarkDaily = a.remark || existing.remarkDaily
             existing.sectionDaily = a.jobCode || existing.sectionDaily
@@ -620,9 +439,9 @@ export function ReportClientPage({
           categories.push({
             category: a.category,
             forecastIdr: 0,
-            actualIdr: Number(a.amountIdr),
+            actualIdr: isCancelStatusDoc(a.itemStatus) ? 0 : Number(a.amountIdr),
             forecastUsd: 0,
-            actualUsd: Number(a.amountUsd),
+            actualUsd: isCancelStatusDoc(a.itemStatus) ? 0 : Number(a.amountUsd),
             remarkMonthly: '',
             remarkDaily: a.remark || '',
             sectionDaily: a.jobCode || '',
@@ -651,8 +470,7 @@ export function ReportClientPage({
       })
     })
 
-    let groups = Array.from(map.values())
-
+    const groups = Array.from(map.values())
     groups.sort((a, b) => {
       let valA: string | number
       let valB: string | number
@@ -670,9 +488,18 @@ export function ReportClientPage({
       if (valA > valB) return sortOrder === 'asc' ? 1 : -1
       return 0
     })
-
     return groups
-  }, [filtered, sortField, sortOrder])
+  }
+
+  const pendingGrouped = useMemo(
+    () => buildGroups(filtered.filter((w: any) => !isCarryOverStatus(w.item?.status))),
+    [filtered, sortField, sortOrder, rate]
+  )
+  const carryOverGrouped = useMemo(
+    () => buildGroups(filtered.filter((w: any) => isCarryOverStatus(w.item?.status))),
+    [filtered, sortField, sortOrder, rate]
+  )
+  const activeGrouped = docTab === 'carryOver' ? carryOverGrouped : pendingGrouped
 
   const toggleSort = (field: 'picSales' | 'customer' | 'actual') => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -682,16 +509,180 @@ export function ReportClientPage({
     }
   }
 
-  const totalRowIdr = groupedData.reduce(
-    (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr + c.actualIdr, 0),
-    0
-  )
-  const totalRowUsd = totalRowIdr / rate
   const getRemainingAmount = (cat: CategoryRow) => Math.max(0, cat.forecastIdr - cat.actualIdr)
   const getRemarkDaily = (cat: CategoryRow) =>
     cat.category === 'Outstanding' && cat.sectionDaily
       ? [cat.sectionDaily, cat.remarkDaily].filter(Boolean).join(' / ')
       : cat.remarkDaily
+
+  const buildDocSheetRows = (groups: CustomerGroup[]) => {
+    const headers = [
+      'No',
+      'Customer',
+      'PIC',
+      'Remark Monthly',
+      'Forecast IDR',
+      'Forecast USD',
+      'Category',
+      'Remark Daily',
+      'Amount',
+      'Amount USD',
+      'Status Doc',
+      'Sisa Amount',
+      'Sisa USD',
+      'Status Forecast',
+    ]
+    const dataRows: any[][] = []
+    groups.forEach((group, gi) => {
+      group.categories.forEach((cat, ci) => {
+        const isFirst = ci === 0
+        dataRows.push([
+          isFirst ? gi + 1 : '',
+          isFirst ? group.customer : '',
+          isFirst ? group.pic : '',
+          isFirst ? group.remarkMonthly || '' : '',
+          isFirst && group.totalAmountIdr > 0 ? group.totalAmountIdr : '',
+          isFirst && group.totalAmountUsd > 0 ? Math.round(group.totalAmountUsd) : '',
+          cat.category,
+          getRemarkDaily(cat) || '',
+          cat.forecastIdr > 0 ? cat.forecastIdr : '',
+          cat.forecastIdr > 0 ? Math.round(cat.forecastIdr / rate) : '',
+          formatStatusDoc(cat.status, cat.poNumber),
+          cat.forecastIdr > 0 ? getRemainingAmount(cat) : '',
+          cat.forecastIdr > 0 ? Math.round(getRemainingAmount(cat) / rate) : '',
+          isFirst ? group.forecastStatus : '',
+        ])
+      })
+    })
+    dataRows.push([
+      '',
+      '',
+      '',
+      'TOTAL',
+      groups.reduce((s, g) => s + g.totalAmountIdr, 0),
+      Math.round(groups.reduce((s, g) => s + g.totalAmountUsd, 0)),
+      '',
+      '',
+      groups.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0), 0),
+      Math.round(
+        groups.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0), 0) / rate
+      ),
+      '',
+      groups.reduce((s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0), 0),
+      Math.round(
+        groups.reduce(
+          (s, g) => s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
+          0
+        ) / rate
+      ),
+      '',
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+    const mergeCols = [0, 1, 2, 3, 4, 5, 13]
+    let currentRow = 1
+    groups.forEach((group) => {
+      const catLen = group.categories.length
+      if (catLen > 1) {
+        ws['!merges'] = ws['!merges'] || []
+        mergeCols.forEach((col) => {
+          ws['!merges']!.push({
+            s: { r: currentRow, c: col },
+            e: { r: currentRow + catLen - 1, c: col },
+          })
+        })
+      }
+      currentRow += catLen
+    })
+    ws['!cols'] = [
+      { wch: 5 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
+    ]
+    return ws
+  }
+
+  const handleExportJpeg = async () => {
+    if (!reportRef.current) return
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        margin: { top: 40, bottom: 40, left: 40, right: 40 },
+      } as any)
+      const link = document.createElement('a')
+      link.download = `daily-report-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || 'export'}.jpeg`
+      link.href = canvas.toDataURL('image/jpeg', 0.95)
+      link.click()
+    } catch (err) {
+      console.error('Export failed:', err)
+    }
+  }
+
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new()
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId)
+    const periodLabel = period?.monthYear || 'Export'
+
+    const revenueRows = [
+      ['Revenue SAP - Daily Report', '', '', '', '', '', ''],
+      [`Period: ${periodLabel}`, '', '', '', '', '', ''],
+      [],
+      ['Category', 'Forecast IDR', 'Forecast USD', 'Actual IDR (SAP)', 'Actual USD (SAP)'],
+      [
+        'Total',
+        totalScore.forecast,
+        totalScore.forecast / rate,
+        totalScore.actual,
+        totalScore.actualUsd,
+      ],
+      [
+        'Service',
+        totals.serviceFc,
+        totals.serviceFc / rate,
+        sapRevenue.service.idr,
+        sapRevenue.service.usd,
+      ],
+      [
+        'Repair',
+        totals.repairFc,
+        totals.repairFc / rate,
+        sapRevenue.repair.idr,
+        sapRevenue.repair.usd,
+      ],
+      [
+        'Retread',
+        totals.retreadFc,
+        totals.retreadFc / rate,
+        sapRevenue.retread.idr,
+        sapRevenue.retread.usd,
+      ],
+    ]
+    const wsRevenue = XLSX.utils.aoa_to_sheet(revenueRows)
+    wsRevenue['!cols'] = [
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 20 },
+      { wch: 15 },
+    ]
+    XLSX.utils.book_append_sheet(wb, wsRevenue, 'Revenue SAP')
+    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(pendingGrouped), 'Pending Document')
+    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(carryOverGrouped), 'Carry Over')
+
+    XLSX.writeFile(wb, `daily-report-${periodLabel.replace(/\s/g, '-')}.xlsx`)
+  }
 
   return (
     <div className="space-y-6">
@@ -850,11 +841,33 @@ export function ReportClientPage({
 
         <div className="border-primary/10 mt-6 overflow-hidden rounded-lg border-2 bg-white">
           <div className="bg-[#0052CC] px-4 py-3 text-white">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-bold tracking-wider uppercase">
                 <BarChart3 className="h-4 w-4" />
-                Pending Document{' '}
+                {docTab === 'carryOver' ? 'Carry Over' : 'Pending Document'}{' '}
                 {periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || ''}
+              </div>
+              <div className="flex rounded-md bg-white/15 p-0.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  className={`rounded px-3 py-1.5 transition-colors ${
+                    docTab === 'pending' ? 'bg-white text-[#0052CC]' : 'text-white/90 hover:bg-white/10'
+                  }`}
+                  onClick={() => setDocTab('pending')}
+                >
+                  Pending Document ({pendingGrouped.length})
+                </button>
+                <button
+                  type="button"
+                  className={`rounded px-3 py-1.5 transition-colors ${
+                    docTab === 'carryOver'
+                      ? 'bg-white text-[#0052CC]'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                  onClick={() => setDocTab('carryOver')}
+                >
+                  Carry Over ({carryOverGrouped.length})
+                </button>
               </div>
             </div>
           </div>
@@ -918,52 +931,48 @@ export function ReportClientPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedData.length === 0 ? (
+                  {activeGrouped.length === 0 ? (
                     <tr>
                       <td colSpan={14} className="text-muted-foreground py-8 text-center">
-                        No data for this period
+                        {docTab === 'carryOver'
+                          ? 'No carry over items for this period'
+                          : 'No data for this period'}
                       </td>
                     </tr>
                   ) : (
-                    groupedData.map((group, gi) => {
+                    activeGrouped.map((group, gi) => {
                       const groupRemarkMonthly = group.remarkMonthly || ''
                       const groupStatus = group.forecastStatus
                       const catLen = group.categories.length
                       return group.categories.map((cat, ci) => {
                         const isFirst = ci === 0
                         const isLast = ci === catLen - 1
-                        // Border logic: top border on first row, bottom border on last row, side borders always
                         const groupCellBorder = `border-l border-r border-black/10 ${isFirst ? 'border-t border-black/10' : ''} ${isLast ? 'border-b border-black/10' : ''}`
                         return (
                           <tr
                             key={`${group.key}-${ci}`}
                             className="bg-white transition-colors hover:bg-gray-50"
                           >
-                            {/* No */}
                             <td
                               className={`px-2 py-1.5 text-center align-top text-xs ${groupCellBorder}`}
                             >
                               {isFirst ? gi + 1 : ''}
                             </td>
-                            {/* Customer */}
                             <td
                               className={`px-2 py-1.5 align-top text-xs font-bold ${groupCellBorder}`}
                             >
                               {isFirst ? group.customer : ''}
                             </td>
-                            {/* PIC */}
                             <td
                               className={`px-2 py-1.5 align-top text-xs italic ${groupCellBorder}`}
                             >
                               {isFirst ? group.pic : ''}
                             </td>
-                            {/* Remark monthly (group) */}
                             <td
                               className={`px-2 py-1.5 text-center align-top text-xs break-words whitespace-normal ${groupCellBorder}`}
                             >
                               {isFirst ? groupRemarkMonthly : ''}
                             </td>
-                            {/* Amount IDR (group) */}
                             <td
                               className={`px-2 py-1.5 text-right align-top text-xs font-semibold tabular-nums ${groupCellBorder}`}
                             >
@@ -971,7 +980,6 @@ export function ReportClientPage({
                                 ? fmtNum(group.totalAmountIdr)
                                 : ''}
                             </td>
-                            {/* Amount USD (group) */}
                             <td
                               className={`px-2 py-1.5 text-right align-top text-xs font-semibold tabular-nums ${groupCellBorder}`}
                             >
@@ -979,15 +987,12 @@ export function ReportClientPage({
                                 ? fmtNumUsd(Math.round(group.totalAmountUsd))
                                 : ''}
                             </td>
-                            {/* Category */}
                             <td className="border border-black/10 px-2 py-1.5 text-xs">
                               {cat.category}
                             </td>
-                            {/* Remark (daily - latest) */}
                             <td className="border border-black/10 px-2 py-1.5 text-center text-xs break-words whitespace-normal">
                               {getRemarkDaily(cat)}
                             </td>
-                            {/* Amount */}
                             <td className="border border-black/10 px-2 py-1.5 text-right text-xs tabular-nums">
                               {cat.forecastIdr > 0 ? fmtNum(cat.forecastIdr) : ''}
                             </td>
@@ -996,7 +1001,6 @@ export function ReportClientPage({
                                 ? fmtNumUsd(Math.round(cat.forecastIdr / rate))
                                 : ''}
                             </td>
-                            {/* Status per category */}
                             <td className="border border-black/10 px-2 py-1.5 text-center text-xs">
                               {formatStatusDoc(cat.status, cat.poNumber)}
                             </td>
@@ -1008,7 +1012,6 @@ export function ReportClientPage({
                                 ? fmtNumUsd(Math.round(getRemainingAmount(cat) / rate))
                                 : ''}
                             </td>
-                            {/* Status (group) */}
                             <td
                               className={`px-2 py-1.5 text-center align-top text-xs ${groupCellBorder}`}
                             >
@@ -1019,7 +1022,7 @@ export function ReportClientPage({
                       })
                     })
                   )}
-                  {groupedData.length > 0 && (
+                  {activeGrouped.length > 0 && (
                     <tr className="border-t-2 bg-yellow-100 font-bold">
                       <td
                         colSpan={4}
@@ -1028,18 +1031,18 @@ export function ReportClientPage({
                         TOTAL
                       </td>
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs font-bold tabular-nums">
-                        {fmtNum(groupedData.reduce((s, g) => s + g.totalAmountIdr, 0))}
+                        {fmtNum(activeGrouped.reduce((s, g) => s + g.totalAmountIdr, 0))}
                       </td>
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs font-bold tabular-nums">
                         {fmtNumUsd(
-                          Math.round(groupedData.reduce((s, g) => s + g.totalAmountUsd, 0))
+                          Math.round(activeGrouped.reduce((s, g) => s + g.totalAmountUsd, 0))
                         )}
                       </td>
                       <td className="border border-black/10 px-2 py-1.5" />
                       <td className="border border-black/10 px-2 py-1.5" />
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs tabular-nums">
                         {fmtNum(
-                          groupedData.reduce(
+                          activeGrouped.reduce(
                             (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
                             0
                           )
@@ -1048,7 +1051,7 @@ export function ReportClientPage({
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs tabular-nums">
                         {fmtNumUsd(
                           Math.round(
-                            groupedData.reduce(
+                            activeGrouped.reduce(
                               (s, g) => s + g.categories.reduce((cs, c) => cs + c.forecastIdr, 0),
                               0
                             ) / rate
@@ -1058,7 +1061,7 @@ export function ReportClientPage({
                       <td className="border border-black/10 px-2 py-1.5" />
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs font-bold tabular-nums">
                         {fmtNum(
-                          groupedData.reduce(
+                          activeGrouped.reduce(
                             (s, g) =>
                               s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
                             0
@@ -1068,7 +1071,7 @@ export function ReportClientPage({
                       <td className="border border-black/10 px-2 py-1.5 text-right text-xs font-bold tabular-nums">
                         {fmtNumUsd(
                           Math.round(
-                            groupedData.reduce(
+                            activeGrouped.reduce(
                               (s, g) =>
                                 s + g.categories.reduce((cs, c) => cs + getRemainingAmount(c), 0),
                               0

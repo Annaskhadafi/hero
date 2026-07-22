@@ -71,6 +71,10 @@ const getForecastAmountIdr = (item: any) => {
   )
 }
 
+// ponytail: carry-over = next month, exclude from current scorecards
+const isCarryOverItem = (item: any) =>
+  (item?.status || '').trim().toLowerCase() === 'carry over'
+
 export function DailyClientPage({
   initialItems,
   periods,
@@ -449,7 +453,9 @@ export function DailyClientPage({
   let totalActual = 0
   let totalRemaining = 0
 
+  // ponytail: scorecards skip carry-over (moved to next month)
   filteredItems.forEach((wrapper: any) => {
+    if (isCarryOverItem(wrapper.item)) return
     const forecastIdr = getForecastAmountIdr(wrapper.item)
     const actualIdr = wrapper.actuals
       ? wrapper.actuals.reduce(

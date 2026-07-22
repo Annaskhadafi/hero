@@ -249,10 +249,14 @@ export function MonthlyClientPage({
     setFormsData(formsData.filter((_, i) => i !== index))
   }
 
-  const totalRepair = items.reduce((sum, item) => sum + Number(item.repairForecast || 0), 0)
-  const totalRetread = items.reduce((sum, item) => sum + Number(item.retreadForecast || 0), 0)
-  const totalService = items.reduce((sum, item) => sum + Number(item.serviceForecast || 0), 0)
-  const totalOsPrevMonth = items.reduce(
+  // ponytail: carry-over = next month, exclude from current scorecards
+  const scoredItems = items.filter(
+    (item) => (item.status || '').trim().toLowerCase() !== 'carry over'
+  )
+  const totalRepair = scoredItems.reduce((sum, item) => sum + Number(item.repairForecast || 0), 0)
+  const totalRetread = scoredItems.reduce((sum, item) => sum + Number(item.retreadForecast || 0), 0)
+  const totalService = scoredItems.reduce((sum, item) => sum + Number(item.serviceForecast || 0), 0)
+  const totalOsPrevMonth = scoredItems.reduce(
     (sum, item) => sum + Number(item.osInvoicePrevMonth || 0),
     0
   )

@@ -84,6 +84,10 @@ const getForecastAmountIdr = (item: any) => {
 const isCancelStatusDoc = (status?: string | null) =>
   (status || '').trim().toLowerCase() === 'cancel'
 
+// ponytail: carry-over = next month, exclude from current scorecards
+const isCarryOverStatus = (status?: string | null) =>
+  (status || '').trim().toLowerCase() === 'carry over'
+
 export function DashboardClientPage({
   periods,
   allItems,
@@ -136,8 +140,17 @@ export function DashboardClientPage({
   }
 
   const itemsInPeriod = allItems.filter((i) => i.periodId.toString() === selectedPeriodId)
+  // ponytail: scorecards/charts only active (non carry-over) items
+  const scoredItems = itemsInPeriod.filter((i) => !isCarryOverStatus(i.status))
+  const carryOverItemIds = useMemo(
+    () => new Set(itemsInPeriod.filter((i) => isCarryOverStatus(i.status)).map((i) => i.id)),
+    [itemsInPeriod]
+  )
   const actualsInPeriod = allActuals.filter(
-    (a) => a.periodId.toString() === selectedPeriodId && !isCancelStatusDoc(a.itemStatus)
+    (a) =>
+      a.periodId.toString() === selectedPeriodId &&
+      !isCancelStatusDoc(a.itemStatus) &&
+      !carryOverItemIds.has(a.forecastItemId)
   )
 
   const kpi = useMemo(() => {
@@ -145,7 +158,7 @@ export function DashboardClientPage({
     let totalActuals = 0
     let totalPending = 0
 
-    itemsInPeriod.forEach((item) => {
+    scoredItems.forEach((item) => {
       totalForecast += getForecastAmountIdr(item)
 
       if (item.status === 'Pending') {
@@ -162,7 +175,7 @@ export function DashboardClientPage({
     const achievement = totalForecast > 0 ? (totalActuals / totalForecast) * 100 : 0
 
     return { totalForecast, totalActuals, totalPending, achievement }
-  }, [itemsInPeriod, actualsInPeriod])
+  }, [scoredItems, actualsInPeriod])
 
   // Bar Chart Data (in USD)
   const categoryData = useMemo(() => {
@@ -170,7 +183,7 @@ export function DashboardClientPage({
     const categories = ['Outstanding', 'Repair', 'Retread', 'Service', 'Accessories']
     const data = categories.map((cat) => ({ name: cat, Forecast: 0, Actual: 0 }))
 
-    itemsInPeriod.forEach((item) => {
+    scoredItems.forEach((item) => {
       if (!item.isProductAccessories) {
         data[0].Forecast += Number(item.osInvoicePrevMonth || 0) / rate
         data[1].Forecast += Number(item.repairForecast) / rate
@@ -190,14 +203,14 @@ export function DashboardClientPage({
     })
 
     return data
-  }, [itemsInPeriod, actualsInPeriod])
+  }, [scoredItems, actualsInPeriod, selectedPeriod])
 
   // Donut Chart
   const pieData = useMemo(() => {
     return categoryData.map((c) => ({ name: c.name, value: c.Forecast })).filter((c) => c.value > 0)
   }, [categoryData])
 
-  const outstandingItems = itemsInPeriod
+  const outstandingItems = scoredItems
     .filter((i) => i.status === 'Pending')
     .sort((a, b) => {
       return getForecastAmountIdr(b) - getForecastAmountIdr(a)
