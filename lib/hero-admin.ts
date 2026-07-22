@@ -36,6 +36,7 @@ import {
   hrOrgNodes,
   hrPositions,
   hrSections,
+  csForecastDailyReportConfig,
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelRules,
@@ -2038,6 +2039,77 @@ Site: {{siteName}}
 Tanggal: {{reportDate}}
 
 Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
+    isActive: true,
+  },
+  {
+    name: 'CS Forecast Daily Report',
+    templateCode: 'cs_forecast_daily_report',
+    templateType: 'Report',
+    deliveryChannel: 'email',
+    recipientScope: 'central-service',
+    ccEmail: '',
+    subject: 'CS Forecast Daily Report {{periodLabel}} - {{reportDate}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#0052cc,#172b4d);padding:20px 24px;border-radius:10px 10px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:800;letter-spacing:1px">HERO SYSTEM</h1>
+<p style="color:#93c5fd;font-size:11px;margin:3px 0 0;text-transform:uppercase;letter-spacing:2px">Central Service Daily Report</p></td>
+<td align="right"><span style="color:#ffffff;font-size:12px;background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:12px;font-weight:600">{{periodLabel}}</span></td>
+</tr></table>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e5e7eb;border-top:0">
+<p style="color:#0f172a;font-size:15px;font-weight:700;margin:0 0 12px">Yth. Bapak/Ibu Management, Team Central Service, & Team Sales,</p>
+<p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 14px">Berikut kami sampaikan laporan <strong>CS Forecast Daily Report</strong> untuk periode <strong>{{periodLabel}}</strong> per tanggal <strong>{{reportDate}}</strong> dengan rincian kinerja terlampir.</p>
+<div style="background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;margin:0 0 18px;border-radius:0 6px 6px 0">
+<p style="color:#1e40af;font-size:13px;line-height:1.6;margin:0;font-weight:700">📢 Himbauan Tindak Lanjut Team Sales:</p>
+<p style="color:#1e3a8a;font-size:13px;line-height:1.6;margin:4px 0 0">Mohon bantuan bagi <strong>Team Sales / Account Executive</strong> untuk dapat mem-follow up customer-customer yang terdaftar pada dokumen pending & carry over di bawah ini guna percepatan proses penerbitan PO / Invoice dan pencapaian target revenue.</p>
+</div>
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:0 0 20px">
+<p style="color:#0f172a;font-size:13px;font-weight:700;margin:0 0 10px;border-bottom:1px solid #cbd5e1;padding-bottom:6px">Ringkasan Kinerja Forecast & SAP Revenue</p>
+<table cellpadding="0" cellspacing="0" width="100%">
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;width:160px;vertical-align:top">Periode</td><td style="padding:5px 0;color:#0f172a;font-size:13px;font-weight:600">{{periodLabel}}</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Tanggal Laporan</td><td style="padding:5px 0;color:#0f172a;font-size:13px;font-weight:600">{{reportDate}}</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Total Forecast</td><td style="padding:5px 0;color:#0f172a;font-size:13px;font-weight:700">{{totalForecast}}</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Revenue SAP</td><td style="padding:5px 0;color:#047857;font-size:13px;font-weight:700">{{revenueSap}}</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Achievement Rate</td><td style="padding:5px 0;color:#1d4ed8;font-size:13px;font-weight:700">{{achievement}}</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Dokumen Pending / CO</td><td style="padding:5px 0;color:#b45309;font-size:13px;font-weight:700">{{pendingCount}} item / {{carryOverCount}} item</td></tr>
+</table>
+</div>
+<p style="color:#334155;font-size:13px;line-height:1.6;margin:0 0 16px">Rincian status dokumen customer beserta ringkasan visual chart telah terlampir secara otomatis pada email ini dalam 2 format file:</p>
+<ul style="color:#334155;font-size:13px;line-height:1.6;margin:0 0 20px;padding-left:20px">
+<li><strong>Report Image (.jpeg)</strong>: Gambar visual scorecard, bar chart, pie chart, dan tabel lengkap 14 kolom.</li>
+<li><strong>Excel Export (.xlsx)</strong>: File workbook Excel dengan sheet <em>Revenue SAP</em>, <em>Pending Document</em>, dan <em>Carry Over</em>.</li>
+</ul>
+<p style="margin:24px 0 20px;text-align:center"><a href="{{reportUrl}}" style="display:inline-block;background:#0052cc;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Buka Dashboard Daily Report</a></p>
+<p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0;padding-top:16px;border-top:1px solid #e2e8f0">Demikian laporan ini kami sampaikan. Atas perhatian dan kerja samanya, kami ucapkan terima kasih.<br><br>Hormat kami,<br><strong style="color:#0f172a">Team Central Service - HERO System</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:20px;border-top:1px solid #f1f5f9;padding-top:12px"><tr><td><p style="color:#94a3b8;font-size:11px;margin:0">© 2026 PT Chitra Paratama · HERO Application</p><p style="color:#94a3b8;font-size:10px;margin:3px 0 0">Email notifikasi ini dikirimkan secara otomatis oleh jadwal sistem.</p></td></tr></table>
+</div>
+</div>`,
+    textContent: `Yth. Bapak/Ibu Management, Team Central Service, & Team Sales,
+
+Berikut kami sampaikan laporan CS Forecast Daily Report untuk periode {{periodLabel}} per tanggal {{reportDate}} dengan rincian kinerja terlampir.
+
+HIMBAUAN TINDAK LANJUT TEAM SALES:
+Mohon bantuan bagi Team Sales / Account Executive untuk dapat mem-follow up customer-customer yang terdaftar pada dokumen pending & carry over di bawah ini guna percepatan proses penerbitan PO / Invoice dan pencapaian target revenue.
+
+RINGKASAN LAPORAN:
+- Periode: {{periodLabel}}
+- Tanggal Laporan: {{reportDate}}
+- Total Forecast: {{totalForecast}}
+- Revenue SAP: {{revenueSap}}
+- Achievement Rate: {{achievement}}
+- Dokumen Pending / Carry Over: {{pendingCount}} item / {{carryOverCount}} item
+
+File Terlampir:
+1. Report Image (.jpeg): Gambar visual scorecard, bar chart, pie chart, dan tabel dokumen lengkap.
+2. Excel Export (.xlsx): File Excel workbook lengkap (Revenue SAP, Pending Document, Carry Over).
+
+Buka Dashboard Daily Report: {{reportUrl}}
+
+Demikian laporan ini kami sampaikan. Atas perhatian dan kerja samanya, kami ucapkan terima kasih.
+
+Hormat kami,
+Team Central Service - HERO System`,
     isActive: true,
   },
   {
@@ -4098,6 +4170,20 @@ async function ensureHeroGovernanceTables() {
       recipient_emails text not null default '',
       cc_emails text not null default '',
       is_active boolean not null default true,
+      updated_at timestamp not null default now()
+    );
+  `)
+
+  await db.execute(sql`
+    create table if not exists hero_cs_forecast_daily_report_config (
+      id serial primary key,
+      recipient_emails text not null default '',
+      cc_emails text not null default '',
+      send_times text not null default '08:00',
+      timezone text not null default 'UTC+8',
+      is_active boolean not null default false,
+      last_sent_key text not null default '',
+      last_sent_at timestamp,
       updated_at timestamp not null default now()
     );
   `)
@@ -6927,6 +7013,30 @@ export async function getHseSafetyNotificationConfigData() {
   )
 }
 
+export async function getCsForecastDailyReportConfigData() {
+  await ensureHeroGovernanceSeedData()
+
+  const [config] = await db
+    .select()
+    .from(csForecastDailyReportConfig)
+    .orderBy(desc(csForecastDailyReportConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
+      sendTimes: '08:00',
+      timezone: 'UTC+8',
+      isActive: false,
+      lastSentKey: '',
+      lastSentAt: null as Date | null,
+      updatedAt: new Date(),
+    }
+  )
+}
+
 export async function getHumanCapitalNotificationConfigData() {
   await ensureHeroGovernanceSeedData()
 
@@ -6948,6 +7058,7 @@ export async function getHumanCapitalNotificationConfigData() {
 }
 
 export async function getActiveEmployeesForSelect() {
+  // User Management (hero_employees) — only rows with usable email
   const rows = await db
     .select({
       id: employees.id,
@@ -6955,7 +7066,12 @@ export async function getActiveEmployeesForSelect() {
       email: employees.email,
     })
     .from(employees)
-    .where(eq(employees.isActive, true))
+    .where(
+      and(
+        eq(employees.isActive, true),
+        sql`coalesce(trim(${employees.email}), '') <> ''`
+      )
+    )
     .orderBy(asc(employees.name))
 
   return rows

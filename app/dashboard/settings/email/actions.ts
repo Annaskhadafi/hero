@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  csForecastDailyReportConfig,
   emailSmtpSettings,
   emailTemplates,
   hcNotificationConfig,
@@ -20,6 +21,10 @@ import {
   getPwaPushSettingsData,
 } from "@/lib/hero-admin";
 import { getEmployeeTargetByEmail, sendPushNotification } from "@/lib/push-notifications";
+import {
+  parseSendTimes,
+  sendCsForecastDailyReportEmail,
+} from "@/lib/cs-forecast-daily-report";
 
 export type EmailSettingsActionState = {
   status: "idle" | "success" | "error";
@@ -118,6 +123,43 @@ const humanCapitalNotificationSchema = z.object({
   ccEmails: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
+
+const csForecastDailyReportSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  sendTimes: z.string().trim().min(1, "Jam kirim wajib diisi."),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+async function filterEmailsFromUserManagement(raw: string) {
+  const wanted = Array.from(
+    new Set(
+      raw
+        .split(/[,;\n]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+  if (wanted.length === 0) return "";
+
+  const { employees } = await import("@/db/schema/hero");
+  const { inArray, and, eq, sql } = await import("drizzle-orm");
+  const rows = await db
+    .select({ email: employees.email })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isActive, true),
+        sql`lower(trim(${employees.email})) in (${sql.join(
+          wanted.map((e) => sql`${e}`),
+          sql`, `,
+        )})`,
+      ),
+    );
+
+  const allowed = new Set(rows.map((r) => (r.email || "").trim().toLowerCase()).filter(Boolean));
+  return wanted.filter((e) => allowed.has(e)).join(", ");
+}
 
 const INITIAL_STATE: EmailSettingsActionState = {
   status: "idle",
@@ -848,6 +890,107 @@ export async function saveHumanCapitalNotificationConfigAction(
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Gagal menyimpan penerima Human Capital.",
+    };
+  }
+}
+
+export async function saveCsForecastDailyReportConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = csForecastDailyReportSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi CS Forecast Daily Report belum valid.",
+    };
+  }
+
+  const sendTimes = parseSendTimes(parsed.data.sendTimes).join(", ");
+  if (!sendTimes) {
+    return { status: "error", message: "Format jam kirim tidak valid. Gunakan HH:mm." };
+  }
+
+  try {
+    // trust-boundary: only emails from User Management (hero_employees)
+    const recipientEmails = await filterEmailsFromUserManagement(parsed.data.recipientEmails);
+    const ccEmails = await filterEmailsFromUserManagement(parsed.data.ccEmails);
+
+    if (!recipientEmails) {
+      return {
+        status: "error",
+        message: "Pilih minimal 1 penerima dari User Management (email aktif).",
+      };
+    }
+
+    const [existing] = await db
+      .select({ id: csForecastDailyReportConfig.id })
+      .from(csForecastDailyReportConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails,
+      ccEmails,
+      sendTimes,
+      timezone: "UTC+8",
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(csForecastDailyReportConfig)
+        .set(values)
+        .where(eq(csForecastDailyReportConfig.id, existing.id));
+    } else {
+      await db.insert(csForecastDailyReportConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+    return {
+      status: "success",
+      message: "Jadwal CS Forecast Daily Report berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Gagal menyimpan jadwal CS Forecast Daily Report.",
+    };
+  }
+}
+
+export async function sendCsForecastDailyReportNowAction(): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+  try {
+    const session = await getServerSession();
+    const result = await sendCsForecastDailyReportEmail({
+      force: true,
+      actorEmail: session?.user?.email ?? null,
+      slotKey: null,
+    });
+
+    if (result.status === "sent") {
+      revalidatePath("/dashboard/settings/email");
+      return {
+        status: "success",
+        message: `Daily Report terkirim ke ${result.sentCount} penerima.`,
+      };
+    }
+
+    return {
+      status: "error",
+      message: ("reason" in result && result.reason) || "Pengiriman dilewati.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal mengirim CS Forecast Daily Report.",
     };
   }
 }

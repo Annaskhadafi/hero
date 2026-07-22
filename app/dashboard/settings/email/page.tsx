@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Bell,
   FileText,
   History,
@@ -14,6 +15,7 @@ import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
+import { CsForecastDailyReportSettingsPanel } from "@/components/cs-forecast-daily-report-settings-panel";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
 import { EmailTemplateSettingsPanel } from "@/components/email-template-settings-panel";
 import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
@@ -39,6 +41,7 @@ import {
   getEmailTemplatesData,
   getHseSafetyNotificationConfigData,
   getHumanCapitalNotificationConfigData,
+  getCsForecastDailyReportConfigData,
   getActiveEmployeesForSelect,
   getPwaPushSettingsData,
 } from "@/lib/hero-admin";
@@ -108,7 +111,7 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -116,6 +119,7 @@ export default async function EmailSettingsPage() {
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
+    getCsForecastDailyReportConfigData(),
     getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
@@ -178,6 +182,10 @@ export default async function EmailSettingsPage() {
             <Users className="size-4" />
             Mine Permit
           </TabsTrigger>
+          <TabsTrigger value="cs-forecast">
+            <BarChart3 className="size-4" />
+            CS Forecast
+          </TabsTrigger>
           <TabsTrigger value="bell">
             <Bell className="size-4" />
             Bell
@@ -220,6 +228,14 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="mine-permit">
           <MinePermitReminderSettingsPanel />
+        </TabsContent>
+
+        <TabsContent value="cs-forecast">
+          <CsForecastDailyReportSettingsPanel
+            config={csForecastConfig}
+            template={templates.find((t) => t.templateCode === 'cs_forecast_daily_report') ?? null}
+            employees={employees}
+          />
         </TabsContent>
 
         <TabsContent value="bell">

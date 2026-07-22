@@ -2733,6 +2733,21 @@ export const hcNotificationConfig = pgTable('hero_hc_notification_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+// Central Service Forecast Daily Report auto-email schedule
+export const csForecastDailyReportConfig = pgTable('hero_cs_forecast_daily_report_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  // ponytail: comma-separated HH:mm, multi-slot day; upgrade to jsonb slots if needed
+  sendTimes: text('send_times').notNull().default('08:00'),
+  timezone: text('timezone').notNull().default('UTC+8'),
+  isActive: boolean('is_active').notNull().default(false),
+  // idempotency key: "YYYY-MM-DD|HH:mm"
+  lastSentKey: text('last_sent_key').notNull().default(''),
+  lastSentAt: timestamp('last_sent_at'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),
