@@ -1,7 +1,7 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { emailTemplates, employees } from '@/db/schema/hero'
-import { sendEmailViaSmtp, type EmailAttachment } from '@/lib/email-delivery'
+import { sendEmailViaSmtp, logEmailDeliveryRecord, type EmailAttachment } from '@/lib/email-delivery'
 import { getPublicAppUrl } from '@/lib/auth-config'
 import { getEmailSmtpSettingsData } from '@/lib/hero-admin'
 
@@ -175,12 +175,38 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
   const recipients = splitEmails(request.to)
   if (recipients.length === 0) {
-    return { status: 'skipped' as const, reason: 'Recipient email kosong.' }
+    const reason = 'Recipient email kosong.'
+    await logEmailDeliveryRecord({
+      actorEmail: request.actorEmail,
+      toEmail: 'N/A',
+      ccEmail: Array.isArray(request.cc) ? request.cc.join(', ') : request.cc ?? null,
+      subject: request.fallbackSubject,
+      templateCode: request.templateCode,
+      templateName: request.templateName,
+      status: 'failed',
+      errorMessage: reason,
+      htmlContent: request.fallbackHtml,
+      textContent: request.fallbackText,
+    })
+    return { status: 'skipped' as const, reason }
   }
 
   const settings = await getActiveTransportSettings()
   if (!settings) {
-    return { status: 'skipped' as const, reason: 'SMTP aktif belum dikonfigurasi.' }
+    const reason = 'SMTP aktif belum dikonfigurasi.'
+    await logEmailDeliveryRecord({
+      actorEmail: request.actorEmail,
+      toEmail: recipients.join(', '),
+      ccEmail: Array.isArray(request.cc) ? request.cc.join(', ') : request.cc ?? null,
+      subject: request.fallbackSubject,
+      templateCode: request.templateCode,
+      templateName: request.templateName,
+      status: 'failed',
+      errorMessage: reason,
+      htmlContent: request.fallbackHtml,
+      textContent: request.fallbackText,
+    })
+    return { status: 'skipped' as const, reason }
   }
 
   const { template, ccList, subject, html, text } = await resolveWorkflowTemplateContent(request)

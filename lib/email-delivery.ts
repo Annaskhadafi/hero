@@ -100,6 +100,37 @@ async function logEmailDelivery(
   });
 }
 
+export async function logEmailDeliveryRecord(data: {
+  actorEmail?: string | null;
+  toEmail: string;
+  ccEmail?: string | null;
+  fromEmail?: string | null;
+  templateName?: string | null;
+  templateCode?: string | null;
+  subject: string;
+  status: "sent" | "failed" | "pending";
+  errorMessage?: string | null;
+  htmlContent?: string | null;
+  textContent?: string | null;
+}) {
+  await db.insert(emailDeliveryLogs).values({
+    employeeId: await resolveActorEmployeeId(data.actorEmail),
+    deliveryChannel: "email",
+    toEmail: data.toEmail,
+    ccEmail: data.ccEmail ?? null,
+    fromEmail: data.fromEmail ?? "system@hero.chitra.com",
+    templateName: data.templateName ?? "CS Forecast Daily Report",
+    templateCode: data.templateCode ?? "cs_forecast_daily_report",
+    subject: data.subject,
+    status: data.status,
+    errorMessage: data.errorMessage ?? null,
+    htmlContent: data.htmlContent ?? null,
+    textContent: data.textContent ?? null,
+    sentAt: data.status === "sent" ? new Date() : null,
+  });
+}
+
+
 export async function sendEmailViaSmtp(
   settings: EmailTransportSettings,
   payload: EmailDeliveryPayload,

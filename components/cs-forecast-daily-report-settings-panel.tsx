@@ -79,21 +79,25 @@ export function CsForecastDailyReportSettingsPanel({
     event.preventDefault()
     setIsSaving(true)
 
-    // 1. Save Schedule & Recipients
-    const fdSchedule = new FormData()
-    fdSchedule.set('recipientEmails', formData.recipientEmails)
-    fdSchedule.set('ccEmails', formData.ccEmails)
-    fdSchedule.set('sendTimes', formData.sendTimes)
-    fdSchedule.set('isActive', String(formData.isActive))
+    try {
+      // 1. Save Schedule & Recipients
+      const fdSchedule = new FormData()
+      fdSchedule.set('recipientEmails', formData.recipientEmails)
+      fdSchedule.set('ccEmails', formData.ccEmails)
+      fdSchedule.set('sendTimes', formData.sendTimes)
+      fdSchedule.set('isActive', String(formData.isActive))
 
-    const schedResult = await saveCsForecastDailyReportConfigAction(INITIAL_STATE, fdSchedule)
+      const schedResult = await saveCsForecastDailyReportConfigAction(INITIAL_STATE, fdSchedule)
 
-    // 2. Save Custom Template Override
-    if (template?.id) {
+      // 2. Save Custom Template Override
       const fdTemplate = new FormData()
-      fdTemplate.set('intent', 'update')
-      fdTemplate.set('id', String(template.id))
-      fdTemplate.set('name', template.name || 'CS Forecast Daily Report')
+      if (template?.id) {
+        fdTemplate.set('intent', 'update')
+        fdTemplate.set('id', String(template.id))
+      } else {
+        fdTemplate.set('intent', 'create')
+      }
+      fdTemplate.set('name', template?.name || 'CS Forecast Daily Report')
       fdTemplate.set('templateCode', 'cs_forecast_daily_report')
       fdTemplate.set('templateType', 'Report')
       fdTemplate.set('deliveryChannel', 'email')
@@ -105,23 +109,33 @@ export function CsForecastDailyReportSettingsPanel({
       fdTemplate.set('isActive', 'true')
 
       await saveEmailTemplateAction(INITIAL_STATE, fdTemplate)
-    }
 
-    if (schedResult.status === 'success') {
-      toast.success('Jadwal & Custom Body Email CS Forecast berhasil disimpan!')
-    } else {
-      toast.error(schedResult.message)
+      if (schedResult.status === 'success') {
+        toast.success('Jadwal & Custom Body Email CS Forecast berhasil disimpan!')
+      } else {
+        toast.error(schedResult.message || 'Gagal menyimpan jadwal.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Terjadi kesalahan saat menyimpan.')
+    } finally {
+      setIsSaving(false)
     }
-
-    setIsSaving(false)
   }
 
   async function handleSendNow() {
     setIsSending(true)
-    const result = await sendCsForecastDailyReportNowAction()
-    if (result.status === 'success') toast.success(result.message)
-    else toast.error(result.message)
-    setIsSending(false)
+    try {
+      const result = await sendCsForecastDailyReportNowAction()
+      if (result.status === 'success') {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message || 'Gagal mengirim email.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Terjadi kesalahan saat mengirim email.')
+    } finally {
+      setIsSending(false)
+    }
   }
 
   const lastSentLabel = config.lastSentAt
