@@ -79,9 +79,11 @@ const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
 const isCancelStatusDoc = (status?: string | null) =>
   (status || '').trim().toLowerCase() === 'cancel'
 
-// ponytail: carry-over = next month, exclude from current scorecards
 const isCarryOverStatus = (status?: string | null) =>
   (status || '').trim().toLowerCase() === 'carry over'
+
+const isCompleteStatus = (status?: string | null) =>
+  (status || '').trim().toLowerCase() === 'complete'
 
 const resolveLatestNonCancelStatusDoc = (actuals: any[], category: string) => {
   const categoryActuals = actuals.filter((actual) => actual.category === category)
@@ -226,7 +228,7 @@ export function ReportClientPage({
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<'picSales' | 'customer' | 'actual'>('picSales')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
-  const [docTab, setDocTab] = useState<'pending' | 'carryOver'>('pending')
+  const [docTab, setDocTab] = useState<'pending' | 'carryOver' | 'complete'>('pending')
   const [sapRevenue, setSapRevenue] = useState(initialSapRevenue)
   const [isLoadingSap, setIsLoadingSap] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
@@ -492,14 +494,23 @@ export function ReportClientPage({
   }
 
   const pendingGrouped = useMemo(
-    () => buildGroups(filtered.filter((w: any) => !isCarryOverStatus(w.item?.status))),
+    () => buildGroups(filtered.filter((w: any) => !isCarryOverStatus(w.item?.status) && !isCompleteStatus(w.item?.status))),
     [filtered, sortField, sortOrder, rate]
   )
   const carryOverGrouped = useMemo(
-    () => buildGroups(filtered.filter((w: any) => isCarryOverStatus(w.item?.status))),
+    () => buildGroups(filtered.filter((w: any) => isCarryOverStatus(w.item?.status) && !isCompleteStatus(w.item?.status))),
     [filtered, sortField, sortOrder, rate]
   )
-  const activeGrouped = docTab === 'carryOver' ? carryOverGrouped : pendingGrouped
+  const completeGrouped = useMemo(
+    () => buildGroups(filtered.filter((w: any) => isCompleteStatus(w.item?.status))),
+    [filtered, sortField, sortOrder, rate]
+  )
+  const activeGrouped =
+    docTab === 'complete'
+      ? completeGrouped
+      : docTab === 'carryOver'
+      ? carryOverGrouped
+      : pendingGrouped
 
   const toggleSort = (field: 'picSales' | 'customer' | 'actual') => {
     if (sortField === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -839,11 +850,11 @@ export function ReportClientPage({
         </div>
 
         <div className="border-primary/10 mt-6 overflow-hidden rounded-lg border-2 bg-white">
-          <div className="bg-[#0052CC] px-4 py-3 text-white">
+          <div className={`px-4 py-3 text-white transition-colors ${docTab === 'complete' ? 'bg-[#059669]' : docTab === 'carryOver' ? 'bg-[#D97706]' : 'bg-[#0052CC]'}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-bold tracking-wider uppercase">
                 <BarChart3 className="h-4 w-4" />
-                {docTab === 'carryOver' ? 'Carry Over' : 'Pending Document'}{' '}
+                {docTab === 'complete' ? 'Completed Document' : docTab === 'carryOver' ? 'Carry Over' : 'Pending Document'}{' '}
                 {periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || ''}
               </div>
               <div className="flex rounded-md bg-white/15 p-0.5 text-xs font-semibold">
@@ -860,12 +871,23 @@ export function ReportClientPage({
                   type="button"
                   className={`rounded px-3 py-1.5 transition-colors ${
                     docTab === 'carryOver'
-                      ? 'bg-white text-[#0052CC]'
+                      ? 'bg-white text-[#D97706]'
                       : 'text-white/90 hover:bg-white/10'
                   }`}
                   onClick={() => setDocTab('carryOver')}
                 >
                   Carry Over ({carryOverGrouped.length})
+                </button>
+                <button
+                  type="button"
+                  className={`rounded px-3 py-1.5 transition-colors ${
+                    docTab === 'complete'
+                      ? 'bg-white text-[#059669]'
+                      : 'text-white/90 hover:bg-white/10'
+                  }`}
+                  onClick={() => setDocTab('complete')}
+                >
+                  Completed Document ({completeGrouped.length})
                 </button>
               </div>
             </div>

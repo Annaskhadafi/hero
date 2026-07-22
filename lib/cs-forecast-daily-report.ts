@@ -52,6 +52,10 @@ function isCarryOverStatus(status?: string | null) {
   return (status || '').trim().toLowerCase() === 'carry over'
 }
 
+function isCompleteStatus(status?: string | null) {
+  return (status || '').trim().toLowerCase() === 'complete'
+}
+
 function isCancelStatusDoc(status?: string | null) {
   return (status || '').trim().toLowerCase() === 'cancel'
 }
@@ -431,17 +435,18 @@ async function loadLatestPeriodReport() {
   const sap = await fetchSapRevenue(period.monthYear)
   const rate = Number(period.exchangeRateIdrToUsd) || 15000
 
-  const pendingItems = items.filter((i) => !isCarryOverStatus(i.status))
-  const carryOverItems = items.filter((i) => isCarryOverStatus(i.status))
+  const nonCarryOverItems = items.filter((i) => !isCarryOverStatus(i.status))
+  const pendingItems = items.filter((i) => !isCarryOverStatus(i.status) && !isCompleteStatus(i.status))
+  const carryOverItems = items.filter((i) => isCarryOverStatus(i.status) && !isCompleteStatus(i.status))
 
   const pendingGrouped = buildGroups(pendingItems, actualsByItem, rate, period.monthYear)
   const carryOverGrouped = buildGroups(carryOverItems, actualsByItem, rate, period.monthYear)
 
-  const serviceFc = pendingItems.reduce((s, i) => s + Number(i.serviceForecast || 0), 0)
-  const repairFc = pendingItems.reduce((s, i) => s + Number(i.repairForecast || 0), 0)
-  const retreadFc = pendingItems.reduce((s, i) => s + Number(i.retreadForecast || 0), 0)
-  const osFc = pendingItems.reduce((s, i) => s + Number(i.osInvoicePrevMonth || 0), 0)
-  const accessoriesFc = pendingItems.reduce((s, i) => s + Number(i.accessoriesAmountIdr || 0), 0)
+  const serviceFc = nonCarryOverItems.reduce((s, i) => s + Number(i.serviceForecast || 0), 0)
+  const repairFc = nonCarryOverItems.reduce((s, i) => s + Number(i.repairForecast || 0), 0)
+  const retreadFc = nonCarryOverItems.reduce((s, i) => s + Number(i.retreadForecast || 0), 0)
+  const osFc = nonCarryOverItems.reduce((s, i) => s + Number(i.osInvoicePrevMonth || 0), 0)
+  const accessoriesFc = nonCarryOverItems.reduce((s, i) => s + Number(i.accessoriesAmountIdr || 0), 0)
 
   const sapService = Number(sap.service?.idr || 0)
   const sapServiceUsd = Number(sap.service?.usd || 0)
