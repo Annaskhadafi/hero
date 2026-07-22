@@ -145,7 +145,7 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
   function handleDownloadPng() {
     const canvas = canvasInstanceRef.current
     if (!canvas) return
-    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 })
+    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1, multiplier: 2 })
     const link = document.createElement('a')
     link.download = `Sertifikat-${employeeName}.png`
     link.href = dataUrl
@@ -157,7 +157,7 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
   function handleDownloadJpg() {
     const canvas = canvasInstanceRef.current
     if (!canvas) return
-    const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1 })
+    const dataUrl = canvas.toDataURL({ format: 'jpeg', quality: 1, multiplier: 2 })
     const link = document.createElement('a')
     link.download = `Sertifikat-${employeeName}.jpg`
     link.href = dataUrl
@@ -169,7 +169,7 @@ export function CertificateViewer({ variables }: { variables: Record<string, str
   function handleDownloadPdf() {
     const canvas = canvasInstanceRef.current
     if (!canvas) return
-    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1 })
+    const dataUrl = canvas.toDataURL({ format: 'png', quality: 1, multiplier: 2 })
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
     printWindow.document.write(`

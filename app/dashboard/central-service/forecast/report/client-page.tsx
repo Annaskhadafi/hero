@@ -619,8 +619,7 @@ export function ReportClientPage({
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        margin: { top: 40, bottom: 40, left: 40, right: 40 },
-      } as any)
+      })
       const link = document.createElement('a')
       link.download = `daily-report-${periods.find((p) => p.id.toString() === selectedPeriodId)?.monthYear || 'export'}.jpeg`
       link.href = canvas.toDataURL('image/jpeg', 0.95)

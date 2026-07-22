@@ -62,7 +62,7 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
     setIsExporting(true)
     toast.loading('Mengekspor template cetak...', { id: 'export-a2' })
     try {
-      const { default: html2canvas } = await import('html2canvas')
+      const { default: html2canvas } = await import('html2canvas-pro')
       const { jsPDF } = await import('jspdf')
 
       const canvas = await html2canvas(el, {

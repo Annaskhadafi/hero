@@ -39,7 +39,7 @@ export default function Step5WorkDrawing({ state, dispatch, onNext, onBack }: Pr
     setIsExporting(true)
     toast.loading('Mengekspor gambar kerja...', { id: 'export-pdf' })
     try {
-      const { default: html2canvas } = await import('html2canvas')
+      const { default: html2canvas } = await import('html2canvas-pro')
       const { jsPDF } = await import('jspdf')
 
       const canvas = await html2canvas(el, {

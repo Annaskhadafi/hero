@@ -1077,8 +1077,8 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
 
 async function buildSummaryJpegBuffer(report: NonNullable<Awaited<ReturnType<typeof loadLatestPeriodReport>>>) {
   const svg = buildSummarySvgString(report)
-  return sharp(Buffer.from(svg))
-    .jpeg({ quality: 92 })
+  return sharp(Buffer.from(svg), { density: 150 })
+    .jpeg({ quality: 95 })
     .toBuffer()
 }
 
