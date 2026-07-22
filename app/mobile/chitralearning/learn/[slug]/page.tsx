@@ -74,6 +74,7 @@ export default async function MobileLessonPlayerPage({
   const currentEmployee = employeeRows[0] ?? null
 
   let enrollmentProgress = 10;
+  let pretestStatus = 'not_started';
   if (currentEmployee) {
     const [enrollment] = await db
       .select()
@@ -86,6 +87,7 @@ export default async function MobileLessonPlayerPage({
     }
     
     enrollmentProgress = Math.max(enrollment.progress, 10);
+    pretestStatus = enrollment.pretestStatus || 'not_started';
 
     // Update status to in_progress
     if (enrollment.status !== 'passed') {
@@ -102,8 +104,19 @@ export default async function MobileLessonPlayerPage({
     }
   }
 
-  // Lock mechanism
-  const maxUnlockedIndex = enrollmentProgress === 100 ? lessons.length - 1 : Math.floor((enrollmentProgress / 100) * lessons.length);
+  // Lock mechanism: calculate unlocked index based on progress & pretest status
+  const pretestIndex = lessons.findIndex(l => l.lessonType === 'pretest');
+  const completedLessonsCount = Math.round((enrollmentProgress / 100) * lessons.length);
+  
+  let unlockedCount = completedLessonsCount;
+  // If pretest has been completed, at least unlock the lesson immediately after pretest without any score threshold
+  if (pretestStatus === 'completed' && pretestIndex >= 0) {
+    unlockedCount = Math.max(unlockedCount, pretestIndex + 1);
+  }
+
+  const maxUnlockedIndex = enrollmentProgress === 100 
+    ? lessons.length - 1 
+    : Math.min(lessons.length - 1, Math.max(0, unlockedCount));
 
   // Active lesson
   let activeLessonId = resolvedSearch?.lessonId ? parseInt(resolvedSearch.lessonId, 10) : lessons[0].id

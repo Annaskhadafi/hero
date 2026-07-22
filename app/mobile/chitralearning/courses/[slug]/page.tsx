@@ -108,10 +108,21 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
     sectionsMap.get(key)!.push(lesson)
   }
 
-  // First lesson for continue
-  const firstLesson = lessons[0]
-  const continueHref = firstLesson
-    ? `/mobile/chitralearning/learn/${course.slug}?lessonId=${firstLesson.id}`
+  // Active lesson for continue button
+  let targetLesson = lessons[0]
+  if (enrollment?.lastLessonId) {
+    const lastIdx = lessons.findIndex(l => l.id === enrollment.lastLessonId)
+    if (lastIdx >= 0) {
+      const lastLesson = lessons[lastIdx]
+      if (lastLesson.lessonType === 'pretest' && enrollment.pretestStatus === 'completed' && lastIdx + 1 < lessons.length) {
+        targetLesson = lessons[lastIdx + 1]
+      } else {
+        targetLesson = lastLesson
+      }
+    }
+  }
+  const continueHref = targetLesson
+    ? `/mobile/chitralearning/learn/${course.slug}?lessonId=${targetLesson.id}`
     : null
 
   return (

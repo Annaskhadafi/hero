@@ -48,8 +48,8 @@ function getPool() {
     connectionString,
     ssl: getSslConfig(connectionString),
     idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
-    connectionTimeoutMillis: 15000,
-    max: 10,
+    connectionTimeoutMillis: 30000,
+    max: 20,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });

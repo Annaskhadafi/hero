@@ -158,35 +158,44 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
   const matrixCols = Array.from({ length: matrixColsCount }).map((_, i) => String.fromCharCode(65 + i));
 
   if (submitted) {
+    const isPretest = testPhase === 'pretest'
+    const isSuccessState = isPretest || scoreResult?.passed !== false
+
     return (
-      <Card className={`w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm ${scoreResult?.passed === false ? 'sm:border-amber-100 bg-amber-50/10' : 'sm:border-emerald-100 bg-emerald-50/50'}`}>
+      <Card className={`w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm ${!isSuccessState ? 'sm:border-amber-100 bg-amber-50/10' : 'sm:border-emerald-100 bg-emerald-50/50'}`}>
         <CardContent className="p-6 sm:p-12 text-center flex flex-col items-center">
-          {scoreResult?.passed === false ? (
+          {!isSuccessState ? (
             <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
           ) : (
             <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
           )}
-          <h3 className="text-2xl font-bold font-heading text-slate-900 mb-2">Kuis Selesai!</h3>
-          <p className="text-slate-600 mb-4">Jawaban Anda telah direkam.</p>
+          <h3 className="text-2xl font-bold font-heading text-slate-900 mb-2">
+            {isPretest ? 'Pre-test Selesai!' : 'Kuis Selesai!'}
+          </h3>
+          <p className="text-slate-600 mb-4">
+            {isPretest
+              ? 'Jawaban Pre-test Anda telah direkam. Silakan lanjutkan ke materi selanjutnya.'
+              : 'Jawaban Anda telah direkam.'}
+          </p>
           
           {scoreResult && (
-            <div className={`mt-2 mb-6 px-8 py-4 rounded-xl border ${scoreResult.passed ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-200'}`}>
+            <div className={`mt-2 mb-6 px-8 py-4 rounded-xl border ${isSuccessState ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-200'}`}>
                <p className="text-sm font-medium text-slate-600 mb-1">Skor Anda:</p>
-               <p className={`text-4xl font-bold ${scoreResult.passed ? 'text-emerald-600' : 'text-amber-600'}`}>{scoreResult.score}%</p>
-               <p className={`text-sm mt-2 font-medium ${scoreResult.passed ? 'text-emerald-700' : 'text-amber-700'}`}>
-                 {scoreResult.passed ? 'Lulus' : 'Belum Lulus'}
+               <p className={`text-4xl font-bold ${isSuccessState ? 'text-emerald-600' : 'text-amber-600'}`}>{scoreResult.score}%</p>
+               <p className={`text-sm mt-2 font-medium ${isSuccessState ? 'text-emerald-700' : 'text-amber-700'}`}>
+                 {isPretest ? 'Pre-test Terkirim (Tanpa Syarat Nilai Minimum)' : (scoreResult.passed ? 'Lulus' : 'Belum Lulus')}
                </p>
             </div>
           )}
           
-          {maxRetakes >= 0 && localAttemptCount >= maxRetakes + 1 && (
+          {!isPretest && maxRetakes >= 0 && localAttemptCount >= maxRetakes + 1 && (
             <p className="text-sm font-medium text-amber-600 mt-2 mb-4 bg-amber-50 px-4 py-2 rounded-lg border border-amber-200">
               Anda telah mencapai batas maksimal percobaan ({maxRetakes + 1} kali).
             </p>
           )}
 
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row flex-wrap justify-center mt-2">
-            {(maxRetakes < 0 || localAttemptCount < maxRetakes + 1) && (
+            {!isPretest && (maxRetakes < 0 || localAttemptCount < maxRetakes + 1) && (
               <Button onClick={handleRetake} variant={scoreResult?.passed ? "outline" : "destructive"}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Ulangi Tes
