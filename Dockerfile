@@ -5,7 +5,7 @@
 
 # Stage 1: Base image
 FROM node:20.19-alpine AS base
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat bash curl
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
