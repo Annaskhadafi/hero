@@ -764,7 +764,7 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
     // Section Header Box
     const headerMarkup = `
       <rect x="32" y="${y}" width="1616" height="38" rx="8" fill="${headerBg}"/>
-      <text x="48" y="${y + 24}" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="800" letter-spacing="0.5">${title} (${groups.length} Customers)</text>
+      <text x="48" y="${y + 24}" fill="#ffffff" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="13" font-weight="800" letter-spacing="0.5">${title} (${groups.length} Customers)</text>
     `
     y += 44
 
@@ -772,20 +772,20 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
     const colHeaderY = y
     const colHeaderMarkup = `
       <rect x="32" y="${colHeaderY}" width="1616" height="32" fill="#facc15"/>
-      <text x="50" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">No</text>
-      <text x="73" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800">Customer</text>
-      <text x="263" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800">PIC</text>
-      <text x="373" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800">Remark Monthly</text>
-      <text x="623" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Forecast IDR</text>
-      <text x="708" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Forecast USD</text>
-      <text x="718" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800">Category</text>
-      <text x="813" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800">Remark Daily</text>
-      <text x="1093" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Amount</text>
-      <text x="1178" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Amount USD</text>
-      <text x="1250" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">Status Doc</text>
-      <text x="1428" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Sisa Amount</text>
-      <text x="1523" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Sisa USD</text>
-      <text x="1588" y="${colHeaderY + 20}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">Status FC</text>
+      <text x="50" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">No</text>
+      <text x="73" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800">Customer</text>
+      <text x="263" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800">PIC</text>
+      <text x="373" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800">Remark Monthly</text>
+      <text x="623" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Forecast IDR</text>
+      <text x="708" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Forecast USD</text>
+      <text x="718" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800">Category</text>
+      <text x="813" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800">Remark Daily</text>
+      <text x="1093" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Amount</text>
+      <text x="1178" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Amount USD</text>
+      <text x="1250" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">Status Doc</text>
+      <text x="1428" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Sisa Amount</text>
+      <text x="1523" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">Sisa USD</text>
+      <text x="1588" y="${colHeaderY + 20}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="middle">Status FC</text>
     `
     y += 32
 
@@ -800,7 +800,7 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
     if (groups.length === 0) {
       rowsMarkup += `
         <rect x="32" y="${y}" width="1616" height="36" fill="#ffffff"/>
-        <text x="840" y="${y + 22}" fill="#64748b" font-family="Arial, sans-serif" font-size="11" text-anchor="middle">Tidak ada dokumen pada kategori ini</text>
+        <text x="840" y="${y + 22}" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" text-anchor="middle">Tidak ada dokumen pada kategori ini</text>
       `
       y += 36
     } else {
@@ -835,14 +835,14 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
             const anchor = align === 'right' ? 'end' : align === 'center' ? 'middle' : 'start'
             const fw = isBold ? '700' : '400'
             if (lines.length <= 1) {
-              return `<text x="${posX}" y="${rowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="${fw}" text-anchor="${anchor}">${escapeXml(lines[0] || '')}</text>`
+              return `<text x="${posX}" y="${rowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="${fw}" text-anchor="${anchor}">${escapeXml(lines[0] || '')}</text>`
             } else {
-              return `<text x="${posX}" y="${rowY + 14}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="${fw}" text-anchor="${anchor}">${escapeXml(lines[0])}<tspan x="${posX}" dy="13">${escapeXml(lines[1])}</tspan></text>`
+              return `<text x="${posX}" y="${rowY + 14}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="${fw}" text-anchor="${anchor}">${escapeXml(lines[0])}<tspan x="${posX}" dy="13">${escapeXml(lines[1])}</tspan></text>`
             }
           }
 
           const colCustomer = isFirst ? renderCell(group.customer, 73, 25, 'left', true) : ''
-          const colPic = isFirst ? `<text x="263" y="${rowY + 21}" fill="#334155" font-family="Arial, sans-serif" font-size="10">${escapeXml(truncatedPic)}</text>` : ''
+          const colPic = isFirst ? `<text x="263" y="${rowY + 21}" fill="#334155" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10">${escapeXml(truncatedPic)}</text>` : ''
           const colRemarkMonthly = isFirst ? renderCell(group.remarkMonthly, 373, 18, 'left') : ''
           const colCategory = renderCell(cat.category, 718, 12, 'left', true)
           const colRemarkDaily = renderCell(getRemarkDaily(cat), 813, 24, 'left')
@@ -855,7 +855,7 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
             <line x1="32" y1="${rowY + rowH}" x2="1648" y2="${rowY + rowH}" stroke="#e2e8f0" stroke-width="1"/>
 
             <!-- No -->
-            <text x="50" y="${rowY + 21}" fill="#334155" font-family="Arial, sans-serif" font-size="10" font-weight="${isFirst ? '700' : '400'}" text-anchor="middle">${isFirst ? gi + 1 : ''}</text>
+            <text x="50" y="${rowY + 21}" fill="#334155" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="${isFirst ? '700' : '400'}" text-anchor="middle">${isFirst ? gi + 1 : ''}</text>
 
             <!-- Customer -->
             ${colCustomer}
@@ -867,10 +867,10 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
             ${colRemarkMonthly}
 
             <!-- Forecast IDR -->
-            <text x="623" y="${rowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="${isFirst ? '700' : '400'}" text-anchor="end">${isFirst && group.totalAmountIdr > 0 ? fmtIdr(group.totalAmountIdr) : ''}</text>
+            <text x="623" y="${rowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="${isFirst ? '700' : '400'}" text-anchor="end">${isFirst && group.totalAmountIdr > 0 ? fmtIdr(group.totalAmountIdr) : ''}</text>
 
             <!-- Forecast USD -->
-            <text x="708" y="${rowY + 21}" fill="#475569" font-family="Arial, sans-serif" font-size="10" font-weight="${isFirst ? '600' : '400'}" text-anchor="end">${isFirst && group.totalAmountUsd > 0 ? fmtUsd(group.totalAmountUsd) : ''}</text>
+            <text x="708" y="${rowY + 21}" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="${isFirst ? '600' : '400'}" text-anchor="end">${isFirst && group.totalAmountUsd > 0 ? fmtUsd(group.totalAmountUsd) : ''}</text>
 
             <!-- Category -->
             ${colCategory}
@@ -879,19 +879,19 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
             ${colRemarkDaily}
 
             <!-- Amount -->
-            <text x="1093" y="${rowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" text-anchor="end">${cat.forecastIdr > 0 ? fmtIdr(cat.forecastIdr) : ''}</text>
+            <text x="1093" y="${rowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">${cat.forecastIdr > 0 ? fmtIdr(cat.forecastIdr) : ''}</text>
 
             <!-- Amount USD -->
-            <text x="1178" y="${rowY + 21}" fill="#475569" font-family="Arial, sans-serif" font-size="10" text-anchor="end">${cat.forecastIdr > 0 ? fmtUsd(fcUsd) : ''}</text>
+            <text x="1178" y="${rowY + 21}" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">${cat.forecastIdr > 0 ? fmtUsd(fcUsd) : ''}</text>
 
             <!-- Status Doc -->
             ${colStatusDoc}
 
             <!-- Sisa Amount -->
-            <text x="1428" y="${rowY + 21}" fill="#b45309" font-family="Arial, sans-serif" font-size="10" font-weight="600" text-anchor="end">${cat.forecastIdr > 0 ? fmtIdr(remAmount) : ''}</text>
+            <text x="1428" y="${rowY + 21}" fill="#b45309" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="600" text-anchor="end">${cat.forecastIdr > 0 ? fmtIdr(remAmount) : ''}</text>
 
             <!-- Sisa USD -->
-            <text x="1523" y="${rowY + 21}" fill="#b45309" font-family="Arial, sans-serif" font-size="10" font-weight="600" text-anchor="end">${cat.forecastIdr > 0 ? fmtUsd(remUsd) : ''}</text>
+            <text x="1523" y="${rowY + 21}" fill="#b45309" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="600" text-anchor="end">${cat.forecastIdr > 0 ? fmtUsd(remUsd) : ''}</text>
 
             <!-- Status Forecast -->
             ${colStatusFc}
@@ -908,13 +908,13 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
       <line x1="32" y1="${totalRowY}" x2="1648" y2="${totalRowY}" stroke="#eab308" stroke-width="1.5"/>
       <line x1="32" y1="${totalRowY + 34}" x2="1648" y2="${totalRowY + 34}" stroke="#eab308" stroke-width="1.5"/>
 
-      <text x="373" y="${totalRowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="11" font-weight="800">TOTAL</text>
-      <text x="623" y="${totalRowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalForecastIdr)}</text>
-      <text x="708" y="${totalRowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalForecastUsd)}</text>
-      <text x="1093" y="${totalRowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalAmountIdr)}</text>
-      <text x="1178" y="${totalRowY + 21}" fill="#0f172a" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalAmountUsd)}</text>
-      <text x="1428" y="${totalRowY + 21}" fill="#b45309" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalSisaIdr)}</text>
-      <text x="1523" y="${totalRowY + 21}" fill="#b45309" font-family="Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalSisaUsd)}</text>
+      <text x="373" y="${totalRowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="800">TOTAL</text>
+      <text x="623" y="${totalRowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalForecastIdr)}</text>
+      <text x="708" y="${totalRowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalForecastUsd)}</text>
+      <text x="1093" y="${totalRowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalAmountIdr)}</text>
+      <text x="1178" y="${totalRowY + 21}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalAmountUsd)}</text>
+      <text x="1428" y="${totalRowY + 21}" fill="#b45309" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtIdr(totalSisaIdr)}</text>
+      <text x="1523" y="${totalRowY + 21}" fill="#b45309" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="800" text-anchor="end">${fmtUsd(totalSisaUsd)}</text>
     `
     y += 34
 
@@ -950,8 +950,8 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
   const footerY = currentY
   const footerMarkup = `
     <rect x="32" y="${footerY}" width="1616" height="52" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
-    <text x="52" y="${footerY + 31}" fill="#64748b" font-family="Arial, sans-serif" font-size="11" font-weight="600">CS Forecast Daily Report — ${period.monthYear}</text>
-    <text x="1628" y="${footerY + 31}" fill="#94a3b8" font-family="Arial, sans-serif" font-size="11" font-weight="600" text-anchor="end">Auto-generated by HERO System · UTC+8</text>
+    <text x="52" y="${footerY + 31}" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="600">CS Forecast Daily Report — ${period.monthYear}</text>
+    <text x="1628" y="${footerY + 31}" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="end">Auto-generated by HERO System · UTC+8</text>
   `
   currentY += 68
 
@@ -963,12 +963,12 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
 
   <!-- Top Header Bar -->
   <rect x="32" y="24" width="1616" height="56" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
-  <text x="52" y="59" fill="#0f172a" font-family="Arial, sans-serif" font-size="20" font-weight="800">Daily Report</text>
+  <text x="52" y="59" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="20" font-weight="800">Daily Report</text>
   <rect x="180" y="38" width="110" height="28" rx="14" fill="#f1f5f9"/>
-  <text x="235" y="56" fill="#475569" font-family="Arial, sans-serif" font-size="12" font-weight="700" text-anchor="middle">${period.monthYear}</text>
+  <text x="235" y="56" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="12" font-weight="700" text-anchor="middle">${period.monthYear}</text>
 
   <!-- Section: REVENUE SAP -->
-  <text x="36" y="112" fill="#0284c7" font-family="Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="1">REVENUE SAP</text>
+  <text x="36" y="112" fill="#0284c7" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="1">REVENUE SAP</text>
 
   <!-- 4 Scorecards Row -->
   ${scorecards
@@ -979,16 +979,16 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
       return `
     <rect x="${cardX}" y="${cardY}" width="392" height="140" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
     <rect x="${cardX}" y="${cardY}" width="6" height="140" rx="3" fill="${c.accent}"/>
-    <text x="${cardX + 18}" y="${cardY + 28}" fill="#64748b" font-family="Arial, sans-serif" font-size="11" font-weight="800">${c.title}</text>
-    <text x="${cardX + 374}" y="${cardY + 30}" fill="${c.pctColor}" font-family="Arial, sans-serif" font-size="24" font-weight="900" text-anchor="end">${c.pct.toFixed(1)}%</text>
+    <text x="${cardX + 18}" y="${cardY + 28}" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="800">${c.title}</text>
+    <text x="${cardX + 374}" y="${cardY + 30}" fill="${c.pctColor}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="24" font-weight="900" text-anchor="end">${c.pct.toFixed(1)}%</text>
 
-    <text x="${cardX + 18}" y="${cardY + 62}" fill="#94a3b8" font-family="Arial, sans-serif" font-size="9" font-weight="700">FORECAST</text>
-    <text x="${cardX + 18}" y="${cardY + 80}" fill="#0f172a" font-family="Arial, sans-serif" font-size="14" font-weight="800">${fmtIdr(c.fcIdr)}</text>
-    <text x="${cardX + 18}" y="${cardY + 96}" fill="#64748b" font-family="Arial, sans-serif" font-size="11" font-weight="600">${fmtUsd(c.fcUsd)}</text>
+    <text x="${cardX + 18}" y="${cardY + 62}" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="9" font-weight="700">FORECAST</text>
+    <text x="${cardX + 18}" y="${cardY + 80}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="14" font-weight="800">${fmtIdr(c.fcIdr)}</text>
+    <text x="${cardX + 18}" y="${cardY + 96}" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="600">${fmtUsd(c.fcUsd)}</text>
 
-    <text x="${cardX + 374}" y="${cardY + 62}" fill="#94a3b8" font-family="Arial, sans-serif" font-size="9" font-weight="700" text-anchor="end">REVENUE (IDR)</text>
-    <text x="${cardX + 374}" y="${cardY + 80}" fill="#0f172a" font-family="Arial, sans-serif" font-size="14" font-weight="800" text-anchor="end">${fmtIdr(c.actIdr)}</text>
-    <text x="${cardX + 374}" y="${cardY + 96}" fill="#64748b" font-family="Arial, sans-serif" font-size="11" font-weight="600" text-anchor="end">${fmtUsd(c.actUsd)}</text>
+    <text x="${cardX + 374}" y="${cardY + 62}" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="9" font-weight="700" text-anchor="end">REVENUE (IDR)</text>
+    <text x="${cardX + 374}" y="${cardY + 80}" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="14" font-weight="800" text-anchor="end">${fmtIdr(c.actIdr)}</text>
+    <text x="${cardX + 374}" y="${cardY + 96}" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="end">${fmtUsd(c.actUsd)}</text>
 
     <rect x="${cardX + 18}" y="${cardY + 118}" width="356" height="6" rx="3" fill="#f1f5f9"/>
     <rect x="${cardX + 18}" y="${cardY + 118}" width="${barW}" height="6" rx="3" fill="${c.barColor}"/>
@@ -997,12 +997,12 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
     .join('')}
 
   <!-- Section: DOCUMENT COMPLETED -->
-  <text x="36" y="294" fill="#0284c7" font-family="Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="1">DOCUMENT COMPLETED</text>
+  <text x="36" y="294" fill="#0284c7" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="1">DOCUMENT COMPLETED</text>
 
   <!-- Left Card: Bar Chart -->
   <rect x="32" y="306" width="800" height="280" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
-  <text x="52" y="336" fill="#0f172a" font-family="Arial, sans-serif" font-size="14" font-weight="700">Forecast vs Actual (By Category)</text>
-  <text x="52" y="352" fill="#64748b" font-family="Arial, sans-serif" font-size="11">Comparison in USD</text>
+  <text x="52" y="336" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="14" font-weight="700">Forecast vs Actual (By Category)</text>
+  <text x="52" y="352" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11">Comparison in USD</text>
 
   <!-- Grid lines -->
   <line x1="100" y1="390" x2="780" y2="390" stroke="#f1f5f9" stroke-dasharray="3 3"/>
@@ -1010,10 +1010,10 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
   <line x1="100" y1="483" x2="780" y2="483" stroke="#f1f5f9" stroke-dasharray="3 3"/>
   <line x1="100" y1="530" x2="780" y2="530" stroke="#cbd5e1" stroke-width="1"/>
 
-  <text x="92" y="394" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd)}</text>
-  <text x="92" y="440" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd * 0.66)}</text>
-  <text x="92" y="487" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd * 0.33)}</text>
-  <text x="92" y="534" fill="#94a3b8" font-family="Arial, sans-serif" font-size="10" text-anchor="end">$0</text>
+  <text x="92" y="394" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd)}</text>
+  <text x="92" y="440" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd * 0.66)}</text>
+  <text x="92" y="487" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">${formatShortUsd(maxValUsd * 0.33)}</text>
+  <text x="92" y="534" fill="#94a3b8" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" text-anchor="end">$0</text>
 
   <!-- Category Bars -->
   ${barCategories
@@ -1028,28 +1028,28 @@ function buildSummarySvgString(report: NonNullable<Awaited<ReturnType<typeof loa
       return `
       <!-- Forecast Bar -->
       <rect x="${groupX}" y="${fcY}" width="28" height="${fcH}" rx="3" fill="#8884d8"/>
-      ${cat.fcUsd > 0 ? `<text x="${groupX + 14}" y="${fcY - 6}" fill="#475569" font-family="Arial, sans-serif" font-size="10" font-weight="700" text-anchor="middle">${formatShortUsd(cat.fcUsd)}</text>` : ''}
+      ${cat.fcUsd > 0 ? `<text x="${groupX + 14}" y="${fcY - 6}" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="700" text-anchor="middle">${formatShortUsd(cat.fcUsd)}</text>` : ''}
 
       <!-- Actual Bar -->
       <rect x="${groupX + 32}" y="${actY}" width="28" height="${actH}" rx="3" fill="#82ca9d"/>
-      ${cat.actUsd > 0 ? `<text x="${groupX + 46}" y="${actY - 6}" fill="#475569" font-family="Arial, sans-serif" font-size="10" font-weight="700" text-anchor="middle">${formatShortUsd(cat.actUsd)}</text>` : ''}
+      ${cat.actUsd > 0 ? `<text x="${groupX + 46}" y="${actY - 6}" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="10" font-weight="700" text-anchor="middle">${formatShortUsd(cat.actUsd)}</text>` : ''}
 
       <!-- Category Label -->
-      <text x="${groupX + 30}" y="550" fill="#475569" font-family="Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">${cat.name}</text>
+      <text x="${groupX + 30}" y="550" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11" font-weight="600" text-anchor="middle">${cat.name}</text>
     `
     })
     .join('')}
 
   <!-- Bar Chart Legend -->
   <rect x="350" y="565" width="12" height="12" rx="2" fill="#8884d8"/>
-  <text x="368" y="575" fill="#475569" font-family="Arial, sans-serif" font-size="11">Forecast</text>
+  <text x="368" y="575" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11">Forecast</text>
   <rect x="450" y="565" width="12" height="12" rx="2" fill="#82ca9d"/>
-  <text x="468" y="575" fill="#475569" font-family="Arial, sans-serif" font-size="11">Actual</text>
+  <text x="468" y="575" fill="#475569" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11">Actual</text>
 
   <!-- Right Card: Pie Chart -->
   <rect x="848" y="306" width="800" height="280" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
-  <text x="868" y="336" fill="#0f172a" font-family="Arial, sans-serif" font-size="14" font-weight="700">Forecast Composition</text>
-  <text x="868" y="352" fill="#64748b" font-family="Arial, sans-serif" font-size="11">Share of forecast per category</text>
+  <text x="868" y="336" fill="#0f172a" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="14" font-weight="700">Forecast Composition</text>
+  <text x="868" y="352" fill="#64748b" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="11">Share of forecast per category</text>
 
   <!-- Donut slices -->
   ${piePaths.map((seg) => `<path d="${seg.pathD}" fill="${seg.color}"/>`).join('')}
