@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 function ValueDisplay({ value }: { value: any }) {
   if (value === null || value === undefined) return <span>-</span>;
@@ -128,6 +129,8 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     readableImageUrl: "",
   });
   const [formData, setFormData] = useState(defaultQuestionForm());
+  const [previewQuestionId, setPreviewQuestionId] = useState<number | null>(null);
+  const previewQ = previewQuestionId ? questions.find((q: any) => q.id === previewQuestionId) : null;
 
 
   const getDefaultOptionsForType = (type: string) => {
@@ -165,7 +168,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       questionType: question.questionType || "multiple_choice",
       questionText: question.questionText || "",
       imageUrl: question.imageUrl || "",
-      correctAnswer: question.correctAnswer || options[0]?.id || "A",
+      correctAnswer: question.correctAnswer != null ? question.correctAnswer : (options[0]?.id || "A"),
       points: question.points || 10,
       sortOrder: question.sortOrder || questions.findIndex((item: any) => item.id === question.id) + 1,
       options: options.map((option: any, index: number) => ({ id: option.id || String.fromCharCode(65 + index), text: option.text || "", imageUrl: option.imageUrl || "", readableImageUrl: option.readableImageUrl || "" })),
@@ -441,6 +444,9 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                 </div>
               </div>
               <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => setPreviewQuestionId(q.id)} title="Preview question">
+                  <IconEye className="w-4 h-4" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => openEditQuestion(q)} title="Edit question">
                   <IconPencil className="w-4 h-4" />
                 </Button>
@@ -607,11 +613,13 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                   <Select value={formData.correctAnswer} onValueChange={(val) => setFormData({ ...formData, correctAnswer: val })}>
                     <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="">-</SelectItem>
                       {formData.options.map(opt => (
                         <SelectItem key={opt.id} value={opt.id}>Option {opt.id}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">Pilih "-" jika soal tidak punya kunci jawaban (psikotes).</p>
                 </div>
               </div>
             ) : (
@@ -628,6 +636,78 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               {isSubmitting ? "Saving..." : isUploading ? "Uploading..." : editingQuestion ? "Update Question" : "Save Question"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!previewQuestionId} onOpenChange={(open) => !open && setPreviewQuestionId(null)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Preview Soal</DialogTitle>
+            <DialogDescription>{previewQ ? formatQuestionType(previewQ.questionType) : ''}</DialogDescription>
+          </DialogHeader>
+          {previewQ && (
+            <ScrollArea className="max-h-[70vh]">
+              <div className="space-y-4 pr-4">
+                <div className="text-base font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: previewQ.questionText }} />
+                {previewQ.imageUrl && <img src={previewQ.imageUrl} alt="" className="max-h-60 w-full rounded-lg border object-contain" />}
+                {(() => {
+                  const type = normalizeQuestionType(previewQ.questionType);
+                  const options = Array.isArray(previewQ.options) && previewQ.options.length ? previewQ.options : [];
+                  if (type === "disc") {
+                    return (
+                      <>
+                        <div className="rounded-md bg-amber-50 border border-amber-200 p-2.5 text-xs text-amber-800 flex items-center gap-2">
+                          <span className="font-medium">⚠</span> Wajib pilih satu <strong>Mirip</strong> dan satu <strong>Tidak Mirip</strong> per nomor.
+                        </div>
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full border-collapse min-w-[350px]">
+                            <thead><tr className="bg-muted/50"><th className="p-2 border-b border-r text-center text-xs font-medium w-20">Mirip</th><th className="p-2 border-b border-r text-center text-xs font-medium w-20">Tidak Mirip</th><th className="p-2 border-b text-left text-xs font-medium">Pernyataan</th></tr></thead>
+                            <tbody>{options.map((opt: any, i: number) => (
+                              <tr key={opt.id} className={i !== options.length - 1 ? 'border-b' : ''}>
+                                <td className="p-2 border-r text-center"><input type="radio" disabled className="accent-primary" /></td>
+                                <td className="p-2 border-r text-center"><input type="radio" disabled className="accent-primary" /></td>
+                                <td className="p-2 text-sm"><span className="font-semibold mr-1">{opt.id}.</span>{opt.text}</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </>
+                    );
+                  }
+                  if (["multiple_choice", "true_false", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"].includes(type)) {
+                    return (
+                      <div className="space-y-2">
+                        {options.map((opt: any) => (
+                          <div key={opt.id} className="flex items-start gap-3 border p-3 rounded-lg bg-muted/10">
+                            <input type="radio" disabled className="mt-0.5 accent-primary shrink-0" />
+                            <span className="text-sm"><span className="font-bold mr-1">{opt.id}.</span> {opt.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  if (type === "checkbox") {
+                    return (
+                      <div className="space-y-2">
+                        {options.map((opt: any) => (
+                          <label key={opt.id} className="flex items-start gap-3 border p-3 rounded-lg bg-muted/10 cursor-pointer">
+                            <input type="checkbox" disabled className="mt-0.5 accent-primary shrink-0" />
+                            <span className="text-sm"><span className="font-bold mr-1">{opt.id}.</span> {opt.text}</span>
+                          </label>
+                        ))}
+                      </div>
+                    );
+                  }
+                  if (type === "dropdown") return <select className="w-full rounded-lg border bg-muted/10 p-2.5 text-sm" disabled><option>{options[0]?.text || '-'}</option></select>;
+                  if (type === "number") return <input type="number" disabled placeholder="Input angka..." className="w-full rounded-lg border bg-muted/10 p-2.5 text-sm" />;
+                  if (type === "date") return <input type="date" disabled className="w-full rounded-lg border bg-muted/10 p-2.5 text-sm" />;
+                  if (type === "file_upload") return <input type="file" disabled className="w-full rounded-lg border bg-muted/10 p-2.5 text-sm" />;
+                  if (type === "passage" || previewQ.questionType === "essay") return <textarea disabled rows={4} placeholder="Jawaban..." className="w-full rounded-lg border bg-muted/10 p-2.5 text-sm" />;
+                  return <p className="text-sm text-muted-foreground">Preview tidak tersedia untuk tipe soal ini.</p>;
+                })()}
+              </div>
+            </ScrollArea>
+          )}
         </DialogContent>
       </Dialog>
       </TabsContent>
@@ -651,6 +731,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                 const ansList = entry.answers || [];
                 const correctCount = ansList.filter((a: any) => a.isCorrect === true).length;
                 const ansPct = ansList.length > 0 ? Math.round((correctCount / ansList.length) * 100) : null;
+                const allManual = ansList.length > 0 && ansList.every((a: any) => a.isCorrect === null || a.isCorrect === undefined);
                 return (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
@@ -658,15 +739,19 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                   <TableCell><Badge variant={entry.status === "Completed" || entry.status === "Graded" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>{entry.status}</Badge></TableCell>
                   <TableCell className="text-right">
                     {(entry.status === "Completed" || entry.status === "Graded") && ansPct !== null ? (
-                      <div>
-                        <span className="text-sm font-bold text-primary">{ansPct}%</span>
-                        {test.passingScore > 0 && (
-                          <Badge variant={ansPct >= test.passingScore ? "default" : "destructive"} className={ansPct >= test.passingScore ? "bg-emerald-600 text-xs" : "text-xs"}>
-                            {ansPct >= test.passingScore ? "LULUS" : "GAGAL"}
-                          </Badge>
-                        )}
-                        <div className="text-xs text-muted-foreground">{correctCount}/{ansList.length} benar</div>
-                      </div>
+                      allManual ? (
+                        <span className="text-xs font-semibold text-amber-600">Perlu Verif Manual</span>
+                      ) : (
+                        <div>
+                          <span className="text-sm font-bold text-primary">{ansPct}%</span>
+                          {test.passingScore > 0 && (
+                            <Badge variant={ansPct >= test.passingScore ? "default" : "destructive"} className={ansPct >= test.passingScore ? "bg-emerald-600 text-xs" : "text-xs"}>
+                              {ansPct >= test.passingScore ? "LULUS" : "GAGAL"}
+                            </Badge>
+                          )}
+                          <div className="text-xs text-muted-foreground">{correctCount}/{ansList.length} benar</div>
+                        </div>
+                      )
                     ) : <span className="text-muted-foreground text-xs">-</span>}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{entry.scheduledAt ? format(new Date(entry.scheduledAt), "dd/MM/yy HH:mm") : "-"}</TableCell>
@@ -682,7 +767,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           </Table>
         </MinimalTableShell>
 
-        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}{selectedEntry?.answers?.length > 0 ? (() => { const correct = selectedEntry.answers.filter((a: any) => a.isCorrect === true).length; const total = selectedEntry.answers.length; return ` · Score: ${correct}/${total} (${Math.round((correct/total)*100)}%)`; })() : ""}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge>{answer && answer.isCorrect !== null && answer.isCorrect !== undefined ? <Badge variant={answer.isCorrect ? "default" : "destructive"} className={answer.isCorrect ? "bg-emerald-600" : ""}>{answer.isCorrect ? "Benar" : "Salah"} · {answer.pointsAwarded}/{question.points || 1} pts</Badge> : answer ? <button className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => handleGradeAnswer(selectedEntry!, answer)}>Nilai</button> : null}</div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><AnswerDisplay text={answer?.answerText} /></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
+        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}{selectedEntry?.answers?.length > 0 ? (() => { const correct = selectedEntry.answers.filter((a: any) => a.isCorrect === true).length; const total = selectedEntry.answers.length; const allManual = selectedEntry.answers.every((a: any) => a.isCorrect === null || a.isCorrect === undefined); return allManual ? ` · Perlu Verif Manual` : ` · Score: ${correct}/${total} (${Math.round((correct/total)*100)}%)`; })() : ""}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge>{answer && answer.isCorrect !== null && answer.isCorrect !== undefined ? <Badge variant={answer.isCorrect ? "default" : "destructive"} className={answer.isCorrect ? "bg-emerald-600" : ""}>{answer.isCorrect ? "Benar" : "Salah"} · {answer.pointsAwarded}/{question.points || 1} pts</Badge> : answer ? <button className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => handleGradeAnswer(selectedEntry!, answer)}>Nilai</button> : null}</div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><AnswerDisplay text={answer?.answerText} /></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>Edit Entry</DialogTitle><DialogDescription>Ubah status dan score entry test kandidat.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Status</Label><Select value={entryEditForm.status} onValueChange={(value) => setEntryEditForm((prev) => ({ ...prev, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pending">Pending</SelectItem><SelectItem value="In Progress">In Progress</SelectItem><SelectItem value="Completed">Completed</SelectItem><SelectItem value="Graded">Graded</SelectItem><SelectItem value="Expired">Expired</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Score (poin)</Label><Input type="number" value={entryEditForm.score} onChange={(e) => setEntryEditForm((prev) => ({ ...prev, score: e.target.value }))} placeholder="Kosongkan jika tidak ada" /></div></div><DialogFooter><Button variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button onClick={handleUpdateEntry}>Save</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
           <DialogContent>
@@ -716,10 +801,11 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               <Button onClick={handleAssignCandidate}>Assign & Send Email</Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+      </Dialog>
       </TabsContent>
       </Tabs>
     </AdminPageShell>
   );
 }
+
 

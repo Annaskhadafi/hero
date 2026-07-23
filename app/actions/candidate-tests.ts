@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { randomUUID } from "crypto";
@@ -22,6 +22,8 @@ export async function getTestByAccessKey(accessKey: string) {
 
   const questions = await db.select().from(hcOnlineTestQuestions).where(eq(hcOnlineTestQuestions.testId, test.id)).orderBy(hcOnlineTestQuestions.sortOrder);
   
+  const hasAutoScore = questions.some(q => q.correctAnswer && q.correctAnswer.trim() !== '');
+
   // Exclude correct answers from the public payload for security
   const safeQuestions = await Promise.all(questions.map(async (q) => {
     let resolvedImageUrl = q.imageUrl;
@@ -88,11 +90,11 @@ export async function getTestByAccessKey(accessKey: string) {
 
   // Block if before start or after end
   if ((scheduledAt && now < scheduledAt) || (scheduledEndAt && now > scheduledEndAt)) {
-    return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: [], previousAnswers: null };
+    return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: [], previousAnswers: null, hasAutoScore };
   }
 
   // Compute score breakdown for completed assignments
-  let scoreBreakdown: { score: number | null; correctCount: number; totalQuestions: number; percentage: number; passingScore: number; passed: boolean | null } | null = null;
+  let scoreBreakdown: { score: number | null; correctCount: number; totalQuestions: number; percentage: number; passingScore: number; passed: boolean | null; hasAutoScore: boolean } | null = null;
   if (assignment.status === "Completed") {
     const ansRows = await db.select({ isCorrect: hcOnlineTestAnswers.isCorrect, pointsAwarded: hcOnlineTestAnswers.pointsAwarded })
       .from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignment.id));
@@ -101,10 +103,10 @@ export async function getTestByAccessKey(accessKey: string) {
     const percentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
     const passingScore = test.passingScore ?? 0;
     const passed = totalQuestions > 0 ? percentage >= passingScore : null;
-    scoreBreakdown = { score: assignment.score, correctCount, totalQuestions, percentage, passingScore, passed };
+    scoreBreakdown = { score: assignment.score, correctCount, totalQuestions, percentage, passingScore, passed, hasAutoScore };
   }
 
-  return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: safeQuestions, previousAnswers, scoreBreakdown };
+  return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: safeQuestions, previousAnswers, scoreBreakdown, hasAutoScore };
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
@@ -127,9 +129,12 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
       const question = questionById.get(Number(questionId));
       const normalizedAnswer = answerText.trim().toLowerCase();
       const normalizedCorrect = (question?.correctAnswer || "").trim().toLowerCase();
-      const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "dropdown", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
+      const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "dropdown", "rating", "matching", "ordering"];
       const isOptionBased = optionBasedTypes.includes(question?.questionType || "");
-      const isCorrect = isOptionBased ? normalizedAnswer === normalizedCorrect : (normalizedCorrect ? normalizedAnswer.includes(normalizedCorrect) : null);
+      const hasCorrectAnswer = normalizedCorrect.length > 0;
+      const isCorrect = hasCorrectAnswer
+        ? (isOptionBased ? normalizedAnswer === normalizedCorrect : normalizedAnswer.includes(normalizedCorrect))
+        : null;
       return { assignmentId, questionId: Number(questionId), answerText, isCorrect, pointsAwarded: isCorrect ? question?.points || 0 : 0 };
     });
     if (answerRows.length) await db.insert(hcOnlineTestAnswers).values(answerRows);
@@ -144,6 +149,12 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
   const durationSeconds = assignment.startedAt ? Math.max(0, Math.round((completedAt.getTime() - assignment.startedAt.getTime()) / 1000)) : null;
 
   const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, assignment.testId)).limit(1);
+
+  // Check if any question in this test has a correctAnswer (auto-score capability)
+  const testQuestions = await db.select({ correctAnswer: hcOnlineTestQuestions.correctAnswer })
+    .from(hcOnlineTestQuestions)
+    .where(eq(hcOnlineTestQuestions.testId, assignment.testId));
+  const hasAutoScore = testQuestions.some(q => q.correctAnswer && q.correctAnswer.trim() !== '');
 
   if (test?.isApplicationForm && answers) {
     let identity: CandidateApplicationIdentity = {};
@@ -173,7 +184,7 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
 
   const passingScore = test?.passingScore ?? 0;
   const passed = totalQuestions > 0 ? percentage >= passingScore : null;
-  return { score, correctCount, totalQuestions, percentage, passingScore, passed };
+  return { score, correctCount, totalQuestions, percentage, passingScore, passed, hasAutoScore };
 }
 
 export async function startTestAssignment(assignmentId: number) {
@@ -248,6 +259,20 @@ export async function getCandidateTestResults(candidateId: number) {
     .where(eq(hcOnlineTestAssignments.candidateId, candidateId))
     .orderBy(desc(hcOnlineTestAssignments.createdAt));
 
+  // Check which tests have auto-scoring
+  const testIds = [...new Set(assignments.map(a => a.testId))];
+  const autoScoreTests = testIds.length > 0
+    ? await db.select({ testId: hcOnlineTestQuestions.testId })
+        .from(hcOnlineTestQuestions)
+        .where(
+          and(
+            inArray(hcOnlineTestQuestions.testId, testIds),
+            sql`trim(${hcOnlineTestQuestions.correctAnswer}) != ''`
+          )
+        )
+    : [];
+  const testIdsWithAutoScore = new Set(autoScoreTests.map(t => t.testId));
+
   const results = [];
   for (const a of assignments) {
     const answers = await db
@@ -272,6 +297,7 @@ export async function getCandidateTestResults(candidateId: number) {
     const percentage = answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0;
     const passingScore = a.passingScore ?? 0;
     const passed = answers.length > 0 ? percentage >= passingScore : null;
+    const hasAutoScore = testIdsWithAutoScore.has(a.testId);
 
     results.push({
       ...a,
@@ -282,6 +308,7 @@ export async function getCandidateTestResults(candidateId: number) {
       totalQuestions: answers.length,
       percentage,
       passed,
+      hasAutoScore,
     });
   }
 

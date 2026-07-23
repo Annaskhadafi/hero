@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
 const radioQuestionTypes = ["multiple_choice", "true_false", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
-const questionTypeLabel = (type: string) => ({ multiple_choice: "Pilihan Ganda", true_false: "Benar / Salah", checkbox: "Checkbox", multi_select: "Checkbox", checkbox_multi_select: "Checkbox", dropdown: "Dropdown", number: "Number", date: "Date", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay" }[type] || type);
+const questionTypeLabel = (type: string) => ({ multiple_choice: "Pilihan Ganda", true_false: "Benar / Salah", checkbox: "Checkbox", multi_select: "Checkbox", checkbox_multi_select: "Checkbox", dropdown: "Dropdown", number: "Number", date: "Date", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay", disc: "DISC" }[type] || type);
 const getDefaultOptionsForType = (type: string) => {
   if (type === "true_false") return [{ id: "A", text: "Benar" }, { id: "B", text: "Salah" }];
   if (normalizeQuestionType(type) === "checkbox") return [{ id: "A", text: "Pilihan A" }, { id: "B", text: "Pilihan B" }, { id: "C", text: "Pilihan C" }];
@@ -41,13 +41,14 @@ const formatTime = (seconds: number) => {
 function TestTimer({ storageKey, totalSeconds, active, onExpire }: { storageKey: string; totalSeconds: number; active: boolean; onExpire: () => void }) {
   const onExpireRef = useRef(onExpire);
   const expiredRef = useRef(false);
-  const [timeLeft, setTimeLeft] = useState(() => {
+  const [timeLeft, setTimeLeft] = useState(totalSeconds);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(storageKey);
-      if (saved) return parseInt(saved, 10);
+      if (saved) setTimeLeft(parseInt(saved, 10));
     }
-    return totalSeconds;
-  });
+  }, [storageKey]);
 
   useEffect(() => {
     onExpireRef.current = onExpire;
@@ -73,7 +74,7 @@ function TestTimer({ storageKey, totalSeconds, active, onExpire }: { storageKey:
   }, [active, timeLeft]);
 
   return (
-    <div className={`text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
+    <div suppressHydrationWarning className={`text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
       {formatTime(timeLeft)}
     </div>
   );
@@ -132,16 +133,24 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     if (isFinished) return;
 
     if (!isAutoSubmit && !test.isApplicationForm) {
-      const unansweredList = questions.filter(q => !answers[q.id] || answers[q.id].trim() === "" || answers[q.id] === ",");
+      const unansweredList = questions.filter(q => {
+        if (q.questionType === "disc") {
+          const [mirip, tidakMirip] = (answers[q.id] || ",").split(",");
+          return !mirip || !tidakMirip;
+        }
+        return !answers[q.id] || answers[q.id].trim() === "" || answers[q.id] === ",";
+      });
       if (unansweredList.length > 0) {
         const ids = new Set(unansweredList.map(q => q.id));
         setUnansweredIds(ids);
+        const hasDiscPartial = unansweredList.some(q => q.questionType === "disc" && answers[q.id] && answers[q.id] !== ",");
+        const discMsg = hasDiscPartial ? " (DISC: pilih satu Mirip & satu Tidak Mirip)" : "";
         const numbers = unansweredList.map((_, i) => {
           const idx = questions.findIndex(qq => qq.id === unansweredList[i].id);
-          return idx + 1;
+          return `${idx + 1}${unansweredList[i].questionType === "disc" ? "*" : ""}`;
         });
         const label = numbers.length <= 5 ? numbers.join(", ") : `${numbers.slice(0, 5).join(", ")} + ${numbers.length - 5} lainnya`;
-        toast.error(`Soal belum diisi: No. ${label}`, { duration: 5000 });
+        toast.error(`Soal belum diisi: No. ${label}${discMsg}`, { duration: 5000 });
         setTimeout(() => {
           const el = document.getElementById(`question-${unansweredList[0].id}`);
           el?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -420,6 +429,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                 const options = getDisplayOptions(q);
                 const currentAnswer = answers[q.id] || ",";
                 const [mirip, tidakMirip] = currentAnswer.split(",");
+                const discPartial = (mirip && !tidakMirip) || (!mirip && tidakMirip);
                 
                 const handleDiscChange = (type: "mirip" | "tidakMirip", optId: string) => {
                   if (type === "mirip") {
@@ -430,44 +440,52 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                 };
 
                 return (
-                  <div className="overflow-x-auto rounded-lg border">
-                    <table className="w-full border-collapse min-w-[400px]">
-                      <thead>
-                        <tr className="bg-muted/50">
-                          <th className="p-3 border-b border-r text-center font-medium w-24">Mirip</th>
-                          <th className="p-3 border-b border-r text-center font-medium w-24">Tidak Mirip</th>
-                          <th className="p-3 border-b text-left font-medium">Pernyataan</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {options.map((opt: any, index: number) => (
-                          <tr key={opt.id} className={`hover:bg-muted/10 transition-colors ${index !== options.length - 1 ? 'border-b' : ''}`}>
-                            <td className="p-3 border-r text-center">
-                              <input 
-                                type="radio" 
-                                name={`q-${q.id}-mirip`} 
-                                checked={mirip === opt.id} 
-                                onChange={() => handleDiscChange("mirip", opt.id)} 
-                                className="w-4 h-4 cursor-pointer accent-primary" 
-                              />
-                            </td>
-                            <td className="p-3 border-r text-center">
-                              <input 
-                                type="radio" 
-                                name={`q-${q.id}-tidakMirip`} 
-                                checked={tidakMirip === opt.id} 
-                                onChange={() => handleDiscChange("tidakMirip", opt.id)} 
-                                className="w-4 h-4 cursor-pointer accent-primary" 
-                              />
-                            </td>
-                            <td className="p-3 text-left break-words whitespace-pre-wrap max-w-[200px] sm:max-w-none">
-                              <span className="question-content font-semibold mr-2">{opt.id}.</span>{opt.text}
-                            </td>
+                  <>
+                    {discPartial && (
+                      <div className="rounded-md bg-red-50 border border-red-300 p-3 text-sm text-red-700 mb-4 flex items-start gap-2">
+                        <span className="text-base shrink-0 mt-0.5">✕</span>
+                        <span>Harap pilih satu <strong>Mirip</strong> dan satu <strong>Tidak Mirip</strong>.</span>
+                      </div>
+                    )}
+                    <div className="overflow-x-auto rounded-lg border">
+                      <table className="w-full border-collapse min-w-[400px]">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="p-3 border-b border-r text-center font-medium w-24">Mirip</th>
+                            <th className="p-3 border-b border-r text-center font-medium w-24">Tidak Mirip</th>
+                            <th className="p-3 border-b text-left font-medium">Pernyataan</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {options.map((opt: any, index: number) => (
+                            <tr key={opt.id} className={`hover:bg-muted/10 transition-colors ${index !== options.length - 1 ? 'border-b' : ''}`}>
+                              <td className="p-3 border-r text-center">
+                                <input 
+                                  type="radio" 
+                                  name={`q-${q.id}-mirip`} 
+                                  checked={mirip === opt.id} 
+                                  onChange={() => handleDiscChange("mirip", opt.id)} 
+                                  className="w-4 h-4 cursor-pointer accent-primary" 
+                                />
+                              </td>
+                              <td className="p-3 border-r text-center">
+                                <input 
+                                  type="radio" 
+                                  name={`q-${q.id}-tidakMirip`} 
+                                  checked={tidakMirip === opt.id} 
+                                  onChange={() => handleDiscChange("tidakMirip", opt.id)} 
+                                  className="w-4 h-4 cursor-pointer accent-primary" 
+                                />
+                              </td>
+                              <td className="p-3 text-left break-words whitespace-pre-wrap max-w-[200px] sm:max-w-none">
+                                <span className="question-content font-semibold mr-2">{opt.id}.</span>{opt.text}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 );
               })()}
             </CardContent>

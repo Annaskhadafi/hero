@@ -1917,19 +1917,28 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                           <Badge variant={isSubmitted ? "default" : "secondary"}>{result.status}</Badge>
                           {result.answers.length > 0 && (
                             <div className="text-right">
-                              <div className="text-xs text-muted-foreground">Score</div>
-                              <div className="text-xl font-bold text-primary tabular-nums">{result.percentage}%</div>
-                              {result.passingScore > 0 && (
-                                <Badge variant={result.passed ? "default" : "destructive"} className={result.passed ? "bg-emerald-600" : ""}>
-                                  {result.passed ? "LULUS" : "TIDAK LULUS"} · PG: {result.passingScore}%
-                                </Badge>
+                              {result.hasAutoScore ? (
+                                <>
+                                  <div className="text-xs text-muted-foreground">Score</div>
+                                  <div className="text-xl font-bold text-primary tabular-nums">{result.percentage}%</div>
+                                  {result.passingScore > 0 && (
+                                    <Badge variant={result.passed ? "default" : "destructive"} className={result.passed ? "bg-emerald-600" : ""}>
+                                      {result.passed ? "LULUS" : "TIDAK LULUS"} · PG: {result.passingScore}%
+                                    </Badge>
+                                  )}
+                                  <div className="text-xs text-muted-foreground">
+                                    Benar <span className="text-emerald-600 font-semibold">{result.correctCount}</span>/{result.totalQuestions} soal
+                                    {result.totalMaxPoints > 0 && (
+                                      <span> · <span className="font-mono">{result.totalEarnedPoints}/{result.totalMaxPoints} pts</span></span>
+                                    )}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-xs text-muted-foreground">Status</div>
+                                  <div className="text-base font-semibold text-amber-600">Perlu Verif Manual</div>
+                                </>
                               )}
-                              <div className="text-xs text-muted-foreground">
-                                Benar <span className="text-emerald-600 font-semibold">{result.correctCount}</span>/{result.totalQuestions} soal
-                                {result.totalMaxPoints > 0 && (
-                                  <span> · <span className="font-mono">{result.totalEarnedPoints}/{result.totalMaxPoints} pts</span></span>
-                                )}
-                              </div>
                             </div>
                           )}
                           {isSubmitted && result.answers.length > 0 && (
@@ -1994,8 +2003,12 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                       <Badge variant={selectedTestResult.status === "Completed" || selectedTestResult.status === "Graded" ? "default" : "secondary"}>{selectedTestResult.status}</Badge>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">Score</div>
-                      <div className="text-xl font-bold text-primary tabular-nums">{selectedTestResult.percentage}%</div>
+                      <div className="text-xs text-muted-foreground">{selectedTestResult.hasAutoScore ? 'Score' : 'Status'}</div>
+                      {selectedTestResult.hasAutoScore ? (
+                        <div className="text-xl font-bold text-primary tabular-nums">{selectedTestResult.percentage}%</div>
+                      ) : (
+                        <div className="text-base font-semibold text-amber-600">Perlu Verif Manual</div>
+                      )}
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground">Correct</div>
@@ -2029,9 +2042,13 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                               </span>
                             </TableCell>
                             <TableCell className="text-right align-top">
-                              <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
-                                {ans.pointsAwarded}/{ans.maxPoints}
-                              </Badge>
+                              {ans.isCorrect !== null ? (
+                                <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
+                                  {ans.pointsAwarded}/{ans.maxPoints}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
