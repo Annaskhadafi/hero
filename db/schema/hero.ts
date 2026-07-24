@@ -981,6 +981,8 @@ export const chitraLearningCourses = pgTable('hero_chitralearning_courses', {
   pretestWeight: integer('pretest_weight').notNull().default(0),
   posttestWeight: integer('posttest_weight').notNull().default(100),
   maxRetakes: integer('max_retakes').notNull().default(-1),
+  enrollmentType: text('enrollment_type').notNull().default('umum'),
+  targetSection: text('target_section').notNull().default(''),
   createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
     onDelete: 'set null',
   }),

@@ -3,7 +3,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { NewCourseForm } from './client-form'
 
 import { db } from '@/db'
-import { chitraLearningCategories } from '@/db/schema/hero'
+import { chitraLearningCategories, employees } from '@/db/schema/hero'
 
 export default async function NewCoursePage() {
   const session = await getServerSession()
@@ -16,7 +16,12 @@ export default async function NewCoursePage() {
     redirect('/dashboard/chitralearning-lms/catalog')
   }
 
-  const categories = await db.select().from(chitraLearningCategories)
+  const [categories, allEmployees] = await Promise.all([
+    db.select().from(chitraLearningCategories),
+    db.select({ section: employees.section }).from(employees),
+  ])
+
+  const sections = Array.from(new Set(allEmployees.map(e => e.section).filter((s): s is string => Boolean(s)))).sort()
 
   return (
     <div className="w-full h-full p-6">
@@ -24,7 +29,7 @@ export default async function NewCoursePage() {
         <h1 className="text-2xl font-bold tracking-tight">Course Builder</h1>
         <p className="text-muted-foreground">Buat course baru untuk internal perusahaan.</p>
       </div>
-      <NewCourseForm categories={categories} />
+      <NewCourseForm categories={categories} sections={sections} />
     </div>
   )
 }

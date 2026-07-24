@@ -206,7 +206,7 @@ export default async function LmsCourseEditPage({ params, searchParams }: { para
               <h2 className="font-heading text-lg font-semibold text-slate-950">Publishing settings</h2>
               <p className="text-sm text-slate-500">Status, passing score, deadline, dan sertifikat.</p>
             </div>
-              <EditCourseSettingsForm course={course} />
+              <EditCourseSettingsForm course={course} sections={sections} />
           </div>
         </TabsContent>
 

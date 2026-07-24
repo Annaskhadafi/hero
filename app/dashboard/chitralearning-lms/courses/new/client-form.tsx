@@ -12,12 +12,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Loader2 } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
 
-export function NewCourseForm({ categories }: { categories: any[] }) {
+export function NewCourseForm({ categories, sections = [] }: { categories: any[]; sections?: string[] }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [newCategoryName, setNewCategoryName] = useState('')
   const [level, setLevel] = useState('beginner')
+  const [enrollmentType, setEnrollmentType] = useState('umum')
+  const [targetSection, setTargetSection] = useState('')
   const [coverImageUrl, setCoverImageUrl] = useState('')
   const [videoPreviewUrl, setVideoPreviewUrl] = useState('')
   
@@ -62,6 +64,8 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
         formData.append('newCategoryName', newCategoryName)
       }
       formData.append('level', level)
+      formData.append('enrollmentType', enrollmentType)
+      formData.append('targetSection', targetSection)
       formData.append('coverImageUrl', coverImageUrl)
       formData.append('videoPreviewUrl', videoPreviewUrl)
 
@@ -137,6 +141,42 @@ export function NewCourseForm({ categories }: { categories: any[] }) {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tipe Enrollment</Label>
+                <Select value={enrollmentType} onValueChange={setEnrollmentType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Tipe Enrollment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="umum">Umum (Tanpa persetujuan, langsung terdaftar saat enroll)</SelectItem>
+                    <SelectItem value="khusus">Khusus Section (Perlu persetujuan & target section)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {enrollmentType === 'khusus' ? (
+                <div className="space-y-2">
+                  <Label>Target Section</Label>
+                  <Select value={targetSection} onValueChange={setTargetSection}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih Target Section" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sections.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Keterangan Akses</Label>
+                  <Input value="Semua Karyawan dapat mendaftar langsung (Tanpa Approval)" readOnly className="bg-slate-50 text-slate-500 text-xs" />
+                </div>
+              )}
             </div>
 
             <div className="grid gap-2">

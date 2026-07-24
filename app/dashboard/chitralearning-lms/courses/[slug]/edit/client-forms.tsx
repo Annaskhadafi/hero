@@ -160,7 +160,7 @@ export function EditCourseInfoForm({ course, categories }: { course: any, catego
 }
 
 
-export function EditCourseSettingsForm({ course }: { course: any }) {
+export function EditCourseSettingsForm({ course, sections = [] }: { course: any; sections?: string[] }) {
   const [status, setStatus] = useState(course.status || 'draft')
   const [passingScore, setPassingScore] = useState(course.passingScore?.toString() || '80')
   const [dueDays, setDueDays] = useState(course.dueDays?.toString() || '30')
@@ -169,6 +169,8 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
   const [pretestWeight, setPretestWeight] = useState(course.pretestWeight?.toString() || '0')
   const [posttestWeight, setPosttestWeight] = useState(course.posttestWeight?.toString() || '100')
   const [maxRetakes, setMaxRetakes] = useState(course.maxRetakes?.toString() || '-1')
+  const [enrollmentType, setEnrollmentType] = useState(course.enrollmentType || 'umum')
+  const [targetSection, setTargetSection] = useState(course.targetSection || '')
   
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -187,6 +189,8 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
       formData.append('pretestWeight', pretestWeight)
       formData.append('posttestWeight', posttestWeight)
       formData.append('maxRetakes', maxRetakes)
+      formData.append('enrollmentType', enrollmentType)
+      formData.append('targetSection', targetSection)
 
       await updateCourseSettings(course.id, formData)
       toast.success('Pengaturan berhasil diperbarui.')
@@ -215,6 +219,40 @@ export function EditCourseSettingsForm({ course }: { course: any }) {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="space-y-2">
+          <Label>Tipe Enrollment</Label>
+          <Select value={enrollmentType} onValueChange={setEnrollmentType}>
+            <SelectTrigger>
+              <SelectValue placeholder="Pilih Tipe Enrollment" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="umum">Umum (Tanpa Persetujuan, Langsung Terdaftar)</SelectItem>
+              <SelectItem value="khusus">Khusus Section (Perlu Approval)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {enrollmentType === 'khusus' ? (
+          <div className="space-y-2">
+            <Label>Target Section</Label>
+            <Select value={targetSection} onValueChange={setTargetSection}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih Target Section" />
+              </SelectTrigger>
+              <SelectContent>
+                {sections.map(s => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label className="text-muted-foreground">Keterangan Akses</Label>
+            <Input value="Semua Karyawan dapat mendaftar langsung (Auto-Approved)" readOnly className="bg-slate-50 text-slate-500 text-xs" />
+          </div>
+        )}
         
         <div className="space-y-2">
           <Label>Nilai Kelulusan (%)</Label>

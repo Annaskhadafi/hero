@@ -69,6 +69,8 @@ export async function createCourse(formData: FormData) {
   const level = textValue(formData, "level", "beginner");
   const coverImageUrl = textValue(formData, "coverImageUrl");
   const videoPreviewUrl = textValue(formData, "videoPreviewUrl");
+  const enrollmentType = textValue(formData, "enrollmentType", "umum");
+  const targetSection = textValue(formData, "targetSection", "");
 
   const slugBase = slugifyCourseTitle(title);
   let slug = slugBase;
@@ -89,6 +91,8 @@ export async function createCourse(formData: FormData) {
     coverImageUrl,
     videoPreviewUrl,
     status: "draft",
+    enrollmentType,
+    targetSection,
     createdByEmployeeId: employee.id,
   }).returning({ slug: chitraLearningCourses.slug });
 
@@ -171,6 +175,8 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const maxRetakesStr = textValue(formData, "maxRetakes");
   const parsedMaxRetakes = parseInt(maxRetakesStr, 10);
   const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : -1;
+  const enrollmentType = textValue(formData, "enrollmentType", "umum");
+  const targetSection = textValue(formData, "targetSection", "");
 
   await db.update(chitraLearningCourses).set({
     status,
@@ -181,6 +187,8 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
     pretestWeight,
     posttestWeight,
     maxRetakes,
+    enrollmentType,
+    targetSection,
     updatedAt: new Date(),
   }).where(eq(chitraLearningCourses.id, courseId));
 
@@ -1682,32 +1690,39 @@ export async function requestInternalLmsEnrollmentAction(formData: FormData) {
     .limit(1);
 
   if (existing) {
-    throw new Error("Anda sudah terdaftar atau request sudah pending");
+    throw new Error("Anda sudah terdaftar atau request sedang pending");
   }
+
+  const enrollmentType = (course as any).enrollmentType || "umum";
+  const isKhusus = enrollmentType === "khusus";
 
   await db.insert(chitraLearningEnrollments).values({
     courseId,
     employeeId: employee.id,
     enrollmentType: "self",
-    approvalStatus: "pending",
+    approvalStatus: isKhusus ? "pending" : "approved",
+    approvedAt: isKhusus ? null : new Date(),
     status: "assigned",
     progress: 0,
     dueAt: dueDate(course.dueDays),
   });
 
-  try {
-    await sendLmsEnrollmentRequestNotification({
-      employeeName: employee.name,
-      employeeSn: employee.employeeSn ?? '',
-      employeeSection: employee.section ?? '-',
-      courseTitle: course.title,
-      actorEmail: employee.email,
-    })
-  } catch (error) {
-    console.error('[ChitraLearning LMS] enrollment request email failed', error)
+  if (isKhusus) {
+    try {
+      await sendLmsEnrollmentRequestNotification({
+        employeeName: employee.name,
+        employeeSn: employee.employeeSn ?? '',
+        employeeSection: employee.section ?? '-',
+        courseTitle: course.title,
+        actorEmail: employee.email,
+      })
+    } catch (error) {
+      console.error('[ChitraLearning LMS] enrollment request email failed', error)
+    }
   }
 
   revalidateLms();
+  return { success: true, autoApproved: !isKhusus };
 }
 
 export async function approveInternalLmsEnrollmentAction(formData: FormData) {

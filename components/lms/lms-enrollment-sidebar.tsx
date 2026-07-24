@@ -133,8 +133,12 @@ export function LmsEnrollmentSidebar({
       try {
         const formData = new FormData()
         formData.append("courseId", courseId.toString())
-        await requestInternalLmsEnrollmentAction(formData)
-        toast.success("Permintaan pendaftaran berhasil dikirim. Menunggu persetujuan admin.")
+        const res = await requestInternalLmsEnrollmentAction(formData)
+        if (res?.autoApproved) {
+          toast.success("Pendaftaran berhasil! Anda langsung terdaftar dalam kursus.")
+        } else {
+          toast.success("Permintaan pendaftaran berhasil dikirim. Menunggu persetujuan admin/section head.")
+        }
       } catch (error: any) {
         toast.error(error.message || "Gagal mendaftar kursus")
       }

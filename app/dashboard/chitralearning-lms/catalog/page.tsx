@@ -5,9 +5,7 @@ import { employees } from '@/db/schema/hero'
 import { eq, and, or } from 'drizzle-orm'
 import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/lib/chitralearning-lms'
 import { chitraLearningEnrollments, chitraLearningCertificates, chitraLearningCourses, trainingRecords } from '@/db/schema/hero'
-import { LmsCourseGrid } from '@/components/lms/lms-course-grid'
-import { Input } from '@/components/ui/input'
-import { Search } from 'lucide-react'
+import { LmsCatalogClient } from '@/components/lms/lms-catalog-client'
 
 export const metadata = {
   title: 'Katalog Kursus | ChitraLearning LMS',
@@ -19,8 +17,6 @@ export default async function LmsCatalogPage() {
     redirect('/auth/signin')
   }
 
-
-  
   // Find current employee
   const currentEmployeeRows = await db
     .select()
@@ -110,6 +106,11 @@ export default async function LmsCatalogPage() {
   const inProgressCourses = learnerCourses.filter(c => c.enrollment && !c.certificate && c.enrollment.progress < 100)
   const completedCourses = learnerCourses.filter(c => c.certificate || (c.enrollment && c.enrollment.progress >= 100))
 
+  // Extract unique categories from published courses
+  const categories = Array.from(
+    new Set(publishedCourses.map(c => c.category ?? '').filter((c): c is string => Boolean(c.trim())))
+  ).sort()
+
   const gridItems = publishedCourses.map(course => {
     // Check if enrolled
     const inProgress = inProgressCourses.find(c => c.id === course.id)
@@ -133,8 +134,8 @@ export default async function LmsCatalogPage() {
         id: course.id,
         title: course.title,
         slug: course.slug,
-        category: course.category, // Replace with actual relation if available
-        level: (course as any).level || 'beginner', // Type cast for schema changes
+        category: course.category,
+        level: (course as any).level || 'beginner',
         coverImageUrl: course.coverImageUrl,
         estimatedMinutes: course.estimatedMinutes,
         status: course.status,
@@ -144,25 +145,6 @@ export default async function LmsCatalogPage() {
     }
   })
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-heading font-bold text-slate-900">Katalog Kursus</h1>
-          <p className="text-slate-500 mt-1">Jelajahi semua kursus yang tersedia untuk Anda.</p>
-        </div>
-        
-        {/* Simple search bar placeholder */}
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Cari kursus..." 
-            className="pl-9 bg-slate-50 border-slate-200"
-          />
-        </div>
-      </div>
-
-      <LmsCourseGrid courses={gridItems} />
-    </div>
-  )
+  return <LmsCatalogClient items={gridItems} categories={categories} />
 }
+

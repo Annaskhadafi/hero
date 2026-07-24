@@ -15,8 +15,12 @@ export function MobileEnrollButton({ courseId, slug }: { courseId: number; slug:
       try {
         const formData = new FormData()
         formData.append('courseId', String(courseId))
-        await requestInternalLmsEnrollmentAction(formData)
-        toast.success('Pengajuan enrollment berhasil! Menunggu persetujuan.')
+        const res = await requestInternalLmsEnrollmentAction(formData)
+        if (res?.autoApproved) {
+          toast.success('Pendaftaran berhasil! Anda dapat langsung mulai belajar.')
+        } else {
+          toast.success('Pengajuan enrollment berhasil! Menunggu persetujuan admin/section head.')
+        }
         router.refresh()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Gagal mengajukan enrollment.')
