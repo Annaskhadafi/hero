@@ -59,5 +59,9 @@ export function getPublicAppUrl() {
         process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.replace(/\/api\/auth\/?$/, ""),
     ]
     const origin = candidates.map(normalizeOrigin).find(Boolean)
-    return origin || "http://localhost:3000"
+    if (origin && !origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+        return origin
+    }
+    return "https://hero.chitraparatama.com"
 }
+

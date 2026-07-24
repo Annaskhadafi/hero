@@ -6,10 +6,10 @@ import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { addTestQuestion, assignTestToCandidate, deleteTestEntry, deleteTestQuestion, gradeTestAnswer, importTestQuestions, updateTestEntry, updateTestQuestion } from "@/app/actions/recruitment-tests";
+import { addTestQuestion, assignTestToCandidate, deleteTestEntry, deleteTestQuestion, gradeTestAnswer, importTestQuestions, updateTestEntry, updateTestQuestion, resendTestAssignmentEmail } from "@/app/actions/recruitment-tests";
 import { uploadFile, uploadImageFromUrl } from "@/app/actions/upload";
 import { toast } from "sonner";
-import { IconDownload, IconEye, IconPencil, IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft } from "@tabler/icons-react";
+import { IconDownload, IconEye, IconPencil, IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft, IconMailForward } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -375,6 +375,19 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const handleDeleteEntry = async (entry: any) => { if (!confirm(`Hapus entry test milik ${entry.candidate?.fullName || "candidate ini"}?`)) return; await deleteTestEntry(entry.id); setEntries(entries.filter((item: any) => item.id !== entry.id)); toast.success("Entry deleted"); };
   const handleAssignCandidate = async () => { const parsedCandidateId = Number(candidateId); if (!parsedCandidateId) return toast.error("Pilih kandidat dulu."); let scheduledAt: Date | null = null; if (assignDate && assignTime) scheduledAt = new Date(`${assignDate}T${assignTime}`); const assignment = await assignTestToCandidate(test.id, parsedCandidateId, 7, scheduledAt); const candidate = initialCandidates.find((item: any) => item.id === parsedCandidateId); setEntries([{ ...assignment, candidate, answers: [] }, ...entries]); setCandidateId(""); setAssignDate(""); setAssignTime(""); setIsAssignOpen(false); toast.success("Test berhasil di-assign"); };
   const handleBulkImportQuestions = async () => { const rows = bulkQuestionText.split(/\r?\n/).map((row, index) => { const parts = row.split("|").map((part) => part.trim()); if (!parts[0]) return null; const rawType = (parts[1] || "multiple_choice").toLowerCase(); const questionType = rawType.includes("essay") ? "essay" : rawType.includes("checkbox") || rawType.includes("multi") ? "checkbox" : rawType.includes("dropdown") || rawType.includes("select") ? "dropdown" : rawType.includes("number") || rawType.includes("angka") ? "number" : rawType.includes("date") || rawType.includes("tanggal") ? "date" : rawType.includes("file") || rawType.includes("upload") ? "file_upload" : rawType.includes("rating") ? "rating" : rawType.includes("matching") || rawType.includes("cocok") ? "matching" : rawType.includes("ordering") || rawType.includes("urut") ? "ordering" : rawType.includes("passage") || rawType.includes("reading") ? "passage" : rawType.includes("benar") || rawType.includes("false") ? "true_false" : rawType.includes("skala") || rawType.includes("scale") ? "psychometric_scale" : rawType.includes("pribadi") || rawType.includes("personality") ? "personality" : rawType.includes("minat") || rawType.includes("bakat") ? "interest_aptitude" : rawType.includes("situasi") || rawType.includes("judgement") ? "situational_judgement" : "multiple_choice"; const options = optionBasedTypes.includes(questionType) ? (parts[2] || "").split(";").map((text, optionIndex) => ({ id: String.fromCharCode(65 + optionIndex), text: text.trim() })).filter((option) => option.text) : null; return { questionType, questionText: parts[0], options, correctAnswer: parts[3] || (options?.[0]?.id ?? ""), points: Number(parts[4] || 10) || 10, sortOrder: questions.length + index + 1 }; }).filter(Boolean) as any[]; if (!rows.length) return toast.error("Data import soal masih kosong."); const created = await importTestQuestions(test.id, rows); setQuestions([...questions, ...created]); setBulkQuestionText(""); setIsImportOpen(false); toast.success(`${created.length} soal berhasil diimport`); };
+  const handleResendEntryEmail = async (entry: any) => {
+    try {
+      const res = await resendTestAssignmentEmail(entry.id);
+      if (res.success) {
+        toast.success(res.message);
+      } else {
+        toast.error(res.error || "Gagal mengirim ulang email tes.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Gagal mengirim ulang email tes.");
+    }
+  };
+
   const handleGradeAnswer = async (entry: any, answer: any) => { const raw = prompt("Masukkan poin untuk jawaban ini", String(answer.pointsAwarded ?? 0)); if (raw === null) return; const pointsAwarded = Number(raw); if (!Number.isFinite(pointsAwarded)) return toast.error("Poin harus angka."); await gradeTestAnswer(answer.id, pointsAwarded, pointsAwarded > 0); const updatedEntries = entries.map((item: any) => { if (item.id !== entry.id) return item; const updatedAnswers = (item.answers || []).map((existing: any) => existing.id === answer.id ? { ...existing, pointsAwarded, isCorrect: pointsAwarded > 0 } : existing); return { ...item, answers: updatedAnswers, score: updatedAnswers.reduce((total: number, current: any) => total + (current.pointsAwarded || 0), 0), status: "Graded" }; }); setEntries(updatedEntries); setSelectedEntry(updatedEntries.find((item: any) => item.id === entry.id) || null); toast.success("Nilai jawaban diupdate"); };
 
   return (
@@ -758,7 +771,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                   <TableCell className="text-muted-foreground">{ansList.length} / {questions.length}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDateValue(entry.startedAt)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDateValue(entry.completedAt)}</TableCell>
-                  <TableCell><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => setSelectedEntry(entry)}><IconEye className="size-4" /> Detail</Button><Button variant="outline" size="sm" onClick={() => exportEntries([entry], `hasil-entry-${test.title}-${entry.candidate?.fullName || entry.id}`)}><IconDownload className="size-4" /> Excel</Button><Button variant="outline" size="sm" onClick={() => openEditEntry(entry)}><IconPencil className="size-4" /> Edit</Button><Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry)} className="text-destructive hover:text-destructive"><IconTrash className="size-4" /> Delete</Button></div></TableCell>
+                  <TableCell><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => handleResendEntryEmail(entry)} title="Resend Email Tes"><IconMailForward className="size-4" /> Resend Email</Button><Button variant="outline" size="sm" onClick={() => setSelectedEntry(entry)}><IconEye className="size-4" /> Detail</Button><Button variant="outline" size="sm" onClick={() => exportEntries([entry], `hasil-entry-${test.title}-${entry.candidate?.fullName || entry.id}`)}><IconDownload className="size-4" /> Excel</Button><Button variant="outline" size="sm" onClick={() => openEditEntry(entry)}><IconPencil className="size-4" /> Edit</Button><Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry)} className="text-destructive hover:text-destructive"><IconTrash className="size-4" /> Delete</Button></div></TableCell>
                 </TableRow>
                 );
               })}

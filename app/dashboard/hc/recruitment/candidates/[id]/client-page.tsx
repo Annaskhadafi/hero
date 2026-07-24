@@ -6,7 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -115,7 +115,8 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate, resendEmailFromLog } from "@/app/actions/recruitment";
+import { resendTestAssignmentEmail } from "@/app/actions/recruitment-tests";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/actions/offering";
 
@@ -167,6 +168,43 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [selectedTestResult, setSelectedTestResult] = useState<any>(null);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
+  const [resendingLogId, setResendingLogId] = useState<number | null>(null);
+  const [resendingTestId, setResendingTestId] = useState<number | null>(null);
+
+  const handleResendEmailLog = async (logId: number) => {
+    setResendingLogId(logId);
+    try {
+      const res = await resendEmailFromLog(logId);
+      if (res.success) {
+        toast.success(res.message || "Email berhasil dikirim ulang");
+        router.refresh();
+      } else {
+        toast.error(res.error || "Gagal mengirim ulang email");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Terjadi kesalahan saat mengirim ulang email");
+    } finally {
+      setResendingLogId(null);
+    }
+  };
+
+  const handleResendTestEmail = async (assignmentId: number) => {
+    setResendingTestId(assignmentId);
+    try {
+      const res = await resendTestAssignmentEmail(assignmentId);
+      if (res.success) {
+        toast.success(res.message || "Email tes berhasil dikirim ulang");
+        router.refresh();
+      } else {
+        toast.error(res.error || "Gagal mengirim ulang email tes");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Terjadi kesalahan saat mengirim ulang email tes");
+    } finally {
+      setResendingTestId(null);
+    }
+  };
+
   // Edit Candidate
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isEditSaving, setIsEditSaving] = useState(false);
@@ -1866,12 +1904,24 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   {emailLogs.map((log: any) => (
                     <div key={log.id} className="relative pl-6 border-l-2 border-muted pb-6 last:pb-0">
                       <div className={cn("absolute w-3 h-3 rounded-full -left-[7px] top-1", log.status === "sent" ? "bg-green-500" : "bg-destructive")} />
-                      <div className="flex items-center gap-2">
-                        <IconMail className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium">{log.templateName || log.subject || "Email"}</span>
-                        <Badge variant={log.status === "sent" ? "default" : "destructive"} className="text-xs">
-                          {log.status}
-                        </Badge>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <IconMail className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{log.templateName || log.subject || "Email"}</span>
+                          <Badge variant={log.status === "sent" ? "default" : "destructive"} className="text-xs">
+                            {log.status}
+                          </Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1 self-start sm:self-auto"
+                          disabled={resendingLogId === log.id}
+                          onClick={() => handleResendEmailLog(log.id)}
+                        >
+                          <IconSend className="w-3 h-3" />
+                          {resendingLogId === log.id ? "Sending..." : "Resend Email"}
+                        </Button>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
                         To: {log.toEmail} • From: {log.fromEmail || "-"}
@@ -1913,8 +1963,18 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                             {result.completedAt ? ` → ${format(new Date(result.completedAt), "HH:mm")}` : ""}
                           </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                           <Badge variant={isSubmitted ? "default" : "secondary"}>{result.status}</Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1"
+                            disabled={resendingTestId === result.id}
+                            onClick={() => handleResendTestEmail(result.id)}
+                          >
+                            <IconMailForward className="w-3.5 h-3.5 text-sky-600" />
+                            {resendingTestId === result.id ? "Sending..." : "Resend Email Tes"}
+                          </Button>
                           {result.answers.length > 0 && (
                             <div className="text-right">
                               {result.hasAutoScore ? (

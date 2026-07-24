@@ -13,6 +13,7 @@ import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
 import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 import { generateMcuReferralPdf } from "@/lib/mcu-referral-pdf";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
+import { getPublicAppUrl } from "@/lib/auth-config";
 
 const MCU_CLINIC_FALLBACK_HTML = (vars: Record<string, string>) => `
 <div style="font-family:Arial,sans-serif;line-height:1.6;color:#000;padding:20px;border:1px solid #ddd;max-width:800px;margin:0 auto;">
@@ -600,7 +601,7 @@ export async function recordMcuResult(
   </ul>
   <p>Silakan lengkapi data onboarding melalui link berikut:</p>
   <p style="text-align:center;margin:20px 0;">
-    <a href="${process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.replace("/api/auth", "") || "http://localhost:3000"}/onboarding/${candidate[0].onboardingToken}" style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;">Lengkapi Data Onboarding</a>
+    <a href="${getPublicAppUrl()}/onboarding/${candidate[0].onboardingToken}" style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;">Lengkapi Data Onboarding</a>
   </p>
   <p>Demikian pemberitahuan kami. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.</p>
   <div style="margin-top:40px;"><p>Hormat kami,</p><p style="margin-top:60px;"><strong>Human Capital Department</strong><br/>PT Chitra Paratama</p></div>

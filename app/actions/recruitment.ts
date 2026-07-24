@@ -2344,3 +2344,40 @@ export async function sendBulkCustomEmail(candidateIds: number[], subject: strin
   revalidatePath("/dashboard/hc/recruitment");
   return { results, sent: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length };
 }
+
+export async function resendEmailFromLog(logId: number) {
+  const [log] = await db
+    .select()
+    .from(emailDeliveryLogs)
+    .where(eq(emailDeliveryLogs.id, logId))
+    .limit(1);
+
+  if (!log) {
+    return { success: false, error: "Catatan email tidak ditemukan." };
+  }
+
+  if (!log.toEmail) {
+    return { success: false, error: "Alamat email penerima tidak valid." };
+  }
+
+  const smtpSettings = await getEmailSmtpSettingsData();
+  if (!smtpSettings.host || !smtpSettings.fromEmail) {
+    return { success: false, error: "Pengaturan SMTP belum dikonfigurasi." };
+  }
+
+  const resendSubject = log.subject.startsWith("[Resend]") ? log.subject : `[Resend] ${log.subject}`;
+
+  await sendEmailViaSmtp(smtpSettings, {
+    to: log.toEmail,
+    cc: log.ccEmail || undefined,
+    subject: resendSubject,
+    html: log.htmlContent || undefined,
+    text: log.textContent || "",
+    templateName: `${log.templateName || "Email"} (Resend)`,
+    templateCode: log.templateCode || "resend_email",
+  });
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { success: true, message: `Email "${log.subject}" berhasil dikirim ulang ke ${log.toEmail}.` };
+}
+

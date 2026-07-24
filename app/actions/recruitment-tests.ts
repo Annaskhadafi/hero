@@ -561,4 +561,156 @@ export async function deleteOnlineTest(id: number) {
   revalidatePath("/dashboard/hc/recruitment/tests");
 }
 
+export async function resendTestAssignmentEmail(assignmentId: number) {
+  await ensureScheduledAtColumn();
+  const [assignment] = await db
+    .select()
+    .from(hcOnlineTestAssignments)
+    .where(eq(hcOnlineTestAssignments.id, assignmentId))
+    .limit(1);
+
+  if (!assignment) {
+    return { success: false, error: "Data penugasan tes tidak ditemukan." };
+  }
+
+  const [test] = await db
+    .select({ title: hcOnlineTests.title })
+    .from(hcOnlineTests)
+    .where(eq(hcOnlineTests.id, assignment.testId))
+    .limit(1);
+
+  const [candidate] = await db
+    .select({
+      id: hcCandidates.id,
+      fullName: hcCandidates.fullName,
+      email: hcCandidates.email,
+      jobTitle: hcRecruitments.jobTitle,
+    })
+    .from(hcCandidates)
+    .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+    .where(eq(hcCandidates.id, assignment.candidateId))
+    .limit(1);
+
+  if (!candidate || !candidate.email) {
+    return { success: false, error: "Email kandidat tidak valid atau tidak ditemukan." };
+  }
+
+  const smtpSettings = await getEmailSmtpSettingsData();
+  if (!smtpSettings.host || !smtpSettings.fromEmail) {
+    return { success: false, error: "Pengaturan SMTP belum dikonfigurasi." };
+  }
+
+  let baseUrl = getPublicAppUrl();
+  if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+    baseUrl = "https://hero.chitraparatama.com";
+  }
+
+  const testLink = `${baseUrl}/test/${assignment.accessKey}`;
+  const scheduledAt = assignment.scheduledAt;
+  const scheduledDate = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "dd MMMM yyyy") : "";
+  const scheduledTime = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "HH:mm") + " WITA" : "";
+
+  const expiresInDays = assignment.expiresAt
+    ? Math.max(1, Math.ceil((new Date(assignment.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+    : 7;
+
+  const templateVars = {
+    candidateName: candidate.fullName,
+    jobTitle: candidate.jobTitle || "Position",
+    companyName: "PT Chitra Paratama",
+    date: scheduledDate,
+    time: scheduledTime,
+    location: scheduledDate ? `Online - available from ${scheduledDate} at ${scheduledTime}` : "",
+    interviewer: "",
+    duration: String(expiresInDays),
+    testLink,
+  };
+
+  const template = await getHcEmailTemplateByType("test_assigned");
+  let subject: string, html: string | undefined, text: string;
+  let emailFormat: string | null = null;
+
+  if (template) {
+    const rendered = renderHcTemplate(template, templateVars);
+    subject = rendered.subject;
+    html = rendered.html;
+    text = rendered.text;
+    emailFormat = template.format || null;
+    if (scheduledDate) {
+      if (emailFormat === "plain_text") {
+        text = `🗓 Jadwal Tes: ${scheduledDate} · ${scheduledTime}\n\n` + text;
+      } else {
+        html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Tes:</strong> ${scheduledDate} · ${scheduledTime}
+</div>` + (html || "");
+      }
+    }
+  } else {
+    subject = `[HERO] Undangan Tes Online — ${test?.title || "Assessment"}`;
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">PT Chitra Paratama</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Selamat, ${candidate.fullName}! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Selamat! Anda <strong>lolos ke tahap selanjutnya</strong> dan diundang untuk mengikuti tes <strong>${test?.title || "Assessment"}</strong> untuk posisi <strong>${candidate.jobTitle || "yang dilamar"}</strong>.
+      </p>
+      ${scheduledDate ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
+        <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
+        <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#a16207;">Link tes hanya dapat diakses pada waktu di atas.</p>
+      </div>` : ""}
+      <div style="text-align:center;margin:24px 0;">
+        <a href="${testLink}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#0f172a,#334155);color:#ffffff;padding:14px 40px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.3px;">🔗 Mulai Tes Sekarang</a>
+      </div>
+      <p style="margin:16px 0;color:#94a3b8;font-size:12px;">
+        Link berlaku selama <strong>${expiresInDays} hari</strong>. Mohon diselesaikan sebelum batas waktu.<br/>
+        Jika mengalami kendala, silakan hubungi Tim Human Capital.
+      </p>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+    text = `Halo ${candidate.fullName},\n\nSelamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti tes ${test?.title || "Assessment"} untuk posisi ${candidate.jobTitle || "yang dilamar"}.\n\nMulai tes: ${testLink}\n\nLink berlaku ${expiresInDays} hari.\n\nTerima kasih,\nTim Human Capital\nPT Chitra Paratama`;
+  }
+
+  const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+  const resolvedTemplate = await resolveWorkflowTemplateContent({
+    templateCode: "test_assigned",
+    cc: hcPolicyCc,
+    variables: templateVars,
+    fallbackSubject: subject,
+    fallbackHtml: html,
+    fallbackText: text,
+  });
+
+  await sendEmailViaSmtp(smtpSettings, {
+    to: candidate.email,
+    cc: resolvedTemplate.ccList,
+    subject: `[Resend] ${resolvedTemplate.subject.replace(/^\[Resend\]\s*/, "")}`,
+    html: resolvedTemplate.html,
+    text: resolvedTemplate.text,
+    format: resolvedTemplate.template ? null : emailFormat,
+    templateName: "Online Test Assigned (Resend)",
+    templateCode: "test_assigned",
+  });
+
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${candidate.id}`);
+  if (assignment.testId) {
+    revalidatePath(`/dashboard/hc/recruitment/tests/${assignment.testId}`);
+  }
+  return { success: true, message: `Email tes berhasil dikirim ulang ke ${candidate.email}` };
+}
+
+
 
