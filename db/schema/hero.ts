@@ -2847,6 +2847,7 @@ export const hcRecruitments = pgTable('hero_hc_recruitments', {
       Array<{ id: string; label: string; enabled: boolean; description?: string }>
     >(),
   emailTemplateId: integer('email_template_id'), // Reference to hcEmailTemplates (optional override)
+  rfrId: integer('rfr_id'),
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -3466,6 +3467,73 @@ export const hcContractReviewReminders = pgTable('hero_hc_contract_review_remind
 })
 
 export const hcContractReviewSettings = pgTable('hero_hc_contract_review_settings', {
+  id: serial('id').primaryKey(),
+  settingKey: text('setting_key').notNull().unique(),
+  settingValue: jsonb('setting_value').notNull().default({}),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Request For Recruitment (RFR) ─────────────────────────────────
+
+export const hcRfrRequests = pgTable('hero_hc_rfr_requests', {
+  id: serial('id').primaryKey(),
+  rfrNumber: text('rfr_number').notNull().unique(),
+  requestDate: date('request_date').notNull(),
+  joinDateEstimation: date('join_date_estimation').notNull(),
+  requestorName: text('requestor_name').notNull(),
+  requestorEmployeeId: integer('requestor_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  sectionDepartment: text('section_department').notNull(),
+  receivedByHr: text('received_by_hr').notNull().default(''),
+  positionTitle: text('position_title').notNull(),
+  numberOfPersons: integer('number_of_persons').notNull().default(1),
+  briefJobDescription: text('brief_job_description').notNull().default(''),
+  level: text('level').notNull().default('non_staff'), // non_staff, staff, coordinator_supervisor, managerial
+  reasonForRequest: text('reason_for_request').notNull().default('new_headcount'), // new_headcount, replacement
+  mppStatus: text('mpp_status').notNull().default('budgeted'), // budgeted, non_budgeted
+  reasonsIfNonBudgeted: text('reasons_if_non_budgeted').notNull().default(''),
+  employmentStatus: text('employment_status').notNull().default('contract'), // probation, contract
+  contractDurationMonths: integer('contract_duration_months'),
+  attachmentMpp: boolean('attachment_mpp').notNull().default(false),
+  attachmentJd: boolean('attachment_jd').notNull().default(true),
+  uploadedAttachmentUrls: jsonb('uploaded_attachment_urls').$type<string[]>().default([]),
+  sexPreference: text('sex_preference').notNull().default('any'), // male, female, any
+  agePreference: text('age_preference').notNull().default('any'), // 18-25, 26-35, 36-45, >45, any
+  educationDegree: text('education_degree').notNull().default('any'), // diploma, s1, s2, smk_smu, any
+  educationBackground: jsonb('education_background').$type<string[]>().default([]), // Finance/Accounting, Management, Engineering, IT, etc.
+  yearsOfExperience: text('years_of_experience').notNull().default('any'), // fresh_graduate, 1-3, 3-6, 7-12, >12
+  fieldOfJobExperience: text('field_of_job_experience').notNull().default(''),
+  functionalCompetencies: jsonb('functional_competencies')
+    .$type<Array<{ id?: string; skillName: string; level: 'basic' | 'intermediate' | 'advance'; remarks: string }>>()
+    .default([]),
+  currentStepOrder: integer('current_step_order').notNull().default(1),
+  status: text('status').notNull().default('draft'), // draft, in_progress, approved, rejected
+  rejectionReason: text('rejection_reason').notNull().default(''),
+  generatedRecruitmentId: integer('generated_recruitment_id'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcRfrApprovals = pgTable('hero_hc_rfr_approvals', {
+  id: serial('id').primaryKey(),
+  rfrId: integer('rfr_id')
+    .notNull()
+    .references(() => hcRfrRequests.id, { onDelete: 'cascade' }),
+  stepOrder: integer('step_order').notNull(),
+  stepKey: text('step_key').notNull(), // purposed, hc_verification, acknowledge_hr_leader, acknowledge_hr_spv, acknowledge_dept_head, approval_gm
+  roleLabel: text('role_label').notNull(), // Purposed, HC Verification, Acknowledge, Acknowledge, Acknowledge, Approval
+  approverName: text('approver_name').notNull(),
+  approverEmail: text('approver_email').notNull().default(''),
+  approverTitle: text('approver_title').notNull().default(''),
+  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  approvalToken: text('approval_token').notNull().unique(),
+  status: text('status').notNull().default('pending'), // pending, approved, rejected
+  signatureDataUrl: text('signature_data_url'),
+  remarks: text('remarks').notNull().default(''),
+  signedAt: timestamp('signed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcRfrSettings = pgTable('hero_hc_rfr_settings', {
   id: serial('id').primaryKey(),
   settingKey: text('setting_key').notNull().unique(),
   settingValue: jsonb('setting_value').notNull().default({}),

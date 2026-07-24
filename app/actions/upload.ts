@@ -63,8 +63,9 @@ export async function uploadFile(formData: FormData) {
         uploadTarget === "attendance"
           ? await uploadAttendancePhotoToS3(file)
           : await uploadAnyFileToS3(file);
-      const readableUrl = await getS3ObjectReadUrl(result.url);
-      return { success: true, url: result.url, readableUrl };
+      const proxyUrl = `/api/uploads/${result.key}`;
+      const readableUrl = (await getS3ObjectReadUrl(result.url)) || proxyUrl;
+      return { success: true, url: proxyUrl, readableUrl };
     }
 
     // Local fallback storage when S3 is not configured

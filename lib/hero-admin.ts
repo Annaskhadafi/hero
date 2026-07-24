@@ -1599,6 +1599,7 @@ const DEPRECATED_MENU_RESOURCES = [
   'hc_technical_engineer',
   'hc_certificate',
   'scheduling_timesheet_schedule',
+  'lms_integration',
 ]
 const DEPRECATED_MENU_URLS = [
   '/dashboard/slow-moving',
@@ -1606,6 +1607,8 @@ const DEPRECATED_MENU_URLS = [
   '/dashboard/hc/technical-engineer',
   '/dashboard/hc/certificate',
   '/dashboard/scheduling-timesheet/schedule',
+  '/dashboard/lms',
+  '/api/lms/sso',
 ]
 
 const PORTAL_CHITRA_APP_SEEDS = [

@@ -14,7 +14,8 @@ async function main() {
     const deleted = await db.delete(schema.navbarMenuItems)
       .where(or(
         eq(schema.navbarMenuItems.url, "/dashboard/lms"),
-        eq(schema.navbarMenuItems.url, "/api/lms/sso")
+        eq(schema.navbarMenuItems.url, "/api/lms/sso"),
+        eq(schema.navbarMenuItems.resource, "lms_integration")
       ))
       .returning();
       
