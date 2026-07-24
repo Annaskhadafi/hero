@@ -58,6 +58,8 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     return () => observer.disconnect()
   }, [])
 
+  const hasDrawnRef = useRef(false)
+
   const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
@@ -69,9 +71,11 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     const scaleY = canvas.height / rect.height
 
     if ('touches' in e) {
+      const touch = e.touches[0] || (e as any).changedTouches?.[0]
+      if (!touch) return { x: 0, y: 0 }
       return {
-        x: (e.touches[0].clientX - rect.left) * scaleX,
-        y: (e.touches[0].clientY - rect.top) * scaleY
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top) * scaleY
       }
     }
     return {
@@ -82,6 +86,9 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     ensureCanvasSize() // Pastikan ukuran canvas 100% benar sebelum digambar
+    if (e.cancelable) {
+      e.preventDefault()
+    }
     
     setIsDrawing(true)
     const { x, y } = getCoordinates(e)
@@ -110,19 +117,27 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
       ctx.lineTo(x, y)
       ctx.stroke()
       
+      hasDrawnRef.current = true
       if (!hasSignature) setHasSignature(true)
     }
   }
 
   const stopDrawing = () => {
-    if (!isDrawing) return
+    if (!isDrawing && !hasDrawnRef.current) return
     setIsDrawing(false)
     
     const canvas = canvasRef.current
-    if (canvas && hasSignature) {
+    if (canvas && (hasSignature || hasDrawnRef.current)) {
+      setHasSignature(true)
       canvas.toBlob((blob) => {
         if (blob) {
-          const file = new File([blob], 'signature.png', { type: 'image/png' })
+          let file: File
+          try {
+            file = new File([blob], 'signature.png', { type: 'image/png' })
+          } catch {
+            file = blob as any
+            ;(file as any).name = 'signature.png'
+          }
           onSignatureChange(file)
         }
       }, 'image/png')
@@ -136,6 +151,7 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     if (!ctx) return
     
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    hasDrawnRef.current = false
     setHasSignature(false)
     onSignatureChange(null)
   }

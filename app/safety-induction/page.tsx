@@ -32,11 +32,16 @@ export default function SafetyInductionPage() {
     const element = scrollContainerRef.current
     if (element) {
       const { scrollTop, scrollHeight, clientHeight } = element
-      if (Math.abs(scrollHeight - clientHeight - scrollTop) < 5) {
+      // Threshold 40px handles sub-pixel scrolling and elastic bounce on iOS Safari
+      if (scrollHeight <= clientHeight + 20 || scrollHeight - clientHeight - scrollTop <= 40) {
         setHasScrolled(true)
       }
     }
   }
+
+  useEffect(() => {
+    handleScroll()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -109,6 +114,8 @@ export default function SafetyInductionPage() {
           <div 
             ref={scrollContainerRef}
             onScroll={handleScroll}
+            onTouchMove={handleScroll}
+            style={{ WebkitOverflowScrolling: 'touch' }}
             className="h-[50vh] sm:h-[400px] overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 text-xs sm:text-sm text-slate-700 leading-relaxed border-b scrollbar-thin scrollbar-thumb-slate-300"
           >
             {/* Kebijakan K3L */}
