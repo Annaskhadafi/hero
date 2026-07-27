@@ -267,6 +267,11 @@ type SiteSchedulingConfig = {
   day6DayShiftClockOut: string
   day6NightShiftClockIn: string
   day6NightShiftClockOut: string
+  day7WorkingTimeEnabled: boolean
+  day7DayShiftClockIn: string
+  day7DayShiftClockOut: string
+  day7NightShiftClockIn: string
+  day7NightShiftClockOut: string
   defaultEarlyOvertimeHours: number
   defaultOvertimeEnd: string
   lokasiKhususRate: number
@@ -460,6 +465,11 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   day6DayShiftClockOut: '14:00',
   day6NightShiftClockIn: '20:00',
   day6NightShiftClockOut: '02:00',
+  day7WorkingTimeEnabled: false,
+  day7DayShiftClockIn: '08:00',
+  day7DayShiftClockOut: '14:00',
+  day7NightShiftClockIn: '20:00',
+  day7NightShiftClockOut: '02:00',
   defaultEarlyOvertimeHours: 1,
   defaultOvertimeEnd: '19:00',
   lokasiKhususRate: 35000,
@@ -492,6 +502,11 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
     day6DayShiftClockOut,
     day6NightShiftClockIn,
     day6NightShiftClockOut,
+    day7WorkingTimeEnabled,
+    day7DayShiftClockIn,
+    day7DayShiftClockOut,
+    day7NightShiftClockIn,
+    day7NightShiftClockOut,
     defaultEarlyOvertimeHours,
     defaultOvertimeEnd,
     fieldBreakWorkMonths,
@@ -521,6 +536,11 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       day6DayShiftClockOut,
       day6NightShiftClockIn,
       day6NightShiftClockOut,
+      day7WorkingTimeEnabled,
+      day7DayShiftClockIn,
+      day7DayShiftClockOut,
+      day7NightShiftClockIn,
+      day7NightShiftClockOut,
       defaultEarlyOvertimeHours,
       defaultOvertimeEnd,
       fieldBreakWorkMonths,
@@ -1754,6 +1774,15 @@ export function SchedulingTimesheetWorkspace({
             (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
           day6NightShiftClockOut:
             (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
+          day7WorkingTimeEnabled: Boolean(fieldBreakConfig.day7WorkingTimeEnabled ?? false),
+          day7DayShiftClockIn:
+            (fieldBreakConfig.day7DayShiftClockIn as string | undefined) ?? '08:00',
+          day7DayShiftClockOut:
+            (fieldBreakConfig.day7DayShiftClockOut as string | undefined) ?? '14:00',
+          day7NightShiftClockIn:
+            (fieldBreakConfig.day7NightShiftClockIn as string | undefined) ?? '20:00',
+          day7NightShiftClockOut:
+            (fieldBreakConfig.day7NightShiftClockOut as string | undefined) ?? '02:00',
           defaultEarlyOvertimeHours: Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
           defaultOvertimeEnd:
             (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
@@ -4473,32 +4502,42 @@ export function SchedulingTimesheetWorkspace({
         schedule: employeeSchedule,
         dayIndex: day.day - 1,
         isHoliday: day.isHoliday,
+        rosterType: siteConfig.rosterType,
       })
       const configuredIntervals = siteConfig.overtimeConfig.enabled
-        ? siteConfig.overtimeConfig[dayKey][shiftKey]
+        ? siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
         : []
       const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
+      const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
       return {
         ...day,
         // ponytail: keep one shared builder for single and bulk downloads.
         workingTimeFrom: day.isHoliday
           ? ''
-          : useDay6WorkingTime
+          : useDay7WorkingTime
             ? day.scheduleCode === 'NS'
-              ? siteConfig.day6NightShiftClockIn
-              : siteConfig.day6DayShiftClockIn
-            : day.scheduleCode === 'NS'
-              ? siteConfig.nightShiftClockIn
-              : siteConfig.dayShiftClockIn,
+              ? siteConfig.day7NightShiftClockIn
+              : siteConfig.day7DayShiftClockIn
+            : useDay6WorkingTime
+              ? day.scheduleCode === 'NS'
+                ? siteConfig.day6NightShiftClockIn
+                : siteConfig.day6DayShiftClockIn
+              : day.scheduleCode === 'NS'
+                ? siteConfig.nightShiftClockIn
+                : siteConfig.dayShiftClockIn,
         workingTimeTo: day.isHoliday
           ? ''
-          : useDay6WorkingTime
+          : useDay7WorkingTime
             ? day.scheduleCode === 'NS'
-              ? siteConfig.day6NightShiftClockOut
-              : siteConfig.day6DayShiftClockOut
-            : day.scheduleCode === 'NS'
-              ? siteConfig.nightShiftClockOut
-              : siteConfig.dayShiftClockOut,
+              ? siteConfig.day7NightShiftClockOut
+              : siteConfig.day7DayShiftClockOut
+            : useDay6WorkingTime
+              ? day.scheduleCode === 'NS'
+                ? siteConfig.day6NightShiftClockOut
+                : siteConfig.day6DayShiftClockOut
+              : day.scheduleCode === 'NS'
+                ? siteConfig.nightShiftClockOut
+                : siteConfig.dayShiftClockOut,
         configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
       }
     })
@@ -4856,6 +4895,7 @@ export function SchedulingTimesheetWorkspace({
       schedule,
       dayIndex: day - 1,
       isHoliday: isHoliday(period, day, holidays),
+      rosterType: siteConfig.rosterType,
     })
     const calculated = calculateOvertime({
       config: siteConfig.overtimeConfig,
@@ -6132,6 +6172,52 @@ export function SchedulingTimesheetWorkspace({
                     ))}
                   </div>
                 </div>
+                {siteConfig.rosterType === '13:1' ? (
+                  <div className="border-border/30 border-t px-4 py-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-foreground text-sm font-semibold">Working Time Day 7</p>
+                        <p className="text-muted-foreground text-xs">
+                          Dipakai khusus pada hari kerja ke-7 (Roster 13:1).
+                        </p>
+                      </div>
+                      <label className="text-muted-foreground flex items-center gap-2 text-xs font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={siteConfig.day7WorkingTimeEnabled}
+                          onChange={(event) =>
+                            updateSiteConfig('day7WorkingTimeEnabled', event.target.checked)
+                          }
+                        />
+                        Aktifkan
+                      </label>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {(
+                        [
+                          ['day7DayShiftClockIn', 'Jam Masuk Day Shift (DS / IN)', '08:00'],
+                          ['day7DayShiftClockOut', 'Jam Pulang Day Shift (DS / IN)', '14:00'],
+                          ['day7NightShiftClockIn', 'Jam Masuk Night Shift (NS)', '20:00'],
+                          ['day7NightShiftClockOut', 'Jam Pulang Night Shift (NS)', '02:00'],
+                        ] as const
+                      ).map(([key, label, fallback]) => (
+                        <div className="space-y-1.5" key={key}>
+                          <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                            {label}
+                          </Label>
+                          <Input
+                            type="time"
+                            value={siteConfig[key] || fallback}
+                            onChange={(event) => {
+                              if (event.target.value) updateSiteConfig(key, event.target.value)
+                            }}
+                            disabled={!siteConfig.day7WorkingTimeEnabled}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="border-border/30 grid gap-4 border-t px-4 py-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
@@ -6330,6 +6416,9 @@ export function SchedulingTimesheetWorkspace({
                         ['hariBiasa', 'Hari Biasa', 'OT sebelum dan sesudah jam kerja normal.'],
                         ['hariLibur', 'Hari Libur', 'Tanggal merah atau schedule OFF/Libur.'],
                         ['hariKe6', 'Hari ke-6', 'Hari kerja tepat sebelum schedule OFF/Libur.'],
+                        ...(siteConfig.rosterType === '13:1'
+                          ? [['hariKe7', 'Hari ke-7', 'Hari kerja ke-7 dalam Roster 13:1.'] as const]
+                          : []),
                       ] as const
                     ).map(([dayKey, title, description]) => {
                       const rule = siteConfig.overtimeConfig[dayKey]

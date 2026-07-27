@@ -18,6 +18,7 @@ describe('scheduling timesheet overtime policy', () => {
       expect(overtimeRuleTotalHours(activeConfig.hariBiasa, shift)).toBe(4)
       expect(overtimeRuleTotalHours(activeConfig.hariLibur, shift)).toBe(11)
       expect(overtimeRuleTotalHours(activeConfig.hariKe6, shift)).toBe(6)
+      expect(overtimeRuleTotalHours(activeConfig.hariKe7, shift)).toBe(6)
     }
   })
 
@@ -39,11 +40,37 @@ describe('scheduling timesheet overtime policy', () => {
     expect(config.hariBiasa.nightShift[0].start).toBe('18:00')
   })
 
-  it('classifies holidays and the workday before OFF', () => {
+  it('classifies holidays, day 6, and day 7 for 13:1 roster', () => {
     const schedule = ['DS', 'DS', 'OFF']
     expect(classifyOvertimePolicyDay({ schedule, dayIndex: 0, isHoliday: true })).toBe('hariLibur')
     expect(classifyOvertimePolicyDay({ schedule, dayIndex: 1, isHoliday: false })).toBe('hariKe6')
     expect(classifyOvertimePolicyDay({ schedule, dayIndex: 0, isHoliday: false })).toBe('hariBiasa')
+
+    const thirteenOneSchedule = Array(13).fill('DS').concat(['OFF'])
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: thirteenOneSchedule,
+        dayIndex: 5,
+        isHoliday: false,
+        rosterType: '13:1',
+      })
+    ).toBe('hariKe6')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: thirteenOneSchedule,
+        dayIndex: 6,
+        isHoliday: false,
+        rosterType: '13:1',
+      })
+    ).toBe('hariKe7')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: thirteenOneSchedule,
+        dayIndex: 12,
+        isHoliday: false,
+        rosterType: '13:1',
+      })
+    ).toBe('hariKe6')
   })
 
   it('counts actual overlap for day and overnight night shifts', () => {

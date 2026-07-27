@@ -2590,6 +2590,7 @@ const siteOvertimeConfigSchema = z
     hariBiasa: overtimeDayRuleSchema,
     hariLibur: overtimeDayRuleSchema,
     hariKe6: overtimeDayRuleSchema,
+    hariKe7: overtimeDayRuleSchema.optional(),
   })
   .superRefine((value, context) => {
     for (const message of validateSiteOvertimeConfig(value as SiteOvertimeConfig)) {

@@ -1,6 +1,6 @@
 import { DEFAULT_SPL_POLICY, normalizeSplPolicy, type SplPolicyConfig } from '@/lib/spl-policy'
 
-export type OvertimeDayKey = 'hariBiasa' | 'hariLibur' | 'hariKe6'
+export type OvertimeDayKey = 'hariBiasa' | 'hariLibur' | 'hariKe6' | 'hariKe7'
 export type OvertimeShiftKey = 'dayShift' | 'nightShift'
 
 export type OvertimeInterval = {
@@ -16,6 +16,7 @@ export type SiteOvertimeConfig = {
   hariBiasa: OvertimeDayRule
   hariLibur: OvertimeDayRule
   hariKe6: OvertimeDayRule
+  hariKe7: OvertimeDayRule
 }
 
 export type ApprovedSplWindow = {
@@ -106,6 +107,16 @@ export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
       { start: '02:00', end: '06:00' },
     ],
   },
+  hariKe7: {
+    dayShift: [
+      { start: '06:00', end: '08:00' },
+      { start: '14:00', end: '18:00' },
+    ],
+    nightShift: [
+      { start: '18:00', end: '20:00' },
+      { start: '02:00', end: '06:00' },
+    ],
+  },
 }
 
 function cloneDefaults(): SiteOvertimeConfig {
@@ -123,6 +134,10 @@ function cloneDefaults(): SiteOvertimeConfig {
     hariKe6: {
       dayShift: DEFAULT_SITE_OVERTIME_CONFIG.hariKe6.dayShift.map((item) => ({ ...item })),
       nightShift: DEFAULT_SITE_OVERTIME_CONFIG.hariKe6.nightShift.map((item) => ({ ...item })),
+    },
+    hariKe7: {
+      dayShift: DEFAULT_SITE_OVERTIME_CONFIG.hariKe7.dayShift.map((item) => ({ ...item })),
+      nightShift: DEFAULT_SITE_OVERTIME_CONFIG.hariKe7.nightShift.map((item) => ({ ...item })),
     },
   }
 }
@@ -172,7 +187,7 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
     enabled: source.enabled === true,
     splPolicy: normalizeSplPolicy(source.splPolicy),
   }
-  for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6'] as const) {
+  for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
     const day =
       source[dayKey] && typeof source[dayKey] === 'object'
         ? (source[dayKey] as Record<string, unknown>)
@@ -187,7 +202,7 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
 
 export function validateSiteOvertimeConfig(config: SiteOvertimeConfig) {
   const errors: string[] = []
-  for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6'] as const) {
+  for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
     for (const shiftKey of ['dayShift', 'nightShift'] as const) {
       const intervals = config[dayKey][shiftKey]
       if (intervals.length !== 2) errors.push(`${dayKey}.${shiftKey} wajib memiliki 2 sesi.`)
@@ -220,9 +235,29 @@ export function classifyOvertimePolicyDay(params: {
   dayIndex: number
   isHoliday: boolean
   nextScheduleCode?: string
+  rosterType?: string
 }): OvertimeDayKey {
   const current = params.schedule[params.dayIndex]
   if (params.isHoliday || current === 'OFF' || current === 'Libur') return 'hariLibur'
+
+  if (params.rosterType === '13:1') {
+    let workingDays = 0
+    for (let i = 0; i <= params.dayIndex; i++) {
+      const code = params.schedule[i]
+      if (code === 'OFF' || code === 'Libur') {
+        workingDays = 0
+      } else {
+        workingDays++
+      }
+    }
+    if (workingDays > 0 && workingDays % 7 === 0) {
+      return 'hariKe7'
+    }
+    if (workingDays > 0 && workingDays % 7 === 6) {
+      return 'hariKe6'
+    }
+  }
+
   const next = params.schedule[params.dayIndex + 1] ?? params.nextScheduleCode
   return next === 'OFF' || next === 'Libur' ? 'hariKe6' : 'hariBiasa'
 }
