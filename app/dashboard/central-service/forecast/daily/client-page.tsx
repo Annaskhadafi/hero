@@ -561,6 +561,8 @@ export function DailyClientPage({
       'Rev Type',
       'Salesman',
       'PO No',
+      'C',
+      'Cancelled',
     ]
     const rows = sapFiltered.map((r: any, i: number) => [
       i + 1,
@@ -577,6 +579,8 @@ export function DailyClientPage({
       r.revType,
       r.salesman,
       r.poNo,
+      r.c,
+      r.cancelled,
     ])
     const csv = [headers, ...rows]
       .map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
@@ -1272,12 +1276,14 @@ export function DailyClientPage({
                     <TableHead className="text-xs font-bold text-white">Rev Type</TableHead>
                     <TableHead className="text-xs font-bold text-white">Salesman</TableHead>
                     <TableHead className="text-xs font-bold text-white">PO No</TableHead>
+                    <TableHead className="text-xs font-bold text-white">C</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Cancelled</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sapFiltered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={14} className="text-muted-foreground py-8 text-center">
+                      <TableCell colSpan={16} className="text-muted-foreground py-8 text-center">
                         {isLoadingSap
                           ? 'Loading SAP data...'
                           : 'No SAP invoice data for this period'}
@@ -1321,6 +1327,14 @@ export function DailyClientPage({
                         </TableCell>
                         <TableCell className="text-xs">{row.salesman}</TableCell>
                         <TableCell className="text-xs">{row.poNo}</TableCell>
+                        <TableCell className="text-xs">{row.c}</TableCell>
+                        <TableCell className="text-xs">
+                          {row.cancelled ? (
+                            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                              {row.cancelled}
+                            </span>
+                          ) : null}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}

@@ -117,6 +117,8 @@ export interface SapInvoiceRow {
   revType: string;
   salesman: string;
   poNo: string;
+  c: string;
+  cancelled: string;
 }
 
 export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow[]> {
@@ -136,10 +138,11 @@ export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow
         COALESCE(NULLIF(revenue_in_loc_curr, 'NaN'::float8), 0) AS "revenueUsd",
         COALESCE(rev_type, '') AS "revType",
         COALESCE(salesman, '') AS "salesman",
-        COALESCE(po_no, '') AS "poNo"
+        COALESCE(po_no, '') AS "poNo",
+        COALESCE(c, '') AS "c",
+        COALESCE(cancelled, '') AS "cancelled"
       FROM sales_revenue_sap
       WHERE billing_date IS NOT NULL
-        AND (cancelled IS NULL OR cancelled = '')
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1
         AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
       ORDER BY billing_date DESC, billing_no

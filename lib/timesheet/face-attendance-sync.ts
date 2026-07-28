@@ -24,24 +24,62 @@ export function isCheckOutEvent(eventType: string): boolean {
   return lower.includes('out') || lower.includes('pulang') || lower.includes('checkout')
 }
 
+const WIB = 'Asia/Jakarta' // UTC+8
+
 /**
- * Extracts YYYY-MM period and day number from a Date.
+ * Returns { year, month (1-based), day, hours, minutes } in WIB (UTC+8).
+ */
+function wibParts(date: Date) {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: WIB,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+  const parts = fmt.formatToParts(date)
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hours: get('hour'),
+    minutes: get('minute'),
+  }
+}
+
+/**
+ * Returns [startOfDayWIB, startOfNextDayWIB] as UTC Date objects,
+ * so DB queries for "today in WIB" are correct regardless of server TZ.
+ */
+function wibDayBoundaries(date: Date): { startOfDay: Date; startOfNextDay: Date } {
+  const { year, month, day } = wibParts(date)
+  // Construct WIB midnight as UTC: WIB midnight = UTC midnight - 8h
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const startOfDay = new Date(`${year}-${pad(month)}-${pad(day)}T00:00:00+08:00`)
+  const startOfNextDay = new Date(startOfDay)
+  startOfNextDay.setUTCDate(startOfNextDay.getUTCDate() + 1)
+  return { startOfDay, startOfNextDay }
+}
+
+
+/**
+ * Extracts YYYY-MM period and day number from a Date, in WIB (UTC+8).
  */
 export function derivePeriodAndDay(eventTime: Date): { period: string; day: number } {
-  const year = eventTime.getFullYear()
-  const month = String(eventTime.getMonth() + 1).padStart(2, '0')
-  const period = `${year}-${month}`
-  const day = eventTime.getDate()
+  const { year, month, day } = wibParts(eventTime)
+  const period = `${year}-${String(month).padStart(2, '0')}`
   return { period, day }
 }
 
 /**
- * Formats a Date to HH:mm (24-hour).
+ * Formats a Date to HH:mm (24-hour) in WIB (UTC+8).
  */
 export function formatTimeHHMM(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${hours}:${minutes}`
+  const { hours, minutes } = wibParts(date)
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
 /**
@@ -86,12 +124,8 @@ export async function syncFaceAttendanceToTimesheet(
     `[face-sync] Syncing attendance: employee=${employeeId}, site=${siteId}, date=${eventDate.toISOString()}`
   )
 
-  // Compute date range: start of day to start of next day
-  const startOfDay = new Date(eventDate)
-  startOfDay.setHours(0, 0, 0, 0)
-
-  const startOfNextDay = new Date(startOfDay)
-  startOfNextDay.setDate(startOfNextDay.getDate() + 1)
+  // Compute WIB day boundaries for DB query (eventDate is stored as UTC in DB)
+  const { startOfDay, startOfNextDay } = wibDayBoundaries(eventDate)
 
   // Query all attendance records for this employee+site+day
   const records = await db
@@ -124,10 +158,12 @@ export async function syncFaceAttendanceToTimesheet(
   // Prefer explicit checkout when present; otherwise use the latest punch as clock-out.
   let clockOut = lastPunch && lastPunch.id !== firstPunch?.id ? formatTimeHHMM(lastPunch.eventTime) : ''
 
-  // Overnight shift handling: if no check-out today, look at next day 00:00-06:00
+  // Overnight shift handling: if no check-out today, look at next WIB day 00:00-06:00
   if (checkIns.length > 0 && checkOuts.length === 0) {
-    const nextDayCutoff = new Date(startOfNextDay)
-    nextDayCutoff.setHours(6, 0, 0, 0)
+    // 06:00 WIB = 22:00 UTC previous day, express via ISO offset
+    const nextDayCutoff = new Date(
+      startOfNextDay.getTime() + 6 * 60 * 60 * 1000 // +6h from WIB midnight = 06:00 WIB
+    )
 
     const overnightRecords = await db
       .select()
