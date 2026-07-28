@@ -537,12 +537,20 @@ export function DailyClientPage({
     })
   }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter])
 
+  // ponytail: row SAP dianggap cancelled jika kolom C = 'X' DAN Cancelled ada nilainya
+  const isSapCancelledRow = (r: any) =>
+    (r.c || '').toString().trim().toUpperCase() === 'X' && (r.cancelled || '').toString().trim() !== ''
+
   const sapTotalUsd = useMemo(() => {
-    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
+    return sapFiltered
+      .filter((r: any) => !isSapCancelledRow(r))
+      .reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
   }, [sapFiltered])
 
   const sapTotalIdr = useMemo(() => {
-    return sapFiltered.reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0)
+    return sapFiltered
+      .filter((r: any) => !isSapCancelledRow(r))
+      .reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0)
   }, [sapFiltered])
 
   const handleExportSapExcel = () => {
