@@ -3088,6 +3088,10 @@ export const hcCandidateInterviews = pgTable('hero_hc_candidate_interviews', {
   interviewType: text('interview_type').notNull().default('Online'), // Online, Offline
   locationOrLink: text('location_or_link').notNull().default(''),
   interviewerName: text('interviewer_name').notNull().default(''),
+  interviewerEmails: jsonb('interviewer_emails').$type<string[]>(),
+  stageName: text('stage_name').notNull().default('Interview 1'),
+  stageOrder: integer('stage_order').notNull().default(1),
+  accessToken: text('access_token').unique(),
   status: text('status').notNull().default('Scheduled'), // Scheduled, Completed, Cancelled, No-Show
   result: text('result').notNull().default('Pending'), // Pending, Pass, Fail
   notes: text('notes').notNull().default(''),
@@ -3105,17 +3109,67 @@ export const hcCandidatePanelEvaluations = pgTable('hero_hc_candidate_panel_eval
   }),
   panelistName: text('panelist_name').notNull(),
   panelistRole: text('panelist_role').notNull().default(''),
+  panelistEmail: text('panelist_email').notNull().default(''),
+  stageName: text('stage_name').notNull().default('Interview 1'),
+  
+  // 12 PDF Dimensions (Skala 1 - 5 + Evidence Comments)
+  // Personal Qualities
+  dayaTangkapScore: integer('daya_tangkap_score').notNull().default(0),
+  dayaTangkapComment: text('daya_tangkap_comment').notNull().default(''),
+  problemSolvingScore: integer('problem_solving_score').notNull().default(0),
+  problemSolvingComment: text('problem_solving_comment').notNull().default(''),
+  motivationalFitScore: integer('motivational_fit_score').notNull().default(0),
+  motivationalFitComment: text('motivational_fit_comment').notNull().default(''),
+  adaptabilityScore: integer('adaptability_score').notNull().default(0),
+  adaptabilityComment: text('adaptability_comment').notNull().default(''),
+  interpersonalSkillsScore: integer('interpersonal_skills_score').notNull().default(0),
+  interpersonalSkillsComment: text('interpersonal_skills_comment').notNull().default(''),
+  communicationSkillScore: integer('communication_skill_score').notNull().default(0),
+  communicationSkillComment: text('communication_skill_comment').notNull().default(''),
+
+  // Professional Skill & Knowledge
+  fundamentalUnderstandingScore: integer('fundamental_understanding_score').notNull().default(0),
+  fundamentalUnderstandingComment: text('fundamental_understanding_comment').notNull().default(''),
+  experienceRelatedScore: integer('experience_related_score').notNull().default(0),
+  experienceRelatedComment: text('experience_related_comment').notNull().default(''),
+  technicalSkillScore: integer('technical_skill_score').notNull().default(0),
+  technicalSkillComment: text('technical_skill_comment').notNull().default(''),
+
+  // Managerial & Leadership
+  managerialSkillsScore: integer('managerial_skills_score').notNull().default(0),
+  managerialSkillsComment: text('managerial_skills_comment').notNull().default(''),
+  leadershipScore: integer('leadership_score').notNull().default(0),
+  leadershipComment: text('leadership_comment').notNull().default(''),
+  teamWorkScore: integer('team_work_score').notNull().default(0),
+  teamWorkComment: text('team_work_comment').notNull().default(''),
+
+  // Legacy/Summary Scores (kept for backwards compatibility)
   technicalScore: integer('technical_score').notNull().default(0),
   communicationScore: integer('communication_score').notNull().default(0),
   cultureScore: integer('culture_score').notNull().default(0),
-  problemSolvingScore: integer('problem_solving_score').notNull().default(0),
+  problemSolvingScoreLegacy: integer('problem_solving_score_legacy').notNull().default(0),
   attitudeScore: integer('attitude_score').notNull().default(0),
-  overallRecommendation: text('overall_recommendation').notNull().default('Review'),
+
+  // Decision & Recommendations
+  overallRecommendation: text('overall_recommendation').notNull().default('RECOMMENDED'), // RECOMMENDED, NOT_RECOMMENDED
+  jobMatchComment: text('job_match_comment').notNull().default(''),
+  recommendationOtherPosition: text('recommendation_other_position').notNull().default(''),
+
   strengths: text('strengths').notNull().default(''),
   concerns: text('concerns').notNull().default(''),
   notes: text('notes').notNull().default(''),
   submittedAt: timestamp('submitted_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcInterviewSettings = pgTable('hero_hc_interview_settings', {
+  id: serial('id').primaryKey(),
+  defaultInterviewerEmails: jsonb('default_interviewer_emails').$type<string[]>().notNull().default([]),
+  defaultInterviewerNames: jsonb('default_interviewer_names').$type<string[]>().notNull().default([]),
+  defaultDurationMinutes: integer('default_duration_minutes').notNull().default(60),
+  defaultLocationOrLink: text('default_location_or_link').notNull().default(''),
+  defaultInterviewType: text('default_interview_type').notNull().default('Online'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 

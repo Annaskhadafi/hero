@@ -20,6 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { ScheduleInterviewModal } from "@/components/interview/schedule-interview-modal";
+import { InterviewSettingsModal } from "@/components/interview/interview-settings-modal";
+import { InterviewFormPdf } from "@/components/interview/interview-form-pdf";
 
 const formatAiRecommendation = (recommendation?: string | null) => {
   const translations: Record<string, string> = {
@@ -140,6 +143,10 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [onboardingToken, setOnboardingToken] = useState<string | null>(candidate.onboardingToken ?? null);
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isScheduleStageModalOpen, setIsScheduleStageModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [scheduleStageName, setScheduleStageName] = useState("Interview 1");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     scheduledAtDate: "",
@@ -1167,12 +1174,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
         </TabsContent>
 
         <TabsContent value="interviews">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Interview Schedule</h3>
-            <Button onClick={() => setIsScheduleOpen(true)}>
-              <IconCalendarEvent className="w-4 h-4 mr-2" />
-              Schedule Interview
-            </Button>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Jadwal Interview Berjenjang</h3>
+              <p className="text-xs text-muted-foreground">Kelola jadwal interview multi-stage & notifikasi pewawancara</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsSettingsModalOpen(true)}>
+                Pengaturan Pewawancara
+              </Button>
+              <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white" onClick={() => {
+                setScheduleStageName(candidate.currentStage?.startsWith("Passed") ? "Interview 2" : "Interview 1");
+                setIsScheduleStageModalOpen(true);
+              }}>
+                <IconCalendarEvent className="w-4 h-4 mr-1.5" />
+                Jadwalkan Interview
+              </Button>
+            </div>
           </div>
 
           {interviews.length === 0 ? (
@@ -1192,19 +1210,36 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   <CardHeader className="pb-3 flex flex-row items-start justify-between">
                     <div>
                       <CardTitle className="text-base flex items-center gap-2">
-                        {interview.interviewType === 'Online' ? <IconVideo className="w-4 h-4" /> : <IconMapPin className="w-4 h-4" />}
-                        {interview.interviewType} Interview
+                        {interview.interviewType === 'Online' ? <IconVideo className="w-4 h-4 text-cyan-600" /> : <IconMapPin className="w-4 h-4 text-amber-600" />}
+                        {interview.stageName || "Interview 1"} ({interview.interviewType})
                       </CardTitle>
                       <CardDescription>
                         {format(new Date(interview.scheduledAt), "EEEE, dd MMMM yyyy • HH:mm")} ({interview.durationMinutes} mins)
                       </CardDescription>
                     </div>
-                    <Badge variant={
-                      interview.status === 'Scheduled' ? 'default' : 
-                      interview.status === 'Completed' ? 'secondary' : 'destructive'
-                    }>
-                      {interview.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {interview.accessToken && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs text-cyan-700 border-cyan-300 hover:bg-cyan-50"
+                          onClick={() => {
+                            const origin = typeof window !== "undefined" ? window.location.origin : "";
+                            const url = `${origin}/interview-evaluation/${interview.accessToken}`;
+                            navigator.clipboard.writeText(url);
+                            toast.success("Link Form Penilaian berhasil di-copy!");
+                          }}
+                        >
+                          <IconCopy className="w-3.5 h-3.5 mr-1" /> Copy Link Form
+                        </Button>
+                      )}
+                      <Badge variant={
+                        interview.status === 'Scheduled' ? 'default' : 
+                        interview.status === 'Completed' ? 'secondary' : 'destructive'
+                      }>
+                        {interview.status}
+                      </Badge>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -2599,6 +2634,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Multi-Stage Interview Schedule Modal */}
+      <ScheduleInterviewModal
+        open={isScheduleStageModalOpen}
+        onOpenChange={setIsScheduleStageModalOpen}
+        candidateId={candidate.id}
+        candidateName={candidate.fullName}
+        jobTitle={candidate.vacancyTitle}
+        defaultStageName={scheduleStageName}
+        onSuccess={() => router.refresh()}
+      />
+
+      {/* Interview Settings Modal */}
+      <InterviewSettingsModal
+        open={isSettingsModalOpen}
+        onOpenChange={setIsSettingsModalOpen}
+      />
     </>
   );
 }

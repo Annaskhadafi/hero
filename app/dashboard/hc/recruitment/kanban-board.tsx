@@ -327,6 +327,13 @@ function KanbanCard({
           <p className="text-xs text-muted-foreground font-medium truncate">
             {candidate.jobTitle || "General Application"}
           </p>
+          {candidate.currentStage && candidate.currentStage !== "Sourcing" && (
+            <div className="mt-1">
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950 px-2 py-0.5 rounded border border-cyan-300">
+                {candidate.currentStage}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {emailStatus && emailStatus.status !== "none" && (
