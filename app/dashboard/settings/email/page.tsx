@@ -347,7 +347,9 @@ export default async function EmailSettingsPage() {
                     {notifications.deliveries.map((delivery) => (
                       <TableRow key={delivery.id} className="hover:bg-surface-container" data-date-value={delivery.createdAt.toISOString()}>
                         <TableCell className="font-semibold">{delivery.deliveryChannel}</TableCell>
-                        <TableCell className="font-mono text-xs">{delivery.recipient}</TableCell>
+                        <TableCell className="max-w-[240px] truncate font-mono text-xs" title={delivery.recipient}>
+                          {delivery.recipient}
+                        </TableCell>
                         <TableCell>
                           <AdminStatusBadge value={delivery.status} />
                         </TableCell>

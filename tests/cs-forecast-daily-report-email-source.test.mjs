@@ -45,9 +45,11 @@ test('email settings page exposes CS Forecast schedule panel', () => {
   assert.match(pageSource, /CsForecastDailyReportSettingsPanel/)
   assert.match(pageSource, /TabsTrigger value="cs-forecast"/)
   assert.match(panelSource, /CS Forecast Daily Report/)
+  assert.match(panelSource, /Uji Schedule Tick \(Cron\)/)
   assert.match(panelSource, /Kirim Sekarang/)
   assert.match(actionSource, /saveCsForecastDailyReportConfigAction/)
   assert.match(actionSource, /sendCsForecastDailyReportNowAction/)
+  assert.match(actionSource, /runCsForecastDailyReportTickAction/)
 })
 
 test('cron route and template seed/preset are wired', () => {

@@ -23,6 +23,7 @@ import {
 import { getEmployeeTargetByEmail, sendPushNotification } from "@/lib/push-notifications";
 import {
   parseSendTimes,
+  runCsForecastDailyReportTick,
   sendCsForecastDailyReportEmail,
 } from "@/lib/cs-forecast-daily-report";
 
@@ -991,6 +992,42 @@ export async function sendCsForecastDailyReportNowAction(): Promise<EmailSetting
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal mengirim CS Forecast Daily Report.",
+    };
+  }
+}
+
+export async function runCsForecastDailyReportTickAction(): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+  try {
+    const result = await runCsForecastDailyReportTick();
+    revalidatePath("/dashboard/settings/email");
+
+    if (result.sent) {
+      return {
+        status: "success",
+        message: `Schedule Tick Berhasil: Daily Report terkirim (Key: ${result.key}).`,
+      };
+    }
+
+    const reasonMap: Record<string, string> = {
+      inactive: "Schedule sedang NONAKTIF di konfigurasi.",
+      no_recipients: "Belum ada penerima email yang dikonfigurasi.",
+      before_send_time: `Belum mencapai jam kirim terjadwal (Waktu sekarang UTC+8: ${result.now?.time || '-'}).`,
+      already_sent: `Laporan sudah terkirim hari ini (Key: ${result.key || '-'}).`,
+      later_slot_sent: `Slot selanjutnya sudah pernah dikirim sebelumnya hari ini.`,
+    };
+
+    const reasonMsg = ("reason" in result && reasonMap[result.reason]) || ("reason" in result ? result.reason : "Tick selesai tanpa pengiriman.");
+
+    return {
+      status: result.status === "skipped" ? "idle" : "error",
+      message: `Schedule Tick Status [${result.status}]: ${reasonMsg}`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal mengeksekusi schedule tick.",
     };
   }
 }

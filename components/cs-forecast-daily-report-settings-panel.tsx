@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { BarChart3, Clock, FileText, Send, Sparkles } from 'lucide-react'
 import { EmployeeMultiSelect } from '@/components/employee-multi-select'
 import {
+  runCsForecastDailyReportTickAction,
   saveCsForecastDailyReportConfigAction,
   saveEmailTemplateAction,
   sendCsForecastDailyReportNowAction,
@@ -74,6 +75,7 @@ export function CsForecastDailyReportSettingsPanel({
 
   const [isSaving, setIsSaving] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [isTestingTick, setIsTestingTick] = useState(false)
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -119,6 +121,24 @@ export function CsForecastDailyReportSettingsPanel({
       toast.error(error instanceof Error ? error.message : 'Terjadi kesalahan saat menyimpan.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleTestTick() {
+    setIsTestingTick(true)
+    try {
+      const result = await runCsForecastDailyReportTickAction()
+      if (result.status === 'success') {
+        toast.success(result.message)
+      } else if (result.status === 'idle') {
+        toast.info(result.message)
+      } else {
+        toast.error(result.message || 'Gagal mengeksekusi tick.')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Terjadi kesalahan saat menguji tick.')
+    } finally {
+      setIsTestingTick(false)
     }
   }
 
@@ -319,6 +339,10 @@ export function CsForecastDailyReportSettingsPanel({
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={isSaving}>
             {isSaving ? 'Menyimpan...' : 'Simpan Setting & Body Email'}
+          </Button>
+          <Button type="button" variant="outline" onClick={handleTestTick} disabled={isTestingTick}>
+            <Clock className="mr-2 size-4 text-primary" />
+            {isTestingTick ? 'Mengevaluasi Tick...' : 'Uji Schedule Tick (Cron)'}
           </Button>
           <Button type="button" variant="outline" onClick={handleSendNow} disabled={isSending}>
             <Send className="mr-2 size-4" />

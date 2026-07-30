@@ -51,6 +51,18 @@ function getStatusLabel(value: string) {
   return labels[value] ?? value.replaceAll("_", " ");
 }
 
+function formatRecipientDisplay(toEmail: string) {
+  if (!toEmail) return "—";
+  const list = toEmail
+    .split(/[,;\s]+/)
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (list.length <= 1) {
+    return list[0] ?? toEmail;
+  }
+  return `${list[0]} (+${list.length - 1} penerima)`;
+}
+
 export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
   const [selected, setSelected] = useState<EmailLogRow | null>(null);
 
@@ -99,7 +111,9 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                     {getStatusLabel(log.status)}
                   </Badge>
                 </TableCell>
-                <TableCell className="font-mono text-xs">{log.toEmail}</TableCell>
+                <TableCell className="max-w-[240px] truncate font-mono text-xs" title={log.toEmail}>
+                  {formatRecipientDisplay(log.toEmail)}
+                </TableCell>
                 <TableCell>
                   <div>
                     <p className="font-medium">{log.templateName ?? "Email langsung"}</p>

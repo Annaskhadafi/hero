@@ -1176,7 +1176,12 @@ export async function sendCsForecastDailyReportEmail(options?: {
   if (result.status === 'sent') {
     const now = new Date()
     const utc8 = getUtc8Parts(now)
-    const key = options?.slotKey || `${utc8.date}|manual`
+    const slotToken = options?.slotKey ? options.slotKey.split('|')[1] : 'manual'
+    const existingKey = config.lastSentKey?.startsWith(`${utc8.date}|`) ? config.lastSentKey : ''
+    const existingTokens = existingKey ? (existingKey.split('|')[1] || '').split(',').filter(Boolean) : []
+    const newTokens = Array.from(new Set([...existingTokens, slotToken])).filter(Boolean)
+    const key = `${utc8.date}|${newTokens.join(',')}`
+
     const values = {
       recipientEmails: config.recipientEmails,
       ccEmails: config.ccEmails,
@@ -1221,18 +1226,31 @@ export async function runCsForecastDailyReportTick(referenceDate = new Date()) {
 
   const slot = dueSlots[dueSlots.length - 1]
   const key = `${utc8.date}|${slot}`
-  if (config.lastSentKey === key) {
-    return { status: 'skipped' as const, reason: 'already_sent', sent: false, key }
-  }
 
-  // also skip if a later manual/send already covered a later slot same day
   if (config.lastSentKey?.startsWith(`${utc8.date}|`)) {
-    const lastSlot = config.lastSentKey.split('|')[1] || ''
-    if (lastSlot && lastSlot >= slot && lastSlot !== 'manual') {
-      return { status: 'skipped' as const, reason: 'later_slot_sent', sent: false, key }
+    const sentTokens = (config.lastSentKey.split('|')[1] || '').split(',').filter(Boolean)
+    const isAlreadySent =
+      sentTokens.includes(slot) ||
+      sentTokens.includes('manual') ||
+      sentTokens.some((t) => t !== 'manual' && t >= slot)
+
+    if (isAlreadySent) {
+      return { status: 'skipped' as const, reason: 'already_sent', sent: false, key }
     }
   }
 
   const result = await sendCsForecastDailyReportEmail({ force: true, slotKey: key })
   return { ...result, sent: result.status === 'sent', key, now: utc8 }
+}
+
+// ponytail: automatic background tick runner for Node.js server (checks schedule every 60 seconds)
+if (typeof window === 'undefined') {
+  const g = globalThis as typeof globalThis & { __csForecastDailyReportCronInterval?: ReturnType<typeof setInterval> }
+  if (!g.__csForecastDailyReportCronInterval) {
+    g.__csForecastDailyReportCronInterval = setInterval(() => {
+      runCsForecastDailyReportTick().catch((error) => {
+        console.error('[CS Forecast Daily Report Cron Background Tick Error]:', error)
+      })
+    }, 60 * 1000)
+  }
 }
