@@ -1431,7 +1431,7 @@ export function RecruitmentClientPage({
                           />
                         </TableHead>
                         <TableHead className="w-10 px-2 text-center">NO</TableHead>
-                        <TableHead className="w-24 px-2">TGL</TableHead>
+                        <TableHead className="w-36 px-2">TGL DAFTAR</TableHead>
                         <TableHead className="w-40 px-2">NAMA</TableHead>
                         <TableHead className="w-36 px-2">LOWONGAN</TableHead>
                         <TableHead className="w-24 px-2">LOKASI</TableHead>
@@ -1454,7 +1454,7 @@ export function RecruitmentClientPage({
                             />
                           </TableCell>
                           <TableCell className="px-2 text-center text-muted-foreground">{idx + 1}</TableCell>
-                          <TableCell className="px-2 text-muted-foreground text-xs whitespace-nowrap">{format(new Date(candidate.createdAt), "dd MMM yyyy")}</TableCell>
+                          <TableCell className="px-2 text-muted-foreground text-xs whitespace-nowrap">{candidate.createdAt ? format(new Date(candidate.createdAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
                           <TableCell className="px-2 font-semibold">
                             <button
                               type="button"

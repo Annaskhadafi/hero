@@ -738,7 +738,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           )}
         >
           <Table>
-            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>STATUS</TableHead><TableHead className="text-right">SCORE</TableHead><TableHead>SCHEDULE</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>TGL TEST / DAFTAR</TableHead><TableHead>STATUS</TableHead><TableHead className="text-right">SCORE</TableHead><TableHead>SCHEDULE</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
             <TableBody>
               {entries.map((entry) => {
                 const ansList = entry.answers || [];
@@ -749,6 +749,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
                   <TableCell className="text-muted-foreground">{entry.candidate?.email || "N/A"}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs whitespace-nowrap">{entry.createdAt ? format(new Date(entry.createdAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
                   <TableCell><Badge variant={entry.status === "Completed" || entry.status === "Graded" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>{entry.status}</Badge></TableCell>
                   <TableCell className="text-right">
                     {(entry.status === "Completed" || entry.status === "Graded") && ansPct !== null ? (
@@ -775,7 +776,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                 </TableRow>
                 );
               })}
-              {entries.length === 0 && <TableRow><TableCell colSpan={9} className="text-center h-24 text-muted-foreground">No entries found for this test yet.</TableCell></TableRow>}
+              {entries.length === 0 && <TableRow><TableCell colSpan={10} className="text-center h-24 text-muted-foreground">No entries found for this test yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </MinimalTableShell>

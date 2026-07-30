@@ -887,7 +887,7 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
     .from(hcCandidates)
     .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
     .where(whereClause)
-    .orderBy(desc(hcCandidates.id))
+    .orderBy(desc(hcCandidates.createdAt), desc(hcCandidates.id))
     .limit(pageSize)
     .offset(offset);
 

@@ -422,6 +422,8 @@ export async function getTestEntries(testId: number) {
     startedAt: hcOnlineTestAssignments.startedAt,
     completedAt: hcOnlineTestAssignments.completedAt,
     expiresAt: hcOnlineTestAssignments.expiresAt,
+    createdAt: hcOnlineTestAssignments.createdAt,
+    scheduledAt: hcOnlineTestAssignments.scheduledAt,
     candidate: {
       id: hcCandidates.id,
       fullName: hcCandidates.fullName,
@@ -431,7 +433,7 @@ export async function getTestEntries(testId: number) {
   .from(hcOnlineTestAssignments)
   .innerJoin(hcCandidates, eq(hcOnlineTestAssignments.candidateId, hcCandidates.id))
   .where(eq(hcOnlineTestAssignments.testId, testId))
-  .orderBy(desc(hcOnlineTestAssignments.createdAt));
+  .orderBy(desc(hcOnlineTestAssignments.createdAt), desc(hcOnlineTestAssignments.id));
 
   if (entries.length === 0) return entries;
 

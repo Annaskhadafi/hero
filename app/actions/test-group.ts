@@ -272,6 +272,9 @@ export async function getTestGroupEntries(slug: string) {
     candidateName: hcCandidates.fullName,
     candidateEmail: hcCandidates.email,
     candidatePhone: hcCandidates.phone,
+    createdAt: hcOnlineTestAssignments.createdAt,
+    completedAt: hcOnlineTestAssignments.completedAt,
+    candidateCreatedAt: hcCandidates.createdAt,
   })
   .from(hcOnlineTestAssignments)
   .innerJoin(hcCandidates, eq(hcOnlineTestAssignments.candidateId, hcCandidates.id))
@@ -317,6 +320,7 @@ export async function getTestGroupEntries(slug: string) {
         fullName: a.candidateName,
         email: a.candidateEmail,
         phone: a.candidatePhone,
+        createdAt: a.completedAt || a.createdAt || a.candidateCreatedAt,
         totalScore: 0,
         testsCompleted: 0,
         tests: {},
@@ -324,7 +328,11 @@ export async function getTestGroupEntries(slug: string) {
     }
 
     const c = candidateMap.get(a.candidateId);
-    
+    const dateCandidate = a.completedAt || a.createdAt || a.candidateCreatedAt;
+    if (dateCandidate && (!c.createdAt || new Date(dateCandidate).getTime() > new Date(c.createdAt).getTime())) {
+      c.createdAt = dateCandidate;
+    }
+
     // We only keep the best/latest assignment if there are duplicates.
     if (!c.tests[a.testId] || c.tests[a.testId].status !== "Completed") {
       const stats = answerStats.get(a.id) || { correctCount: 0, answerCount: 0 };
@@ -403,7 +411,11 @@ export async function getTestGroupEntries(slug: string) {
   return {
     group,
     testHeaders: groupItems,
-    entries: entries.sort((a, b) => b.totalScore - a.totalScore) // sort by highest score
+    entries: entries.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    })
   };
 }
 

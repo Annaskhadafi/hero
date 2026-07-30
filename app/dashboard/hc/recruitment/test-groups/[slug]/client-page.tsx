@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -107,6 +108,7 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
           <TableHeader>
             <TableRow>
               <TableHead>CANDIDATE</TableHead>
+              <TableHead>TGL TEST / DAFTAR</TableHead>
               <TableHead>PROGRESS</TableHead>
               <TableHead>TOTAL SCORE</TableHead>
               {testHeaders.map(th => (
@@ -122,6 +124,9 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
                   <div className="font-medium">{entry.fullName}</div>
                   <div className="text-xs text-muted-foreground">{entry.email}</div>
                   <div className="text-xs text-muted-foreground">{entry.phone}</div>
+                </TableCell>
+                <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
+                  {entry.createdAt ? format(new Date(entry.createdAt), "dd MMM yyyy, HH:mm") : "-"}
                 </TableCell>
                 <TableCell>
                   <Badge variant={entry.testsCompleted === testHeaders.length ? "default" : "secondary"}>
@@ -183,7 +188,7 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
             ))}
             {entries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4 + testHeaders.length} className="text-center h-24 text-muted-foreground">
+                <TableCell colSpan={5 + testHeaders.length} className="text-center h-24 text-muted-foreground">
                   No candidates have started this test group yet.
                 </TableCell>
               </TableRow>
