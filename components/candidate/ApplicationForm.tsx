@@ -5,8 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { useState, useRef, useEffect } from "react";
-import SignatureCanvas from "react-signature-canvas";
+import { useState, useEffect } from "react";
 
 const NativeSelect = ({ value, onChange, options, placeholder, className }: any) => (
   <select
@@ -37,18 +36,6 @@ export function ApplicationForm({
       return {};
     }
   };
-
-  const sigCanvasRef = useRef<SignatureCanvas>(null);
-
-  // Load existing signature on mount if exists
-  useEffect(() => {
-    const data = getFormData();
-    if (sigCanvasRef.current && data.signatureImage) {
-      if (sigCanvasRef.current.isEmpty()) {
-        sigCanvasRef.current.fromDataURL(data.signatureImage);
-      }
-    }
-  }, [answers[questionId]]);
 
   // Ensure default signature date is set
   useEffect(() => {
@@ -614,32 +601,9 @@ export function ApplicationForm({
               <Label>Tanggal :</Label>
               <Input type="date" value={getVal("signatureDate") || new Date().toISOString().split('T')[0]} onChange={e => updateData("signatureDate", e.target.value)} />
             </div>
-            <div className="w-full md:w-64">
-              <p className="mb-2 font-bold text-center">Tanda Tangan</p>
-              <div className="border border-dashed border-gray-400 bg-white rounded h-32 relative group">
-                <SignatureCanvas 
-                  ref={sigCanvasRef}
-                  penColor="black"
-                  canvasProps={{className: 'w-full h-full'}}
-                  onEnd={() => {
-                    if (sigCanvasRef.current) {
-                      updateData("signatureImage", sigCanvasRef.current.getTrimmedCanvas().toDataURL('image/png'));
-                    }
-                  }}
-                />
-                <button 
-                  onClick={() => {
-                    if (sigCanvasRef.current) {
-                      sigCanvasRef.current.clear();
-                      updateData("signatureImage", null);
-                    }
-                  }}
-                  className="absolute top-1 right-1 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  Clear
-                </button>
-              </div>
-              <p className="border-t border-black pt-1 mt-2 text-center">( {getVal("fullName") || "......................................."} )</p>
+            <div className="w-full md:w-64 text-center">
+              <p className="mb-8 font-bold text-center">Pemohon,</p>
+              <p className="border-t border-black pt-1 mt-2 text-center font-semibold">( {getVal("fullName") || "......................................."} )</p>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { ApplicationForm } from "@/components/candidate/ApplicationForm";
+import { InAppBrowserGuard } from "@/components/candidate/InAppBrowserGuard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { startTestAssignment, submitTestAnswer, finishTestAssignment } from "@/app/actions/candidate-tests";
@@ -9,7 +10,16 @@ import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
 const radioQuestionTypes = ["multiple_choice", "true_false", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
@@ -44,27 +54,38 @@ function TestTimer({ storageKey, totalSeconds, active, onExpire }: { storageKey:
   const [timeLeft, setTimeLeft] = useState(totalSeconds);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) setTimeLeft(parseInt(saved, 10));
+    if (typeof window !== "undefined" && active) {
+      const now = Date.now();
+      let targetEndTime = localStorage.getItem(`${storageKey}_target`);
+      if (!targetEndTime) {
+        const savedLeft = localStorage.getItem(storageKey);
+        const initialLeft = savedLeft ? parseInt(savedLeft, 10) : totalSeconds;
+        targetEndTime = String(now + initialLeft * 1000);
+        localStorage.setItem(`${storageKey}_target`, targetEndTime);
+      }
+      const remaining = Math.max(0, Math.floor((parseInt(targetEndTime, 10) - now) / 1000));
+      setTimeLeft(remaining);
     }
-  }, [storageKey]);
+  }, [storageKey, totalSeconds, active]);
 
   useEffect(() => {
     onExpireRef.current = onExpire;
   }, [onExpire]);
 
   useEffect(() => {
-    if (active) localStorage.setItem(storageKey, timeLeft.toString());
-  }, [active, storageKey, timeLeft]);
-
-  useEffect(() => {
-    if (!active || timeLeft <= 0) return;
+    if (!active) return;
     const timer = setInterval(() => {
-      setTimeLeft((prev) => Math.max(0, prev - 1));
+      const targetEndTime = localStorage.getItem(`${storageKey}_target`);
+      if (targetEndTime) {
+        const remaining = Math.max(0, Math.floor((parseInt(targetEndTime, 10) - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        localStorage.setItem(storageKey, remaining.toString());
+      } else {
+        setTimeLeft((prev) => Math.max(0, prev - 1));
+      }
     }, 1000);
     return () => clearInterval(timer);
-  }, [active, timeLeft]);
+  }, [active, storageKey]);
 
   useEffect(() => {
     if (active && timeLeft === 0 && !expiredRef.current) {
@@ -74,7 +95,7 @@ function TestTimer({ storageKey, totalSeconds, active, onExpire }: { storageKey:
   }, [active, timeLeft]);
 
   return (
-    <div suppressHydrationWarning className={`text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
+    <div suppressHydrationWarning className={`text-xl sm:text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
       {formatTime(timeLeft)}
     </div>
   );
@@ -88,6 +109,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
 
   const [answers, setAnswers] = useState<Record<number, string>>(previousAnswers || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirmSubmitOpen, setIsConfirmSubmitOpen] = useState(false);
   const [unansweredIds, setUnansweredIds] = useState<Set<number>>(new Set());
   const [tabLeaveCount, setTabLeaveCount] = useState(0);
   const [refreshCount] = useState(() => { if (typeof window === "undefined") return 0; const key = `test-refresh-${assignment.id}`; const next = Number(sessionStorage.getItem(key) || "0") + 1; sessionStorage.setItem(key, String(next)); return Math.max(0, next - 1); });
@@ -314,6 +336,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
 
   return (
     <div className="pb-24">
+      <InAppBrowserGuard />
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b shadow-sm mb-6 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-10 object-contain hidden sm:block" />
@@ -459,22 +482,28 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                         <tbody>
                           {options.map((opt: any, index: number) => (
                             <tr key={opt.id} className={`hover:bg-muted/10 transition-colors ${index !== options.length - 1 ? 'border-b' : ''}`}>
-                              <td className="p-3 border-r text-center">
+                              <td 
+                                className="p-3 border-r text-center cursor-pointer hover:bg-muted/30"
+                                onClick={() => handleDiscChange("mirip", opt.id)}
+                              >
                                 <input 
                                   type="radio" 
                                   name={`q-${q.id}-mirip`} 
                                   checked={mirip === opt.id} 
                                   onChange={() => handleDiscChange("mirip", opt.id)} 
-                                  className="w-4 h-4 cursor-pointer accent-primary" 
+                                  className="w-5 h-5 cursor-pointer accent-primary pointer-events-none" 
                                 />
                               </td>
-                              <td className="p-3 border-r text-center">
+                              <td 
+                                className="p-3 border-r text-center cursor-pointer hover:bg-muted/30"
+                                onClick={() => handleDiscChange("tidakMirip", opt.id)}
+                              >
                                 <input 
                                   type="radio" 
                                   name={`q-${q.id}-tidakMirip`} 
                                   checked={tidakMirip === opt.id} 
                                   onChange={() => handleDiscChange("tidakMirip", opt.id)} 
-                                  className="w-4 h-4 cursor-pointer accent-primary" 
+                                  className="w-5 h-5 cursor-pointer accent-primary pointer-events-none" 
                                 />
                               </td>
                               <td className="p-3 text-left break-words whitespace-pre-wrap max-w-[200px] sm:max-w-none">
@@ -495,22 +524,43 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 flex justify-end shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t p-4 pb-[max(1rem,env(safe-area-inset-bottom,1rem))] shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
         <div className="max-w-4xl w-full mx-auto flex justify-between items-center">
           <p className="text-sm text-muted-foreground">
             {test.isApplicationForm 
               ? "Application Form" 
               : `Answered: ${Object.keys(answers).length} of ${questions.length} · Tab leave: ${tabLeaveCount}`}
           </p>
-          <Button onClick={() => {
-            if (confirm("Are you sure you want to finish the test? You cannot change your answers after submission.")) {
-              handleFinishTest();
-            }
-          }} disabled={isSubmitting} size="lg">
+          <Button onClick={() => setIsConfirmSubmitOpen(true)} disabled={isSubmitting} size="lg">
             {isSubmitting ? "Submitting..." : "Submit Assessment"}
           </Button>
         </div>
       </div>
+
+      <AlertDialog open={isConfirmSubmitOpen} onOpenChange={setIsConfirmSubmitOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Kirim Hasil Tes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menyelesaikan tes ini? Jawaban tidak dapat diubah kembali setelah dikirim.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 mt-4">
+            <AlertDialogCancel disabled={isSubmitting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSubmitting}
+              onClick={(e) => {
+                e.preventDefault();
+                setIsConfirmSubmitOpen(false);
+                handleFinishTest();
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isSubmitting ? "Mengirim..." : "Ya, Kirim Jawaban"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

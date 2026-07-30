@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerForPublicTest } from "@/app/actions/candidate-tests";
 import { toast } from "sonner";
+import { InAppBrowserGuard } from "@/components/candidate/InAppBrowserGuard";
 
 export function PublicTestRegistrationClient({ test }: { test: any }) {
   const router = useRouter();
@@ -29,7 +30,7 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
     try {
       const accessKey = await registerForPublicTest(test.id, formData);
       toast.success("Test siap dimulai");
-      router.push(`/test/${accessKey}`);
+      window.location.href = `/test/${accessKey}`;
     } catch (error: any) {
       toast.error(error.message || "Gagal memulai test");
       setIsSubmitting(false);
@@ -38,6 +39,9 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
 
   return (
     <div className="min-h-screen bg-muted/20 py-12 px-4 flex flex-col items-center justify-center">
+      <div className="max-w-md w-full mb-4">
+        <InAppBrowserGuard />
+      </div>
       <Card className="max-w-md w-full border shadow-sm">
         <CardHeader className="text-center pb-6 border-b bg-muted/10">
           <CardTitle className="text-2xl">{test.title}</CardTitle>

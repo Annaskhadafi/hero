@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { registerTestGroup } from "@/app/actions/test-group";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { InAppBrowserGuard } from "@/components/candidate/InAppBrowserGuard";
 
 export default function ClientPage({ group, items }: { group: any; items: any[] }) {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function ClientPage({ group, items }: { group: any; items: any[] 
       const result = await registerTestGroup(group.id);
       if (result.success && result.redirectUrl) {
         toast.success("Mempersiapkan tes...");
-        router.push(result.redirectUrl);
+        window.location.href = result.redirectUrl;
       } else {
         toast.error(result.error || "Gagal mendaftar tes.");
         setLoading(false);
@@ -62,7 +63,10 @@ export default function ClientPage({ group, items }: { group: any; items: any[] 
   };
 
   return (
-    <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-muted/30 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md mb-4">
+        <InAppBrowserGuard />
+      </div>
       <Card className="w-full max-w-md shadow-lg border-primary/20">
         <CardHeader className="text-center space-y-2 pb-6">
           <CardTitle className="text-2xl font-bold text-primary">{group.name}</CardTitle>
