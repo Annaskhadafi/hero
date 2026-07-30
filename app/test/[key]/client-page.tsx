@@ -382,16 +382,22 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
               {radioQuestionTypes.includes(normalizeQuestionType(q.questionType)) && (() => {
                 const options = getDisplayOptions(q);
                 const hasImageOptions = options.some((opt: any) => opt.imageUrl);
+                const handleSelect = (optId: string) => {
+                  if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                  }
+                  setAnswers((prev) => ({ ...prev, [q.id]: optId }));
+                };
                 return (
-                  <RadioGroup 
-                    value={answers[q.id] || ""} 
-                    onValueChange={(val) => setAnswers({ ...answers, [q.id]: val })}
-                    className={hasImageOptions ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" : "space-y-3"}
-                  >
+                  <div className={hasImageOptions ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" : "space-y-3"}>
                     {options.map((opt: any) => {
                       const isSelected = answers[q.id] === opt.id;
                       return hasImageOptions ? (
-                        <div key={opt.id} className={`flex flex-col border p-3 rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${isSelected ? 'border-primary bg-primary/5' : ''}`} onClick={() => setAnswers({ ...answers, [q.id]: opt.id })}>
+                        <label 
+                          key={opt.id} 
+                          onClick={(e) => { e.preventDefault(); handleSelect(opt.id); }}
+                          className={`flex flex-col border p-3 rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : ''}`}
+                        >
                           <div className="w-full aspect-[4/3] bg-muted/20 rounded-md overflow-hidden mb-3 relative flex items-center justify-center">
                             {opt.imageUrl ? (
                               <img src={opt.imageUrl} alt={opt.text} className="w-full h-full object-contain p-2" />
@@ -399,19 +405,23 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <span className="text-muted-foreground text-sm">No Image</span>
                             )}
                             <div className="absolute top-2 right-2 bg-background/80 backdrop-blur rounded-full p-1 border shadow-sm flex items-center justify-center">
-                              <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} className="block m-0" />
+                              <input type="radio" checked={isSelected} readOnly className="w-4 h-4 accent-primary pointer-events-none" />
                             </div>
                           </div>
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="question-content cursor-pointer font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
-                        </div>
+                          <span className="question-content font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                        </label>
                       ) : (
-                        <div key={opt.id} className="flex items-center space-x-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setAnswers({ ...answers, [q.id]: opt.id })}>
-                          <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} />
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="question-content flex-1 cursor-pointer font-normal text-base break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
-                        </div>
+                        <label 
+                          key={opt.id} 
+                          onClick={(e) => { e.preventDefault(); handleSelect(opt.id); }}
+                          className={`flex items-center space-x-3 border p-4 rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${isSelected ? 'border-primary bg-primary/5 ring-1 ring-primary/30 font-medium' : ''}`}
+                        >
+                          <input type="radio" checked={isSelected} readOnly className="w-5 h-5 accent-primary shrink-0 pointer-events-none" />
+                          <span className="question-content flex-1 cursor-pointer text-base break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                        </label>
                       );
                     })}
-                  </RadioGroup>
+                  </div>
                 );
               })()}
               {normalizeQuestionType(q.questionType) === "checkbox" && (() => {
@@ -422,8 +432,16 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                     {options.map((opt: any) => {
                       const selected = (answers[q.id] || "").split(",").filter(Boolean);
                       const isChecked = selected.includes(opt.id);
+                      const toggleCheck = (e: React.MouseEvent) => {
+                        e.preventDefault();
+                        if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+                          document.activeElement.blur();
+                        }
+                        const next = isChecked ? selected.filter((id) => id !== opt.id) : [...selected, opt.id];
+                        setAnswers((prev) => ({ ...prev, [q.id]: next.join(",") }));
+                      };
                       return hasImageOptions ? (
-                        <label key={opt.id} className={`flex flex-col border p-3 rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${isChecked ? 'border-primary bg-primary/5' : ''}`}>
+                        <label key={opt.id} onClick={toggleCheck} className={`flex flex-col border p-3 rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${isChecked ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : ''}`}>
                           <div className="w-full aspect-[4/3] bg-muted/20 rounded-md overflow-hidden mb-3 relative flex items-center justify-center">
                             {opt.imageUrl ? (
                               <img src={opt.imageUrl} alt={opt.text} className="w-full h-full object-contain p-2" />
@@ -431,14 +449,14 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <span className="text-muted-foreground text-sm">No Image</span>
                             )}
                             <div className="absolute top-2 right-2 bg-background/80 backdrop-blur rounded-full p-1 border shadow-sm flex items-center justify-center">
-                              <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} className="h-4 w-4 rounded border-primary accent-primary" />
+                              <input type="checkbox" checked={isChecked} readOnly className="h-4 w-4 rounded border-primary accent-primary pointer-events-none" />
                             </div>
                           </div>
                           <span className="question-content font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       ) : (
-                        <label key={opt.id} className="flex items-center gap-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer">
-                          <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} /> 
+                        <label key={opt.id} onClick={toggleCheck} className={`flex items-center gap-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer transition-colors ${isChecked ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : ''}`}>
+                          <input type="checkbox" checked={isChecked} readOnly className="h-5 w-5 rounded border-primary accent-primary pointer-events-none" /> 
                           <span className="question-content flex-1 break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       );
@@ -447,7 +465,10 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                 );
               })()}
               {normalizeQuestionType(q.questionType) === "dropdown" && (
-                <select className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })}>
+                <select className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => {
+                  const val = event.target.value;
+                  setAnswers((prev) => ({ ...prev, [q.id]: val }));
+                }}>
                   <option value="">Pilih jawaban...</option>{getDisplayOptions(q).map((opt: any) => <option key={opt.id} value={opt.id}>{opt.text}</option>)}
                 </select>
               )}
@@ -470,11 +491,18 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                 const discPartial = (mirip && !tidakMirip) || (!mirip && tidakMirip);
                 
                 const handleDiscChange = (type: "mirip" | "tidakMirip", optId: string) => {
-                  if (type === "mirip") {
-                    setAnswers({ ...answers, [q.id]: `${optId},${tidakMirip === optId ? "" : tidakMirip}` });
-                  } else {
-                    setAnswers({ ...answers, [q.id]: `${mirip === optId ? "" : mirip},${optId}` });
+                  if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
                   }
+                  setAnswers((prev) => {
+                    const currentAns = prev[q.id] || ",";
+                    const [m, tm] = currentAns.split(",");
+                    if (type === "mirip") {
+                      return { ...prev, [q.id]: `${optId},${tm === optId ? "" : tm}` };
+                    } else {
+                      return { ...prev, [q.id]: `${m === optId ? "" : m},${optId}` };
+                    }
+                  });
                 };
 
                 return (
