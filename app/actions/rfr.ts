@@ -709,3 +709,117 @@ export async function getRfrPublicApprovalByToken(token: string) {
     approvals: detail.approvals,
   }
 }
+
+export async function generateTestRfr(customEmail?: string) {
+  try {
+    const targetEmail = (customEmail || 'wustho.c@gmail.com').trim()
+    const year = new Date().getFullYear()
+    const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(hcRfrRequests)
+    const seq = (countResult?.count || 0) + 1
+    const rfrNumber = `RFR-${year}-TEST-${String(seq).padStart(4, '0')}`
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const joinEstStr = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+
+    const [rfr] = await db
+      .insert(hcRfrRequests)
+      .values({
+        rfrNumber,
+        requestDate: todayStr,
+        joinDateEstimation: joinEstStr,
+        requestorName: 'Test Requestor (PJO)',
+        sectionDepartment: 'Service / Operation',
+        receivedByHr: 'Test HR Staff',
+        positionTitle: 'Test Service Mechanic Specialist',
+        numberOfPersons: 2,
+        briefJobDescription: 'Melakukan pemeliharaan dan perbaikan unit kendaraan operasional site secara berkala.',
+        level: 'staff',
+        reasonForRequest: 'new_headcount',
+        mppStatus: 'budgeted',
+        reasonsIfNonBudgeted: '',
+        employmentStatus: 'contract',
+        contractDurationMonths: 12,
+        attachmentMpp: true,
+        attachmentJd: true,
+        uploadedAttachmentUrls: [],
+        sexPreference: 'any',
+        agePreference: '21 - 35 Tahun',
+        educationDegree: 'smk_d3',
+        educationBackground: ['Teknik Mesin', 'Otomotif'],
+        yearsOfExperience: '2-3_years',
+        fieldOfJobExperience: 'Perbaikan unit berat & mekanik dasar',
+        functionalCompetencies: [
+          { skillName: 'Basic Engine Overhaul', level: 'intermediate', remarks: 'Dapat membongkar dan menguji komponen utama' },
+          { skillName: 'Hydraulic System Troubleshooting', level: 'basic', remarks: '' },
+        ],
+        currentStepOrder: 1,
+        status: 'in_progress',
+      })
+      .returning()
+
+    const stepConfigs = [
+      { stepOrder: 1, stepKey: 'purposed', roleLabel: 'Purposed', approverName: 'Test Purposed (Junaidi)', approverTitle: 'Service Operation Coord' },
+      { stepOrder: 2, stepKey: 'hc_verification', roleLabel: 'HC Verification', approverName: 'Test HC Verification (Adilla)', approverTitle: 'HR Recruitment Staff' },
+      { stepOrder: 3, stepKey: 'acknowledge_hr_leader', roleLabel: 'Acknowledge', approverName: 'Test HR Leader (Kesuma)', approverTitle: 'Leader HR-GA' },
+      { stepOrder: 4, stepKey: 'acknowledge_hr_spv', roleLabel: 'Acknowledge', approverName: 'Test HR Spv (Iqbal)', approverTitle: 'Human Capital Spv' },
+      { stepOrder: 5, stepKey: 'acknowledge_dept_head', roleLabel: 'Acknowledge', approverName: 'Test Dept Head (Romy)', approverTitle: 'Central Service Manager' },
+      { stepOrder: 6, stepKey: 'approval_gm', roleLabel: 'Approval', approverName: 'Test GM (Person)', approverTitle: 'General Manager' },
+    ]
+
+    const approvalsToInsert = stepConfigs.map((step) => ({
+      rfrId: rfr.id,
+      stepOrder: step.stepOrder,
+      stepKey: step.stepKey,
+      roleLabel: step.roleLabel,
+      approverName: step.approverName,
+      approverEmail: targetEmail,
+      approverTitle: step.approverTitle,
+      approvalToken: randomUUID(),
+      status: 'pending',
+    }))
+
+    const insertedApprovals = await db.insert(hcRfrApprovals).values(approvalsToInsert).returning()
+
+    const baseUrl = await getBaseUrl()
+
+    // Send test email notification for Step 1
+    const step1 = insertedApprovals.find((a) => a.stepOrder === 1)
+    if (step1) {
+      await sendRfrApprovalEmail({
+        to: targetEmail,
+        approverName: step1.approverName,
+        approvalStep: `${step1.roleLabel} (Langkah 1/6)`,
+        rfr,
+        approvals: insertedApprovals,
+        approvalToken: step1.approvalToken,
+      })
+    }
+
+    const links = insertedApprovals.map((s) => ({
+      step: s.stepOrder,
+      role: s.roleLabel,
+      name: s.approverName,
+      title: s.approverTitle,
+      url: `${baseUrl}/review/rfr/${s.approvalToken}`,
+    }))
+
+    try {
+      revalidatePath('/dashboard/hc/rfr')
+      revalidatePath('/dashboard/approval')
+    } catch (e) {}
+
+    return {
+      success: true,
+      data: {
+        rfrNumber,
+        targetEmail,
+        positionTitle: rfr.positionTitle,
+        links,
+      },
+    }
+  } catch (error: any) {
+    console.error('[RFR] Generate test failed:', error)
+    return { success: false, error: error.message || 'Gagal membuat permohonan RFR test.' }
+  }
+}
+

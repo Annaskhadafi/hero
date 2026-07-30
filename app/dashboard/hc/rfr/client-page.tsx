@@ -16,13 +16,20 @@ import {
   Eye,
   Briefcase,
   FileCheck,
+  Bug,
+  Mail,
+  Send,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -33,7 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getRfrDetail } from '@/app/actions/rfr'
+import { generateTestRfr, getRfrDetail } from '@/app/actions/rfr'
 
 type RfrItem = {
   id: number
@@ -95,6 +102,39 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
+  // State for Test Approval & Custom Email Modal
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false)
+  const [testEmail, setTestEmail] = useState('wustho.c@gmail.com')
+  const [isTestRunning, setIsTestRunning] = useState(false)
+  const [testResult, setTestResult] = useState<{
+    rfrNumber: string
+    targetEmail: string
+    positionTitle: string
+    links: Array<{ step: number; role: string; name: string; title: string; url: string }>
+  } | null>(null)
+
+  async function handleRunTest() {
+    if (!testEmail || !testEmail.trim()) {
+      toast.error('Masukkan email custom terlebih dahulu.')
+      return
+    }
+    setIsTestRunning(true)
+    const toastId = toast.loading('Sedang membuat data test RFR & mengirim email...')
+    const result = await generateTestRfr(testEmail.trim())
+    setIsTestRunning(false)
+    setIsTestModalOpen(false)
+
+    if (result.success && result.data) {
+      toast.success(`Test RFR (${result.data.rfrNumber}) berhasil dibuat! Email telah dikirim ke ${result.data.targetEmail}`, {
+        id: toastId,
+      })
+      setTestResult(result.data)
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Gagal membuat test RFR.', { id: toastId })
+    }
+  }
+
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault()
     const params = new URLSearchParams()
@@ -151,6 +191,16 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsTestModalOpen(true)}
+            disabled={isTestRunning}
+            className="gap-1.5 border"
+          >
+            <Bug className="w-4 h-4 text-amber-500" />
+            {isTestRunning ? 'Generating Test...' : 'Test Approval & Email'}
+          </Button>
           <Button variant="outline" size="sm" onClick={exportCsv} className="gap-1.5">
             <Download className="w-4 h-4" /> Export CSV
           </Button>
@@ -413,6 +463,90 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal 1: Test Email Input Prompt */}
+      <Dialog open={isTestModalOpen} onOpenChange={setIsTestModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Mail className="w-5 h-5 text-primary" /> Test Approval & Email Delivery RFR
+            </DialogTitle>
+            <DialogDescription>
+              Masukkan alamat email custom untuk menerima pengujian permohonan RFR dan alur TTD digital (6 Tahap Approval).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="test-email-input" className="text-xs font-semibold">Alamat Email Custom Target</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="test-email-input"
+                  type="email"
+                  placeholder="contoh: email.anda@perusahaan.com"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Sistem akan membuat 1 permohonan RFR uji coba dan mengatur ke-6 approver menggunakan email ini, lalu mengirimkan email notifikasi tahap 1.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTestModalOpen(false)} disabled={isTestRunning}>
+              Batal
+            </Button>
+            <Button onClick={handleRunTest} disabled={isTestRunning} className="gap-1.5">
+              <Send className="w-4 h-4" /> {isTestRunning ? 'Memproses...' : 'Jalankan Test'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 2: Test Links Result Dialog */}
+      <Dialog open={!!testResult} onOpenChange={(o) => { if (!o) setTestResult(null) }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500" /> Test Approval Links ({testResult?.rfrNumber})
+            </DialogTitle>
+            <DialogDescription>
+              Permohonan RFR <strong>{testResult?.rfrNumber}</strong> ({testResult?.positionTitle}) telah dibuat. Email notifikasi tahap 1 telah dikirim ke <strong>{testResult?.targetEmail}</strong>. Klik link di bawah ini untuk menguji persetujuan & TTD digital tiap tahap.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+            {testResult?.links.map((link) => (
+              <div key={link.step} className="flex items-center justify-between rounded-lg border p-3 bg-card hover:bg-muted/40 transition-colors">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Step {link.step}: {link.role}
+                  </p>
+                  <p className="text-xs font-medium text-primary">{link.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{link.title}</p>
+                </div>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Buka Link
+                </a>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestResult(null)}>
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
