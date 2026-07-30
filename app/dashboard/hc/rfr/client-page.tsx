@@ -19,6 +19,7 @@ import {
   Bug,
   Mail,
   Send,
+  Paperclip,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -458,6 +459,115 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                     ))}
                   </div>
                 </div>
+
+                {/* Section F: Lampiran & Dokumen Pendukung */}
+                {((previewDetail.rfr.uploadedAttachmentUrls && previewDetail.rfr.uploadedAttachmentUrls.length > 0) || previewDetail.rfr.attachmentMpp || previewDetail.rfr.attachmentJd) && (
+                  <div className="mt-6 pt-4 border-t border-gray-300">
+                    <div className="font-bold border-b border-gray-400 pb-1 mb-3 text-xs flex items-center justify-between text-gray-900">
+                      <span className="flex items-center gap-1.5">
+                        <Paperclip className="w-4 h-4 text-blue-600" />
+                        F. Lampiran & Dokumen Pendukung
+                      </span>
+                      {previewDetail.rfr.uploadedAttachmentUrls?.length > 0 && (
+                        <span className="text-[10px] font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
+                          {previewDetail.rfr.uploadedAttachmentUrls.length} Berkas
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Status checklist */}
+                    <div className="flex flex-wrap gap-4 mb-4 text-xs text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold">Lampiran MPP:</span>
+                        {previewDetail.rfr.attachmentMpp ? (
+                          <span className="text-emerald-700 font-medium flex items-center gap-0.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Melampirkan MPP
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Tidak ada</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold">Lampiran Job Description (JD):</span>
+                        {previewDetail.rfr.attachmentJd ? (
+                          <span className="text-emerald-700 font-medium flex items-center gap-0.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Melampirkan JD
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">Tidak ada</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Uploaded Files (Images, PDFs, etc.) */}
+                    {Array.isArray(previewDetail.rfr.uploadedAttachmentUrls) && previewDetail.rfr.uploadedAttachmentUrls.length > 0 ? (
+                      <div className="space-y-4">
+                        {previewDetail.rfr.uploadedAttachmentUrls.map((url: string, idx: number) => {
+                          const cleanUrl = url.trim()
+                          const filename = cleanUrl.split('/').pop() || `Lampiran_${idx + 1}`
+                          const isPdf = cleanUrl.toLowerCase().endsWith('.pdf') || cleanUrl.toLowerCase().includes('.pdf')
+                          const isImage = /\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i.test(cleanUrl) || cleanUrl.startsWith('data:image')
+
+                          return (
+                            <div key={idx} className="border border-slate-300 rounded-lg p-3 bg-slate-50 text-slate-900 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-semibold border-b pb-2 border-slate-200">
+                                <span className="flex items-center gap-2 truncate max-w-lg">
+                                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                                  Lampiran {idx + 1}: {filename}
+                                </span>
+                                <a
+                                  href={cleanUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-semibold"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" /> Buka Fullscreen
+                                </a>
+                              </div>
+
+                              {/* Image Preview */}
+                              {isImage && (
+                                <div className="rounded border bg-black/5 p-2 flex justify-center max-h-[500px] overflow-hidden">
+                                  <img
+                                    src={cleanUrl}
+                                    alt={filename}
+                                    className="max-h-[480px] max-w-full object-contain rounded shadow-sm"
+                                  />
+                                </div>
+                              )}
+
+                              {/* PDF Embedded View */}
+                              {isPdf && (
+                                <div className="rounded border bg-white h-[500px] overflow-hidden shadow-inner">
+                                  <iframe
+                                    src={cleanUrl}
+                                    className="w-full h-full border-0"
+                                    title={`Preview ${filename}`}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Other File Fallback */}
+                              {!isImage && !isPdf && (
+                                <div className="p-3 bg-white rounded border flex items-center justify-between">
+                                  <span className="text-xs text-slate-700 truncate">{filename}</span>
+                                  <a
+                                    href={cleanUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-colors"
+                                  >
+                                    <Download className="w-3.5 h-3.5" /> Download File
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           )}

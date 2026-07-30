@@ -741,7 +741,11 @@ export async function generateTestRfr(customEmail?: string) {
         contractDurationMonths: 12,
         attachmentMpp: true,
         attachmentJd: true,
-        uploadedAttachmentUrls: [],
+        uploadedAttachmentUrls: [
+          '/HERO_RMS_Suggestion_System.pdf',
+          '/ChitraParatama_Stationery_Letterhead_jkt.jpg',
+          '/CERTIFICATE-LMS-CLEAR.png',
+        ],
         sexPreference: 'any',
         agePreference: '21 - 35 Tahun',
         educationDegree: 'smk_d3',
