@@ -141,12 +141,22 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [hasStarted, isFinished]);
 
+  const isServerActionError = (e: any) => {
+    const msg = String(e?.message || e || "");
+    return msg.includes("Server Action") || msg.includes("older or newer deployment");
+  };
+
   const handleStart = async () => {
     try {
       await startTestAssignment(assignment.id);
       setHasStarted(true);
       toast.success("Test started. Good luck!");
-    } catch (e) {
+    } catch (e: any) {
+      if (isServerActionError(e)) {
+        toast.error("Sistem telah diperbarui. Memuat ulang halaman...", { duration: 4000 });
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
       toast.error("Failed to start test.");
     }
   };
@@ -205,7 +215,12 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
       setIsFinished(true);
       if (typeof window !== "undefined") localStorage.removeItem(`hero_test_timer_${assignment.id}`);
       toast.success("Test submitted successfully!");
-    } catch (e) {
+    } catch (e: any) {
+      if (isServerActionError(e)) {
+        toast.error("Sistem telah diperbarui. Memuat ulang halaman...", { duration: 4000 });
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
       toast.error("Failed to submit test.");
       setIsSubmitting(false);
     }

@@ -57,6 +57,12 @@ export default function ClientPage({ group, items }: { group: any; items: any[] 
         setLoading(false);
       }
     } catch (error: any) {
+      const msg = String(error?.message || error || "");
+      if (msg.includes("Server Action") || msg.includes("older or newer deployment")) {
+        toast.error("Sistem telah diperbarui. Memuat ulang...", { duration: 4000 });
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
       toast.error(error.message || "Terjadi kesalahan.");
       setLoading(false);
     }

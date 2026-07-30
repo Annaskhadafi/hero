@@ -32,6 +32,12 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
       toast.success("Test siap dimulai");
       window.location.href = `/test/${accessKey}`;
     } catch (error: any) {
+      const msg = String(error?.message || error || "");
+      if (msg.includes("Server Action") || msg.includes("older or newer deployment")) {
+        toast.error("Sistem telah diperbarui. Memuat ulang...", { duration: 4000 });
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
       toast.error(error.message || "Gagal memulai test");
       setIsSubmitting(false);
     }
