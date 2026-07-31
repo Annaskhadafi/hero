@@ -1,9 +1,6 @@
 import { Metadata } from "next";
-import { Inter } from "next/font/google";
 import Link from "next/link";
 import { ShieldCheck, TrendingUp, Calendar, ListTodo, BarChart3 } from "lucide-react";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Forecast Revenue | Central Service",
@@ -19,7 +16,7 @@ const tabs = [
 
 export default function ForecastLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`p-6 space-y-6 ${inter.className}`}>
+    <div className="p-6 space-y-6 font-sans">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Forecast Revenue</h1>

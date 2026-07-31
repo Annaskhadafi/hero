@@ -1,7 +1,6 @@
 import { getRecruitments } from "@/app/actions/recruitment";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
-import { Caveat } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -16,11 +15,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 
-const handwriting = Caveat({
-  subsets: ["latin"],
-  weight: ["600"],
-  display: "swap",
-});
+const handwriting = { className: "font-serif italic" };
 
 export const metadata = {
   title: "Karir - PT Chitra Paratama",
