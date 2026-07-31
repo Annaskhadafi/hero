@@ -267,3 +267,6 @@ export {
   ewhTeams,
   ewhTeamMembers,
 } from './ewh'
+
+// Form WO — Pengajuan Work Order Repair
+export { repairFormWo } from './form-wo'
