@@ -6313,38 +6313,100 @@ export async function manageSecurityUserAction(
       const profileImage = normalizeProfileImageValue(payload.profileImage)
 
       if (!fullName || !email || !payload.accessRole) {
-        return { status: 'error', message: 'Full name, email, and role are required.' }
+        return { status: 'error', message: 'Nama lengkap, email, dan role wajib diisi.' }
       }
 
       if (!employeeSn) {
-        return { status: 'error', message: 'SN is required for default password.' }
+        return { status: 'error', message: 'SN/NIK dari SAP wajib diisi.' }
       }
 
       if (password.length < 8) {
-        return { status: 'error', message: 'Initial password minimum 8 characters.' }
+        return { status: 'error', message: 'Password awal minimal 8 karakter.' }
       }
 
-      const [[currentDefaultSite], [selectedSite], [existingEmployee], [existingAuthUser], [role]] =
-        await Promise.all([
-          db.select().from(sites).limit(1),
-          payload.siteId
-            ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
-            : Promise.resolve([]),
-          db
-            .select({ id: employees.id })
-            .from(employees)
-            .where(or(eq(employees.email, email), eq(employees.employeeSn, employeeSn)))
-            .limit(1),
-          db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
-          db
-            .select()
-            .from(securityRoles)
-            .where(eq(securityRoles.name, payload.accessRole))
-            .limit(1),
-        ])
+      const [
+        [currentDefaultSite],
+        [selectedSite],
+        [existingEmployeeBySn],
+        [existingEmployeeByEmail],
+        [existingAuthUser],
+        [existingAccount],
+        [role],
+      ] = await Promise.all([
+        db.select().from(sites).limit(1),
+        payload.siteId
+          ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+          : Promise.resolve([]),
+        db
+          .select({ id: employees.id, name: employees.name, isActive: employees.isActive })
+          .from(employees)
+          .where(sql`lower(trim(${employees.employeeSn})) = lower(trim(${employeeSn}))`)
+          .limit(1),
+        db
+          .select({ id: employees.id, name: employees.name, isActive: employees.isActive })
+          .from(employees)
+          .where(sql`lower(trim(${employees.email})) = lower(trim(${email}))`)
+          .limit(1),
+        db
+          .select({ id: user.id, name: user.name })
+          .from(user)
+          .where(sql`lower(trim(${user.email})) = lower(trim(${email}))`)
+          .limit(1),
+        db
+          .select({ id: account.id })
+          .from(account)
+          .where(
+            or(
+              sql`lower(trim(${account.accountId})) = lower(trim(${employeeSn}))`,
+              sql`lower(trim(${account.accountId})) = lower(trim(${email}))`
+            )
+          )
+          .limit(1),
+        db
+          .select()
+          .from(securityRoles)
+          .where(eq(securityRoles.name, payload.accessRole))
+          .limit(1),
+      ])
 
-      if (existingEmployee || existingAuthUser) {
-        return { status: 'error', message: 'Email or SN is already used by another user.' }
+      if (existingEmployeeBySn) {
+        if (existingEmployeeBySn.isActive) {
+          return {
+            status: 'error',
+            message: `SN/NIK '${employeeSn}' dari SAP ini sudah digunakan oleh pengguna aktif (${existingEmployeeBySn.name}).`,
+          }
+        }
+        return {
+          status: 'error',
+          message: `SN/NIK '${employeeSn}' dari SAP ini sudah terdaftar pada pengguna non-aktif (${existingEmployeeBySn.name}). Silakan cari di tabel dan aktifkan kembali.`,
+        }
+      }
+
+      if (existingEmployeeByEmail) {
+        if (existingEmployeeByEmail.isActive) {
+          return {
+            status: 'error',
+            message: `Email '${email}' sudah digunakan oleh pengguna aktif (${existingEmployeeByEmail.name}).`,
+          }
+        }
+        return {
+          status: 'error',
+          message: `Email '${email}' sudah terdaftar pada pengguna non-aktif (${existingEmployeeByEmail.name}). Silakan cari di tabel dan aktifkan kembali.`,
+        }
+      }
+
+      if (existingAuthUser) {
+        return {
+          status: 'error',
+          message: `Email '${email}' sudah terdaftar pada pengguna lain (${existingAuthUser.name || 'User'}).`,
+        }
+      }
+
+      if (existingAccount) {
+        return {
+          status: 'error',
+          message: `SN/NIK '${employeeSn}' atau Email '${email}' sudah memiliki akun credential terdaftar.`,
+        }
       }
 
       if (!role) {

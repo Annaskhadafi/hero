@@ -143,8 +143,8 @@ export function SecurityUserCreateDialog({
               <Input name="fullName" placeholder="Contoh: Budi Santoso" required />
             </label>
             <label className="grid gap-2">
-              <Label>SN</Label>
-              <Input name="employeeSn" placeholder="Contoh: HC-005" required />
+              <Label>SN / NIK (SAP)</Label>
+              <Input name="employeeSn" placeholder="Masukkan SN/NIK resmi dari SAP" required />
             </label>
             <label className="grid gap-2">
               <Label>Tahun Masuk</Label>

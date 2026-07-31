@@ -1293,6 +1293,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Central Service',
+    groupLabel: 'Repair & Retread',
+    title: 'Form WO',
+    url: '/dashboard/repair-retread/form-wo',
+    iconName: 'file-plus',
+    resource: 'repair_form_wo',
+    sortOrder: 6,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
     groupLabel: 'Warehouse Repair',
     title: 'Dashboard',
     url: '/dashboard/warehouse-repair',
@@ -5236,7 +5248,6 @@ export async function getActivityFormOptions() {
     })
     .from(employees)
     .innerJoin(sites, eq(employees.siteId, sites.id))
-    .where(eq(employees.isActive, true))
     .orderBy(employees.name)
 }
 
@@ -6822,7 +6833,6 @@ export async function getSecurityUsersData() {
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .leftJoin(sites, eq(employees.siteId, sites.id))
     .leftJoin(hrOrgNodes, eq(employees.orgNodeId, hrOrgNodes.id))
-    .where(eq(employees.isActive, true))
     .orderBy(employees.name)
 
   const uniqueRowsMap = new Map()
