@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Plus, UserPlus } from "lucide-react";
@@ -83,10 +83,19 @@ export function SecurityUserCreateDialog({
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
     : sections;
 
-  // Filter positions based on selected department
-  const filteredPositions = selectedDepartmentId
-    ? positions.filter((p) => p.departmentId?.toString() === selectedDepartmentId)
-    : positions;
+  // Filter positions based on selected department and ensure unique position names/keys
+  const uniquePositions = useMemo(() => {
+    const filtered = selectedDepartmentId
+      ? positions.filter((p) => p.departmentId?.toString() === selectedDepartmentId)
+      : positions;
+
+    const seen = new Set<string>();
+    return filtered.filter((pos) => {
+      if (!pos.name || seen.has(pos.name)) return false;
+      seen.add(pos.name);
+      return true;
+    });
+  }, [positions, selectedDepartmentId]);
 
   // Resolve selected names for hidden inputs consumed by the server action
   const selectedDepartmentName = departments.find((d) => d.id.toString() === selectedDepartmentId)?.name || "";
@@ -243,7 +252,7 @@ export function SecurityUserCreateDialog({
                   <SelectValue placeholder={selectedDepartmentId ? "Pilih jabatan" : "Pilih department terlebih dahulu"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredPositions.map((pos) => (
+                  {uniquePositions.map((pos) => (
                     <SelectItem key={pos.id} value={pos.name}>
                       {pos.name} ({pos.code}) - {pos.siteLocation || "Semua Site"} - Level {pos.level}
                     </SelectItem>
