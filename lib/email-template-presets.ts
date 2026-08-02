@@ -15,6 +15,109 @@ export type EmailTemplatePreset = {
 
 const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
+    name: 'RFR Approval Assignment',
+    templateCode: 'rfr_approver_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[RFR] Menunggu Persetujuan Anda: {{rfrNumber}} - {{positionTitle}} ({{numberOfPersons}} Orang)',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#1e3a8a);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#93c5fd;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Request For Recruitment (RFR) Approval</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Permohonan Rekrutmen (RFR) berikut memerlukan persetujuan/verifikasi Anda pada tahap <strong>{{approvalStep}}</strong>:
+  </p>
+  <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #2563eb">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#64748b">No. RFR:</td><td style="font-weight:600;color:#0f172a">{{rfrNumber}}</td></tr>
+      <tr><td style="color:#64748b">Requestor:</td><td>{{requestorName}} ({{sectionDepartment}})</td></tr>
+      <tr><td style="color:#64748b">Posisi Jabatan:</td><td style="font-weight:600;color:#0f172a">{{positionTitle}}</td></tr>
+      <tr><td style="color:#64748b">Jumlah Kebutuhan:</td><td><strong>{{numberOfPersons}}</strong> Person(s)</td></tr>
+      <tr><td style="color:#64748b">Estimasi Tgl Masuk:</td><td>{{joinDateEstimation}}</td></tr>
+    </table>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 20px">
+    Dokumen lengkap RFR dalam format PDF telah dilampirkan pada email ini. Anda dapat meninjau dan melakukan tanda tangan digital melalui tombol di bawah:
+  </p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{approvalLink}}" style="background:#2563eb;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Buka & Tanda Tangan RFR</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{approverName}},
+
+Permohonan Rekrutmen (RFR) berikut memerlukan persetujuan/verifikasi Anda pada tahap {{approvalStep}}:
+
+No. RFR: {{rfrNumber}}
+Requestor: {{requestorName}} ({{sectionDepartment}})
+Posisi Jabatan: {{positionTitle}}
+Jumlah Kebutuhan: {{numberOfPersons}} Person(s)
+Estimasi Tgl Masuk: {{joinDateEstimation}}
+
+Silakan tinjau lampiran PDF RFR pada email ini dan lakukan tanda tangan digital via link:
+{{approvalLink}}
+
+Hormat kami,
+HR Department - PT Chitra Paratama`,
+    description: 'Notifikasi penugasan persetujuan RFR ke approver beserta attachment PDF RFR.',
+    variables: ['approverName', 'approvalStep', 'rfrNumber', 'requestorName', 'sectionDepartment', 'positionTitle', 'numberOfPersons', 'joinDateEstimation', 'approvalLink'],
+    sampleValues: {
+      approverName: 'Adilla Tri Arizona',
+      approvalStep: 'HC Verification',
+      rfrNumber: 'RFR-2026-001',
+      requestorName: 'Junaidi',
+      sectionDepartment: 'Service Operation Others / Central Services',
+      positionTitle: 'Serviceman',
+      numberOfPersons: '4',
+      joinDateEstimation: '15 Agustus 2026',
+      approvalLink: 'https://hero.chitraparatama.co.id/review/rfr/token123',
+    },
+  },
+  {
+    name: 'RFR Completed & Lowongan Generated',
+    templateCode: 'rfr_completed_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester,hr',
+    ccEmail: '',
+    subject: '[RFR Disetujui] {{rfrNumber}} - {{positionTitle}} (Lowongan Pekerjaan Telah Dibuat)',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#059669,#10b981);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#d1fae5;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">RFR Disetujui & Lowongan Dibuat</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. Bapak/Ibu,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Request For Recruitment (RFR) dengan nomor <strong>{{rfrNumber}}</strong> telah selesai diapprove oleh General Manager.
+  </p>
+  <div style="background:#ecfdf5;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #10b981">
+    <p style="margin:0;font-size:13px;color:#065f46"><strong>Posisi:</strong> {{positionTitle}} ({{numberOfPersons}} Person(s))</p>
+    <p style="margin:4px 0 0;font-size:13px;color:#065f46"><strong>Sistem telah membuat Lowongan Pekerjaan otomatis untuk proses Sourcing Recruitment.</strong></p>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.6">
+    Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.
+  </p>
+</div>
+</div>`,
+    textContent: `Request For Recruitment (RFR) {{rfrNumber}} untuk posisi {{positionTitle}} ({{numberOfPersons}} orang) telah selesai disetujui sepenuhnya. Lowongan pekerjaan baru telah berhasil dibuat secara otomatis di modul Recruitment.`,
+    description: 'Notifikasi RFR disetujui sepenuhnya oleh GM dan pembuatan lowongan pekerjaan.',
+    variables: ['rfrNumber', 'positionTitle', 'numberOfPersons'],
+    sampleValues: {
+      rfrNumber: 'RFR-2026-001',
+      positionTitle: 'Serviceman',
+      numberOfPersons: '4',
+    },
+  },
+  {
     name: 'ChitraLearning Enrollment Request',
     templateCode: 'chitralearning_enrollment_request',
     templateType: 'Notification',

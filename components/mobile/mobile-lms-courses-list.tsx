@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getLmsCourseDetailsAction } from "@/app/dashboard/lms/actions"
+import { getLmsCourseDetailsAction } from "@/app/dashboard/chitralearning-lms/actions"
 
 interface LmsCourse {
   course_id: number;

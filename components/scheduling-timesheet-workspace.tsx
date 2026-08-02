@@ -132,6 +132,7 @@ import {
   getEmployeeBenefitRule,
   getSpecialAllowanceAmount,
   isMsaEligibleDay,
+  isMealsEligibleScheduleCode,
   isNonLocalEmployee,
   normalizeEmployeeBenefitConfig,
   type EmployeeBenefitConfig,
@@ -456,7 +457,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   defaultShiftType: 'day-shift',
   defaultClockIn: '07:00',
   defaultClockOut: '17:00',
-  dayShiftClockIn: '06:00',
+  dayShiftClockIn: '08:00',
   dayShiftClockOut: '17:00',
   nightShiftClockIn: '18:00',
   nightShiftClockOut: '06:00',
@@ -980,6 +981,16 @@ const EMPTY_SCHEDULING_STATUSES: Array<{
   finalizedAt?: string | null
 }> = []
 
+const EMPTY_APPROVAL_EMPLOYEES: Array<{ id: number; name: string }> = []
+const EMPTY_APPROVAL_SECTIONS: Array<{
+  id: number
+  siteId: number | null
+  pjoLeaderId: number | null
+  sectionHeadId: number | null
+  departmentHeadId: number | null
+}> = []
+const EMPTY_ACTIVITIES: Array<unknown> = []
+
 const scheduleHolidayCellClass =
   'bg-amber-200 text-amber-950 hover:bg-amber-300 ring-1 ring-inset ring-amber-400'
 const attendanceHolidayCellClass = 'bg-amber-200 text-amber-950 ring-1 ring-amber-400'
@@ -1095,7 +1106,7 @@ type SchedulingTimesheetMode =
 export function SchedulingTimesheetWorkspace({
   mode = 'overview',
   employees,
-  approvalEmployees = [],
+  approvalEmployees = EMPTY_APPROVAL_EMPLOYEES,
   sites,
   savedPlans = EMPTY_SAVED_PLANS,
   fieldBreakPlans: initialFieldBreakPlans = EMPTY_FIELD_BREAK_PLANS,
@@ -1103,9 +1114,9 @@ export function SchedulingTimesheetWorkspace({
   attendanceOverrides = EMPTY_ATTENDANCE_OVERRIDES,
   schedulingConfigs = EMPTY_SCHEDULING_CONFIGS,
   schedulingStatuses = EMPTY_SCHEDULING_STATUSES,
-  approvalSections = [],
+  approvalSections = EMPTY_APPROVAL_SECTIONS,
   approvedSplWindows = EMPTY_APPROVED_SPL_WINDOWS,
-  activities = [],
+  activities = EMPTY_ACTIVITIES,
   currentEmployeeSiteId = null,
   currentEmployeeName = 'User Management',
 }: {
@@ -1227,7 +1238,7 @@ export function SchedulingTimesheetWorkspace({
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition()
 
   useEffect(() => {
-    setFieldBreakPlans(initialFieldBreakPlans)
+    setFieldBreakPlans((prev) => (prev === initialFieldBreakPlans ? prev : initialFieldBreakPlans))
   }, [initialFieldBreakPlans])
 
   useEffect(() => {
@@ -1387,18 +1398,32 @@ export function SchedulingTimesheetWorkspace({
   )
 
   useEffect(() => {
-    setApprovalApprovers(
-      Object.fromEntries(
-        approvalSections.map((row) => [
-          row.id,
-          {
-            pjoLeaderId: row.pjoLeaderId,
-            sectionHeadId: row.sectionHeadId,
-            departmentHeadId: row.departmentHeadId,
-          },
-        ])
-      )
+    const nextMap = Object.fromEntries(
+      approvalSections.map((row) => [
+        row.id,
+        {
+          pjoLeaderId: row.pjoLeaderId,
+          sectionHeadId: row.sectionHeadId,
+          departmentHeadId: row.departmentHeadId,
+        },
+      ])
     )
+    setApprovalApprovers((prev) => {
+      const prevKeys = Object.keys(prev)
+      const nextKeys = Object.keys(nextMap)
+      if (
+        prevKeys.length === nextKeys.length &&
+        prevKeys.every(
+          (k) =>
+            prev[k]?.pjoLeaderId === nextMap[k]?.pjoLeaderId &&
+            prev[k]?.sectionHeadId === nextMap[k]?.sectionHeadId &&
+            prev[k]?.departmentHeadId === nextMap[k]?.departmentHeadId
+        )
+      ) {
+        return prev
+      }
+      return nextMap
+    })
   }, [approvalSections])
   const pdfSignatures = useMemo(() => {
     const cfg = siteConfig.pdfConfig
@@ -1632,23 +1657,37 @@ export function SchedulingTimesheetWorkspace({
       }
     >()
 
+    // Group records by cell key first
+    const grouped = new Map<string, AttendanceRealRecord[]>()
     for (const record of attendanceRecords) {
       if (String(record.siteId) !== siteId) continue
       if (!record.eventTime.startsWith(period)) continue
       const day = dayFromDate(record.eventTime.slice(0, 10), period)
       if (!day) continue
       const key = attendanceKey(record.employeeId, day)
-      const existing = map.get(key) ?? { records: [] }
-      existing.records.push(record)
-      const eventType = normalizeLocation(record.eventType)
-      if (
-        eventType.includes('out') ||
-        eventType.includes('pulang') ||
-        eventType.includes('checkout')
-      )
-        existing.clockOut = record
-      else existing.clockIn = record
-      map.set(key, existing)
+      const list = grouped.get(key) ?? []
+      list.push(record)
+      grouped.set(key, list)
+    }
+
+    for (const [key, records] of grouped.entries()) {
+      const sorted = [...records].sort((a, b) => a.eventTime.localeCompare(b.eventTime))
+      const first = sorted[0]
+      const explicitOut = sorted.find((r) => {
+        const ev = normalizeLocation(r.eventType)
+        return ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
+      })
+      const last = sorted[sorted.length - 1]
+      // Use latest punch as clockOut only if it is an explicit checkout or at least 30 minutes after first punch
+      const firstTime = new Date(first.eventTime).getTime()
+      const lastTime = new Date(last.eventTime).getTime()
+      const isValidOut = explicitOut ?? (last.id !== first.id && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
+
+      map.set(key, {
+        clockIn: first,
+        clockOut: isValidOut,
+        records: sorted,
+      })
     }
 
     return map
@@ -4919,8 +4958,7 @@ export function SchedulingTimesheetWorkspace({
       (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
     return {
       eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
-      // ponytail: Meals follows the roster; inferred attendance gaps must not cancel DS/NS meals.
-      eligibleMeals: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
+      eligibleMeals: isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay),
     }
   }
 

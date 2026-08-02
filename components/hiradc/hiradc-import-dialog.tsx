@@ -7,8 +7,10 @@ import { FileSpreadsheet, Upload } from "lucide-react"
 
 import {
   importHiradcAction,
-  INITIAL_HIRADC_IMPORT_STATE,
+  type HiradcImportState,
 } from "@/app/dashboard/hse/hiradc/actions"
+
+const INITIAL_HIRADC_IMPORT_STATE: HiradcImportState = { ok: false, message: "" }
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {

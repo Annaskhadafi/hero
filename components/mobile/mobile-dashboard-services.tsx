@@ -142,7 +142,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
     {
       title: "Chitra Learning",
       href: "/mobile/chitralearning",
-      resource: "lms_integration",
+      resource: "chitralearning_lms_workspace",
       icon: BookOpen,
       bg: "bg-[#0ea5b0]/10 text-[#003461]",
     },

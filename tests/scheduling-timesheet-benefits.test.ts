@@ -1,13 +1,15 @@
+import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   getEmployeeBenefitRule,
   getSpecialAllowanceAmount,
   isLocalEmployee,
   isMealsEligibleDay,
+  isMealsEligibleScheduleCode,
   isMsaEligibleDay,
   isNonLocalEmployee,
   normalizeEmployeeBenefitConfig,
-} from '@/lib/timesheet/employee-benefit-policy'
+} from '../lib/timesheet/employee-benefit-policy'
 
 describe('scheduling timesheet employee benefit policy', () => {
   it('uses employee manpower and pays monthly allowance only once', () => {
@@ -29,7 +31,7 @@ describe('scheduling timesheet employee benefit policy', () => {
     expect(getSpecialAllowanceAmount(config.local, true, false)).toBe(0)
   })
 
-  it('classifies POH outside the work location as non-local and pays MSA except field break', () => {
+  it('classifies POH outside the work location as non-local and pays MSA except field break, empty, and dash', () => {
     const nonLocal = {
       manpower: 'Lokal',
       pointOfHire: 'Balikpapan',
@@ -49,6 +51,21 @@ describe('scheduling timesheet employee benefit policy', () => {
     expect(isMsaEligibleDay('IN')).toBe(true)
     expect(isMsaEligibleDay('FB')).toBe(false)
     expect(isMsaEligibleDay('OFF', true)).toBe(false)
+    expect(isMsaEligibleDay('-')).toBe(false)
+    expect(isMsaEligibleDay('')).toBe(false)
+    expect(isMsaEligibleDay(null)).toBe(false)
+    expect(isMsaEligibleDay(undefined)).toBe(false)
+  })
+
+  it('verifies schedule code meals eligibility for working shifts vs OFF, FB, empty, and dash', () => {
+    expect(isMealsEligibleScheduleCode('IN')).toBe(true)
+    expect(isMealsEligibleScheduleCode('DS')).toBe(true)
+    expect(isMealsEligibleScheduleCode('NS')).toBe(true)
+    expect(isMealsEligibleScheduleCode('ST')).toBe(true)
+    expect(isMealsEligibleScheduleCode('OFF')).toBe(false)
+    expect(isMealsEligibleScheduleCode('FB')).toBe(false)
+    expect(isMealsEligibleScheduleCode('-')).toBe(false)
+    expect(isMealsEligibleScheduleCode('')).toBe(false)
   })
 
   it('pays meals from an enabled category only on attended workdays', () => {

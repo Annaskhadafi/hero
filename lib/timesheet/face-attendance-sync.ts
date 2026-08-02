@@ -150,20 +150,35 @@ export async function syncFaceAttendanceToTimesheet(
   const checkIns = records.filter((r) => !isCheckOutEvent(r.eventType))
   const checkOuts = records.filter((r) => isCheckOutEvent(r.eventType))
 
-  // Timesheet attendance uses the first and last real attendance punch in the day.
+  // Timesheet attendance uses earliest punch as clock-in and latest valid punch as clock-out.
   const firstPunch = sortedRecords[0]
-  const lastPunch = sortedRecords[sortedRecords.length - 1]
   const clockIn = firstPunch ? formatTimeHHMM(firstPunch.eventTime) : ''
 
-  // Prefer explicit checkout when present; otherwise use the latest punch as clock-out.
-  let clockOut = lastPunch && lastPunch.id !== firstPunch?.id ? formatTimeHHMM(lastPunch.eventTime) : ''
+  // Determine if this punch is a Night Shift candidate (e.g. evening start >= 15:00 or early morning < 05:00)
+  const firstPunchWibHours = firstPunch ? wibParts(firstPunch.eventTime).hours : 0
+  const isNightShift = firstPunchWibHours >= 15 || firstPunchWibHours < 5
 
-  // Overnight shift handling: if no check-out today, look at next WIB day 00:00-06:00
-  if (checkIns.length > 0 && checkOuts.length === 0) {
-    // 06:00 WIB = 22:00 UTC previous day, express via ISO offset
-    const nextDayCutoff = new Date(
-      startOfNextDay.getTime() + 6 * 60 * 60 * 1000 // +6h from WIB midnight = 06:00 WIB
+  let clockOut = ''
+
+  // 1. Explicit check-out events on the same day
+  if (checkOuts.length > 0) {
+    const latestCheckOut = [...checkOuts].sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime())[0]
+    clockOut = formatTimeHHMM(latestCheckOut.eventTime)
+  }
+  // 2. Same-day punches at least 2 hours apart (for Day Shifts)
+  else if (!isNightShift) {
+    const punchesLater = sortedRecords.filter(
+      (r) => r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
     )
+    if (punchesLater.length > 0) {
+      clockOut = formatTimeHHMM(punchesLater[punchesLater.length - 1].eventTime)
+    }
+  }
+
+  // 3. Overnight shift handling for Night Shift: look for punches on next day 00:00 - 09:00 WIB
+  if (isNightShift || (!clockOut && checkIns.length > 0)) {
+    // 09:00 WIB next day = startOfNextDay + 9h
+    const nextDayCutoff = new Date(startOfNextDay.getTime() + 9 * 60 * 60 * 1000)
 
     const overnightRecords = await db
       .select()
@@ -177,10 +192,10 @@ export async function syncFaceAttendanceToTimesheet(
         )
       )
 
-    const overnightCheckOuts = overnightRecords.filter((r) => isCheckOutEvent(r.eventType))
-    if (overnightCheckOuts.length > 0) {
-      const latest = overnightCheckOuts.reduce((max, r) => (r.eventTime > max.eventTime ? r : max))
-      clockOut = formatTimeHHMM(latest.eventTime)
+    if (overnightRecords.length > 0) {
+      const sortedOvernight = [...overnightRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+      const lastOvernight = sortedOvernight[sortedOvernight.length - 1]
+      clockOut = `${formatTimeHHMM(lastOvernight.eventTime)} (+1d)`
     }
   }
 

@@ -1,5 +1,5 @@
 export const DEFAULT_SITE_ATTENDANCE_CLOCKS = {
-  dayShiftClockIn: '06:00',
+  dayShiftClockIn: '08:00',
   nightShiftClockIn: '18:00',
 } as const
 

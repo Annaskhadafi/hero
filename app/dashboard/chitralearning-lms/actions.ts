@@ -2118,3 +2118,7 @@ export async function publishOnlineAssignmentWithBroadcastAction(formData: FormD
   revalidateLms();
   return { success: true };
 }
+
+export async function getLmsCourseDetailsAction(courseId: number, userEmail?: string, employeeSn?: string) {
+  return { success: false, data: null, error: "Legacy LMS action not supported" };
+}

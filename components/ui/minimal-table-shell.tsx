@@ -379,7 +379,7 @@ export function MinimalTableShell({
     }
 
     const dateFilterActive = supportsDateFilter(snapshot)
-    setDateFilterSupported(dateFilterActive)
+    setDateFilterSupported((prev) => (prev === dateFilterActive ? prev : dateFilterActive))
 
     const filterControls = Array.from(
       shellRef.current?.parentElement?.querySelectorAll<HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement>(
@@ -427,14 +427,15 @@ export function MinimalTableShell({
       row.toggleAttribute('hidden', snapshot.dataRows.length > 0)
     })
 
-    setTotalCount(snapshot.dataRows.length)
-    setFilteredCount(nextFilteredCount)
-    setShowNoResults(snapshot.dataRows.length > 0 && nextFilteredCount === 0)
+    setTotalCount((prev) => (prev === snapshot.dataRows.length ? prev : snapshot.dataRows.length))
+    setFilteredCount((prev) => (prev === nextFilteredCount ? prev : nextFilteredCount))
+    const nextShowNoResults = snapshot.dataRows.length > 0 && nextFilteredCount === 0
+    setShowNoResults((prev) => (prev === nextShowNoResults ? prev : nextShowNoResults))
   })
 
   React.useEffect(() => {
     applyFilters()
-  }, [applyFilters, query, dateRange, pageSize, pageIndex])
+  }, [query, dateRange, pageSize, pageIndex])
 
   React.useEffect(() => {
     setPageIndex(0)
@@ -460,7 +461,7 @@ export function MinimalTableShell({
       root.removeEventListener('change', handleChange)
       root.removeEventListener('input', handleChange)
     }
-  }, [applyFilters])
+  }, [])
 
   const handleReset = React.useCallback(() => {
     setQuery('')

@@ -260,7 +260,6 @@ function hasMobileCounterpart(
   if (cleanUrl === '/dashboard/training') return true
   if (cleanUrl === '/dashboard/attendance' || cleanUrl.startsWith('/dashboard/attendance/'))
     return true
-  if (cleanUrl === '/dashboard/lms' || cleanUrl.startsWith('/api/lms')) return true
 
   const segments = cleanUrl.split('/').filter(Boolean)
   const lastSegment = segments[segments.length - 1]

@@ -22,12 +22,14 @@ import {
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
+  getActiveTemplate,
   getEmployeeContactById,
   getAppUrl,
   getHumanCapitalRecipientEmails,
   getOperationalApprovalRecipientEmails,
   sendWorkflowEmail,
   sendWorkflowEmailToMany,
+  splitEmails,
 } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import {
@@ -111,7 +113,10 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
+      faceRarayId: employees.faceRarayId,
+      faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
     })
     .from(employees)
     .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -139,7 +144,10 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
+      faceRarayId: employees.faceRarayId,
+      faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
     })
     .from(employees)
     .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -329,6 +337,36 @@ function formatAttendancePermissionRange(startDate: string, endDate: string) {
   return `${new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })} s/d ${new Date(`${endDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })}`
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+import {
+  cancelLegacyApprovalSubmission,
+  createLegacyApprovalRequest,
+} from '@/lib/legacy-approval-engine'
+
+
+
+
+
+export async function getAttendancePermissionRecipientEmails(siteId?: number | null) {
+  const pjoEmails = await getOperationalApprovalRecipientEmails(siteId)
+  const hrEmails = await getHumanCapitalRecipientEmails()
+  const template = await getActiveTemplate('attendance_permission_reminder')
+  const templateCcEmails = splitEmails(template?.ccEmail)
+
+  return Array.from(new Set([...pjoEmails, ...hrEmails, ...templateCcEmails])).filter(Boolean)
+}
+
 async function notifyAttendancePermissionSubmitted(input: {
   employeeName: string
   employeeEmail: string
@@ -339,12 +377,7 @@ async function notifyAttendancePermissionSubmitted(input: {
   reason: string
   actorEmail?: string
 }) {
-  const recipientEmails = Array.from(
-    new Set([
-      ...(await getHumanCapitalRecipientEmails()),
-      ...(await getOperationalApprovalRecipientEmails(input.siteId)),
-    ])
-  )
+  const recipientEmails = await getAttendancePermissionRecipientEmails(input.siteId)
 
   if (recipientEmails.length === 0) {
     return
@@ -354,11 +387,12 @@ async function notifyAttendancePermissionSubmitted(input: {
   const requestDate = formatAttendancePermissionRange(input.startDate, input.endDate)
   const emailContent = buildWorkflowEmailContent({
     title: `Pengajuan ${permissionLabel} baru`,
-    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu approval.`,
+    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu persetujuan.`,
     details: [
       `Karyawan: ${input.employeeName}`,
+      `Jenis Izin: ${permissionLabel}`,
       `Tanggal: ${requestDate}`,
-      input.reason ? `Catatan: ${input.reason}` : null,
+      input.reason ? `Alasan: ${input.reason}` : null,
     ],
     ctaLabel: 'Buka Dashboard Izin',
     ctaUrl: getAppUrl('/dashboard/hc/permission'),
@@ -373,8 +407,9 @@ async function notifyAttendancePermissionSubmitted(input: {
       employeeName: input.employeeName,
       permissionType: permissionLabel,
       requestDate,
+      reason: input.reason || '-',
     },
-    fallbackSubject: `Pengajuan ${permissionLabel} baru`,
+    fallbackSubject: `Pengajuan ${permissionLabel} baru - ${input.employeeName}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
   })

@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { getLmsCourseDetailsAction } from "@/app/dashboard/lms/actions"
+import { getLmsCourseDetailsAction } from "@/app/dashboard/chitralearning-lms/actions"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"

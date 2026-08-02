@@ -98,6 +98,19 @@ export const serverEnv = {
   get s3UploadPrefix() {
     return getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]);
   },
+  // ─── Raray Vision Face Recognition ────────────────────────────────────────
+  get rarayVisionBaseUrl() {
+    return getFirstEnvValue(["RARAY_VISION_BASE_URL"]) || "https://vision.chitraparatama.com";
+  },
+  get rarayVisionEmail() {
+    return getFirstEnvValue(["RARAY_VISION_EMAIL"]);
+  },
+  get rarayVisionPassword() {
+    return getFirstEnvValue(["RARAY_VISION_PASSWORD"]);
+  },
+  get rarayVisionApiKey() {
+    return getFirstEnvValue(["RARAY_VISION_API_KEY"]);
+  },
   // ─── Tire Pattern Designer ────────────────────────────────────────────────
   get tirePatternApiUrl() {
     return getFirstEnvValue(["TIRE_PATTERN_API_URL", "OLLAMA_URL"]) ||

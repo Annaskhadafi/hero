@@ -123,6 +123,9 @@ export const employees = pgTable('hero_employees', {
   emailVerified: boolean('email_verified').notNull().default(false),
   faceEmbedding: jsonb('face_embedding'),
   faceRegisteredAt: timestamp('face_registered_at'),
+  // V2 Face Registration via Raray Vision
+  faceRarayId: text('face_raray_id'),
+  faceRarayRegisteredAt: timestamp('face_raray_registered_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
@@ -929,6 +932,7 @@ export const attendanceRecords = pgTable(
     confidenceScore: decimal('confidence_score', { precision: 4, scale: 3 }),
     deviceType: text('device_type'),
     clientRequestId: text('client_request_id'),
+    source: text('source').default('face-v1'), // 'face-v1' | 'face-v2' | 'photo-fallback'
   },
   (table) => ({
     clientRequestUnique: uniqueIndex('hero_attendance_records_client_request_id_uq').on(

@@ -301,7 +301,7 @@ export type HiradcImportState = HiradcActionState & {
   registerCount?: number
 }
 
-export const INITIAL_HIRADC_IMPORT_STATE: HiradcImportState = { ok: false, message: "" }
+const INITIAL_HIRADC_IMPORT_STATE: HiradcImportState = { ok: false, message: "" }
 
 export async function importHiradcAction(
   _prev: HiradcImportState,

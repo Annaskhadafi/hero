@@ -121,7 +121,19 @@ export function isMsaEligibleDay(
   scheduleCode: string | null | undefined,
   isFieldBreakPeriod = false
 ) {
-  return !isFieldBreakPeriod && String(scheduleCode ?? '').trim().toUpperCase() !== 'FB'
+  if (isFieldBreakPeriod) return false
+  const code = String(scheduleCode ?? '').trim().toUpperCase()
+  return Boolean(code) && code !== '-' && code !== 'FB'
+}
+
+export function isMealsEligibleScheduleCode(
+  scheduleCode: string | null | undefined,
+  isFieldBreakPeriod = false
+) {
+  if (isFieldBreakPeriod) return false
+  const code = String(scheduleCode ?? '').trim().toUpperCase()
+  if (!code || code === '-' || code === 'FB' || code === 'OFF') return false
+  return code === 'IN' || code === 'DS' || code === 'NS' || code === 'ST'
 }
 
 export function isMealsEligibleDay(input: {

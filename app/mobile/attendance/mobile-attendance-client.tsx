@@ -6,13 +6,20 @@ import Link from 'next/link'
 import {
   AlertTriangle,
   Camera,
+  CheckCircle2,
   Clock3,
   History,
+  Loader2,
+  LogIn,
+  LogOut,
   MapPin,
+  RefreshCw,
   ScanFace,
   Upload,
   UserCheck,
   Wifi,
+  X,
+  Zap,
 } from 'lucide-react'
 
 import { type AttendanceSyncPayload, type QueuedFilePayload } from '@/lib/offline-sync'
@@ -27,7 +34,10 @@ type AttendanceEmployee = {
   workLocation: string | null
   siteId: number
   siteName?: string | null
+  employeeSn?: string | null
   faceRegisteredAt?: Date | string | null
+  faceRarayId?: string | null
+  faceRarayRegisteredAt?: Date | string | null
 }
 
 type AttendanceLog = {
@@ -241,7 +251,27 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const [selectedShift, setSelectedShift] = useState(data.shiftOptions[0]?.value ?? '')
   const [workMode, setWorkMode] = useState('On Site')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [isCameraLive, setIsCameraLive] = useState(false)
+  const [overrideEventType, setOverrideEventType] = useState<'checked-in' | 'checked-out' | null>(null)
   const [submitError, setSubmitError] = useState('')
+
+  function stopCameraStream() {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setIsCameraLive(false)
+  }
+
+  async function startCameraAndVerify(eventType?: 'checked-in' | 'checked-out') {
+    if (eventType) {
+      setOverrideEventType(eventType)
+    }
+    setIsCameraLive(true)
+    await startCamera()
+    window.setTimeout(() => {
+      void runFaceRecognition()
+    }, 500)
+  }
   const [submitMessage, setSubmitMessage] = useState('')
   const [attendanceLogs, setAttendanceLogs] = useState(data.logs)
   const [isPending, startTransition] = useTransition()
@@ -258,7 +288,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const NO_FACE_TIMEOUT = 15000
 
   const latestLog = attendanceLogs[0]
-  const nextType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
+  const autoSuggestedType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
+  const nextType = overrideEventType ?? autoSuggestedType
   const actionLabel = nextType === 'checked-in' ? 'Confirm Check-In' : 'Confirm Check-Out'
   const requiresFaceRegistration = !data.employee?.faceRegisteredAt
   const isCameraBlocked = Boolean(cameraError) || cameraPermissionOpen
@@ -387,11 +418,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   }
 
   async function runFaceRecognition() {
-    if (capturedFile || capturePreview) {
-      setCapturedFile(null)
-      await new Promise((resolve) => window.setTimeout(resolve, 80))
-    }
-
     if (!videoRef.current || videoRef.current.readyState < 2) {
       setFaceRecMessage('Kamera belum siap. Membuka kamera ulang...')
       setFaceRecMode('loading')
@@ -400,25 +426,31 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     }
 
     setFaceRecMode('verifying')
-    setFaceRecMessage('Capture foto dan verifikasi di server. Tunggu proses model...')
+    setFaceRecMessage('⚡ Memverifikasi dengan Face Recog by Afi...')
     const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 30000)
+    const timeout = window.setTimeout(() => controller.abort(), 12000)
 
     try {
-      const file = await captureFrame()
-      const photo = await fileToPayload(file)
+      const video = videoRef.current
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth || 640
+      canvas.height = video.videoHeight || 640
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas context failed')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85)
 
-      const response = await fetch('/api/mobile/face-verification', {
+      const response = await fetch('/api/mobile/v2/face-recognition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: data.employee?.id,
-          photo,
           siteId: data.employee?.siteId || 1,
-          eventType: nextType,
-          shiftCode: selectedShiftOption?.value,
-          latitude: geo.latitude || '0',
-          longitude: geo.longitude || '0',
+          eventType: nextType === 'checked-in' || nextType === 'checked-out' ? nextType : 'auto',
+          imageDataUrl,
+          latitude: geo.latitude ? Number(geo.latitude) : 0,
+          longitude: geo.longitude ? Number(geo.longitude) : 0,
+          accuracy: 10,
           clientRequestId: crypto.randomUUID(),
         }),
         signal: controller.signal,
@@ -426,14 +458,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       const result = await response.json().catch(() => null)
       if (!response.ok || !result) {
-        handleFaceVerificationFailure('Server face recognition tidak merespons')
+        handleFaceVerificationFailure(result?.error?.message || 'Server face recognition tidak merespons')
         return
       }
 
       if (result.verified) {
         setFaceRecMode('success')
-        setFaceRecMessage('✓ Wajah cocok. Akun terkonfirmasi.')
-        navigator.vibrate?.(200)
+        setFaceRecMessage(`✓ Selamat Datang, ${result.employee?.name || data.employee?.name}! Absensi berhasil.`)
+        navigator.vibrate?.([100, 50, 200])
         if (result.attendanceRecord) {
           setAttendanceLogs((current) => [
             {
@@ -446,15 +478,16 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             ...current,
           ])
         }
+        startTransition(() => router.refresh())
         return
       }
 
       // Verification failed
-      handleFaceVerificationFailure('Verifikasi gagal')
+      handleFaceVerificationFailure('Wajah tidak cocok dengan data biometrik')
     } catch (error) {
       handleFaceVerificationFailure(
         error instanceof DOMException && error.name === 'AbortError'
-          ? 'Server masih memproses model terlalu lama'
+          ? 'Server memproses terlalu lama. Coba lagi.'
           : 'Error server face recognition'
       )
     } finally {
@@ -757,253 +790,232 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         </span>
       </section>
 
-      <section className="relative min-h-[258px] overflow-hidden rounded-[0.75rem] bg-[#303436] shadow-[0_14px_32px_rgba(8,32,51,0.16)]">
-        {capturePreview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={capturePreview}
-            alt="Captured attendance selfie"
-            className="absolute inset-0 h-full w-full object-cover opacity-75"
-          />
-        ) : (
-          <video
-            ref={videoRef}
-            className={cn(
-              'absolute inset-0 h-full w-full scale-x-[-1] object-cover opacity-75',
-              !cameraReady && 'hidden'
-            )}
-            playsInline
-            muted
-          />
-        )}
-
-        {!cameraReady && !capturePreview ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center px-5 text-center">
-            {cameraError ? (
-              <div className="w-full rounded-[0.85rem] bg-white/95 p-4 text-[#003461] shadow-[0_18px_44px_rgba(8,32,51,0.22)] backdrop-blur-md">
-                <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#e6f6ff]">
-                  <Camera className="size-6" />
-                </div>
-                <p className="mt-3 text-sm leading-5 font-black text-[#071e27]">
-                  Kamera belum terbuka
-                </p>
-                <p className="mt-1 text-[11px] leading-5 font-semibold text-[#486275]">
-                  Jika kamera lambat, lanjut pakai upload selfie. Absensi tetap bisa direkam.
-                </p>
-                <div className="mt-4 grid gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void startCamera()}
-                    className="min-h-12 rounded-[0.65rem] bg-[#e6f6ff] px-4 text-[11px] font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-                  >
-                    Coba Kamera Lagi
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="min-h-12 rounded-[0.65rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-[11px] font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.16)] active:scale-[0.98]"
-                  >
-                    Upload Selfie Sekarang
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3 text-[#cfe6f2]">
-                <div className="flex size-14 items-center justify-center rounded-full bg-white/10 backdrop-blur-md">
-                  <div className="size-6 animate-spin rounded-full border-2 border-[#cfe6f2] border-t-transparent" />
-                </div>
-                <p className="max-w-56 text-xs leading-5 font-black uppercase">
-                  Membuka kamera aman...
-                </p>
-              </div>
-            )}
+      {/* ─── FACE RECOG BY AFI HERO CARD ─── */}
+      <section className="overflow-hidden rounded-2xl bg-[#031b33] p-5 text-white shadow-xl border border-[#003461] space-y-4">
+        {/* Card Header */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-xl bg-[#005bb5] text-white shadow-md">
+              <ScanFace className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-white">Face Recog by Afi</h2>
+              <p className="text-[10px] font-bold text-sky-300">Fast Auto-Identification</p>
+            </div>
           </div>
-        ) : null}
-
-        <div
-          className={cn(
-            'absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_34%,rgba(0,0,0,0.22)_35%,rgba(0,0,0,0.36)_100%)]',
-            isCameraUnavailable && 'opacity-20'
-          )}
-        />
-        {!isCameraUnavailable && (
-          <>
-            <div className="absolute top-1/2 left-1/2 size-44 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#003f78]/70" />
-            <div className="absolute top-1/2 left-1/2 h-0.5 w-52 -translate-x-1/2 -translate-y-1/2 bg-[#7e3200]/70 shadow-[0_0_12px_rgba(255,182,146,0.55)]" />
-            <div className="absolute top-10 left-7 size-9 border-t-2 border-l-2 border-[#004b87]" />
-            <div className="absolute top-10 right-7 size-9 border-t-2 border-r-2 border-[#004b87]" />
-            <div className="absolute bottom-10 left-7 size-9 border-b-2 border-l-2 border-[#004b87]" />
-            <div className="absolute right-7 bottom-10 size-9 border-r-2 border-b-2 border-[#004b87]" />
-          </>
-        )}
-
-        <div
-          className={cn(
-            'absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl',
-            isCameraUnavailable && 'hidden'
-          )}
-        >
-          {faceRecMode === 'loading' ? (
-            <>
-              <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
-              <span className="w-28 text-center text-[9px] leading-3 font-black">
-                {faceRecMessage || 'Menyiapkan kamera...'}
-              </span>
-            </>
-          ) : faceRecMode === 'detecting' ? (
-            <>
-              <ScanFace className="size-3.5 animate-pulse" />
-              <span className="w-28 text-center text-[9px] leading-3 font-black">
-                {faceRecMessage || 'Mendeteksi wajah...'}
-              </span>
-            </>
-          ) : faceRecMode === 'verifying' ? (
-            <>
-              <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
-              <span className="w-28 text-center text-[9px] leading-3 font-black">
-                {faceRecMessage || 'Memverifikasi...'}
-              </span>
-            </>
-          ) : faceRecMode === 'success' ? (
-            <>
-              <UserCheck className="size-3.5 text-green-700" />
-              <span className="w-28 text-center text-[9px] leading-3 font-black text-green-700">
-                {faceRecMessage || '✓ Wajah terverifikasi!'}
-              </span>
-            </>
-          ) : (
-            <>
-              <UserCheck className="size-3.5" />
-              <span className="w-28 text-center text-[9px] leading-3 font-black">
-                Position your face within the frame
-              </span>
-            </>
-          )}
+          <span className="rounded-full bg-emerald-500/20 border border-emerald-400/40 px-3 py-1 text-[10px] font-black text-emerald-300 uppercase tracking-wide">
+            ● Aktif
+          </span>
         </div>
 
-        {/* Face recognition success overlay */}
-        {faceRecMode === 'success' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-green-900/40">
-            <div className="flex flex-col items-center gap-2 rounded-2xl bg-white/90 px-6 py-4 backdrop-blur-sm">
-              <div className="flex size-12 items-center justify-center rounded-full bg-green-100">
-                <UserCheck className="size-6 text-green-700" />
-              </div>
-              <p className="text-sm font-black text-green-800">Akun Terkonfirmasi</p>
-              <p className="text-center text-[10px] leading-4 font-bold text-green-700">
-                {data.employee?.name || 'Wajah'} cocok. Absensi berhasil direkam.
+        {/* User Card Info */}
+        <div className="rounded-xl bg-[#002447] border border-white/10 p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-[#004280] flex items-center justify-center border border-white/20 text-sky-200">
+              <UserCheck className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-white">{data.employee?.name}</p>
+              <p className="text-[11px] font-bold text-sky-200 font-mono">
+                SN: {data.employee?.employeeSn || data.employee?.id}
               </p>
             </div>
           </div>
-        )}
 
-        {/* Face recognition scanning animation overlay */}
-        {faceRecMode === 'detecting' && cameraReady && !capturePreview && (
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute top-1/2 left-1/2 size-44 -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full border-2 border-blue-400/60" />
-          </div>
-        )}
-      </section>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="user"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
-      {/* Face recognition status message */}
-      {faceRecMessage && faceRecMode !== 'success' && !isCameraUnavailable && (
-        <div
-          className={cn(
-            'rounded-[0.65rem] px-4 py-3 text-xs font-bold',
-            faceRecMode === 'fallback'
-              ? 'bg-[#fff3cd] text-[#664d03]'
-              : 'bg-[#e6f6ff] text-[#003461]'
-          )}
-        >
-          <div className="flex items-center gap-2">
-            {faceRecMode === 'loading' && (
-              <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
+          <div>
+            {data.employee?.faceRarayRegisteredAt || data.employee?.faceRegisteredAt ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/25 border border-emerald-400/50 px-2.5 py-1 text-[10px] font-bold text-emerald-200">
+                ✓ Wajah Terdaftar
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 border border-amber-400/50 px-2.5 py-1 text-[10px] font-bold text-amber-200">
+                ⚠️ Belum Terdaftar
+              </span>
             )}
-            {faceRecMode === 'detecting' && <ScanFace className="size-4 animate-pulse" />}
-            {faceRecMode === 'verifying' && (
-              <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
-            )}
-            {faceRecMode === 'fallback' && <AlertTriangle className="size-4" />}
-            {faceRecMessage}
           </div>
         </div>
-      )}
 
-      {faceRecMode === 'loading' && !requiresFaceRegistration && (
-        <section>
+        {/* ─── CHECK IN / CHECK OUT BUTTONS AT THE TOP ─── */}
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
-            disabled
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#dcecf7] px-4 text-xs font-black text-[#003461] uppercase opacity-80"
+            onClick={() => void startCameraAndVerify('checked-in')}
+            className="flex items-center justify-center gap-2 min-h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 text-xs font-black text-white uppercase shadow-md active:scale-[0.98] transition-all hover:brightness-110"
           >
-            <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
-            Menyiapkan Face Recognition
+            <LogIn className="size-4" /> Check In
           </button>
-        </section>
-      )}
 
-      {/* Face verify button - shown when model is ready */}
-      {faceRecMode === 'detecting' && (
-        <section className="space-y-2">
           <button
             type="button"
-            onClick={runFaceRecognition}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
+            onClick={() => void startCameraAndVerify('checked-out')}
+            className="flex items-center justify-center gap-2 min-h-12 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-xs font-black text-white uppercase shadow-md active:scale-[0.98] transition-all hover:brightness-110"
           >
-            <ScanFace className="size-4" />
-            Verify Wajah
+            <LogOut className="size-4" /> Check Out
           </button>
-        </section>
-      )}
+        </div>
 
-      {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
-        <section className="grid gap-2">
-          {faceRecAttempts < MAX_FACE_REC_ATTEMPTS ? (
-            <button
-              type="button"
-              onClick={() => void reopenCameraForRetry()}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-            >
-              <ScanFace className="size-4" />
-              Coba Face Lagi ({faceRecAttempts}/{MAX_FACE_REC_ATTEMPTS})
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void handleCaptureClick()}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
-          >
-            <Camera className="size-4" />
-            Capture Foto
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-white px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-          >
-            <Camera className="size-4" />
-            Upload Selfie
-          </button>
-        </section>
-      )}
-
-      {/* Face registration link */}
-      {requiresFaceRegistration && (
-        <Link
-          href={`/mobile/attendance/face/register?employeeId=${data.employee?.id}&siteId=${data.employee?.siteId || 1}`}
-          className="flex items-center justify-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs font-black text-amber-800 shadow-[inset_0_0_0_1px_rgba(146,64,14,0.12)]"
+        {/* Main Verification Start Button (Camera Auto) */}
+        <button
+          type="button"
+          onClick={() => void startCameraAndVerify()}
+          className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-xs font-black text-white uppercase tracking-wider shadow-lg shadow-blue-950/60 active:scale-[0.98] transition-all hover:brightness-110"
         >
-          <ScanFace className="size-4" />
-          Registrasi Wajah Dulu (Wajib untuk Face Recognition)
-        </Link>
+          <ScanFace className="size-5 animate-pulse" />
+          Mulai Verifikasi Wajah (Kamera Auto)
+        </button>
+
+        {/* Secondary Action Links with HIGH CONTRAST */}
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-black text-sky-100 hover:bg-white/20 transition-colors"
+          >
+            <History className="size-3.5 text-sky-300" />
+            History Registrasi
+          </button>
+
+          <Link
+            href={`/mobile/attendance/face-v2/register?employeeId=${data.employee?.id}&reregister=true`}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-[11px] font-black text-sky-100 hover:bg-white/20 transition-colors"
+          >
+            <RefreshCw className="size-3.5 text-sky-300" />
+            Registrasi Wajah Ulang
+          </Link>
+        </div>
+      </section>
+
+      {/* ─── LARGE & CLEAR CAMERA VERIFICATION DISPLAY ─── */}
+      {isCameraLive && (
+        <section className="space-y-3">
+          <div className="relative w-full max-w-md mx-auto aspect-[3/4] min-h-[380px] overflow-hidden rounded-3xl bg-slate-950 shadow-2xl border-2 border-[#005bb5]">
+            <video
+              ref={videoRef}
+              className="h-full w-full object-cover scale-x-[-1]"
+              playsInline
+              muted
+              autoPlay
+            />
+
+            {/* Large Oval Target Guide */}
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="h-[65%] w-[60%] rounded-[50%] border-4 border-dashed border-sky-400/90 shadow-[0_0_30px_rgba(0,149,255,0.4)] animate-pulse" />
+            </div>
+
+            {/* Top Status Bar Overlay */}
+            <div className="absolute top-4 left-4 right-4 flex items-center justify-between rounded-full bg-slate-900/80 px-4 py-2 text-xs font-black text-white backdrop-blur-md border border-white/10">
+              <span className="flex items-center gap-2 text-sky-300">
+                <ScanFace className="size-4 animate-spin" />
+                Mode: {nextType === 'checked-in' ? 'Check In' : 'Check Out'}
+              </span>
+              <button
+                type="button"
+                onClick={stopCameraStream}
+                className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold text-white hover:bg-white/30"
+              >
+                Tutup Kamera
+              </button>
+            </div>
+
+            {/* Status Message Overlay */}
+            <div className="absolute bottom-4 left-4 right-4 rounded-2xl bg-white/95 p-3 text-center backdrop-blur-md shadow-lg space-y-0.5">
+              <p className="text-xs font-black text-[#003461]">{faceRecMessage || 'Posisikan wajah tepat di dalam oval'}</p>
+            </div>
+          </div>
+
+          {/* ⚡ DIRECT VERIFICATION BUTTON PLACED DIRECTLY BELOW CAMERA FRAME (DI BAWAH MUKA) */}
+          <button
+            type="button"
+            onClick={() => void runFaceRecognition()}
+            disabled={faceRecMode === 'verifying'}
+            className="flex min-h-14 w-full max-w-md mx-auto items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-sm font-black text-white uppercase tracking-wider shadow-xl shadow-blue-900/30 active:scale-[0.98] transition-all hover:brightness-110 disabled:opacity-75"
+          >
+            {faceRecMode === 'verifying' ? (
+              <>
+                <Loader2 className="size-5 animate-spin text-white" />
+                Memverifikasi Wajah...
+              </>
+            ) : (
+              <>
+                <ScanFace className="size-5 text-sky-200 animate-pulse" />
+                Verifikasi Wajah Sekarang
+              </>
+            )}
+          </button>
+        </section>
+      )}
+
+      {/* History Modal Popup */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <History className="size-5 text-[#005bb5]" />
+                <h3 className="text-sm font-black text-slate-900">History Registrasi Wajah</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="size-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="rounded-xl bg-slate-50 p-3 border space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Informasi Karyawan</p>
+                <p className="font-bold text-slate-900">{data.employee?.name}</p>
+                <p className="text-slate-500 font-mono">SN: {data.employee?.employeeSn || data.employee?.id}</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3 border space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Engine Biometrik</p>
+                <p className="font-bold text-[#005bb5]">Face Recog by Afi</p>
+                <p className="text-slate-500 font-mono text-[11px]">Face ID: emp-{data.employee?.employeeSn || data.employee?.id}</p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3 border space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Status & Tanggal Registrasi</p>
+                {data.employee?.faceRarayRegisteredAt || data.employee?.faceRegisteredAt ? (
+                  <div className="flex items-center gap-1.5 font-bold text-green-700">
+                    <CheckCircle2 className="size-4" />
+                    <span>
+                      Terdaftar pada{' '}
+                      {new Date(data.employee?.faceRarayRegisteredAt || data.employee?.faceRegisteredAt || '').toLocaleDateString('id-ID', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="font-bold text-amber-700">Belum terdaftar di database biometrik.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <Link
+                href={`/mobile/attendance/face-v2/register?employeeId=${data.employee?.id}&reregister=true`}
+                onClick={() => setShowHistoryModal(false)}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#005bb5] text-xs font-black text-white uppercase active:scale-[0.98]"
+              >
+                <RefreshCw className="size-3.5" />
+                Registrasi Ulang Wajah Sekarang
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="min-h-10 rounded-xl bg-slate-100 text-xs font-bold text-slate-600"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Link
@@ -1066,85 +1078,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         </div>
       </section>
 
-      <section className="rounded-[0.75rem] bg-[#e6f6ff] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black text-[#486275] uppercase">Current Attempt</p>
-            <p className="font-display mt-1 text-2xl font-black text-[#003461]">
-              {now ? formatClock(now) : '--.--.--'}
-              <span className="ml-1 text-sm text-[#486275]">WITA</span>
-            </p>
-            <p className="mt-1 text-[11px] font-bold text-[#486275]">
-              {now ? formatDate(now) : 'Sinkronisasi waktu'}
-            </p>
-          </div>
-          <span className="flex size-12 items-center justify-center rounded-full bg-white text-[#003461] shadow-[0_8px_18px_rgba(8,32,51,0.08)]">
-            <Clock3 className="size-5" />
-          </span>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className="text-[10px] font-black text-[#486275] uppercase">Shift</span>
-            <select
-              value={selectedShift}
-              onChange={(event) => setSelectedShift(event.target.value)}
-              className="h-11 w-full rounded-[0.65rem] border-0 bg-white px-3 text-xs font-black text-[#071e27] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.06)]"
-            >
-              {data.shiftOptions.map((shift) => (
-                <option key={shift.value} value={shift.value}>
-                  {shift.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-[10px] font-black text-[#486275] uppercase">Mode</span>
-            <select
-              value={workMode}
-              onChange={(event) => setWorkMode(event.target.value)}
-              className="h-11 w-full rounded-[0.65rem] border-0 bg-white px-3 text-xs font-black text-[#071e27] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.06)]"
-            >
-              <option>On Site</option>
-              <option>Remote Site</option>
-              <option>Emergency Call</option>
-              <option>Overtime</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      {submitError || submitMessage ? (
-        <div
-          className={cn(
-            'rounded-[0.65rem] px-4 py-3 text-xs font-bold',
-            submitError ? 'bg-[#f4ddce] text-[#5a2200]' : 'bg-[#dff2e8] text-[#0f5132]'
-          )}
-        >
-          {submitError || submitMessage}
-        </div>
-      ) : null}
-
-      {faceRecMode !== 'success' && (
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={isSubmitting || isPending}
-          className="flex min-h-14 w-full items-center justify-center gap-2 rounded-[0.65rem] bg-gradient-to-br from-[#003461] to-[#004b87] text-xs font-black text-white uppercase shadow-[0_14px_30px_rgba(0,52,97,0.22)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <UserCheck className="size-4" />
-          {isSubmitting || isPending ? 'Recording...' : actionLabel}
-        </button>
-      )}
-
-      {faceRecMode === 'success' && (
-        <div className="rounded-[0.65rem] bg-[#dff2e8] px-4 py-3 text-center text-xs font-bold text-[#0f5132]">
-          ✓ Akun {data.employee?.name || 'Anda'} terkonfirmasi. Absensi berhasil direkam via face
-          recognition.
-        </div>
-      )}
-
-      <p className="text-center text-[10px] font-semibold text-[#486275]">
+      <p className="text-center text-[10px] font-semibold text-[#486275] pt-2">
         Biometric data encrypted and stored securely per protocol.
       </p>
 

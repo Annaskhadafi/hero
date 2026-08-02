@@ -132,7 +132,6 @@ function hasMobileCounterpart(url: string) {
   return [
     '/dashboard/activity-hub/my-day',
     '/dashboard/approval',
-    '/dashboard/lms',
     '/dashboard/overtime-requests',
     '/dashboard/timesheet',
     '/dashboard/training',

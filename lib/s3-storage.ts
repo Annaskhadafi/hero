@@ -91,7 +91,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload)\/.+)$/,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|curhat)\/.+)$/,
     );
 
     if (knownPrefixMatch) {
@@ -358,17 +358,27 @@ export function isS3UploadConfigured() {
 export function resolveUploadUrl(url: string | null | undefined): string {
   if (!url) return "";
   const trimmed = url.trim();
-  if (
-    trimmed.startsWith("/api/uploads/") ||
-    trimmed.startsWith("http://localhost") ||
-    trimmed.startsWith("/uploads/")
-  ) {
+
+  // 1. Already relative /api/uploads/
+  if (trimmed.startsWith("/api/uploads/")) {
     return trimmed;
   }
 
+  // 2. Relative /uploads/
+  if (trimmed.startsWith("/uploads/")) {
+    return `/api${trimmed}`;
+  }
+
+  // 3. Extract key using getObjectKeyFromUrl
   const key = getObjectKeyFromUrl(trimmed);
   if (key) {
     return `/api/uploads/${key}`;
+  }
+
+  // 4. Fallback matching any known prefix pattern inside S3 direct URL
+  const fallbackMatch = trimmed.match(/(?:upload|curhat|attendance-photos|activity-photos|profile-photos)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i);
+  if (fallbackMatch) {
+    return `/api/uploads/${fallbackMatch[0]}`;
   }
 
   return trimmed;
