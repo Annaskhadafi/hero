@@ -22,14 +22,13 @@ import {
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
-  getActiveTemplate,
+  getAttendancePermissionRecipientEmails,
   getEmployeeContactById,
   getAppUrl,
   getHumanCapitalRecipientEmails,
   getOperationalApprovalRecipientEmails,
   sendWorkflowEmail,
   sendWorkflowEmailToMany,
-  splitEmails,
 } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import {
@@ -352,16 +351,6 @@ function formatAttendancePermissionRange(startDate: string, endDate: string) {
 
 
 
-
-export async function getAttendancePermissionRecipientEmails(siteId?: number | null) {
-  const pjoEmails = await getOperationalApprovalRecipientEmails(siteId)
-  const hrEmails = await getHumanCapitalRecipientEmails()
-  const template = await getActiveTemplate('attendance_permission_reminder')
-  const templateCcEmails = splitEmails(template?.ccEmail)
-  const combined = [...pjoEmails, ...hrEmails, ...templateCcEmails]
-
-  return Array.from(new Set(combined)).filter((email): email is string => Boolean(email && email.includes('@')))
-}
 
 async function notifyAttendancePermissionSubmitted(input: {
   employeeName: string
