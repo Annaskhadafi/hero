@@ -69,7 +69,7 @@ function splitEmails(value?: string | string[] | null) {
   )
 }
 
-async function getActiveTemplate(templateCode?: string | null) {
+export async function getActiveTemplate(templateCode?: string | null) {
   if (!templateCode?.trim()) {
     return null
   }
