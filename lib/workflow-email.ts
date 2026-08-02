@@ -54,7 +54,7 @@ function renderTemplate(text: string, variables: TemplateVariables) {
   })
 }
 
-function splitEmails(value?: string | string[] | null) {
+export function splitEmails(value?: string | string[] | null) {
   if (Array.isArray(value)) {
     return uniqueEmails(value)
   }
