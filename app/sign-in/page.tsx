@@ -44,12 +44,12 @@ function SignInContent() {
     const searchParams = useSearchParams();
 
     useEffect(() => {
-        if (session?.user) {
+        if (session?.user && !isLoading) {
             // Full page navigation to guarantee the fresh session cookie
             // is present on the next server render.
             window.location.href = getClientPostLoginPath();
         }
-    }, [session]);
+    }, [session, isLoading]);
 
     useEffect(() => {
         if (searchParams.get("reset") === "success") {
@@ -76,7 +76,7 @@ function SignInContent() {
                 });
                 const data = await res.json();
                 if (!res.ok || !data.email) {
-                    setError("SN tidak ditemukan. Pastikan SN karyawan benar.");
+                    setError(data.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
                     setIsLoading(false);
                     return;
                 }
@@ -89,20 +89,19 @@ function SignInContent() {
                 email: loginEmail,
                 password,
                 rememberMe,
-                callbackURL,
             });
 
             if (result.error) {
                 setError(result.error.message || "Sign in failed");
+                setIsLoading(false);
                 return;
             }
 
             // Use full page navigation so the new session cookie is guaranteed
             // to be present on the next server render.
             window.location.href = callbackURL;
-        } catch {
-            setError("An unexpected error occurred");
-        } finally {
+        } catch (err: any) {
+            setError(err?.message || "An unexpected error occurred during sign in");
             setIsLoading(false);
         }
     };
@@ -138,7 +137,7 @@ function SignInContent() {
         }
     };
 
-    const isDisabled = isLoading || isPending || magicLinkLoading;
+    const isDisabled = isLoading || magicLinkLoading;
 
     return (
         <>
