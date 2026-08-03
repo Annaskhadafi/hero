@@ -8,17 +8,17 @@ function normalizeOrigin(value?: string | null) {
         return undefined;
     }
 
-    const trimmedValue = value.trim();
+    let trimmedValue = value.trim();
 
     if (!trimmedValue) {
         return undefined;
     }
 
-    if (trimmedValue.startsWith("http://") || trimmedValue.startsWith("https://")) {
-        return trimmedValue.replace(/\/+$/, "");
+    if (!trimmedValue.startsWith("http://") && !trimmedValue.startsWith("https://")) {
+        trimmedValue = `https://${trimmedValue}`;
     }
 
-    return `https://${trimmedValue}`.replace(/\/+$/, "");
+    return trimmedValue.replace(/\/+$/, "").replace(/\/api\/auth$/i, "");
 }
 
 function getConfiguredAuthOrigins() {

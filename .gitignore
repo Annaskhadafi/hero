@@ -48,6 +48,7 @@ next-env.d.ts
 # database dumps (may contain credentials/data)
 *.sql
 !drizzle/*.sql
+/backups/
 
 # local agent/generated artifacts
 *.backup
