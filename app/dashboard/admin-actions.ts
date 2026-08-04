@@ -6302,6 +6302,7 @@ export async function manageSecurityUserAction(
     })
 
     if (payload.intent === 'create-user') {
+      const overwriteExisting = formData.get('overwriteExisting') === 'true'
       const fullName = payload.fullName?.trim() ?? ''
       const email = normalizeEmail(payload.email ?? '')
       const employeeSn = payload.employeeSn?.trim() ?? ''
