@@ -68,7 +68,7 @@ function QuotationRowActions({ row, onDeleted }: { row: QuotationSummaryRow; onD
   return (
     <div className="flex gap-2">
       <QuotationPreviewDialog quotationId={row.id} />
-      <Link href={`/dashboard/360-service/quotations/${row.id}?download=true`}>
+      <Link href={`/dashboard/360-service/quotations/${row.id}?download=true`} target="_blank">
         <Button variant="outline" size="icon" className="h-8 w-8" title="Download PDF">
           <Download className="h-4 w-4 text-teal-600" />
         </Button>

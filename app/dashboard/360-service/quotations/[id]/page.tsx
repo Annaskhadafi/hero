@@ -273,7 +273,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 alt="Letterhead" 
                 fill 
                 className="object-cover"
-                priority={pageIndex === 0}
+                priority={true}
               />
             </div>
 
@@ -588,6 +588,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 alt="Letterhead" 
                 fill 
                 className="object-cover"
+                priority={true}
               />
             </div>
             
@@ -681,6 +682,7 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                 alt="Letterhead"
                 fill
                 className="object-cover"
+                priority={true}
               />
             </div>
 

@@ -20,7 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { BarChart3, Search, ArrowUpDown, Download, FileSpreadsheet } from 'lucide-react'
-import { getSapRevenue } from '@/app/actions/central-service-forecast'
+import { getSapInvoices } from '@/app/actions/central-service-forecast'
 import html2canvas from 'html2canvas-pro'
 import * as XLSX from 'xlsx'
 import {
@@ -208,6 +208,21 @@ const CAT_COLORS: Record<string, string> = {
   Accessories: 'bg-gray-100 text-gray-700',
 }
 
+function findCurrentMonthPeriodId(periods: any[]): string {
+  if (!periods || periods.length === 0) return ''
+  const now = new Date()
+  const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+  const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const matched = periods.find((p) => {
+    const val = (p.monthYear || '').trim().toLowerCase()
+    return val === currentFull || val === currentShort || val === currentIso
+  })
+
+  return matched ? matched.id.toString() : periods[0].id.toString()
+}
+
 export function ReportClientPage({
   periods,
   dailyItems,
@@ -225,6 +240,13 @@ export function ReportClientPage({
   exchangeRate: string
 }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || '')
+
+  useEffect(() => {
+    const currentId = findCurrentMonthPeriodId(periods)
+    if (currentId) {
+      setSelectedPeriodId(currentId)
+    }
+  }, [periods])
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<'picSales' | 'customer' | 'actual'>('picSales')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
@@ -254,14 +276,43 @@ export function ReportClientPage({
     [filtered]
   )
 
+  const [sapInvoices, setSapInvoices] = useState<any[]>([])
+
+  const isSapCancelledRow = (r: any) =>
+    (r.c || '').toString().trim().toUpperCase() === 'X' && (r.cancelled || '').toString().trim() !== ''
+
   useEffect(() => {
     const period = periods.find((p) => p.id.toString() === selectedPeriodId)
     if (!period) return
     setIsLoadingSap(true)
-    getSapRevenue(period.monthYear)
-      .then(setSapRevenue)
+    getSapInvoices(period.monthYear)
+      .then(setSapInvoices)
       .finally(() => setIsLoadingSap(false))
   }, [selectedPeriodId, periods])
+
+  const sapTotals = useMemo(() => {
+    const validRows = sapInvoices.filter((r: any) => !isSapCancelledRow(r))
+    const totalIdr = validRows.reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0)
+    const totalUsd = validRows.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
+
+    const getCat = (typeSubstring: string) => {
+      const catRows = validRows.filter((r: any) =>
+        (r.revType || '').toLowerCase().trim().includes(typeSubstring)
+      )
+      return {
+        idr: catRows.reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0),
+        usd: catRows.reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0),
+      }
+    }
+
+    return {
+      totalIdr,
+      totalUsd,
+      service: getCat('service'),
+      repair: getCat('repair'),
+      retread: getCat('retread'),
+    }
+  }, [sapInvoices])
 
   const totals = useMemo(() => {
     let serviceFc = 0,
@@ -312,10 +363,10 @@ export function ReportClientPage({
   const totalScore = useMemo(
     () => ({
       forecast: totals.osFc + totals.serviceFc + totals.repairFc + totals.retreadFc,
-      actual: sapRevenue.service.idr + sapRevenue.repair.idr + sapRevenue.retread.idr,
-      actualUsd: sapRevenue.service.usd + sapRevenue.repair.usd + sapRevenue.retread.usd,
+      actual: sapTotals.totalIdr,
+      actualUsd: sapTotals.totalUsd,
     }),
-    [totals, sapRevenue]
+    [totals, sapTotals]
   )
 
   const buildGroups = (source: any[]): CustomerGroup[] => {
@@ -661,22 +712,22 @@ export function ReportClientPage({
         'Service',
         totals.serviceFc,
         totals.serviceFc / rate,
-        sapRevenue.service.idr,
-        sapRevenue.service.usd,
+        sapTotals.service.idr,
+        sapTotals.service.usd,
       ],
       [
         'Repair',
         totals.repairFc,
         totals.repairFc / rate,
-        sapRevenue.repair.idr,
-        sapRevenue.repair.usd,
+        sapTotals.repair.idr,
+        sapTotals.repair.usd,
       ],
       [
         'Retread',
         totals.retreadFc,
         totals.retreadFc / rate,
-        sapRevenue.retread.idr,
-        sapRevenue.retread.usd,
+        sapTotals.retread.idr,
+        sapTotals.retread.usd,
       ],
     ]
     const wsRevenue = XLSX.utils.aoa_to_sheet(revenueRows)
@@ -753,8 +804,8 @@ export function ReportClientPage({
             label="Forecast Service"
             forecast={totals.serviceFc}
             forecastUsd={totals.serviceFc / rate}
-            actual={sapRevenue.service.idr}
-            actualUsd={sapRevenue.service.usd}
+            actual={sapTotals.service.idr}
+            actualUsd={sapTotals.service.usd}
             colorClass="bg-blue-500"
             textClass="text-blue-700"
           />
@@ -762,8 +813,8 @@ export function ReportClientPage({
             label="Forecast Repair"
             forecast={totals.repairFc}
             forecastUsd={totals.repairFc / rate}
-            actual={sapRevenue.repair.idr}
-            actualUsd={sapRevenue.repair.usd}
+            actual={sapTotals.repair.idr}
+            actualUsd={sapTotals.repair.usd}
             colorClass="bg-amber-500"
             textClass="text-amber-700"
           />
@@ -771,8 +822,8 @@ export function ReportClientPage({
             label="Forecast Retread"
             forecast={totals.retreadFc}
             forecastUsd={totals.retreadFc / rate}
-            actual={sapRevenue.retread.idr}
-            actualUsd={sapRevenue.retread.usd}
+            actual={sapTotals.retread.idr}
+            actualUsd={sapTotals.retread.usd}
             colorClass="bg-emerald-500"
             textClass="text-emerald-700"
           />

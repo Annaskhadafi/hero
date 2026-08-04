@@ -113,10 +113,32 @@ export function PrintButton() {
     }
   }, [])
 
+  const waitForImagesToLoad = async (container: Element) => {
+    const images = Array.from(container.querySelectorAll('img'))
+    await Promise.all(
+      images.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) {
+              resolve()
+            } else {
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+            }
+          })
+      )
+    )
+  }
+
   const handleDownload = async () => {
     setIsGenerating(true)
     try {
-      await document.fonts?.ready
+      if (document.fonts?.ready) {
+        await Promise.race([
+          document.fonts.ready,
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ])
+      }
       balanceQuotationPages()
       balanceBastPages()
       const pages = document.querySelectorAll('.pdf-wrapper')
@@ -133,21 +155,16 @@ export function PrintButton() {
         format: 'a4'
       })
 
-      // We need to briefly modify styles so html2canvas captures it perfectly 
-      // without shadows or border-radius that might be there for browser preview.
-      // But currently, pdf-wrapper has no border-radius. 
-      // However, we want to make sure it captures the 210x297mm size accurately.
-
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i] as HTMLElement
-        
-        // Hide scrollbars temporarily for capture if any, though overflow is hidden
-        const originalStyle = page.style.cssText
+        await waitForImagesToLoad(page)
         
         const canvas = await html2canvas(page, {
           scale: 2, 
           logging: false,
-          // ignore styling that might cause issues
+          useCORS: true,
+          allowTaint: true,
+          imageTimeout: 15000,
           onclone: (clonedDoc) => {
             const clonedPage = clonedDoc.querySelectorAll('.pdf-wrapper')[i] as HTMLElement
             if (clonedPage) {
@@ -166,7 +183,6 @@ export function PrintButton() {
         pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
       
-      // Get reference number if available from the page or use document title
       let fileName = "Quotation.pdf"
       if (document.title && document.title !== "Quotation Preview") {
         fileName = `${document.title}.pdf`

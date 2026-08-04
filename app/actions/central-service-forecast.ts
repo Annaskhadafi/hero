@@ -10,11 +10,38 @@ import {
 import { eq, desc, and, sql, ilike, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
+export async function syncAllCarryOverItems() {
+  try {
+    const carryOverItems = await db
+      .select()
+      .from(centralServiceForecastItems)
+      .where(sql`LOWER(TRIM(${centralServiceForecastItems.status})) = 'carry over'`)
+
+    for (const item of carryOverItems) {
+      await handleCarryOverPropagation(db, item)
+    }
+  } catch (err) {
+    console.error('Error syncing carry over items:', err)
+  }
+}
+
 export async function getForecastPeriods() {
-  return await db
+  await syncAllCarryOverItems()
+  const allPeriods = await db
     .select()
     .from(centralServiceForecastPeriods)
     .orderBy(desc(centralServiceForecastPeriods.monthYear))
+
+  const uniquePeriods: typeof allPeriods = []
+  const seen = new Set<string>()
+  for (const p of allPeriods) {
+    const key = (p.monthYear || '').trim().toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      uniquePeriods.push(p)
+    }
+  }
+  return uniquePeriods
 }
 
 export async function getSalesEmployees() {
@@ -106,31 +133,284 @@ export async function getWaitingForecastItems() {
 }
 
 export async function getDailyForecastItems() {
-  const items = await db
-    .select({
-      item: centralServiceForecastItems,
-      period: centralServiceForecastPeriods,
-    })
-    .from(centralServiceForecastItems)
-    .innerJoin(
-      centralServiceForecastPeriods,
-      eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
-    )
-    .orderBy(desc(centralServiceForecastPeriods.monthYear))
+  await syncAllCarryOverItems()
+  const [items, allActuals, periods] = await Promise.all([
+    db
+      .select({
+        item: centralServiceForecastItems,
+        period: centralServiceForecastPeriods,
+      })
+      .from(centralServiceForecastItems)
+      .innerJoin(
+        centralServiceForecastPeriods,
+        eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
+      )
+      .orderBy(desc(centralServiceForecastPeriods.monthYear)),
+    db
+      .select()
+      .from(centralServiceForecastActuals)
+      .orderBy(desc(centralServiceForecastActuals.updateDate)),
+    db.select().from(centralServiceForecastPeriods),
+  ])
 
-  if (items.length === 0) return []
+  const periodMap = new Map(periods.map((p) => [p.id, p]))
 
-  const itemIds = items.map((i) => i.item.id)
-  const actuals = await db
-    .select()
-    .from(centralServiceForecastActuals)
-    .where(inArray(centralServiceForecastActuals.forecastItemId, itemIds))
-    .orderBy(desc(centralServiceForecastActuals.updateDate))
+  const actualsByItemId = new Map<number, typeof allActuals>()
+  const unplannedActuals: typeof allActuals = []
 
-  return items.map((i) => ({
+  allActuals.forEach((a) => {
+    if (a.forecastItemId) {
+      const list = actualsByItemId.get(a.forecastItemId) || []
+      list.push(a)
+      actualsByItemId.set(a.forecastItemId, list)
+    } else {
+      unplannedActuals.push(a)
+    }
+  })
+
+  const result: any[] = items.map((i) => ({
     ...i,
-    actuals: actuals.filter((a) => a.forecastItemId === i.item.id),
+    actuals: actualsByItemId.get(i.item.id) || [],
   }))
+
+  const unplannedGrouped = new Map<string, typeof allActuals>()
+  unplannedActuals.forEach((a) => {
+    const key = `${a.customer || 'Unknown'}_${a.periodId || 0}`
+    const list = unplannedGrouped.get(key) || []
+    list.push(a)
+    unplannedGrouped.set(key, list)
+  })
+
+  let syntheticIdCounter = -1
+  unplannedGrouped.forEach((actualList, _key) => {
+    const first = actualList[0]
+    const period = periodMap.get(first.periodId || 0) || {
+      id: first.periodId || 0,
+      monthYear: 'Unknown',
+    }
+    result.push({
+      item: {
+        id: syntheticIdCounter--,
+        periodId: first.periodId,
+        customer: first.customer || 'Unplanned Customer',
+        picSales: 'Unplanned',
+        isProductAccessories: false,
+        accessoriesAmountIdr: '0',
+        osInvoicePrevMonth: '0',
+        repairForecast: '0',
+        retreadForecast: '0',
+        serviceForecast: '0',
+        status: 'Unplanned SAP',
+        remark: 'Unplanned Actual',
+        isUnplanned: true,
+      },
+      period,
+      actuals: actualList,
+    })
+  })
+
+  return result
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+]
+
+const SHORT_MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+]
+
+export async function getNextMonthYear(monthYearStr: string): Promise<string> {
+  if (!monthYearStr) return 'Next Month'
+  const trimmed = monthYearStr.trim()
+
+  if (/^\d{4}-\d{2}$/.test(trimmed)) {
+    const [yearStr, monthStr] = trimmed.split('-')
+    let year = parseInt(yearStr, 10)
+    let month = parseInt(monthStr, 10)
+    month += 1
+    if (month > 12) {
+      month = 1
+      year += 1
+    }
+    return `${year}-${String(month).padStart(2, '0')}`
+  }
+
+  const parts = trimmed.split(/\s+/)
+  if (parts.length === 2) {
+    const mStr = parts[0].toLowerCase()
+    let monthIndex = MONTH_NAMES.findIndex((m) => m.toLowerCase() === mStr)
+    let isShort = false
+    if (monthIndex === -1) {
+      monthIndex = SHORT_MONTH_NAMES.findIndex((m) => m.toLowerCase() === mStr)
+      if (monthIndex !== -1) isShort = true
+    }
+
+    if (monthIndex !== -1) {
+      let year = parseInt(parts[1], 10)
+      if (!isNaN(year)) {
+        let nextIndex = monthIndex + 1
+        if (nextIndex >= 12) {
+          nextIndex = 0
+          year += 1
+        }
+        const nameList = isShort ? SHORT_MONTH_NAMES : MONTH_NAMES
+        return `${nameList[nextIndex]} ${year}`
+      }
+    }
+  }
+
+  return `${trimmed} (Next)`
+}
+
+async function handleCarryOverPropagation(tx: any, item: any) {
+  if (!item?.periodId) return
+
+  const [period] = await tx
+    .select()
+    .from(centralServiceForecastPeriods)
+    .where(eq(centralServiceForecastPeriods.id, Number(item.periodId)))
+    .limit(1)
+
+  if (!period) return
+
+  const nextMonthYear = await getNextMonthYear(period.monthYear)
+
+  let [nextPeriod] = await tx
+    .select()
+    .from(centralServiceForecastPeriods)
+    .where(sql`LOWER(TRIM(${centralServiceForecastPeriods.monthYear})) = LOWER(TRIM(${nextMonthYear}))`)
+    .limit(1)
+
+  if (!nextPeriod) {
+    try {
+      const inserted = await tx
+        .insert(centralServiceForecastPeriods)
+        .values({ monthYear: nextMonthYear, status: 'Draft' })
+        .onConflictDoNothing()
+        .returning()
+      nextPeriod = inserted[0]
+    } catch (_e) {
+      // Ignore duplicate insert error
+    }
+  }
+
+  if (!nextPeriod?.id) {
+    const [fetched] = await tx
+      .select()
+      .from(centralServiceForecastPeriods)
+      .where(sql`LOWER(TRIM(${centralServiceForecastPeriods.monthYear})) = LOWER(TRIM(${nextMonthYear}))`)
+      .limit(1)
+    nextPeriod = fetched
+  }
+
+  if (!nextPeriod?.id) return
+
+  let actualRepair = 0
+  let actualRetread = 0
+  let actualService = 0
+  let actualOs = 0
+  let actualAccIdr = 0
+  let actualAccUsd = 0
+
+  if (item.id && Number(item.id) > 0) {
+    const actuals = await tx
+      .select()
+      .from(centralServiceForecastActuals)
+      .where(eq(centralServiceForecastActuals.forecastItemId, Number(item.id)))
+
+    actuals.forEach((a: any) => {
+      if ((a.itemStatus || '').trim().toLowerCase() === 'cancel') return
+      const amtIdr = Number(a.amountIdr) || 0
+      const amtUsd = Number(a.amountUsd) || 0
+      if (a.category === 'Repair') actualRepair += amtIdr
+      else if (a.category === 'Retread') actualRetread += amtIdr
+      else if (a.category === 'Service') actualService += amtIdr
+      else if (a.category === 'Outstanding') actualOs += amtIdr
+      else if (a.category === 'Accessories') {
+        actualAccIdr += amtIdr
+        actualAccUsd += amtUsd
+      }
+    })
+  }
+
+  const origOs = Number(item.osInvoicePrevMonth || 0)
+  const origRepair = Number(item.repairForecast || 0)
+  const origRetread = Number(item.retreadForecast || 0)
+  const origService = Number(item.serviceForecast || 0)
+  const origAccIdr = Number(item.accessoriesAmountIdr || 0)
+  const origAccUsd = Number(item.accessoriesAmountUsd || 0)
+
+  const sisaOs = Math.max(0, origOs - actualOs)
+  const sisaRepair = Math.max(0, origRepair - actualRepair)
+  const sisaRetread = Math.max(0, origRetread - actualRetread)
+  const sisaService = Math.max(0, origService - actualService)
+  const sisaAccIdr = Math.max(0, origAccIdr - actualAccIdr)
+  const sisaAccUsd = Math.max(0, origAccUsd - actualAccUsd)
+
+  const totalSisaIdr = sisaOs + sisaRepair + sisaRetread + sisaService
+  const carryOverRemark = `Carry Over from ${period.monthYear}`
+
+  const existingNextItems = await tx
+    .select()
+    .from(centralServiceForecastItems)
+    .where(
+      and(
+        eq(centralServiceForecastItems.periodId, nextPeriod.id),
+        eq(centralServiceForecastItems.customer, item.customer),
+        eq(centralServiceForecastItems.isProductAccessories, Boolean(item.isProductAccessories))
+      )
+    )
+    .limit(1)
+
+  if (existingNextItems.length > 0) {
+    const existing = existingNextItems[0]
+    await tx
+      .update(centralServiceForecastItems)
+      .set({
+        picSales: item.picSales || existing.picSales,
+        osInvoicePrevMonth: sisaOs.toString(),
+        repairForecast: sisaRepair.toString(),
+        retreadForecast: sisaRetread.toString(),
+        serviceForecast: sisaService.toString(),
+        totalForecastIdr: totalSisaIdr.toString(),
+        remainingRepair: sisaRepair.toString(),
+        remainingRetread: sisaRetread.toString(),
+        remainingService: sisaService.toString(),
+        remainingTotalIdr: totalSisaIdr.toString(),
+        accessoriesAmountIdr: sisaAccIdr.toString(),
+        accessoriesAmountUsd: sisaAccUsd.toString(),
+        remainingAccessoriesIdr: sisaAccIdr.toString(),
+        remainingAccessoriesUsd: sisaAccUsd.toString(),
+        remark: carryOverRemark,
+        updatedAt: new Date(),
+      })
+      .where(eq(centralServiceForecastItems.id, existing.id))
+  } else {
+    await tx.insert(centralServiceForecastItems).values({
+      periodId: nextPeriod.id,
+      customer: item.customer,
+      picSales: item.picSales || '',
+      isProductAccessories: Boolean(item.isProductAccessories),
+      osInvoicePrevMonth: sisaOs.toString(),
+      repairForecast: sisaRepair.toString(),
+      retreadForecast: sisaRetread.toString(),
+      serviceForecast: sisaService.toString(),
+      totalForecastIdr: totalSisaIdr.toString(),
+      remainingRepair: sisaRepair.toString(),
+      remainingRetread: sisaRetread.toString(),
+      remainingService: sisaService.toString(),
+      remainingTotalIdr: totalSisaIdr.toString(),
+      accessoriesAmountIdr: sisaAccIdr.toString(),
+      accessoriesAmountUsd: sisaAccUsd.toString(),
+      remainingAccessoriesIdr: sisaAccIdr.toString(),
+      remainingAccessoriesUsd: sisaAccUsd.toString(),
+      status: 'Waiting',
+      remark: carryOverRemark,
+    })
+  }
 }
 
 export async function upsertForecastItem(data: any) {
@@ -145,8 +425,14 @@ export async function upsertForecastItem(data: any) {
   } else {
     await db.insert(centralServiceForecastItems).values(data)
   }
+
+  if (data.status?.trim().toLowerCase() === 'carry over') {
+    await handleCarryOverPropagation(db, data)
+  }
+
   revalidatePath('/dashboard/central-service/forecast/monthly')
   revalidatePath('/dashboard/central-service/forecast/daily')
+  revalidatePath('/dashboard/central-service/forecast/report')
 }
 
 export async function deleteForecastItem(id: number) {
@@ -184,10 +470,16 @@ export async function updateForecastItemStatus(
       actionRemark: remark,
       actionById: userId,
     })
+
+    // 3. Automatic Carry Over to next month
+    if (newStatus.trim().toLowerCase() === 'carry over') {
+      await handleCarryOverPropagation(tx, { ...item, status: newStatus, remark })
+    }
   })
 
   revalidatePath('/dashboard/central-service/forecast/daily')
   revalidatePath('/dashboard/central-service/forecast/monthly')
+  revalidatePath('/dashboard/central-service/forecast/report')
 }
 
 async function recalculateItemRemaining(tx: any, itemId: number) {

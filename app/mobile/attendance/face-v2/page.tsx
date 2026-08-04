@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { getAttendancePageData } from '@/app/actions/attendance'
 import { FaceAttendanceV2Client } from './face-v2-client'
 
+export const dynamic = 'force-dynamic'
+
 export default async function FaceAttendanceV2Page() {
   const data = await getAttendancePageData()
 

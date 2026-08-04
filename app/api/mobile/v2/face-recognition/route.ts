@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { eq, desc } from 'drizzle-orm'
@@ -284,6 +285,15 @@ export async function POST(request: NextRequest) {
         source: 'face-v2',
       })
       .returning()
+
+    try {
+      revalidatePath('/mobile/attendance')
+      revalidatePath('/mobile/attendance/face-v2')
+      revalidatePath('/dashboard/attendance')
+      revalidatePath('/dashboard/attendance/records')
+    } catch (e) {
+      console.warn('[face-recognition-v2] Path revalidation warning:', e)
+    }
 
     // 13. Background photo upload & timesheet sync (non-blocking for ultra-fast response)
     void (async () => {

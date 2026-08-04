@@ -60,6 +60,21 @@ const displayMonthYear = (val: string) => {
   return val
 }
 
+function findCurrentMonthPeriodId(periods: any[]): string {
+  if (!periods || periods.length === 0) return ''
+  const now = new Date()
+  const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+  const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const matched = periods.find((p) => {
+    const val = (p.monthYear || '').trim().toLowerCase()
+    return val === currentFull || val === currentShort || val === currentIso
+  })
+
+  return matched ? matched.id.toString() : periods[0].id.toString()
+}
+
 export function MonthlyClientPage({
   initialPeriods,
   salesEmployees = [],
@@ -68,7 +83,9 @@ export function MonthlyClientPage({
   salesEmployees?: any[]
 }) {
   const [periods, setPeriods] = useState(initialPeriods)
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>('')
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
+    initialPeriods.length > 0 ? initialPeriods[0].id.toString() : ''
+  )
   const [items, setItems] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [filterQuery, setFilterQuery] = useState('')
@@ -104,8 +121,8 @@ export function MonthlyClientPage({
   const [formsData, setFormsData] = useState<any[]>([defaultItem])
 
   useEffect(() => {
-    if (periods.length > 0 && !selectedPeriodId) {
-      setSelectedPeriodId(periods[0].id.toString())
+    if (periods.length > 0) {
+      setSelectedPeriodId(findCurrentMonthPeriodId(periods))
     }
   }, [periods])
 

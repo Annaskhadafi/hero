@@ -37,12 +37,27 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
     maximumFractionDigits: 0,
   }).format(val)
+}
+
+const formatSisaCurrency = (val: number) => {
+  if (val < 0) {
+    const absVal = Math.abs(val)
+    const formatted = new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0,
+    }).format(absVal)
+    return `+${formatted}`
+  }
+  return formatCurrency(val)
 }
 import {
   Calendar,
@@ -75,6 +90,21 @@ const getForecastAmountIdr = (item: any) => {
 const isCarryOverItem = (item: any) =>
   (item?.status || '').trim().toLowerCase() === 'carry over'
 
+function findCurrentMonthPeriodId(periods: any[]): string {
+  if (!periods || periods.length === 0) return ''
+  const now = new Date()
+  const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+  const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const matched = periods.find((p) => {
+    const val = (p.monthYear || '').trim().toLowerCase()
+    return val === currentFull || val === currentShort || val === currentIso
+  })
+
+  return matched ? matched.id.toString() : periods[0].id.toString()
+}
+
 export function DailyClientPage({
   initialItems,
   periods,
@@ -93,6 +123,13 @@ export function DailyClientPage({
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
     periods.length > 0 ? periods[0].id.toString() : ''
   )
+
+  useEffect(() => {
+    const currentId = findCurrentMonthPeriodId(periods)
+    if (currentId) {
+      setSelectedPeriodId(currentId)
+    }
+  }, [periods])
   const [customerFilter, setCustomerFilter] = useState('')
   const [activeTab, setActiveTab] = useState<'forecast' | 'sap'>('forecast')
   const [sapInvoices, setSapInvoices] = useState(initialSapInvoices)
@@ -752,11 +789,13 @@ export function DailyClientPage({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span className="text-orange-600">{formatCurrency(totalRemaining)}</span>
+              <span className={totalRemaining < 0 ? 'text-emerald-600' : 'text-orange-600'}>
+                {formatSisaCurrency(totalRemaining)}
+              </span>
               <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-amber-600">
-                $
-                {(totalRemaining / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+              <span className={totalRemaining < 0 ? 'text-emerald-600' : 'text-amber-600'}>
+                {totalRemaining < 0 ? '+' : ''}$
+                {(Math.abs(totalRemaining) / (Number(globalRate) || 15000)).toLocaleString('en-US', {
                   maximumFractionDigits: 2,
                 })}
               </span>
@@ -883,27 +922,43 @@ export function DailyClientPage({
                           <TableCell className="text-right font-medium text-green-600">
                             {formatCurrency(getForecastActual(wrapper).actual)}
                           </TableCell>
-                          <TableCell className="text-right font-bold text-orange-600">
-                            {formatCurrency(
+                          <TableCell
+                            className={cn(
+                              'text-right font-bold',
+                              getForecastActual(wrapper).forecast - getForecastActual(wrapper).actual < 0
+                                ? 'text-emerald-600'
+                                : 'text-orange-600'
+                            )}
+                          >
+                            {formatSisaCurrency(
                               getForecastActual(wrapper).forecast -
                                 getForecastActual(wrapper).actual
                             )}
                           </TableCell>
                           <TableCell>
-                            <span className="rounded-md bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                            <span
+                              className={cn(
+                                'rounded-md px-2 py-1 text-xs font-medium',
+                                wrapper.item.isUnplanned
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                              )}
+                            >
                               {wrapper.item.status === 'Waiting' ? 'Pending' : wrapper.item.status}
                             </span>
                           </TableCell>
                           <TableCell>{wrapper.item.remark}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openStatusDialog(wrapper)}
-                              >
-                                <RefreshCw className="mr-1 h-4 w-4" /> Status Forecast
-                              </Button>
+                              {!wrapper.item.isUnplanned && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openStatusDialog(wrapper)}
+                                >
+                                  <RefreshCw className="mr-1 h-4 w-4" /> Status Forecast
+                                </Button>
+                              )}
                               <Button size="sm" onClick={() => openActualsDialog(wrapper)}>
                                 <FileText className="mr-1 h-4 w-4" /> SAP Actual
                               </Button>

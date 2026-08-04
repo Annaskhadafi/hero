@@ -197,6 +197,10 @@ export function FaceAttendanceV2Client({
   const [selectedShift, setSelectedShift] = useState<string>(activeShifts[0]?.value ?? 'day')
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
+  useEffect(() => {
+    setLogs(todayLogs)
+  }, [todayLogs])
+
   // ─── REVERSE GEOCODING FOR REAL LOCATION NAME ───
   const [locationName, setLocationName] = useState<string>('Memuat nama lokasi...')
 
