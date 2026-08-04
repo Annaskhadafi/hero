@@ -14,7 +14,7 @@ export const metadata = {
 
 export default async function UnitMasterPage({ searchParams }: PageProps) {
   const employee = await getCurrentEmployee()
-  if (!employee) redirect('/login')
+  if (!employee) redirect('/sign-in')
 
   const params = await searchParams
   const siteId = params.siteId ? parseInt(params.siteId, 10) : employee.siteId

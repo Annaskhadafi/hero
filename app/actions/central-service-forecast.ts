@@ -308,49 +308,14 @@ async function handleCarryOverPropagation(tx: any, item: any) {
 
   if (!nextPeriod?.id) return
 
-  let actualRepair = 0
-  let actualRetread = 0
-  let actualService = 0
-  let actualOs = 0
-  let actualAccIdr = 0
-  let actualAccUsd = 0
+  const os = Number(item.osInvoicePrevMonth || 0)
+  const repair = Number(item.repairForecast || 0)
+  const retread = Number(item.retreadForecast || 0)
+  const service = Number(item.serviceForecast || 0)
+  const totalIdr = os + repair + retread + service
 
-  if (item.id && Number(item.id) > 0) {
-    const actuals = await tx
-      .select()
-      .from(centralServiceForecastActuals)
-      .where(eq(centralServiceForecastActuals.forecastItemId, Number(item.id)))
-
-    actuals.forEach((a: any) => {
-      if ((a.itemStatus || '').trim().toLowerCase() === 'cancel') return
-      const amtIdr = Number(a.amountIdr) || 0
-      const amtUsd = Number(a.amountUsd) || 0
-      if (a.category === 'Repair') actualRepair += amtIdr
-      else if (a.category === 'Retread') actualRetread += amtIdr
-      else if (a.category === 'Service') actualService += amtIdr
-      else if (a.category === 'Outstanding') actualOs += amtIdr
-      else if (a.category === 'Accessories') {
-        actualAccIdr += amtIdr
-        actualAccUsd += amtUsd
-      }
-    })
-  }
-
-  const origOs = Number(item.osInvoicePrevMonth || 0)
-  const origRepair = Number(item.repairForecast || 0)
-  const origRetread = Number(item.retreadForecast || 0)
-  const origService = Number(item.serviceForecast || 0)
-  const origAccIdr = Number(item.accessoriesAmountIdr || 0)
-  const origAccUsd = Number(item.accessoriesAmountUsd || 0)
-
-  const sisaOs = Math.max(0, origOs - actualOs)
-  const sisaRepair = Math.max(0, origRepair - actualRepair)
-  const sisaRetread = Math.max(0, origRetread - actualRetread)
-  const sisaService = Math.max(0, origService - actualService)
-  const sisaAccIdr = Math.max(0, origAccIdr - actualAccIdr)
-  const sisaAccUsd = Math.max(0, origAccUsd - actualAccUsd)
-
-  const totalSisaIdr = sisaOs + sisaRepair + sisaRetread + sisaService
+  const accIdr = (item.accessoriesAmountIdr || '0').toString()
+  const accUsd = (item.accessoriesAmountUsd || '0').toString()
   const carryOverRemark = `Carry Over from ${period.monthYear}`
 
   const existingNextItems = await tx
@@ -366,47 +331,27 @@ async function handleCarryOverPropagation(tx: any, item: any) {
     .limit(1)
 
   if (existingNextItems.length > 0) {
-    const existing = existingNextItems[0]
-    await tx
-      .update(centralServiceForecastItems)
-      .set({
-        picSales: item.picSales || existing.picSales,
-        osInvoicePrevMonth: sisaOs.toString(),
-        repairForecast: sisaRepair.toString(),
-        retreadForecast: sisaRetread.toString(),
-        serviceForecast: sisaService.toString(),
-        totalForecastIdr: totalSisaIdr.toString(),
-        remainingRepair: sisaRepair.toString(),
-        remainingRetread: sisaRetread.toString(),
-        remainingService: sisaService.toString(),
-        remainingTotalIdr: totalSisaIdr.toString(),
-        accessoriesAmountIdr: sisaAccIdr.toString(),
-        accessoriesAmountUsd: sisaAccUsd.toString(),
-        remainingAccessoriesIdr: sisaAccIdr.toString(),
-        remainingAccessoriesUsd: sisaAccUsd.toString(),
-        remark: carryOverRemark,
-        updatedAt: new Date(),
-      })
-      .where(eq(centralServiceForecastItems.id, existing.id))
+    // Carry over item already exists in next month; do not overwrite user edits
+    return
   } else {
     await tx.insert(centralServiceForecastItems).values({
       periodId: nextPeriod.id,
       customer: item.customer,
       picSales: item.picSales || '',
       isProductAccessories: Boolean(item.isProductAccessories),
-      osInvoicePrevMonth: sisaOs.toString(),
-      repairForecast: sisaRepair.toString(),
-      retreadForecast: sisaRetread.toString(),
-      serviceForecast: sisaService.toString(),
-      totalForecastIdr: totalSisaIdr.toString(),
-      remainingRepair: sisaRepair.toString(),
-      remainingRetread: sisaRetread.toString(),
-      remainingService: sisaService.toString(),
-      remainingTotalIdr: totalSisaIdr.toString(),
-      accessoriesAmountIdr: sisaAccIdr.toString(),
-      accessoriesAmountUsd: sisaAccUsd.toString(),
-      remainingAccessoriesIdr: sisaAccIdr.toString(),
-      remainingAccessoriesUsd: sisaAccUsd.toString(),
+      osInvoicePrevMonth: os.toString(),
+      repairForecast: repair.toString(),
+      retreadForecast: retread.toString(),
+      serviceForecast: service.toString(),
+      totalForecastIdr: totalIdr.toString(),
+      remainingRepair: repair.toString(),
+      remainingRetread: retread.toString(),
+      remainingService: service.toString(),
+      remainingTotalIdr: totalIdr.toString(),
+      accessoriesAmountIdr: accIdr,
+      accessoriesAmountUsd: accUsd,
+      remainingAccessoriesIdr: accIdr,
+      remainingAccessoriesUsd: accUsd,
       status: 'Waiting',
       remark: carryOverRemark,
     })

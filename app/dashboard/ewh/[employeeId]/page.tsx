@@ -18,7 +18,7 @@ export const metadata = {
 
 export default async function EwhEmployeeDetailPage({ params, searchParams }: PageProps) {
   const current = await getCurrentEmployee()
-  if (!current) redirect('/login')
+  if (!current) redirect('/sign-in')
 
   const { employeeId } = await params
   const { period } = await searchParams
