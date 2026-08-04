@@ -1,5 +1,5 @@
 import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
-import type { OvertimeCalculationResult, OvertimeInterval } from '@/lib/timesheet/overtime-policy'
+import { type OvertimeCalculationResult, type OvertimeInterval } from '@/lib/timesheet/overtime-policy'
 import {
   drawPdfSignatures,
   embedCustomLogo,
@@ -77,15 +77,7 @@ function getDayName(period: string, day: number) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date)
 }
 
-function calcOvertimeHours(clockIn: string, clockOut: string, baseHours = 5): number {
-  if (!clockIn || !clockOut) return 0
-  const [inH, inM] = clockIn.split(':').map(Number)
-  const [outH, outM] = clockOut.split(':').map(Number)
-  const inMin = inH * 60 + inM
-  const outMin = outH * 60 + outM
-  const worked = (outMin >= inMin ? outMin - inMin : outMin + 1440 - inMin) / 60
-  return Math.max(0, Math.round((worked - baseHours) * 100) / 100)
-}
+
 
 function formatMoney(value: number): string {
   return value.toLocaleString('id-ID')
@@ -367,10 +359,12 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
-    const overtime = input.isNonStaff ? day.overtime : undefined
-    const ot = input.isNonStaff
-      ? (overtime?.totalHours ?? calcOvertimeHours(day.clockIn, day.clockOut))
-      : 0
+    const isAbsent = day.status === 'sick' || day.status === 'leave' || day.status === 'absent'
+    const hasAttendance = !isAbsent && Boolean(
+      day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
+    )
+    const overtime = input.isNonStaff && hasAttendance ? day.overtime : undefined
+    const ot = overtime?.totalHours ?? 0
     totalOT += ot
 
     const bgColor = day.isHoliday
@@ -402,7 +396,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (isOff && !day.clockIn) {
+    } else if (isOff && !hasAttendance) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: 'OFF',
         font: fontBold,
@@ -413,7 +407,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (day.clockIn) {
+    } else if (hasAttendance) {
       const workFrom = (day.workingTimeFrom ?? day.clockIn).replace(':', '.')
       const workTo = (day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.')
       const configuredOvertimeIntervals =

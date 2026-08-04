@@ -12,6 +12,7 @@ export type OvertimeDayRule = Record<OvertimeShiftKey, OvertimeInterval[]>
 
 export type SiteOvertimeConfig = {
   enabled: boolean
+  mode?: 'template' | 'realtime'
   splPolicy: SplPolicyConfig
   hariBiasa: OvertimeDayRule
   hariLibur: OvertimeDayRule
@@ -76,6 +77,7 @@ const EMPTY_RESULT: OvertimeCalculationResult = {
 
 export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
   enabled: false,
+  mode: 'template',
   splPolicy: DEFAULT_SPL_POLICY,
   hariBiasa: {
     dayShift: [
@@ -122,6 +124,7 @@ export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
 function cloneDefaults(): SiteOvertimeConfig {
   return {
     enabled: DEFAULT_SITE_OVERTIME_CONFIG.enabled,
+    mode: DEFAULT_SITE_OVERTIME_CONFIG.mode,
     splPolicy: normalizeSplPolicy(DEFAULT_SITE_OVERTIME_CONFIG.splPolicy),
     hariBiasa: {
       dayShift: DEFAULT_SITE_OVERTIME_CONFIG.hariBiasa.dayShift.map((item) => ({ ...item })),
@@ -182,9 +185,11 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
   const fallback = cloneDefaults()
   if (!value || typeof value !== 'object') return fallback
   const source = value as Record<string, unknown>
+  const mode: 'template' | 'realtime' = source.mode === 'realtime' ? 'realtime' : 'template'
   const result = {
     ...fallback,
-    enabled: source.enabled === true,
+    enabled: source.enabled !== false,
+    mode,
     splPolicy: normalizeSplPolicy(source.splPolicy),
   }
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
@@ -287,6 +292,14 @@ function intervalOccurrences(intervals: OvertimeInterval[]) {
       start: base.start + offset,
       end: base.end + offset,
     }))
+  })
+}
+
+function configuredBaseIntervals(intervals: OvertimeInterval[]) {
+  return intervals.flatMap((interval) => {
+    const base = toBaseMinuteInterval(interval)
+    if (!base) return []
+    return [{ start: base.start, end: base.end }]
   })
 }
 
@@ -439,19 +452,28 @@ export function calculateConfiguredOvertime(params: {
   const attendance = attendanceInterval(params.clockIn, params.clockOut)
   if (!attendance) return { ...EMPTY_RESULT }
 
+  const isTemplateMode = (params.config.mode ?? 'template') === 'template'
   const overnight = params.shiftCode === 'NS'
   const shiftKey: OvertimeShiftKey = overnight ? 'nightShift' : 'dayShift'
   const fullAttendance = [attendance]
-  const configuredIntervals = params.config[params.dayKey][shiftKey]
+  const rawIntervals = params.config[params.dayKey]?.[shiftKey] ?? []
+  const configuredIntervals = rawIntervals
   const normalWork = configuredNonOvertimeGap(configuredIntervals, overnight)
   const shiftEnvelope = configuredShiftEnvelope(configuredIntervals, overnight)
-  const outsideConfiguredShift =
-    params.dayKey === 'hariLibur' ? fullAttendance : subtractIntervals(fullAttendance, shiftEnvelope)
   const autoConfigured = intervalOccurrences(configuredIntervals)
-  const autoEligible = (params.dayKey === 'hariLibur' ? [] : intersectSets(fullAttendance, autoConfigured)).map((item) => ({
+  const autoEligible = (
+    isTemplateMode && configuredIntervals.length > 0
+      ? configuredBaseIntervals(configuredIntervals)
+      : intersectSets(fullAttendance, autoConfigured)
+  ).map((item) => ({
     ...item,
     sources: new Set<'auto' | 'spl'>(['auto']),
   }))
+
+  const outsideConfiguredShift = subtractIntervals(
+    subtractIntervals(fullAttendance, autoConfigured),
+    params.dayKey === 'hariLibur' ? [] : normalWork
+  )
 
   const matchedSpl: Array<{
     interval: MinuteInterval
@@ -501,7 +523,7 @@ export function calculateConfiguredOvertime(params: {
     autoMinutes: totalMinutes(autoEligible),
     splMinutes: totalMinutes(splEligible),
     unauthorizedMinutes:
-      unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0,
+      isTemplateMode ? 0 : (unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0),
     source: hasAuto && hasSpl ? 'Auto + SPL' : hasAuto ? 'Auto' : hasSpl ? 'SPL' : 'None',
     splNumbers: [...new Set(contributingSplNumbers)],
     intervals: eligible.map((item) => ({

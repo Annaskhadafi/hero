@@ -990,7 +990,15 @@ const EMPTY_APPROVAL_SECTIONS: Array<{
   sectionHeadId: number | null
   departmentHeadId: number | null
 }> = []
-const EMPTY_ACTIVITIES: Array<unknown> = []
+const EMPTY_ACTIVITIES: Array<{
+  id: number
+  employeeId: number
+  activityCode: string
+  title: string
+  startTime: string
+  endTime: string
+  status: string
+}> = []
 
 const scheduleHolidayCellClass =
   'bg-amber-200 text-amber-950 hover:bg-amber-300 ring-1 ring-inset ring-amber-400'
@@ -3116,6 +3124,21 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function updateOvertimeMode(mode: 'template' | 'realtime') {
+    if (!guardOpenPeriod('Edit site settings')) return
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = current[siteId] ?? defaultSiteConfig
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          overtimeConfig: { ...currentConfig.overtimeConfig, mode },
+        },
+      }
+    })
+  }
+
   function updateApprovalApprover(
     rowId: string,
     key: keyof ApprovalApproverDraft,
@@ -3908,7 +3931,27 @@ export function SchedulingTimesheetWorkspace({
     if (manual) return manual
 
     const real = attendanceByCell.get(key)
-    if (!real) return { status: 'empty', clockIn: '', clockOut: '', note: '', source: 'attendance' }
+    if (!real) {
+      const code =
+        scheduleCode ??
+        rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+      const rosterStatus = normalizeAttendanceStatus(code)
+      if (
+        rosterStatus === 'off' ||
+        rosterStatus === 'field_break' ||
+        rosterStatus === 'sick' ||
+        rosterStatus === 'leave' ||
+        rosterStatus === 'standby'
+      ) {
+        return {
+          status: rosterStatus,
+          clockIn: '',
+          clockOut: '',
+          note: '',
+        }
+      }
+      return { status: 'empty', clockIn: '', clockOut: '', note: '', source: 'attendance' }
+    }
 
     const status = normalizeAttendanceStatus(
       real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
@@ -4585,9 +4628,8 @@ export function SchedulingTimesheetWorkspace({
         isHoliday: day.isHoliday,
         rosterType: siteConfig.rosterType,
       })
-      const configuredIntervals = siteConfig.overtimeConfig.enabled
-        ? siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
-        : []
+      const configuredIntervals =
+        siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
       const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
       const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
       return {
@@ -4876,9 +4918,9 @@ export function SchedulingTimesheetWorkspace({
       for (const day of days) {
         const cell = getAttendanceCell(row.employee.id, day)
         if (cell.status === 'empty') continue
-        if (cell.source === 'attendance') faceDays++
+        if (cell.source === 'attendance' && attendanceByCell.has(attendanceKey(row.employee.id, day))) faceDays++
         else if (cell.source === 'excel') excelDays++
-        else manualDays++
+        else if (cell.source === 'manual') manualDays++
       }
     }
     const totalFilledDays = faceDays + excelDays + manualDays
@@ -4895,7 +4937,11 @@ export function SchedulingTimesheetWorkspace({
       let hasFace = false
       for (const day of days) {
         const cell = getAttendanceCell(row.employee.id, day)
-        if (cell.source === 'attendance' && cell.status !== 'empty') {
+        if (
+          cell.source === 'attendance' &&
+          cell.status !== 'empty' &&
+          attendanceByCell.has(attendanceKey(row.employee.id, day))
+        ) {
           hasFace = true
           break
         }
@@ -4958,7 +5004,7 @@ export function SchedulingTimesheetWorkspace({
         item.dayType === dayType &&
         item.totalHours === totalHours
     )
-    return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 5))
+    return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 8))
   }
 
   function calculateDayOvertime(
@@ -4969,24 +5015,34 @@ export function SchedulingTimesheetWorkspace({
     staff: boolean,
     employeeId: number
   ): OvertimeCalculationResult {
-    if (staff || siteConfig.overtimeType === 'none' || !clockIn || !clockOut) {
+    if (staff || siteConfig.overtimeType === 'none' || (!clockIn && !clockOut)) {
       return legacyOvertimeResult(0)
     }
+    const shiftCode = schedule[day - 1] ?? 'IN'
+    const defaultIn = shiftCode === 'NS' ? siteConfig.nightShiftClockIn : siteConfig.dayShiftClockIn
+    const defaultOut = shiftCode === 'NS' ? siteConfig.nightShiftClockOut : siteConfig.dayShiftClockOut
+    const effectiveClockIn = clockIn || defaultIn
+    const effectiveClockOut = clockOut || defaultOut
+
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
       isHoliday: isHoliday(period, day, holidays),
       rosterType: siteConfig.rosterType,
     })
+    const activeConfig = {
+      ...siteConfig.overtimeConfig,
+      enabled: true,
+    }
     const calculated = calculateOvertime({
-      config: siteConfig.overtimeConfig,
+      config: activeConfig,
       dayKey,
-      shiftCode: schedule[day - 1] ?? 'IN',
+      shiftCode,
       workDate: `${period}-${String(day).padStart(2, '0')}`,
-      clockIn,
-      clockOut,
+      clockIn: effectiveClockIn,
+      clockOut: effectiveClockOut,
       splWindows: approvedSplByEmployee.get(employeeId) ?? [],
-      legacyHours: calculateLegacyOvertime(schedule, day, clockIn, clockOut),
+      legacyHours: calculateLegacyOvertime(schedule, day, effectiveClockIn, effectiveClockOut),
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
   }
@@ -6405,6 +6461,45 @@ export function SchedulingTimesheetWorkspace({
                         />
                       </div>
                     </div>
+                  </div>
+                  <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">Acuan Perhitungan Overtime</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          Pilih acuan perhitungan overtime: mengikuti Template/Jam Wajib Roster atau Jam Realtime (Aktual).
+                        </p>
+                      </div>
+                      <div className="bg-surface-container-low flex items-center gap-1 rounded-xl p-1">
+                        <button
+                          type="button"
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                            (siteConfig.overtimeConfig.mode ?? 'template') === 'template'
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          onClick={() => updateOvertimeMode('template')}
+                        >
+                          Mengikuti Template (Wajib)
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                            siteConfig.overtimeConfig.mode === 'realtime'
+                              ? 'bg-background text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          onClick={() => updateOvertimeMode('realtime')}
+                        >
+                          Realtime (Jam Aktual)
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-muted-foreground/80 mt-2.5 text-[11px] italic">
+                      {(siteConfig.overtimeConfig.mode ?? 'template') === 'template'
+                        ? '✓ Mengikuti Template: Overtime wajib sesuai konfigurasi template (misal 4 jam) otomatis diakui tanpa perlukan SPL. Hanya jika lembur MELEBIHI jam wajib baru memerlukan SPL.'
+                        : '✓ Realtime: Memperhitungkan jam aktual clock in/out dan seluruh jam di luar shift normal memerlukan persetujuan SPL.'}
+                    </p>
                   </div>
                   <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">

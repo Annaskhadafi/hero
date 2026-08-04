@@ -49,7 +49,7 @@ export function classifyOvertimeDay(schedule: ScheduleCode[], period: string, da
   const code = schedule[dayIndex];
   if (code === "OFF" || code === "Libur") return "off";
   if (isHoliday(period, day, holidays)) return "off";
-  if (rosterType !== "6:1" && rosterType !== "13:1" && isWeekend(period, day)) return "off";
+  if (rosterType === "office" && isWeekend(period, day)) return "off";
 
   if (rosterType === "6:1") {
     let workingDaysSinceOff = 0;
