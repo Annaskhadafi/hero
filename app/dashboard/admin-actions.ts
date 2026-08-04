@@ -6418,7 +6418,7 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Site HR default belum tersedia.' }
       }
 
-      const authUserId = randomUUID()
+      const authUserId = existingAuthUser?.id || existingEmployee?.authUserId || randomUUID()
       const now = new Date()
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
@@ -6434,52 +6434,103 @@ export async function manageSecurityUserAction(
       })
       const orgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
 
-      await db.insert(user).values({
-        id: authUserId,
-        name: fullName,
-        email,
-        emailVerified: true,
-        image: profileImage || null,
-        createdAt: now,
-        updatedAt: now,
-      })
-
-      await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
-
-      const [createdEmployee] = await db
-        .insert(employees)
-        .values({
-          authUserId,
-          employeeSn,
+      // 1. Upsert auth user
+      if (existingAuthUser) {
+        await db
+          .update(user)
+          .set({
+            name: fullName,
+            email,
+            image: profileImage || null,
+            updatedAt: now,
+          })
+          .where(eq(user.id, existingAuthUser.id))
+      } else {
+        await db.insert(user).values({
+          id: authUserId,
           name: fullName,
           email,
-          siteId: defaultSite.id,
-          joinDate: parseJoinDateFromYear(payload.joinYear),
-          joinYear: parseJoinYear(payload.joinYear ?? ''),
-          birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
-          domicile: payload.domicile?.trim() || 'Belum diisi',
-          departmentId: hrGovernanceIds.departmentId,
-          sectionId: hrGovernanceIds.sectionId,
-          positionId: hrGovernanceIds.positionId,
-          orgNodeId: hrGovernanceIds.orgNodeId,
-          section,
-          department,
-          role: jobTitle,
-          jobTitle,
-          workLocation: defaultSite.name,
-          phoneNumber: payload.phoneNumber?.trim() || '',
-          employmentStatus: normalizedStatus.status,
-          employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-          accessRole: role.name,
-          levelName: 'Rookie',
-          totalPoints: 0,
-          fitStatus: 'fit',
-          isActive: normalizedStatus.isActive,
+          emailVerified: true,
+          image: profileImage || null,
+          createdAt: now,
+          updatedAt: now,
         })
-        .returning({ id: employees.id })
+      }
 
-      const createdLegacyEmployeeId = createdEmployee?.id ?? null
+      // 2. Upsert credential account
+      await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
+
+      // 3. Upsert employee profile record
+      let createdLegacyEmployeeId: number | null = null
+      if (existingEmployee) {
+        await db
+          .update(employees)
+          .set({
+            authUserId,
+            employeeSn,
+            name: fullName,
+            email,
+            siteId: defaultSite.id,
+            joinDate: parseJoinDateFromYear(payload.joinYear),
+            joinYear: parseJoinYear(payload.joinYear ?? ''),
+            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
+            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            domicile: payload.domicile?.trim() || 'Belum diisi',
+            departmentId: hrGovernanceIds.departmentId,
+            sectionId: hrGovernanceIds.sectionId,
+            positionId: hrGovernanceIds.positionId,
+            orgNodeId: hrGovernanceIds.orgNodeId,
+            section,
+            department,
+            role: jobTitle,
+            jobTitle,
+            workLocation: defaultSite.name,
+            phoneNumber: payload.phoneNumber?.trim() || '',
+            employmentStatus: normalizedStatus.status,
+            employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
+            accessRole: role.name,
+            levelName: 'Rookie',
+            isActive: true,
+          })
+          .where(eq(employees.id, existingEmployee.id))
+
+        createdLegacyEmployeeId = existingEmployee.id
+      } else {
+        const [createdEmployee] = await db
+          .insert(employees)
+          .values({
+            authUserId,
+            employeeSn,
+            name: fullName,
+            email,
+            siteId: defaultSite.id,
+            joinDate: parseJoinDateFromYear(payload.joinYear),
+            joinYear: parseJoinYear(payload.joinYear ?? ''),
+            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
+            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            domicile: payload.domicile?.trim() || 'Belum diisi',
+            departmentId: hrGovernanceIds.departmentId,
+            sectionId: hrGovernanceIds.sectionId,
+            positionId: hrGovernanceIds.positionId,
+            orgNodeId: hrGovernanceIds.orgNodeId,
+            section,
+            department,
+            role: jobTitle,
+            jobTitle,
+            workLocation: defaultSite.name,
+            phoneNumber: payload.phoneNumber?.trim() || '',
+            employmentStatus: normalizedStatus.status,
+            employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
+            accessRole: role.name,
+            levelName: 'Rookie',
+            totalPoints: 0,
+            fitStatus: 'fit',
+            isActive: normalizedStatus.isActive,
+          })
+          .returning({ id: employees.id })
+
+        createdLegacyEmployeeId = createdEmployee?.id ?? null
+      }
 
       if (createdLegacyEmployeeId) {
         try {

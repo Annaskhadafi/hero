@@ -1,14 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Plus, UserPlus } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, UserPlus } from "lucide-react";
 import {
   manageSecurityUserAction,
   type AdminMutationState,
 } from "@/app/dashboard/admin-actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ProfilePhotoField } from "@/components/profile-photo-field";
 import {
@@ -64,6 +74,9 @@ export function SecurityUserCreateDialog({
   const [, startRefreshTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [state, formAction] = useActionState(
     manageSecurityUserAction,
     INITIAL_STATE,
@@ -101,9 +114,15 @@ export function SecurityUserCreateDialog({
   const selectedDepartmentName = departments.find((d) => d.id.toString() === selectedDepartmentId)?.name || "";
   const selectedSectionName = sections.find((s) => s.id.toString() === selectedSectionId)?.name || "";
 
+  const isDuplicateFound = (state.status as string) === "duplicate_found";
+
   useEffect(() => {
-    if (state.status === "success") {
+    if (isDuplicateFound) {
+      setShowDuplicateDialog(true);
+    } else if (state.status === "success") {
       setOpen(false);
+      setShowDuplicateDialog(false);
+      setConfirmOverwrite(false);
       setFormKey((current) => current + 1);
       setSelectedDepartmentId("");
       setSelectedSectionId("");
@@ -111,7 +130,7 @@ export function SecurityUserCreateDialog({
       setSelectedSiteId("");
       startRefreshTransition(() => router.refresh());
     }
-  }, [router, state.status, startRefreshTransition]);
+  }, [isDuplicateFound, router, state.status, startRefreshTransition]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -129,10 +148,11 @@ export function SecurityUserCreateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form key={formKey} action={formAction} className="space-y-5">
+        <form ref={formRef} key={formKey} action={formAction} className="space-y-5">
           <input type="hidden" name="intent" value="create-user" />
+          <input type="hidden" name="overwriteExisting" value={confirmOverwrite ? "true" : "false"} />
 
-          {state.status !== "idle" ? (
+          {state.status !== "idle" && !isDuplicateFound ? (
             <Alert
               className={
                 state.status === "error"
@@ -371,6 +391,46 @@ export function SecurityUserCreateDialog({
           </div>
         </form>
       </DialogContent>
+
+      <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+              <AlertTriangle className="size-6 text-amber-600 dark:text-amber-400" />
+            </div>
+            <AlertDialogTitle className="text-center text-lg font-bold">
+              Data Pengguna / Credential Sudah Ada
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-sm text-muted-foreground mt-2">
+              {state.message || "Pengguna dengan NIK atau Email ini sudah terdaftar di sistem."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <AlertDialogCancel
+              onClick={() => {
+                setShowDuplicateDialog(false);
+                setConfirmOverwrite(false);
+              }}
+              className="rounded-xl"
+            >
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmOverwrite(true);
+                setShowDuplicateDialog(false);
+                setTimeout(() => {
+                  formRef.current?.requestSubmit();
+                }, 50);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl gap-2 font-semibold"
+            >
+              <RefreshCw className="size-4" />
+              Gantikan Data Lama (Replace)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
