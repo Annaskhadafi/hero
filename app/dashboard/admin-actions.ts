@@ -6338,12 +6338,12 @@ export async function manageSecurityUserAction(
           ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
           : Promise.resolve([]),
         db
-          .select({ id: employees.id, name: employees.name, isActive: employees.isActive })
+          .select({ id: employees.id, name: employees.name, isActive: employees.isActive, authUserId: employees.authUserId })
           .from(employees)
           .where(sql`lower(trim(${employees.employeeSn})) = lower(trim(${employeeSn}))`)
           .limit(1),
         db
-          .select({ id: employees.id, name: employees.name, isActive: employees.isActive })
+          .select({ id: employees.id, name: employees.name, isActive: employees.isActive, authUserId: employees.authUserId })
           .from(employees)
           .where(sql`lower(trim(${employees.email})) = lower(trim(${email}))`)
           .limit(1),
@@ -6369,43 +6369,22 @@ export async function manageSecurityUserAction(
           .limit(1),
       ])
 
-      if (existingEmployeeBySn) {
-        if (existingEmployeeBySn.isActive) {
-          return {
-            status: 'error',
-            message: `SN/NIK '${employeeSn}' dari SAP ini sudah digunakan oleh pengguna aktif (${existingEmployeeBySn.name}).`,
-          }
-        }
-        return {
-          status: 'error',
-          message: `SN/NIK '${employeeSn}' dari SAP ini sudah terdaftar pada pengguna non-aktif (${existingEmployeeBySn.name}). Silakan cari di tabel dan aktifkan kembali.`,
-        }
-      }
+      const existingEmployee = existingEmployeeBySn || existingEmployeeByEmail
+      const isDuplicate = Boolean(existingEmployee || existingAuthUser || existingAccount)
+      const duplicateName = existingEmployee?.name || existingAuthUser?.name || 'Pengguna Terdaftar'
 
-      if (existingEmployeeByEmail) {
-        if (existingEmployeeByEmail.isActive) {
-          return {
-            status: 'error',
-            message: `Email '${email}' sudah digunakan oleh pengguna aktif (${existingEmployeeByEmail.name}).`,
-          }
-        }
+      // ponytail: duplicate-overwrite-guard
+      if (isDuplicate && !overwriteExisting) {
         return {
-          status: 'error',
-          message: `Email '${email}' sudah terdaftar pada pengguna non-aktif (${existingEmployeeByEmail.name}). Silakan cari di tabel dan aktifkan kembali.`,
-        }
-      }
-
-      if (existingAuthUser) {
-        return {
-          status: 'error',
-          message: `Email '${email}' sudah terdaftar pada pengguna lain (${existingAuthUser.name || 'User'}).`,
-        }
-      }
-
-      if (existingAccount) {
-        return {
-          status: 'error',
-          message: `SN/NIK '${employeeSn}' atau Email '${email}' sudah memiliki akun credential terdaftar.`,
+          status: 'duplicate_found',
+          message: `SN/NIK '${employeeSn}' atau Email '${email}' sudah terdaftar atas nama (${duplicateName}). Apakah Anda ingin menggantikan (replace/overwrite) data lama dengan data baru ini?`,
+          duplicateDetails: {
+            name: duplicateName,
+            employeeSn,
+            email,
+            existingEmployeeId: existingEmployee?.id || null,
+            existingAuthUserId: existingAuthUser?.id || existingEmployee?.authUserId || null,
+          },
         }
       }
 
