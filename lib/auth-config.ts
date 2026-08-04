@@ -39,7 +39,16 @@ export function getServerAuthBaseUrl() {
 }
 
 export function getClientAuthBaseUrl() {
-    return normalizeOrigin(process.env.NEXT_PUBLIC_BETTER_AUTH_URL);
+    const configured = normalizeOrigin(
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL
+    );
+    if (configured) {
+        return configured;
+    }
+    if (typeof window !== "undefined") {
+        return window.location.origin;
+    }
+    return undefined;
 }
 
 export function getTrustedOrigins(request?: Request) {

@@ -74,7 +74,16 @@ function SignInContent() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ sn: loginEmail }),
                 });
-                const data = await res.json();
+
+                let data: { email?: string; name?: string; error?: string } = {};
+                try {
+                    data = await res.json();
+                } catch {
+                    setError("Layanan autentikasi tidak merespons (404/500). Mohon refresh halaman atau periksa server.");
+                    setIsLoading(false);
+                    return;
+                }
+
                 if (!res.ok || !data.email) {
                     setError(data.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
                     setIsLoading(false);
