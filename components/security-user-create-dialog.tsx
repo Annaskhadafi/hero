@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Plus, RefreshCw, UserPlus } from "lucide-react";
+import { AlertTriangle, Check, ChevronsUpDown, Plus, RefreshCw, UserPlus } from "lucide-react";
 import {
   manageSecurityUserAction,
   type AdminMutationState,
@@ -20,6 +20,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ProfilePhotoField } from "@/components/profile-photo-field";
 import {
   Dialog,
@@ -83,6 +96,7 @@ export function SecurityUserCreateDialog({
   );
 
   // State for cascading dropdowns
+  const [selectedManagerId, setSelectedManagerId] = useState<string>("none");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
@@ -124,6 +138,7 @@ export function SecurityUserCreateDialog({
       setShowDuplicateDialog(false);
       setConfirmOverwrite(false);
       setFormKey((current) => current + 1);
+      setSelectedManagerId("none");
       setSelectedDepartmentId("");
       setSelectedSectionId("");
       setSelectedJobTitle("");
@@ -195,19 +210,12 @@ export function SecurityUserCreateDialog({
             </label>
             <div className="grid gap-2">
               <Label>Atasan Langsung</Label>
-              <Select name="directManagerId" defaultValue="none">
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih atasan langsung" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Belum dipilih</SelectItem>
-                  {managerOptions.map((manager) => (
-                    <SelectItem key={manager.id} value={`${manager.id}`}>
-                      {manager.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <input type="hidden" name="directManagerId" value={selectedManagerId} />
+              <SearchableManagerSelect
+                managerOptions={managerOptions}
+                selectedManagerId={selectedManagerId}
+                onSelectManager={setSelectedManagerId}
+              />
             </div>
 
             <div className="grid gap-2">
@@ -432,5 +440,96 @@ export function SecurityUserCreateDialog({
         </AlertDialogContent>
       </AlertDialog>
     </Dialog>
+  );
+}
+
+function SearchableManagerSelect({
+  managerOptions,
+  selectedManagerId,
+  onSelectManager,
+}: {
+  managerOptions: Array<{ id: number; name: string }>;
+  selectedManagerId: string;
+  onSelectManager: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const selectedManager = managerOptions.find(
+    (m) => m.id.toString() === selectedManagerId
+  );
+  const displayText =
+    selectedManagerId === "none" || !selectedManagerId
+      ? "Belum dipilih"
+      : selectedManager?.name || "Pilih atasan langsung";
+
+  const filteredManagers = useMemo(() => {
+    if (!search.trim()) return managerOptions;
+    const q = search.toLowerCase();
+    return managerOptions.filter((m) => m.name.toLowerCase().includes(q));
+  }, [managerOptions, search]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-normal"
+        >
+          <span className="truncate">{displayText}</span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0 sm:w-[400px]" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Cari nama atasan..."
+            value={search}
+            onValueChange={setSearch}
+            className="h-9"
+          />
+          <CommandList className="max-h-[220px]">
+            <CommandEmpty>Tidak ada atasan yang cocok.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="none"
+                onSelect={() => {
+                  onSelectManager("none");
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className="flex items-center justify-between cursor-pointer"
+              >
+                <span>Belum dipilih</span>
+                {selectedManagerId === "none" || !selectedManagerId ? (
+                  <Check className="size-4 text-primary" />
+                ) : null}
+              </CommandItem>
+              {filteredManagers.map((manager) => {
+                const isSelected = manager.id.toString() === selectedManagerId;
+                return (
+                  <CommandItem
+                    key={manager.id}
+                    value={manager.id.toString()}
+                    onSelect={() => {
+                      onSelectManager(manager.id.toString());
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <span className="truncate">{manager.name}</span>
+                    {isSelected ? <Check className="size-4 shrink-0 text-primary" /> : null}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
