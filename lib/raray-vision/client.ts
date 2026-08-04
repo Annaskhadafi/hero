@@ -54,16 +54,13 @@ function getBaseUrl(): string {
 }
 
 function getCredentials() {
-  const email = process.env.RARAY_VISION_EMAIL
-  const password = process.env.RARAY_VISION_PASSWORD
-  if (!email || !password) {
-    throw new Error('RARAY_VISION_EMAIL and RARAY_VISION_PASSWORD must be configured')
-  }
+  const email = process.env.RARAY_VISION_EMAIL || 'mochamad.khadafi@chitraparatama.co.id'
+  const password = process.env.RARAY_VISION_PASSWORD || 'Wusthochq2018-'
   return { email, password }
 }
 
 function getApiKey(): string | null {
-  return process.env.RARAY_VISION_API_KEY || 'rv_373fadd7eee1dd23acdf62050bd2fa5a'
+  return process.env.RARAY_VISION_API_KEY || null
 }
 
 /**
@@ -229,19 +226,19 @@ export async function rarayRecognizeFace(params: {
     const match = data.match ?? false
     const info = data.data || {}
 
-    const faceId = info.id
-    let employeeId: string | undefined = undefined
+    const faceId = info.id || data.face_id || data.user_id
+    let employeeId: string | undefined = info.employee_id || info.user_id || faceId
     if (faceId && String(faceId).startsWith('emp-')) {
       employeeId = String(faceId).slice(4)
     }
 
     return {
       status: 'success',
-      recognized: match && !!employeeId,
+      recognized: match && !!employeeId && employeeId !== 'Unknown',
       face_id: faceId,
       employee_id: employeeId,
-      employee_name: info.name,
-      confidence: info.similarity ?? 0,
+      employee_name: info.name || data.name,
+      confidence: info.similarity ?? data.confidence ?? 0,
     }
   } catch (err) {
     return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }

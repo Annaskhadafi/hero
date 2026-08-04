@@ -305,6 +305,7 @@ type SavedFieldBreakPlan = {
 }
 
 type AttendanceRealRecord = {
+  id?: number
   employeeId: number
   siteId: number
   eventType: string
@@ -1088,12 +1089,40 @@ function employeeSnLabel(employee: EmployeeOption) {
   return employee.employeeSn?.trim() || String(employee.id)
 }
 
+function getLocalDateStr(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date)
+  } catch {
+    return date.toISOString().slice(0, 10)
+  }
+}
+
 function timeFromIso(value?: string) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'
+  try {
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: tz,
+    }).replace('.', ':')
+  } catch {
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
+  }
 }
+
 
 type SchedulingTimesheetMode =
   | 'overview'
@@ -1661,8 +1690,9 @@ export function SchedulingTimesheetWorkspace({
     const grouped = new Map<string, AttendanceRealRecord[]>()
     for (const record of attendanceRecords) {
       if (String(record.siteId) !== siteId) continue
-      if (!record.eventTime.startsWith(period)) continue
-      const day = dayFromDate(record.eventTime.slice(0, 10), period)
+      const dateStr = getLocalDateStr(record.eventTime)
+      if (!dateStr || !dateStr.startsWith(period)) continue
+      const day = dayFromDate(dateStr, period)
       if (!day) continue
       const key = attendanceKey(record.employeeId, day)
       const list = grouped.get(key) ?? []
@@ -1670,25 +1700,37 @@ export function SchedulingTimesheetWorkspace({
       grouped.set(key, list)
     }
 
+
     for (const [key, records] of grouped.entries()) {
       const sorted = [...records].sort((a, b) => a.eventTime.localeCompare(b.eventTime))
-      const first = sorted[0]
-      const explicitOut = sorted.find((r) => {
+      
+      // Find the latest explicit OUT record (searching backwards from most recent)
+      const explicitOut = [...sorted].reverse().find((r) => {
         const ev = normalizeLocation(r.eventType)
         return ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
       })
+
+      // Find the corresponding IN record prior to or equal to explicitOut (or fallback to first punch)
+      const explicitIn = explicitOut
+        ? [...sorted].reverse().find((r) => {
+            const ev = normalizeLocation(r.eventType)
+            const isOut = ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
+            return !isOut && r.eventTime <= explicitOut.eventTime
+          }) ?? sorted[0]
+        : sorted[0]
+
       const last = sorted[sorted.length - 1]
-      // Use latest punch as clockOut only if it is an explicit checkout or at least 30 minutes after first punch
-      const firstTime = new Date(first.eventTime).getTime()
+      const firstTime = new Date(explicitIn.eventTime).getTime()
       const lastTime = new Date(last.eventTime).getTime()
-      const isValidOut = explicitOut ?? (last.id !== first.id && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
+      const isValidOut = explicitOut ?? (last !== explicitIn && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
 
       map.set(key, {
-        clockIn: first,
+        clockIn: explicitIn,
         clockOut: isValidOut,
         records: sorted,
       })
     }
+
 
     return map
   }, [attendanceRecords, period, siteId])

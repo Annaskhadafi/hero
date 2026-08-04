@@ -5,6 +5,7 @@ import { serverEnv } from "@/lib/server-env";
 declare global {
   // Reuse the same pool during hot reloads in development.
   var heroDbPool: Pool | undefined;
+  var heroDbConnectionString: string | undefined;
 }
 
 let drizzleDb: ReturnType<typeof drizzle> | undefined;
@@ -36,13 +37,23 @@ function getSslConfig(connectionString: string) {
 }
 
 function getPool() {
-  const existingPool = globalThis.heroDbPool;
+  const connectionString =
+    process.env.DATABASE_URL?.trim() || serverEnv.databaseUrl;
 
-  if (existingPool) {
+  const existingPool = globalThis.heroDbPool;
+  const existingConnString = globalThis.heroDbConnectionString;
+
+  if (existingPool && existingConnString === connectionString) {
     return existingPool;
   }
 
-  const connectionString = serverEnv.databaseUrl;
+  if (existingPool) {
+    try {
+      existingPool.end();
+    } catch {
+      // ignore cleanup
+    }
+  }
 
   const pool = new Pool({
     connectionString,
@@ -54,27 +65,23 @@ function getPool() {
     keepAliveInitialDelayMillis: 10000,
   });
 
-  // A remote Postgres link can drop idle sockets (NAT/firewall) and an idle
-  // client can emit an async error. Without this listener pg turns it into an
-  // unhandled exception that can poison or crash the pool; logging here lets pg
-  // evict the dead client and hand out a healthy one instead of timing out.
   pool.on("error", (error) => {
     console.error("[db] idle client error", error);
   });
 
   if (process.env.NODE_ENV !== "production") {
     globalThis.heroDbPool = pool;
+    globalThis.heroDbConnectionString = connectionString;
   }
 
   return pool;
 }
 
 function getDb() {
-  if (drizzleDb) {
-    return drizzleDb;
+  const currentPool = getPool();
+  if (!drizzleDb) {
+    drizzleDb = drizzle({ client: currentPool });
   }
-
-  drizzleDb = drizzle({ client: getPool() });
   return drizzleDb;
 }
 
