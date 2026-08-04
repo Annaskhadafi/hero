@@ -2576,6 +2576,7 @@ const overtimeDayRuleSchema = z.object({
 const siteOvertimeConfigSchema = z
   .object({
     enabled: z.boolean(),
+    mode: z.enum(['template', 'realtime']).optional().default('template'),
     splPolicy: z.object({
       enabled: z.boolean(),
       allowBreak: z.boolean(),
@@ -6371,7 +6372,11 @@ export async function manageSecurityUserAction(
       ])
 
       const existingEmployee = existingEmployeeBySn || existingEmployeeByEmail
-      const isDuplicate = Boolean(existingEmployee || existingAuthUser || existingAccount)
+      // Hanya dianggap duplicate jika sudah ada akun login aktif (authUser atau credential account).
+      // Karyawan yang ada di tabel employees tapi belum punya authUserId (belum punya akun login)
+      // TIDAK dianggap duplicate — langsung buatkan akun untuk mereka.
+      const existingEmployeeHasAccount = Boolean(existingEmployee?.authUserId)
+      const isDuplicate = Boolean(existingEmployeeHasAccount || existingAuthUser || existingAccount)
       const duplicateName = existingEmployee?.name || existingAuthUser?.name || 'Pengguna Terdaftar'
 
       // ponytail: duplicate-overwrite-guard
@@ -6525,7 +6530,13 @@ export async function manageSecurityUserAction(
       }
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: 'New user created successfully.' }
+      const wasExistingEmployee = Boolean(existingEmployee && !existingEmployeeHasAccount)
+      return {
+        status: 'success',
+        message: wasExistingEmployee
+          ? `Akun login berhasil dibuat untuk karyawan ${fullName} (SN: ${employeeSn}). Data profil karyawan yang sudah ada telah diperbarui dan terhubung ke akun baru.`
+          : `Pengguna baru ${fullName} berhasil dibuat.`,
+      }
     }
 
     if (!payload.employeeId) {
