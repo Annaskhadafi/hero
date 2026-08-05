@@ -97,9 +97,18 @@ export function DashboardClientPage({
   allItems: any[]
   allActuals: any[]
 }) {
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
-    periods.length > 0 ? periods[0].id.toString() : ''
-  )
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(() => {
+    if (periods.length === 0) return ''
+    const d = new Date()
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ]
+    const currentMonthYear = `${monthNames[d.getMonth()]} ${d.getFullYear()}`.toLowerCase()
+    
+    const currentPeriod = periods.find(p => (p.monthYear || '').trim().toLowerCase() === currentMonthYear)
+    return currentPeriod ? currentPeriod.id.toString() : periods[0].id.toString()
+  })
   const [editRate, setEditRate] = useState<string>('')
   const [isFetchingRate, setIsFetchingRate] = useState(false)
 
