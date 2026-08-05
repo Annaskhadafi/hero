@@ -381,6 +381,44 @@ export async function upsertForecastItem(data: any) {
 }
 
 export async function deleteForecastItem(id: number) {
+  const [item] = await db
+    .select()
+    .from(centralServiceForecastItems)
+    .where(eq(centralServiceForecastItems.id, id))
+
+  if (item && item.remark && item.remark.startsWith('Carry Over from ')) {
+    const previousMonthYear = item.remark.replace('Carry Over from ', '').trim()
+    const [prevPeriod] = await db
+      .select()
+      .from(centralServiceForecastPeriods)
+      .where(sql`LOWER(TRIM(${centralServiceForecastPeriods.monthYear})) = LOWER(TRIM(${previousMonthYear}))`)
+      .limit(1)
+
+    if (prevPeriod) {
+      const [sourceItem] = await db
+        .select()
+        .from(centralServiceForecastItems)
+        .where(
+          and(
+            eq(centralServiceForecastItems.periodId, prevPeriod.id),
+            eq(centralServiceForecastItems.customer, item.customer),
+            eq(centralServiceForecastItems.isProductAccessories, Boolean(item.isProductAccessories))
+          )
+        )
+        .limit(1)
+
+      if (sourceItem && sourceItem.status.toLowerCase() === 'carry over') {
+        await db
+          .update(centralServiceForecastItems)
+          .set({
+            status: 'Cancel',
+            updatedAt: new Date(),
+          })
+          .where(eq(centralServiceForecastItems.id, sourceItem.id))
+      }
+    }
+  }
+
   await db.delete(centralServiceForecastItems).where(eq(centralServiceForecastItems.id, id))
   revalidatePath('/dashboard/central-service/forecast/monthly')
 }
