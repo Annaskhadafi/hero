@@ -88,6 +88,21 @@ const isCancelStatusDoc = (status?: string | null) =>
 const isCarryOverStatus = (status?: string | null) =>
   (status || '').trim().toLowerCase() === 'carry over'
 
+function findCurrentMonthPeriodId(periods: any[]): string {
+  if (!periods || periods.length === 0) return ''
+  const now = new Date()
+  const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+  const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const matched = periods.find((p) => {
+    const val = (p.monthYear || '').trim().toLowerCase()
+    return val === currentFull || val === currentShort || val === currentIso
+  })
+
+  return matched ? matched.id.toString() : periods[0].id.toString()
+}
+
 export function DashboardClientPage({
   periods,
   allItems,
@@ -98,7 +113,7 @@ export function DashboardClientPage({
   allActuals: any[]
 }) {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
-    periods.length > 0 ? periods[0].id.toString() : ''
+    findCurrentMonthPeriodId(periods)
   )
   const [editRate, setEditRate] = useState<string>('')
   const [isFetchingRate, setIsFetchingRate] = useState(false)
@@ -211,7 +226,6 @@ export function DashboardClientPage({
   }, [categoryData])
 
   const outstandingItems = scoredItems
-    .filter((i) => i.status === 'Pending')
     .sort((a, b) => {
       return getForecastAmountIdr(b) - getForecastAmountIdr(a)
     })
@@ -395,13 +409,13 @@ export function DashboardClientPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Top Outstanding (Pending) Items</CardTitle>
-          <CardDescription>Largest forecasted revenue items still pending</CardDescription>
+          <CardTitle>Top 5 Total Forecast</CardTitle>
+          <CardDescription>Pelanggan dengan total forecast terbesar (1-5)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {outstandingItems.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No outstanding items.</p>
+              <p className="text-muted-foreground text-sm">Tidak ada data.</p>
             ) : (
               outstandingItems.map((item) => {
                 const total = getForecastAmountIdr(item)
