@@ -1,0 +1,80 @@
+
+# Old Database (Inactive)
+# DATABASE_URL=postgresql://onecentral:Wusthochq2018-@31.97.187.38:5433/Onecentral
+# POSTGRES_DB=Onecentral
+# POSTGRES_USER=onecentral
+# POSTGRES_PASSWORD=Wusthochq2018-
+
+# New Database (Active)
+DATABASE_URL=postgresql://newhero:Wusthochq2018-@31.97.187.38:5444/newhero
+POSTGRES_DB=newhero
+POSTGRES_USER=newhero
+POSTGRES_PASSWORD=Wusthochq2018-
+
+
+# Authentication
+BETTER_AUTH_SECRET=2d1f209c9e98ca4ed6259917eecec537980e03261dd6d9d651e6af20e9d94915
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+
+UPLOAD_DRIVER=s3
+OBJECT_STORAGE_ENDPOINT=https://is3.cloudhost.id
+OBJECT_STORAGE_BUCKET=onechitra
+OBJECT_STORAGE_PREFIX=upload
+OBJECT_STORAGE_REGION=us-east-1
+OBJECT_STORAGE_FORCE_PATH_STYLE=true
+OBJECT_STORAGE_ACCESS_KEY_ID=I2BBBINVCAQXY7G6M5OD
+OBJECT_STORAGE_SECRET_ACCESS_KEY=c4YupRIPTlaetB3XIwIXOO8EBcZWZfTrEqghDN1A
+
+CRON_SECRET=c66ac3c217bb7dac4e40b4275027b33b93b232d45a99c178db283ce3a5686b68e9a82b04ce1c9c8255bc07d7608f870b
+MISTRAL_API_KEY=O4w7VrNqbFqRgrKaQRXuZo3M8jax0hgz
+MISTRAL_OCR_ENDPOINT=https://api.mistral.ai/v1/ocr
+
+# Get API key: https://openrouter.ai/keys
+OLLAMA_URL=https://openrouter.ai/api/v1/chat/completions
+OLLAMA_MODEL=xiaomi/mimo-v2.5
+OLLAMA_API_KEY=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
+
+# MCU Wellness AI - Vision-capable model required (for PDF/image extraction)
+# xiaomi/mimo-v2.5 is text-only. Use: openai/gpt-4o-mini | openai/gpt-4o | google/gemini-2.0-flash-001
+MCU_AI_MODEL=openai/gpt-4o-mini
+MCU_AI_API_KEY=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
+MCU_AI_URL=https://openrouter.ai/api/v1/chat/completions
+
+# Tire Retread Pattern Designer — Vision Model via OpenRouter
+# Best for geometric/visual pattern analysis: claude-3.5-sonnet
+# Options: anthropic/claude-3.5-sonnet | openai/gpt-4o | google/gemini-2.0-flash-001
+TIRE_PATTERN_MODEL=openai/gpt-4o-mini
+TIRE_PATTERN_API_URL=https://openrouter.ai/api/v1/chat/completions
+TIRE_PATTERN_API_KEY=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
+
+# LMS Integration
+LMS_SITE_URL=https://chitralearning.com
+LMS_JWT_SECRET=2d1f209c9e98ca4ed6259917eecec537980e03261dd6d9d651e6af20e9d94915
+
+# LMS Database Configuration (Hostinger WordPress LMS)
+LMS_DB_HOST=153.92.15.50
+LMS_DB_PORT=3306
+LMS_DB_USER=u234341468_jh8R1
+LMS_DB_PASSWORD=c76l1sLLqQ
+LMS_DB_NAME=u234341468_kAKHT
+# Warehouse MySQL Database Configuration (ICS Database)
+WAREHOUSE_DB_HOST=31.97.187.38
+WAREHOUSE_DB_PORT=3334
+WAREHOUSE_DB_USER=userdatabaseics
+WAREHOUSE_DB_PASSWORD=userdatabaseics27693
+WAREHOUSE_DB_NAME=databaseics
+
+# AssemblyAI
+ASSEMBLYAI_API_KEY=71367b4deed34a77b9b6d1d358125da3
+
+
+# Atau:
+RARAY_VISION_EMAIL=mochamad.khadafi@chitraparatama.co.id
+RARAY_VISION_PASSWORD=Wusthochq2018-
+
+RARAY_VISION_BASE_URL=https://vision.chitraparatama.com
+RARAY_VISION_API_KEY=rv_28b495a8dd7a18e9423912c04d015e3e
+
+
+
