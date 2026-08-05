@@ -211,9 +211,8 @@ export function DashboardClientPage({
   }, [categoryData])
 
   const outstandingItems = scoredItems
-    .filter((i) => Number(i.osInvoicePrevMonth || 0) > 0)
     .sort((a, b) => {
-      return Number(b.osInvoicePrevMonth || 0) - Number(a.osInvoicePrevMonth || 0)
+      return getForecastAmountIdr(b) - getForecastAmountIdr(a)
     })
     .slice(0, 5)
 
@@ -395,25 +394,25 @@ export function DashboardClientPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Klasemen O/S (Outstanding Invoices)</CardTitle>
-          <CardDescription>Top 5 customers with the highest Outstanding balances</CardDescription>
+          <CardTitle>Top 5 Total Forecast</CardTitle>
+          <CardDescription>Pelanggan dengan total forecast terbesar (1-5)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {outstandingItems.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No outstanding items.</p>
+              <p className="text-muted-foreground text-sm">Tidak ada data.</p>
             ) : (
               outstandingItems.map((item) => {
-                const osAmount = Number(item.osInvoicePrevMonth || 0)
+                const total = getForecastAmountIdr(item)
                 return (
                   <div key={item.id} className="flex items-center justify-between border-b pb-2">
                     <div>
                       <p className="font-medium">{item.customer}</p>
                       <p className="text-muted-foreground text-xs">
-                        PIC: {item.picSales} | Remark: {item.osRemark || item.remark || 'None'}
+                        PIC: {item.picSales} | Remark: {item.remark || 'None'}
                       </p>
                     </div>
-                    <div className="font-bold">{formatCurrency(osAmount)}</div>
+                    <div className="font-bold">{formatCurrency(total)}</div>
                   </div>
                 )
               })
