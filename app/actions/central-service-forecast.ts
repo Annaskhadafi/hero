@@ -10,6 +10,8 @@ import {
 import { eq, desc, and, sql, ilike, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
+import { parseMonthYearToYearMonth } from '@/lib/cs-forecast-daily-report'
+
 export async function syncAllCarryOverItems() {
   try {
     const carryOverItems = await db
@@ -27,10 +29,19 @@ export async function syncAllCarryOverItems() {
 
 export async function getForecastPeriods() {
   await syncAllCarryOverItems()
-  const allPeriods = await db
+  const rawPeriods = await db
     .select()
     .from(centralServiceForecastPeriods)
-    .orderBy(desc(centralServiceForecastPeriods.monthYear))
+
+  // ponytail: sort chronologically desc (year * 12 + month)
+  const allPeriods = [...rawPeriods].sort((a, b) => {
+    const parsedA = parseMonthYearToYearMonth(a.monthYear)
+    const parsedB = parseMonthYearToYearMonth(b.monthYear)
+    const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
+    const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
+    if (keyA !== keyB) return keyB - keyA
+    return b.id - a.id
+  })
 
   const uniquePeriods: typeof allPeriods = []
   const seen = new Set<string>()

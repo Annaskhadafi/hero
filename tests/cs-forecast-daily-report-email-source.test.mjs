@@ -64,3 +64,24 @@ test('cron route and template seed/preset are wired', () => {
   assert.match(presetSource, /periodLabel/)
   assert.match(presetSource, /revenueSap/)
 })
+
+test('parseMonthYearToYearMonth parses English and Indonesian month names correctly', async () => {
+  const { parseMonthYearToYearMonth } = await import('../lib/cs-forecast-daily-report.ts')
+
+  assert.deepEqual(parseMonthYearToYearMonth('July 2026'), { year: 2026, month: 7 })
+  assert.deepEqual(parseMonthYearToYearMonth('Juli 2026'), { year: 2026, month: 7 })
+  assert.deepEqual(parseMonthYearToYearMonth('August 2026'), { year: 2026, month: 8 })
+  assert.deepEqual(parseMonthYearToYearMonth('Agustus 2026'), { year: 2026, month: 8 })
+  assert.deepEqual(parseMonthYearToYearMonth('2026-08'), { year: 2026, month: 8 })
+  assert.deepEqual(parseMonthYearToYearMonth('08-2026'), { year: 2026, month: 8 })
+})
+
+test('loadLatestPeriodReport and getForecastPeriods select current month or chronological order', () => {
+  const helperSource = read('lib/cs-forecast-daily-report.ts')
+  const actionSource = read('app/actions/central-service-forecast.ts')
+
+  assert.match(helperSource, /export function parseMonthYearToYearMonth/)
+  assert.match(helperSource, /current-month priority selection/)
+  assert.match(actionSource, /parseMonthYearToYearMonth/)
+})
+

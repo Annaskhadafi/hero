@@ -146,6 +146,63 @@ function wrapText(str: string | null | undefined, maxCharsPerLine: number, maxLi
 // ponytail: fixed UTC+8 wall clock (Asia/Singapore = UTC+8, no DST)
 const TZ_UTC8 = 'Asia/Singapore'
 
+export function parseMonthYearToYearMonth(str?: string | null): { year: number; month: number } | null {
+  if (!str) return null
+  const trimmed = str.trim()
+  if (!trimmed) return null
+
+  // 1. Check YYYY-MM or YYYY/MM
+  let match = trimmed.match(/^(\d{4})[-/](\d{1,2})$/)
+  if (match) {
+    const y = parseInt(match[1], 10)
+    const m = parseInt(match[2], 10)
+    if (m >= 1 && m <= 12) return { year: y, month: m }
+  }
+
+  // 2. Check MM-YYYY or MM/YYYY
+  match = trimmed.match(/^(\d{1,2})[-/](\d{4})$/)
+  if (match) {
+    const m = parseInt(match[1], 10)
+    const y = parseInt(match[2], 10)
+    if (m >= 1 && m <= 12) return { year: y, month: m }
+  }
+
+  // 3. Check "Month YYYY" or "YYYY Month" or "ShortMonth YYYY"
+  const parts = trimmed.split(/[\s,]+/)
+  if (parts.length === 2) {
+    let year = 0
+    let monthName = ''
+    if (/^\d{4}$/.test(parts[0])) {
+      year = parseInt(parts[0], 10)
+      monthName = parts[1].toLowerCase()
+    } else if (/^\d{4}$/.test(parts[1])) {
+      year = parseInt(parts[1], 10)
+      monthName = parts[0].toLowerCase()
+    }
+
+    if (year > 0 && monthName) {
+      const monthMap: Record<string, number> = {
+        jan: 1, january: 1, januari: 1,
+        feb: 2, february: 2, februari: 2,
+        mar: 3, march: 3, maret: 3,
+        apr: 4, april: 4,
+        may: 5, mei: 5,
+        jun: 6, june: 6, juni: 6,
+        jul: 7, july: 7, juli: 7,
+        aug: 8, august: 8, agustus: 8, ags: 8, agu: 8,
+        sep: 9, september: 9,
+        oct: 10, october: 10, oktober: 10, okt: 10,
+        nov: 11, november: 11,
+        dec: 12, december: 12, desember: 12, des: 12,
+      }
+      const m = monthMap[monthName]
+      if (m) return { year, month: m }
+    }
+  }
+
+  return null
+}
+
 function getUtc8Parts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TZ_UTC8,
@@ -160,6 +217,8 @@ function getUtc8Parts(date = new Date()) {
   return {
     date: `${get('year')}-${get('month')}-${get('day')}`,
     time: `${get('hour')}:${get('minute')}`,
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
   }
 }
 
@@ -401,11 +460,31 @@ function buildGroups(
 }
 
 async function loadLatestPeriodReport() {
-  const [period] = await db
-    .select()
-    .from(centralServiceForecastPeriods)
-    .orderBy(desc(centralServiceForecastPeriods.monthYear))
-    .limit(1)
+  const allPeriods = await db.select().from(centralServiceForecastPeriods)
+
+  if (!allPeriods || allPeriods.length === 0) return null
+
+  // Current wall-clock year/month in UTC+8 (bulan berjalan)
+  const { year: currentYear, month: currentMonth } = getUtc8Parts()
+
+  // ponytail: current-month priority selection + chronological fallback
+  let period = allPeriods.find((p) => {
+    const parsed = parseMonthYearToYearMonth(p.monthYear)
+    return parsed && parsed.year === currentYear && parsed.month === currentMonth
+  })
+
+  if (!period) {
+    // Fallback: sort chronologically desc by (year * 12 + month)
+    const sorted = [...allPeriods].sort((a, b) => {
+      const parsedA = parseMonthYearToYearMonth(a.monthYear)
+      const parsedB = parseMonthYearToYearMonth(b.monthYear)
+      const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
+      const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
+      if (keyA !== keyB) return keyB - keyA
+      return b.id - a.id
+    })
+    period = sorted[0]
+  }
 
   if (!period) return null
 
