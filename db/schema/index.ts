@@ -1,4 +1,5 @@
 // Trigger recompile
+export * from "./hero";
 export { user, session, account, verification } from "./auth";
 export { instagramImageHistory } from "./instagram-history";
 import { relations } from "drizzle-orm";

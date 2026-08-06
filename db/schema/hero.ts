@@ -129,6 +129,8 @@ export const employees = pgTable('hero_employees', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const heroEmployees = employees
+
 export const employeeSiteAssignments = pgTable(
   'hero_employee_site_assignments',
   {

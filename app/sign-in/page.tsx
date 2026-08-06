@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, Wand2 } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, ScanFace, Wand2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient, signIn, useSession } from "@/lib/auth-client";
 import { isMobileUserAgent } from "@/lib/device";
+import { FaceLoginModal } from "@/components/auth/face-login-modal";
 
 function getClientPostLoginPath() {
     if (typeof window === "undefined") {
@@ -35,6 +36,7 @@ function SignInContent() {
     const [resolvedEmail, setResolvedEmail] = useState("");
     const [resolvedName, setResolvedName] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
 
     // Check if input looks like email
     const isEmailInput = email.includes("@");
@@ -42,6 +44,18 @@ function SignInContent() {
     const [message, setMessage] = useState("");
     const { data: session, isPending } = useSession();
     const searchParams = useSearchParams();
+
+    const handleFaceLoginSuccess = (userData: { name: string; email?: string; employeeSn?: string; token?: string }) => {
+        setIsFaceModalOpen(false);
+        setMessage(`Login Wajah Berhasil! Selamat datang, ${userData.name}.`);
+        setTimeout(() => {
+            if (userData.token) {
+                window.location.href = `/api/auth/magic-link/verify?token=${userData.token}&callbackURL=${encodeURIComponent(getClientPostLoginPath())}`;
+            } else {
+                window.location.href = getClientPostLoginPath();
+            }
+        }, 500);
+    };
 
     useEffect(() => {
         if (session?.user && !isLoading) {
@@ -304,17 +318,37 @@ function SignInContent() {
                             </span>
                         </div>
 
-                        <Button
-                            type="button"
-                            onClick={handleMagicLinkSignIn}
-                            disabled={isDisabled}
-                            className="h-14 w-full rounded-xl bg-[#10283a]/92 text-xs text-slate-200 transition hover:bg-[#143044]"
-                        >
-                            <span className="flex items-center gap-2 justify-center">
-                                {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                                Magic Link
-                            </span>
-                        </Button>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    if (!email.trim()) {
+                                        setError("Masukkan Email / SN terlebih dahulu untuk menggunakan login wajah.");
+                                        return;
+                                    }
+                                    setIsFaceModalOpen(true);
+                                }}
+                                disabled={isDisabled}
+                                className="h-14 w-full rounded-xl bg-[linear-gradient(135deg,#003461_0%,#005596_100%)] text-xs font-semibold text-slate-100 ring-1 ring-[#7fb6df]/30 transition hover:brightness-110 active:scale-[0.98]"
+                            >
+                                <span className="flex items-center gap-1.5 justify-center">
+                                    <ScanFace className="h-4 w-4 text-[#9ac8ec]" />
+                                    Biometrik Wajah
+                                </span>
+                            </Button>
+
+                            <Button
+                                type="button"
+                                onClick={handleMagicLinkSignIn}
+                                disabled={isDisabled}
+                                className="h-14 w-full rounded-xl bg-[#10283a]/92 text-xs text-slate-200 transition hover:bg-[#143044]"
+                            >
+                                <span className="flex items-center gap-1.5 justify-center">
+                                    {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                                    Magic Link
+                                </span>
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="mt-8 pt-4 text-center">
@@ -536,17 +570,37 @@ function SignInContent() {
                                 )}
                             </Button>
 
-                            <Button
-                                type="button"
-                                onClick={handleMagicLinkSignIn}
-                                disabled={isDisabled}
-                                className="h-12 w-full rounded-xl border border-slate-200 bg-white text-slate-700 font-medium shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
-                            >
-                                <span className="flex items-center gap-2 justify-center">
-                                    {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                                    Continue with Magic Link
-                                </span>
-                            </Button>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!email.trim()) {
+                                            setError("Masukkan Email / SN terlebih dahulu untuk menggunakan login wajah.");
+                                            return;
+                                        }
+                                        setIsFaceModalOpen(true);
+                                    }}
+                                    disabled={isDisabled}
+                                    className="h-12 w-full rounded-xl bg-slate-900 text-white font-medium shadow-sm transition hover:bg-slate-800"
+                                >
+                                    <span className="flex items-center gap-2 justify-center">
+                                        <ScanFace className="h-4 w-4 text-[#7fb6df]" />
+                                        Face Biometric
+                                    </span>
+                                </Button>
+
+                                <Button
+                                    type="button"
+                                    onClick={handleMagicLinkSignIn}
+                                    disabled={isDisabled}
+                                    className="h-12 w-full rounded-xl border border-slate-200 bg-white text-slate-700 font-medium shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                                >
+                                    <span className="flex items-center gap-2 justify-center">
+                                        {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                                        Magic Link
+                                    </span>
+                                </Button>
+                            </div>
                         </form>
 
                         <p className="mt-8 text-center text-xs text-slate-400">
@@ -555,6 +609,13 @@ function SignInContent() {
                     </div>
                 </div>
             </div>
+
+            <FaceLoginModal
+                isOpen={isFaceModalOpen}
+                onClose={() => setIsFaceModalOpen(false)}
+                onSuccess={handleFaceLoginSuccess}
+                identifier={email}
+            />
         </>
     );
 }
