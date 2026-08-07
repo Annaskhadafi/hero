@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
 import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ActivityLibraryRow = {
   id: number;
@@ -108,18 +110,23 @@ export function ActivityLibraryRowActions({
   sections,
   sites,
   currentEmployeeId,
+  routeFolders,
+  routeGroupMappings,
 }: {
   row: ActivityLibraryRow;
   departments: DepartmentOption[];
   sections: SectionOption[];
   sites: SiteOption[];
   currentEmployeeId: number | null;
+  routeFolders: any[];
+  routeGroupMappings: Record<number, number[]>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [isGroupChecked, setIsGroupChecked] = useState((routeGroupMappings[row.id] || []).length > 0);
   const categoryOptions = CATEGORY_OPTIONS.includes(row.category)
     ? CATEGORY_OPTIONS
     : [row.category, ...CATEGORY_OPTIONS];
@@ -167,7 +174,15 @@ export function ActivityLibraryRowActions({
 
   return (
     <div className="flex items-center justify-end gap-1">
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) {
+            setIsGroupChecked((routeGroupMappings[row.id] || []).length > 0);
+          }
+        }}
+      >
         <DialogTrigger asChild>
           <Button
             type="button"
@@ -181,148 +196,169 @@ export function ActivityLibraryRowActions({
             <span className="sr-only">Edit activity</span>
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl p-0">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle>Edit Kamus Aktivitas</DialogTitle>
             <DialogDescription>
               Update identitas activity, scoring, validasi bukti, dan perilaku approval.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <input type="hidden" name="intent" value="update" />
-            <input type="hidden" name="id" value={row.id} />
-            <input type="hidden" name="createdByEmployeeId" value={currentEmployeeId ?? ""} />
-
-            <div className="rounded-xl bg-surface-container-low p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-foreground">{row.activityName}</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                    {row.activityCode} - {row.departmentName ?? "Global"} / {row.sectionName ?? "-"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{row.basePoints} pts</Badge>
-                  <Badge variant="outline">SLA {row.slaHours} jam</Badge>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Label className="grid gap-2 text-sm font-semibold">
-                Activity code
-                <Input name="activityCode" defaultValue={row.activityCode} required />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                Category
-                <select
-                  name="category"
-                  defaultValue={row.category}
-                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                >
-                  {categoryOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
-                Activity name
-                <Input name="activityName" defaultValue={row.activityName} required />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
-                Lokasi kerja / Site
-                <select
-                  name="siteId"
-                  defaultValue={row.siteId ?? ""}
-                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                >
-                  <option value="">Global - semua site</option>
-                  {sites.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
-                  ))}
-                </select>
-              </Label>
-              <ActivityRouteDepartmentSectionFields
-                departments={departments}
-                sections={sections}
-                defaultDepartmentId={row.departmentId}
-                defaultSectionId={row.sectionId}
-                selectClassName="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                departmentPlaceholder="Global"
-                sectionPlaceholder="No section"
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-4">
-              <Label className="grid gap-2 text-sm font-semibold">
-                Base points
-                <Input name="basePoints" type="number" min={0} max={500} defaultValue={row.basePoints} />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                Complexity
-                <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={row.complexityLevel} />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                Max daily count
-                <Input name="maxDailyCount" type="number" min={1} max={20} defaultValue={row.maxDailyCount} />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                SLA hours
-                <Input name="slaHours" type="number" min={1} max={240} defaultValue={row.slaHours} />
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
-                Max points per day
-                <Input name="maxPointsPerDay" type="number" min={1} max={1000} defaultValue={row.maxPointsPerDay} />
-              </Label>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl bg-surface-container-low p-4">
-                <p className="text-xs font-black uppercase text-muted-foreground">Validation required</p>
-                <div className="mt-3 grid gap-2">
-                  {VALIDATION_FIELDS.map(([field, label]) => (
-                    <Label key={field} className="flex min-h-11 items-center gap-3 rounded-lg bg-white px-3 text-sm font-semibold">
-                      <input type="checkbox" name={field} defaultChecked={asBooleanFieldValue(row, field)} />
-                      {label}
-                    </Label>
-                  ))}
-                </div>
-              </div>
+          <ScrollArea className="max-h-[80vh]">
+            <form onSubmit={handleSubmit} className="space-y-5 p-6">
+              <input type="hidden" name="intent" value="update" />
+              <input type="hidden" name="id" value={row.id} />
+              <input type="hidden" name="createdByEmployeeId" value={currentEmployeeId ?? ""} />
 
               <div className="rounded-xl bg-surface-container-low p-4">
-                <p className="text-xs font-black uppercase text-muted-foreground">Workflow behavior</p>
-                <div className="mt-3 grid gap-2">
-                  {BEHAVIOR_FIELDS.map(([field, label]) => (
-                    <Label key={field} className="flex min-h-11 items-center gap-3 rounded-lg bg-white px-3 text-sm font-semibold">
-                      <input type="checkbox" name={field} defaultChecked={asBooleanFieldValue(row, field)} />
-                      {label}
-                    </Label>
-                  ))}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-foreground">{row.activityName}</p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                      {row.activityCode} - {row.departmentName ?? "Global"} / {row.sectionName ?? "-"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Badge variant="secondary">{row.basePoints} pts</Badge>
+                    <Badge variant="outline">SLA {row.slaHours} jam</Badge>
+                    <label className="flex items-center gap-2 cursor-pointer font-normal border border-border/80 rounded-lg px-2.5 py-1 bg-background text-sm font-semibold shadow-sm ml-2">
+                      <span>Group</span>
+                      <input 
+                        type="checkbox" 
+                        name="isGroupActivity"
+                        checked={isGroupChecked}
+                        onChange={(event) => setIsGroupChecked(event.target.checked)}
+                        className="h-4 w-4 rounded-[4px] border-border text-primary shadow-sm" 
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {error ? (
-              <Alert className="border-red-200 text-red-700">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
+              <div className="grid gap-4 md:grid-cols-2 items-start">
+                <Label className="grid gap-2 text-sm font-semibold">
+                  Activity code
+                  <Input name="activityCode" defaultValue={row.activityCode} required />
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold">
+                  Category
+                  <select
+                    name="category"
+                    defaultValue={row.category}
+                    className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                  >
+                    {categoryOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
+                  Activity name
+                  <Input name="activityName" defaultValue={row.activityName} required />
+                </Label>
+                {isGroupChecked ? (
+                  <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <ActivityLibraryRouteMappingField
+                      routeFolders={routeFolders}
+                      initialMappedIds={routeGroupMappings[row.id] || []}
+                    />
+                  </div>
+                ) : null}
+                <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
+                  Lokasi kerja / Site
+                  <select
+                    name="siteId"
+                    defaultValue={row.siteId ?? ""}
+                    className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                  >
+                    <option value="">Global - semua site</option>
+                    {sites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))}
+                  </select>
+                </Label>
+                <ActivityRouteDepartmentSectionFields
+                  departments={departments}
+                  sections={sections}
+                  defaultDepartmentId={row.departmentId}
+                  defaultSectionId={row.sectionId}
+                  selectClassName="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                  departmentPlaceholder="Global"
+                  sectionPlaceholder="No section"
+                />
+              </div>
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setOpen(false)}>
-                Batal
-              </Button>
-              <Button type="submit" className="rounded-xl" disabled={isSaving}>
-                {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                Simpan perubahan
-              </Button>
-            </div>
-          </form>
+              <div className="grid gap-4 md:grid-cols-4">
+                <Label className="grid gap-2 text-sm font-semibold">
+                  Base points
+                  <Input name="basePoints" type="number" min={0} max={500} defaultValue={row.basePoints} />
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold">
+                  Complexity
+                  <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={row.complexityLevel} />
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold">
+                  Max daily count
+                  <Input name="maxDailyCount" type="number" min={1} max={20} defaultValue={row.maxDailyCount} />
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold">
+                  SLA hours
+                  <Input name="slaHours" type="number" min={1} max={240} defaultValue={row.slaHours} />
+                </Label>
+                <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
+                  Max points per day
+                  <Input name="maxPointsPerDay" type="number" min={1} max={1000} defaultValue={row.maxPointsPerDay} />
+                </Label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl bg-surface-container-low p-4">
+                  <p className="text-xs font-black uppercase text-muted-foreground">Validation required</p>
+                  <div className="mt-3 grid gap-2">
+                    {VALIDATION_FIELDS.map(([field, label]) => (
+                      <Label key={field} className="flex min-h-11 items-center gap-3 rounded-lg bg-white px-3 text-sm font-semibold">
+                        <input type="checkbox" name={field} defaultChecked={asBooleanFieldValue(row, field)} />
+                        {label}
+                      </Label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-surface-container-low p-4">
+                  <p className="text-xs font-black uppercase text-muted-foreground">Workflow behavior</p>
+                  <div className="mt-3 grid gap-2">
+                    {BEHAVIOR_FIELDS.map(([field, label]) => (
+                      <Label key={field} className="flex min-h-11 items-center gap-3 rounded-lg bg-white px-3 text-sm font-semibold">
+                        <input type="checkbox" name={field} defaultChecked={asBooleanFieldValue(row, field)} />
+                        {label}
+                      </Label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+
+              {error ? (
+                <Alert className="border-red-200 text-red-700">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" className="rounded-xl" onClick={() => setOpen(false)}>
+                  Batal
+                </Button>
+                <Button type="submit" className="rounded-xl" disabled={isSaving}>
+                  {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Simpan perubahan
+                </Button>
+              </div>
+            </form>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 

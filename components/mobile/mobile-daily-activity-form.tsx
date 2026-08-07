@@ -34,6 +34,8 @@ import {
   type RouteSessionSyncItem,
   type QueuedFilePayload,
 } from '@/lib/offline-sync'
+import type { RouteFolder } from '@/lib/daily-activity'
+import { RouteFolderTree } from '@/components/mobile/route-folder-tree'
 
 type AssignmentOption = {
   id: number
@@ -45,7 +47,7 @@ type AssignmentOption = {
   requiresPhoto?: boolean | null
 }
 
-type LibraryOption = {
+export type LibraryOption = {
   id: number
   activityCode: string
   activityName: string
@@ -59,6 +61,7 @@ type LibraryOption = {
   maxPointsPerDay: number
   departmentId: number | null
   sectionId: number | null
+  isGroupActivity?: boolean
 }
 
 type ChecklistRenderItem = {
@@ -101,6 +104,7 @@ type MobileDailyActivityFormProps = {
   availableLibrary: LibraryOption[]
   defaultStartTime: string
   defaultEndTime: string
+  availableRouteFolders?: RouteFolder[]
   routeChecklist: {
     id: number
     routeCode: string
@@ -368,6 +372,7 @@ export function MobileDailyActivityForm({
   availableLibrary,
   defaultStartTime,
   defaultEndTime,
+  availableRouteFolders,
   routeChecklist,
   standaloneOvertimeChecklist,
   site,
@@ -1274,10 +1279,19 @@ export function MobileDailyActivityForm({
             </div>
 
             <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-              {filteredLibraries.length > 0 ? (
+              {availableRouteFolders && availableRouteFolders.length > 0 ? (
+                <RouteFolderTree
+                  routeFolders={availableRouteFolders}
+                  availableLibraryMap={availableLibraryMap}
+                  selectedLibraryIds={selectedLibraryIds}
+                  toggleLibrarySelection={toggleLibrarySelection}
+                  librarySearch={librarySearch}
+                />
+              ) : filteredLibraries.length > 0 ? (
                 filteredLibraries.map((item) => {
                   const isSelected = selectedLibraryIds.includes(`${item.id}`)
                   const requirementBadges = [
+                    item.isGroupActivity ? 'Group' : null,
                     item.requiresEquipmentNo ? 'Equipment' : null,
                     item.requiresDuration ? 'Duration' : null,
                     item.requiresMaterialUsed ? 'Material' : null,
@@ -1375,8 +1389,7 @@ export function MobileDailyActivityForm({
           </div>
         ) : null}
 
-        {!checklistContext ? (
-          <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <Label className="block space-y-2">
               <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                 Source mode
@@ -1504,9 +1517,8 @@ export function MobileDailyActivityForm({
               </>
             ) : null}
           </section>
-        ) : null}
 
-        {sourceMode === 'self_input' && !checklistContext ? (
+        {sourceMode === 'self_input' ? (
           <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1680,7 +1692,8 @@ export function MobileDailyActivityForm({
           </section>
         ) : null}
 
-        {checklistContext ? (
+
+        {checklistContext && sourceMode !== 'self_input' ? (
           <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div>
               <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">

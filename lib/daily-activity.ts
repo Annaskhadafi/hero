@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { user } from '@/db/schema/auth'
 import {
@@ -2211,6 +2211,128 @@ type DailyActivityReadOptions = {
   ensureSeed?: boolean
 }
 
+export type RouteFolder = {
+  id: number
+  routeCode: string
+  routeName: string
+  groups: Array<{
+    id: number
+    groupName: string
+    items: Array<{
+      id: number
+      libraryActivityId: number | null
+    }>
+  }>
+}
+
+async function getAvailableRouteFoldersForEmployee(
+  employee: DailyActivityEmployeeContext,
+  referenceDate = new Date()
+): Promise<RouteFolder[]> {
+  const routeTemplateRows = await db
+    .select({
+      id: activityRouteTemplates.id,
+      routeCode: activityRouteTemplates.routeCode,
+      routeName: activityRouteTemplates.routeName,
+      shiftCode: activityRouteTemplates.shiftCode,
+      description: activityRouteTemplates.description,
+      versionLabel: activityRouteTemplates.versionLabel,
+      mobileEnabled: activityRouteTemplates.mobileEnabled,
+      approvalRequired: activityRouteTemplates.approvalRequired,
+      siteId: activityRouteTemplates.siteId,
+      siteName: sites.name,
+      departmentId: activityRouteTemplates.departmentId,
+      departmentName: masterDepartments.name,
+      sectionId: activityRouteTemplates.sectionId,
+      sectionName: masterSections.name,
+      positionId: activityRouteTemplates.positionId,
+      positionName: masterPositions.name,
+      effectiveFrom: activityRouteTemplates.effectiveFrom,
+      createdAt: activityRouteTemplates.createdAt,
+    })
+    .from(activityRouteTemplates)
+    .leftJoin(sites, eq(activityRouteTemplates.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(activityRouteTemplates.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(activityRouteTemplates.sectionId, masterSections.id))
+    .leftJoin(masterPositions, eq(activityRouteTemplates.positionId, masterPositions.id))
+    .where(eq(activityRouteTemplates.isActive, true))
+    .orderBy(desc(activityRouteTemplates.mobileEnabled), desc(activityRouteTemplates.createdAt))
+
+  const shiftAliases = getShiftAliases(referenceDate)
+  const matchedRouteTemplates = routeTemplateRows
+    .map((template) => ({
+      ...template,
+      score: getRouteTemplateScore(template, employee, shiftAliases),
+    }))
+    .filter((template) => template.score >= 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+      return right.createdAt.getTime() - left.createdAt.getTime()
+    })
+
+  if (matchedRouteTemplates.length === 0) {
+    return []
+  }
+
+  const templateIds = matchedRouteTemplates.map(t => t.id)
+
+  const [groupRows, itemRows] = await Promise.all([
+    db
+      .select({
+        id: activityRouteGroups.id,
+        routeTemplateId: activityRouteGroups.routeTemplateId,
+        groupKey: activityRouteGroups.groupKey,
+        groupName: activityRouteGroups.groupName,
+        description: activityRouteGroups.description,
+        sortOrder: activityRouteGroups.sortOrder,
+        isRequired: activityRouteGroups.isRequired,
+      })
+      .from(activityRouteGroups)
+      .where(inArray(activityRouteGroups.routeTemplateId, templateIds))
+      .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        itemDescription: activityRouteItems.itemDescription,
+        pointOverride: activityRouteItems.pointOverride,
+        sortOrder: activityRouteItems.sortOrder,
+      })
+      .from(activityRouteItems)
+      .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
+      .where(inArray(activityRouteGroups.routeTemplateId, templateIds))
+      .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+  ])
+
+  const itemsByGroupId = new Map<number, typeof itemRows>()
+  for (const item of itemRows) {
+    const list = itemsByGroupId.get(item.routeGroupId) ?? []
+    list.push(item)
+    itemsByGroupId.set(item.routeGroupId, list)
+  }
+
+  const groupsByTemplateId = new Map<number, any[]>()
+  for (const group of groupRows) {
+    const list = groupsByTemplateId.get(group.routeTemplateId) ?? []
+    list.push({
+      ...group,
+      items: itemsByGroupId.get(group.id) ?? []
+    })
+    groupsByTemplateId.set(group.routeTemplateId, list)
+  }
+
+  return matchedRouteTemplates.map(t => ({
+    id: t.id,
+    routeCode: t.routeCode,
+    routeName: t.routeName,
+    groups: groupsByTemplateId.get(t.id) ?? []
+  }))
+}
 export async function getDailyActivityEmployeeData(
   email?: string | null,
   options: DailyActivityReadOptions = {}
@@ -2425,9 +2547,58 @@ export async function getDailyActivityEmployeeData(
     .filter((row) => row.createdAt >= dayStart && row.createdAt <= dayEnd)
     .reduce((total, row) => total + row.pointsDeducted, 0)
 
+  const availableRouteFolders = await getAvailableRouteFoldersForEmployee(employee, new Date())
+
+  // Route groups can map library activities that sit outside the employee's default
+  // dept/site scope (explicitly linked by admin). Pull them in so they render in the
+  // route folder tree AND remain selectable on submit.
+  const routeLibraryIds = availableRouteFolders.flatMap((folder) =>
+    folder.groups.flatMap((group) =>
+      group.items.map((item) => item.libraryActivityId)
+    )
+  ).filter((id): id is number => id != null)
+  const uniqueRouteLibraryIds = [...new Set(routeLibraryIds)]
+  const extraRouteLibraries = uniqueRouteLibraryIds.length
+    ? await db
+        .select({
+          id: activityLibraries.id,
+          activityCode: activityLibraries.activityCode,
+          activityName: activityLibraries.activityName,
+          category: activityLibraries.category,
+          siteId: activityLibraries.siteId,
+          siteName: sites.name,
+          basePoints: activityLibraries.basePoints,
+          complexityLevel: activityLibraries.complexityLevel,
+          requiresPhoto: activityLibraries.requiresPhoto,
+          requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          requiresDuration: activityLibraries.requiresDuration,
+          requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+          requiresLocationGps: activityLibraries.requiresLocationGps,
+          maxDailyCount: activityLibraries.maxDailyCount,
+          maxPointsPerDay: activityLibraries.maxPointsPerDay,
+          departmentId: activityLibraries.departmentId,
+          sectionId: activityLibraries.sectionId,
+          slaHours: activityLibraries.slaHours,
+        })
+        .from(activityLibraries)
+        .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
+        .where(
+          and(
+            inArray(activityLibraries.id, uniqueRouteLibraryIds),
+            eq(activityLibraries.isActive, true)
+          )
+        )
+    : []
+  const knownLibraryIds = new Set(libraryRows.map((row) => row.id))
+  const mergedLibraryRows = [
+    ...libraryRows,
+    ...extraRouteLibraries.filter((row) => !knownLibraryIds.has(row.id)),
+  ]
+
   return {
     employee,
     site,
+    availableRouteFolders,
     summary: {
       shift: getShiftLabel(),
       jobsAssigned: assignmentRows.length,
@@ -2461,7 +2632,7 @@ export async function getDailyActivityEmployeeData(
     pointsFeed: pointRows,
     penalties: penaltyRows,
     streak,
-    availableLibrary: libraryRows,
+    availableLibrary: mergedLibraryRows,
     routeChecklist,
     standaloneOvertimeChecklist,
     revalidatePaths: DAILY_ACTIVITY_REVALIDATE_PATHS,
@@ -3125,6 +3296,9 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     return accumulator
   }, {})
 
+  const routeFolders = await getActiveRouteFolders()
+  const routeGroupMappings = await getLibraryRouteGroupMappings()
+
   return {
     currentEmployee,
     metrics: {
@@ -3141,6 +3315,8 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     sections: sectionsRows,
     sites: siteRows,
     creators,
+    routeFolders,
+    routeGroupMappings,
   }
 }
 
@@ -3435,3 +3611,76 @@ export async function getDailyActivityConfigurationData(email?: string | null) {
 }
 
 export { DAILY_ACTIVITY_REVALIDATE_PATHS }
+
+export type AdminRouteFolderItem = {
+  id: number
+  itemLabel: string
+}
+
+export type AdminRouteFolderGroup = {
+  id: number
+  groupName: string
+  items: AdminRouteFolderItem[]
+}
+
+export type AdminRouteFolder = {
+  id: number
+  routeName: string
+  groups: AdminRouteFolderGroup[]
+}
+
+export async function getActiveRouteFolders(): Promise<AdminRouteFolder[]> {
+  const [templates, groups, items] = await Promise.all([
+    db
+      .select({ id: activityRouteTemplates.id, routeName: activityRouteTemplates.routeName })
+      .from(activityRouteTemplates)
+      .where(eq(activityRouteTemplates.isActive, true))
+      .orderBy(asc(activityRouteTemplates.routeName)),
+    db
+      .select({ id: activityRouteGroups.id, routeTemplateId: activityRouteGroups.routeTemplateId, groupName: activityRouteGroups.groupName })
+      .from(activityRouteGroups)
+      .orderBy(asc(activityRouteGroups.sortOrder)),
+    db
+      .select({ id: activityRouteItems.id, routeGroupId: activityRouteItems.routeGroupId, itemLabel: activityRouteItems.itemLabel })
+      .from(activityRouteItems)
+      .orderBy(asc(activityRouteItems.sortOrder)),
+  ])
+
+  return templates.map(template => {
+    const templateGroups = groups.filter(g => g.routeTemplateId === template.id)
+    return {
+      id: template.id,
+      routeName: template.routeName,
+      groups: templateGroups.map(group => {
+        const groupItems = items.filter(i => i.routeGroupId === group.id)
+        return {
+          id: group.id,
+          groupName: group.groupName,
+          items: groupItems.map(item => ({
+            id: item.id,
+            itemLabel: item.itemLabel,
+          }))
+        }
+      })
+    }
+  })
+}
+
+export async function getLibraryRouteGroupMappings(): Promise<Record<number, number[]>> {
+  const items = await db
+    .select({ routeGroupId: activityRouteItems.routeGroupId, libraryActivityId: activityRouteItems.libraryActivityId })
+    .from(activityRouteItems)
+    .where(isNotNull(activityRouteItems.libraryActivityId))
+
+  const mappings: Record<number, number[]> = {}
+  for (const item of items) {
+    if (item.libraryActivityId) {
+      if (!mappings[item.libraryActivityId]) {
+        mappings[item.libraryActivityId] = []
+      }
+      mappings[item.libraryActivityId].push(item.routeGroupId)
+    }
+  }
+  return mappings
+}
+
