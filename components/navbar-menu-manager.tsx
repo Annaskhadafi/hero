@@ -55,6 +55,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -386,6 +387,20 @@ function MenuFormDialog({
   const [sortOrder, setSortOrder] = useState(initialData?.sortOrder ?? 0);
   const [customSection, setCustomSection] = useState("");
   const [useCustomSection, setUseCustomSection] = useState(false);
+  const [iframeCode, setIframeCode] = useState("");
+
+  const handleIframeCodeChange = (val: string) => {
+    setIframeCode(val);
+    const trimmed = val.trim();
+    if (trimmed.startsWith("<iframe")) {
+      const match = trimmed.match(/src=["']([^"']+)["']/i);
+      if (match && match[1]) {
+        setUrl(match[1]);
+      }
+    } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      setUrl(trimmed);
+    }
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -401,6 +416,7 @@ function MenuFormDialog({
       setIsIframe(initialData.isIframe ?? false);
       setParentId(initialData.parentId?.toString() ?? "none");
       setSortOrder(initialData.sortOrder ?? 0);
+      setIframeCode("");
       setUseCustomSection(!allSections.includes(initialData.section));
       setCustomSection(!allSections.includes(initialData.section) ? initialData.section : "");
     } else {
@@ -416,6 +432,7 @@ function MenuFormDialog({
       setIsIframe(false);
       setParentId("none");
       setSortOrder(0);
+      setIframeCode("");
       setUseCustomSection(false);
       setCustomSection("");
     }
@@ -453,6 +470,19 @@ function MenuFormDialog({
             <Label>URL / Path</Label>
             <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://... atau /dashboard/..." />
           </div>
+
+          {isIframe && (
+            <div className="space-y-2 bg-primary/5 p-3 rounded-lg border border-primary/10">
+              <Label className="text-primary font-medium">Paste Kode Iframe (URL / Path otomatis terisi)</Label>
+              <Textarea
+                value={iframeCode}
+                onChange={(e) => handleIframeCodeChange(e.target.value)}
+                placeholder='Contoh: <iframe src="https://..." width="100%" height="500"></iframe>'
+                className="font-mono text-[11px] min-h-[60px]"
+                rows={2}
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
