@@ -133,11 +133,11 @@ function conditionBadge(condition: string) {
         ACTIVE
       </Badge>
     );
-  if (c === "SERVICE")
+  if (c === "REPAIR")
     return (
       <Badge className="border-0 bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-950/20 font-semibold">
         <CheckCircle2 className="mr-1 h-3 w-3" />
-        SERVICE
+        REPAIR
       </Badge>
     );
   if (c === "BAD")
@@ -454,7 +454,7 @@ const SECTIONS = [
   "RADIO",
 ];
 
-const CONDITIONS = ["ACTIVE", "SERVICE", "BAD", "SCRAP"];
+const CONDITIONS = ["ACTIVE", "REPAIR", "BAD", "SCRAP"];
 const DEFAULT_CONDITION_FILTERS = CONDITIONS.filter((condition) => condition !== "SCRAP");
 
 const DUE_FILTERS = [
@@ -851,7 +851,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
   const filteredAssets = table.getFilteredRowModel().rows.map((row) => row.original);
   const scoreCards = {
     total: filteredAssets.length,
-    active: filteredAssets.filter((asset) => ["ACTIVE", "SERVICE"].includes(asset.condition?.toUpperCase())).length,
+    active: filteredAssets.filter((asset) => ["ACTIVE", "REPAIR"].includes(asset.condition?.toUpperCase())).length,
     bad: filteredAssets.filter((asset) => asset.condition?.toUpperCase() === "BAD").length,
     scrap: filteredAssets.filter((asset) => asset.condition?.toUpperCase() === "SCRAP").length,
   };
