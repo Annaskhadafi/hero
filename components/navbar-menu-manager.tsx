@@ -96,6 +96,7 @@ type MenuItemData = {
   itemType: string;
   parentId: number | null;
   groupLabel: string | null;
+  isIframe: boolean;
 };
 
 type FlatMenuItem = MenuItemData & {
@@ -362,12 +363,14 @@ function MenuFormDialog({
   onSave,
   initialData,
   allSections,
+  menuItems,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (data: Partial<MenuItemData>) => void;
   initialData?: MenuItemData | null;
   allSections: string[];
+  menuItems: MenuItemData[];
 }) {
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [url, setUrl] = useState(initialData?.url ?? "");
@@ -378,6 +381,9 @@ function MenuFormDialog({
   const [menuArea, setMenuArea] = useState(initialData?.menuArea ?? "main");
   const [isVisible, setIsVisible] = useState(initialData?.isVisible ?? true);
   const [openInNewTab, setOpenInNewTab] = useState(initialData?.openInNewTab ?? false);
+  const [isIframe, setIsIframe] = useState(initialData?.isIframe ?? false);
+  const [parentId, setParentId] = useState<string>(initialData?.parentId?.toString() ?? "none");
+  const [sortOrder, setSortOrder] = useState(initialData?.sortOrder ?? 0);
   const [customSection, setCustomSection] = useState("");
   const [useCustomSection, setUseCustomSection] = useState(false);
 
@@ -392,6 +398,9 @@ function MenuFormDialog({
       setMenuArea(initialData.menuArea);
       setIsVisible(initialData.isVisible);
       setOpenInNewTab(initialData.openInNewTab);
+      setIsIframe(initialData.isIframe ?? false);
+      setParentId(initialData.parentId?.toString() ?? "none");
+      setSortOrder(initialData.sortOrder ?? 0);
       setUseCustomSection(!allSections.includes(initialData.section));
       setCustomSection(!allSections.includes(initialData.section) ? initialData.section : "");
     } else {
@@ -404,10 +413,21 @@ function MenuFormDialog({
       setMenuArea("main");
       setIsVisible(true);
       setOpenInNewTab(false);
+      setIsIframe(false);
+      setParentId("none");
+      setSortOrder(0);
       setUseCustomSection(false);
       setCustomSection("");
     }
   }, [initialData, allSections, open]);
+
+  const potentialParents = useMemo(() => {
+    return menuItems.filter(
+      (item) =>
+        (item.parentId === null || item.parentId === undefined) &&
+        (!initialData || item.id !== initialData.id)
+    );
+  }, [menuItems, initialData]);
 
   const finalSection = useCustomSection ? customSection : section;
 
@@ -431,7 +451,7 @@ function MenuFormDialog({
 
           <div className="space-y-2">
             <Label>URL / Path</Label>
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/dashboard/..." />
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://... atau /dashboard/..." />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -472,6 +492,35 @@ function MenuFormDialog({
                 value={groupLabel}
                 onChange={(e) => setGroupLabel(e.target.value)}
                 placeholder="Sub-group dalam section"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Induk Menu (Sub-menu dari)</Label>
+              <Select value={parentId} onValueChange={setParentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih Induk Menu (opsional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">-- Tanpa Induk (Top Level) --</SelectItem>
+                  {potentialParents.map((item) => (
+                    <SelectItem key={item.id} value={item.id.toString()}>
+                      {item.title} ({item.section})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Urutan Tampilan</Label>
+              <Input
+                type="number"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)}
+                placeholder="0"
               />
             </div>
           </div>
@@ -519,14 +568,18 @@ function MenuFormDialog({
             </Select>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={isVisible} onCheckedChange={setIsVisible} />
-              <Label>Tampil di sidebar</Label>
+          <div className="flex flex-col gap-3 py-1 bg-muted/40 p-3 rounded-lg border">
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer" htmlFor="isVisible-switch">Tampil di sidebar</Label>
+              <Switch id="isVisible-switch" checked={isVisible} onCheckedChange={setIsVisible} />
             </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={openInNewTab} onCheckedChange={setOpenInNewTab} />
-              <Label>Buka di tab baru</Label>
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer" htmlFor="openInNewTab-switch">Buka di tab baru (External URL)</Label>
+              <Switch id="openInNewTab-switch" checked={openInNewTab} onCheckedChange={setOpenInNewTab} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label className="cursor-pointer" htmlFor="isIframe-switch">Embed website (Buka sebagai Iframe di HERO)</Label>
+              <Switch id="isIframe-switch" checked={isIframe} onCheckedChange={setIsIframe} />
             </div>
           </div>
         </div>
@@ -547,6 +600,9 @@ function MenuFormDialog({
                 menuArea,
                 isVisible,
                 openInNewTab,
+                isIframe,
+                parentId: parentId && parentId !== "none" ? parseInt(parentId) : null,
+                sortOrder,
               })
             }
             disabled={!title || !url || !finalSection || !resource}
@@ -713,6 +769,7 @@ export function NavbarMenuManager({ menuItems }: { menuItems: MenuItemData[] }) 
         onSave={handleSave}
         initialData={editingItem}
         allSections={sections}
+        menuItems={items}
       />
 
       <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>

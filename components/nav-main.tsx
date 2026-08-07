@@ -32,12 +32,16 @@ function isMenuItemActive(pathname: string, url: string) {
 }
 
 type NavItem = {
+  id?: number
   section?: string
   title: string
   url: string
   icon?: Icon
   groupLabel?: string | null
   openInNewTab?: boolean
+  parentId?: number | null
+  isIframe?: boolean
+  children?: NavItem[]
 }
 
 type NavGroup = {
@@ -55,6 +59,69 @@ function groupItemsByLabel(items: NavItem[]): Map<string | null, NavItem[]> {
     groups.set(key, existing)
   }
   return groups
+}
+
+function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
+  const [isOpen, setIsOpen] = React.useState(() => {
+    return item.children?.some(child => isMenuItemActive(pathname, child.url)) ?? false
+  })
+
+  const hasActiveChild = item.children?.some(child => isMenuItemActive(pathname, child.url)) ?? false
+  const hasChildren = item.children && item.children.length > 0
+
+  if (!hasChildren) {
+    return (
+      <SidebarMenuSubItem key={item.url}>
+        <SidebarMenuSubButton
+          asChild
+          isActive={isMenuItemActive(pathname, item.url)}
+          className="min-h-8 rounded-md px-2 text-[13px]"
+        >
+          <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
+            <span>{item.title}</span>
+          </Link>
+        </SidebarMenuSubButton>
+      </SidebarMenuSubItem>
+    )
+  }
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} asChild>
+      <SidebarMenuSubItem>
+        <div className="flex flex-col w-full">
+          <CollapsibleTrigger asChild>
+            <SidebarMenuSubButton
+              isActive={isMenuItemActive(pathname, item.url) || hasActiveChild}
+              className="min-h-8 rounded-md px-2 text-[13px] font-medium flex items-center justify-between w-full"
+            >
+              <span>{item.title}</span>
+              <IconChevronRight
+                className={cn(
+                  "ml-auto h-3.5 w-3.5 transition-transform duration-200",
+                  isOpen ? "rotate-90" : "rotate-0"
+                )}
+              />
+            </SidebarMenuSubButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-2 border-l border-sidebar-border/60 ml-2 mt-1 flex flex-col gap-1">
+            {item.children?.map((child) => (
+              <SidebarMenuSubItem key={child.url}>
+                <SidebarMenuSubButton
+                  asChild
+                  isActive={isMenuItemActive(pathname, child.url)}
+                  className="min-h-7 rounded-md px-2 text-[12px] text-muted-foreground hover:text-foreground"
+                >
+                  <Link href={child.url} target={child.openInNewTab ? "_blank" : undefined}>
+                    <span>{child.title}</span>
+                  </Link>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
+          </CollapsibleContent>
+        </div>
+      </SidebarMenuSubItem>
+    </Collapsible>
+  )
 }
 
 export function NavMain({
@@ -106,17 +173,7 @@ export function NavMain({
 
     if (!hasGroups) {
       return items.map((item) => (
-        <SidebarMenuSubItem key={item.url}>
-          <SidebarMenuSubButton
-            asChild
-            isActive={isMenuItemActive(pathname, item.url)}
-            className="min-h-8 rounded-md px-2 text-[13px]"
-          >
-            <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
-              <span>{item.title}</span>
-            </Link>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
+        <SubmenuItem key={item.url} item={item} pathname={pathname} />
       ))
     }
 
@@ -131,17 +188,7 @@ export function NavMain({
           </li>
         )}
         {groupItems.map((item) => (
-          <SidebarMenuSubItem key={item.url}>
-            <SidebarMenuSubButton
-              asChild
-              isActive={isMenuItemActive(pathname, item.url)}
-              className="min-h-8 rounded-md px-2 text-[13px]"
-            >
-              <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
-                <span>{item.title}</span>
-              </Link>
-            </SidebarMenuSubButton>
-          </SidebarMenuSubItem>
+          <SubmenuItem key={item.url} item={item} pathname={pathname} />
         ))}
       </React.Fragment>
     ))

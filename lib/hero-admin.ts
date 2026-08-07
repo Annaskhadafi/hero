@@ -7267,6 +7267,8 @@ export async function getSidebarDataForUser(email: string) {
       isVisible: navbarMenuItems.isVisible,
       openInNewTab: navbarMenuItems.openInNewTab,
       groupLabel: navbarMenuItems.groupLabel,
+      parentId: navbarMenuItems.parentId,
+      isIframe: navbarMenuItems.isIframe,
     })
     .from(roleMenuPermissions)
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
@@ -7274,7 +7276,12 @@ export async function getSidebarDataForUser(email: string) {
     .orderBy(navbarMenuItems.menuArea, navbarMenuItems.section, navbarMenuItems.sortOrder)
 
   const visibleItems = dedupeMenuItemsByPage(
-    permittedMenuItems.filter((item) => item.isVisible && item.canView)
+    permittedMenuItems
+      .filter((item) => item.isVisible && item.canView)
+      .map((item) => ({
+        ...item,
+        url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,
+      }))
   )
 
   return {

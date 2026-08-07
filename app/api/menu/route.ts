@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { navbarMenuItems } from "@/db/schema/hero";
+import { navbarMenuItems, securityRoles, roleMenuPermissions } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 
 export async function GET() {
@@ -30,8 +30,28 @@ export async function POST(request: NextRequest) {
       itemType: body.itemType ?? "menu",
       parentId: body.parentId ?? null,
       groupLabel: body.groupLabel ?? null,
+      isIframe: body.isIframe ?? false,
     })
     .returning();
+
+  // Automatically insert permissions for this new menu item
+  try {
+    const roles = await db.select().from(securityRoles);
+    if (roles.length > 0) {
+      const defaultPermissions = roles.map((role) => ({
+        roleId: role.id,
+        menuItemId: created.id,
+        canView: role.name === "Super Admin",
+        canEdit: role.name === "Super Admin",
+        canDelete: role.name === "Super Admin",
+        canSelectAll: role.name === "Super Admin",
+        dataScope: role.name === "Super Admin" ? "global" : "own",
+      }));
+      await db.insert(roleMenuPermissions).values(defaultPermissions);
+    }
+  } catch (err) {
+    console.error("Failed to seed permission for new menu item:", err);
+  }
 
   return NextResponse.json(created);
 }

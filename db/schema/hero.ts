@@ -1502,6 +1502,7 @@ export const navbarMenuItems = pgTable('hero_navbar_menu_items', {
   itemType: text('item_type').notNull().default('menu'),
   parentId: integer('parent_id'),
   groupLabel: text('group_label'),
+  isIframe: boolean('is_iframe').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

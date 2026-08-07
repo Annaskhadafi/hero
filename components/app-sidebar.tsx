@@ -57,6 +57,7 @@ const iconMap = {
 } as const
 
 type SidebarMenuItem = {
+  id?: number
   section?: string
   title: string
   url: string
@@ -64,6 +65,8 @@ type SidebarMenuItem = {
   sortOrder?: number
   groupLabel?: string | null
   openInNewTab?: boolean
+  parentId?: number | null
+  isIframe?: boolean
 }
 
 type SidebarDocumentItem = {
@@ -121,6 +124,7 @@ const sectionLabelMap: Record<string, string> = {
   Report: "Laporan",
   Setting: "Pengaturan",
 }
+
 export function AppSidebar({
   user,
   navMain,
@@ -153,6 +157,7 @@ export function AppSidebar({
   }, [setOpen])
 
   const desktopItems = [...navMain, ...navSecondary].map((item) => ({
+    id: item.id,
     section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
     title: item.title,
     url: item.url,
@@ -160,13 +165,17 @@ export function AppSidebar({
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
     groupLabel: item.groupLabel ?? null,
     openInNewTab: item.openInNewTab ?? false,
+    parentId: item.parentId ?? null,
+    isIframe: item.isIframe ?? false,
   }))
+
   const documentItems = documents.map((item) => ({
     section: item.section ?? "Dokumen",
     name: item.title,
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder,
   }))
+
   const extraSections = Array.from(
     new Set(
       desktopItems
@@ -174,19 +183,39 @@ export function AppSidebar({
         .filter((section) => !DESKTOP_MENU_ORDER.includes(section as (typeof DESKTOP_MENU_ORDER)[number]))
     )
   )
+
   const orderedSections = [...DESKTOP_MENU_ORDER, ...extraSections]
+
   const desktopGroups = orderedSections
-    .map((section) => ({
-      title: section,
-      icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
-      items: desktopItems
-        .filter((item) => item.section === section)
-        .sort((left, right) => left.sortOrder - right.sortOrder)
-        .map((item) => ({
-          ...item,
-          groupLabel: item.groupLabel,
-        })),
-    }))
+    .map((section) => {
+      const sectionItems = desktopItems.filter((item) => item.section === section)
+      
+      const itemMap = new Map<number, any>()
+      const rootItems: any[] = []
+      
+      sectionItems.forEach((item) => {
+        if (item.id !== undefined) {
+          itemMap.set(item.id, { ...item, children: [] })
+        }
+      })
+      
+      sectionItems.forEach((item) => {
+        if (item.id !== undefined) {
+          const mappedItem = itemMap.get(item.id)
+          if (item.parentId && itemMap.has(item.parentId)) {
+            itemMap.get(item.parentId).children.push(mappedItem)
+          } else {
+            rootItems.push(mappedItem)
+          }
+        }
+      })
+
+      return {
+        title: section,
+        icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
+        items: rootItems.sort((left, right) => left.sortOrder - right.sortOrder),
+      }
+    })
     .filter((group) => group.items.length > 0)
 
   return (
@@ -238,5 +267,3 @@ export function AppSidebar({
     </Sidebar>
   )
 }
-
-
