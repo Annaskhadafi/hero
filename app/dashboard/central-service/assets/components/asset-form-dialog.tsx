@@ -49,7 +49,7 @@ interface AssetFormDialogProps {
 
 type AssetAttachmentFormValue = NonNullable<AssetFormValues["attachments"]>[number];
 
-const CONDITIONS = ["ACTIVE", "GOOD", "BAD", "SCRAP"];
+const CONDITIONS = ["ACTIVE", "SERVICE", "BAD", "SCRAP"];
 
 function toDateInput(val: Date | string | null | undefined) {
   if (!val) return "";
