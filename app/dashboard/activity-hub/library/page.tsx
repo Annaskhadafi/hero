@@ -54,7 +54,7 @@ function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData })
           Main Activity (Parent)
           <select name="parentId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
             <option value="">- Tidak ada (Sebagai Main Activity) -</option>
-            {data.library
+            {data.rows
               .filter((act) => !act.parentId)
               .map((act) => (
                 <option key={act.id} value={act.id}>
@@ -291,7 +291,7 @@ export default async function DailyActivityLibraryPage({
                             departments={data.departments}
                             sections={data.sections}
                             sites={data.sites}
-                            library={data.library}
+                            library={data.rows}
                             currentEmployeeId={data.currentEmployee?.id ?? null}
                           />
                         </TableCell>
