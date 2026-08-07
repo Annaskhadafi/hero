@@ -1466,9 +1466,15 @@ const saveAttendanceRealOverridesSchema = z.object({
       clockOut: z.string().max(8).default(''),
       note: z.string().max(240).default(''),
       source: z.enum(['manual', 'excel', 'attendance']).default('manual'),
+      overtimeHours: z.number().nullable().optional(),
     })
   ),
 })
+
+export async function logClientActionAction(message: string) {
+  console.log('[CLIENT LOG]', message)
+  return { ok: true }
+}
 
 export async function saveAttendanceRealOverridesAction(
   input: z.infer<typeof saveAttendanceRealOverridesSchema>
@@ -1533,6 +1539,13 @@ export async function saveAttendanceRealOverridesAction(
 
   if (!validOverrides.length) return { ok: true, savedCount: 0 }
 
+  console.log(
+    '[SERVER] validOverrides with overtimeHours:',
+    validOverrides
+      .filter((o) => o.overtimeHours !== null && o.overtimeHours !== undefined)
+      .map((o) => ({ employeeId: o.employeeId, day: o.day, overtimeHours: o.overtimeHours }))
+  )
+
   await db.transaction(async (tx) => {
     await tx
       .insert(timesheetAttendanceRealOverrides)
@@ -1547,6 +1560,7 @@ export async function saveAttendanceRealOverridesAction(
           clockOut: override.clockOut,
           note: override.note,
           source: override.source,
+          overtimeHours: override.overtimeHours ?? null,
           savedByUserId,
           updatedAt: now,
         }))
@@ -1564,6 +1578,7 @@ export async function saveAttendanceRealOverridesAction(
           clockOut: sql`excluded.clock_out`,
           note: sql`excluded.note`,
           source: sql`excluded.source`,
+          overtimeHours: sql`excluded.overtime_hours`,
           savedByUserId,
           updatedAt: now,
         },
@@ -3573,7 +3588,10 @@ async function updateLegacyEntityForSubmissionDecision(params: {
     // EWH: Recalculate EWH for all SPL participants on approval/status change
     try {
       const [splData] = await params.tx
-        .select({ siteId: overtimeCommandLetters.siteId, workDate: overtimeCommandLetters.workDate })
+        .select({
+          siteId: overtimeCommandLetters.siteId,
+          workDate: overtimeCommandLetters.workDate,
+        })
         .from(overtimeCommandLetters)
         .where(eq(overtimeCommandLetters.id, legacyRecordId))
         .limit(1)
@@ -3585,7 +3603,9 @@ async function updateLegacyEntityForSubmissionDecision(params: {
 
         const { recalculateEwhForEmployee } = await import('@/app/dashboard/ewh/actions')
         await Promise.allSettled(
-          parts.map((p) => recalculateEwhForEmployee(p.employeeId, splData.siteId, splData.workDate))
+          parts.map((p) =>
+            recalculateEwhForEmployee(p.employeeId, splData.siteId, splData.workDate)
+          )
         )
       }
     } catch (ewhErr) {
@@ -6340,12 +6360,22 @@ export async function manageSecurityUserAction(
           ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
           : Promise.resolve([]),
         db
-          .select({ id: employees.id, name: employees.name, isActive: employees.isActive, authUserId: employees.authUserId })
+          .select({
+            id: employees.id,
+            name: employees.name,
+            isActive: employees.isActive,
+            authUserId: employees.authUserId,
+          })
           .from(employees)
           .where(sql`lower(trim(${employees.employeeSn})) = lower(trim(${employeeSn}))`)
           .limit(1),
         db
-          .select({ id: employees.id, name: employees.name, isActive: employees.isActive, authUserId: employees.authUserId })
+          .select({
+            id: employees.id,
+            name: employees.name,
+            isActive: employees.isActive,
+            authUserId: employees.authUserId,
+          })
           .from(employees)
           .where(sql`lower(trim(${employees.email})) = lower(trim(${email}))`)
           .limit(1),
@@ -6364,11 +6394,7 @@ export async function manageSecurityUserAction(
             )
           )
           .limit(1),
-        db
-          .select()
-          .from(securityRoles)
-          .where(eq(securityRoles.name, payload.accessRole))
-          .limit(1),
+        db.select().from(securityRoles).where(eq(securityRoles.name, payload.accessRole)).limit(1),
       ])
 
       const existingEmployee = existingEmployeeBySn || existingEmployeeByEmail
