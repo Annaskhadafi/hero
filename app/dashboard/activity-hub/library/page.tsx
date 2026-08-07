@@ -51,6 +51,19 @@ function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData })
           </select>
         </Label>
         <Label className="grid gap-2 sm:col-span-2">
+          Main Activity (Parent)
+          <select name="parentId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+            <option value="">- Tidak ada (Sebagai Main Activity) -</option>
+            {data.library
+              .filter((act) => !act.parentId)
+              .map((act) => (
+                <option key={act.id} value={act.id}>
+                  {act.activityName} ({act.activityCode})
+                </option>
+              ))}
+          </select>
+        </Label>
+        <Label className="grid gap-2 sm:col-span-2">
           Activity name
           <Input name="activityName" placeholder="Official activity name shown to employees" required />
         </Label>
@@ -138,7 +151,17 @@ export default async function DailyActivityLibraryPage({
 
   const data = await getDailyActivityLibraryData(session.user.email);
   await searchParams;
-  const filteredRows = data.rows;
+  const rootActivities = data.rows.filter((r) => !r.parentId);
+  const childActivities = data.rows.filter((r) => r.parentId);
+  
+  const filteredRows = [];
+  for (const root of rootActivities) {
+    filteredRows.push(root);
+    const children = childActivities.filter((c) => c.parentId === root.id);
+    filteredRows.push(...children);
+  }
+  const orphaned = childActivities.filter((c) => !rootActivities.find((r) => r.id === c.parentId));
+  filteredRows.push(...orphaned);
   const pagePurpose = getActivityPagePurpose("library");
 
   return (
@@ -218,7 +241,10 @@ export default async function DailyActivityLibraryPage({
                         data-filter-status={row.isActive ? "Aktif" : "Nonaktif"}
                       >
                         <TableCell className="align-top">
-                          <div className="space-y-1">
+                          <div className={row.parentId ? "ml-6 border-l-2 border-primary/20 pl-4 space-y-1" : "space-y-1"}>
+                            {row.parentId && (
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Sub-activity</p>
+                            )}
                             <p className="font-semibold text-foreground">{row.activityName}</p>
                             <p className="text-xs text-muted-foreground">
                               {row.activityCode} • {row.category} • creator {row.creatorName ?? "-"}
@@ -265,6 +291,7 @@ export default async function DailyActivityLibraryPage({
                             departments={data.departments}
                             sections={data.sections}
                             sites={data.sites}
+                            library={data.library}
                             currentEmployeeId={data.currentEmployee?.id ?? null}
                           />
                         </TableCell>

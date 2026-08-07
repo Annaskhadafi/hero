@@ -3070,6 +3070,7 @@ export async function getDailyActivityLibraryData(email?: string | null) {
         id: activityLibraries.id,
         activityCode: activityLibraries.activityCode,
         activityName: activityLibraries.activityName,
+        parentId: activityLibraries.parentId,
         category: activityLibraries.category,
         siteId: activityLibraries.siteId,
         siteName: sites.name,

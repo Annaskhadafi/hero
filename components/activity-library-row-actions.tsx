@@ -107,12 +107,14 @@ export function ActivityLibraryRowActions({
   departments,
   sections,
   sites,
+  library,
   currentEmployeeId,
 }: {
   row: ActivityLibraryRow;
   departments: DepartmentOption[];
   sections: SectionOption[];
   sites: SiteOption[];
+  library: any[];
   currentEmployeeId: number | null;
 }) {
   const router = useRouter();
@@ -226,6 +228,23 @@ export function ActivityLibraryRowActions({
                       {option}
                     </option>
                   ))}
+                </select>
+              </Label>
+              <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
+                Main Activity (Parent)
+                <select
+                  name="parentId"
+                  defaultValue={row.parentId ?? ""}
+                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                >
+                  <option value="">- Tidak ada (Sebagai Main Activity) -</option>
+                  {library
+                    .filter((act) => !act.parentId && act.id !== row.id)
+                    .map((act) => (
+                      <option key={act.id} value={act.id}>
+                        {act.activityName} ({act.activityCode})
+                      </option>
+                    ))}
                 </select>
               </Label>
               <Label className="grid gap-2 text-sm font-semibold md:col-span-2">

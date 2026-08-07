@@ -159,6 +159,10 @@ export const activityLibraries = pgTable('hero_activity_libraries', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
   activityCode: text('activity_code').notNull().unique(),
+  parentId: integer('parent_id').references(
+    (): AnyPgColumn => activityLibraries.id,
+    { onDelete: 'set null' }
+  ),
   activityName: text('activity_name').notNull(),
   category: text('category').notNull().default('Technical'),
   departmentId: integer('department_id'),
