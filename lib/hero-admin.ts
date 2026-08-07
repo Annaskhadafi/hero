@@ -6410,6 +6410,7 @@ export async function getSchedulingTimesheetOptions() {
         source: ['manual', 'excel', 'attendance'].includes(override.source)
           ? override.source
           : 'manual',
+        overtimeHours: override.overtimeHours ?? null,
         updatedAt: override.updatedAt.toISOString(),
       })),
     approvedSplWindows: approvedSplRows
@@ -7079,12 +7080,7 @@ export async function getActiveEmployeesForSelect() {
       email: employees.email,
     })
     .from(employees)
-    .where(
-      and(
-        eq(employees.isActive, true),
-        sql`coalesce(trim(${employees.email}), '') <> ''`
-      )
-    )
+    .where(and(eq(employees.isActive, true), sql`coalesce(trim(${employees.email}), '') <> ''`))
     .orderBy(asc(employees.name))
 
   return rows

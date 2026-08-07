@@ -60,6 +60,7 @@ import {
   reopenSchedulingPeriodAction,
   rollbackAttendanceImportPreviewAction,
   saveAttendanceRealOverridesAction,
+  logClientActionAction,
   saveSchedulingConfigAction,
   saveSchedulingTimesheetPlanAction,
   saveTimesheetFieldBreakPlansAction,
@@ -324,6 +325,7 @@ type ManualAttendanceCell = {
   note: string
   source?: 'attendance' | 'manual' | 'excel'
   isLatePending?: boolean
+  overtimeHours?: number | null
 }
 
 type SavedAttendanceOverride = {
@@ -336,6 +338,7 @@ type SavedAttendanceOverride = {
   clockOut: string
   note: string
   source?: string
+  overtimeHours?: number | string | null
   updatedAt: string
 }
 
@@ -1120,17 +1123,20 @@ function timeFromIso(value?: string) {
   if (Number.isNaN(date.getTime())) return ''
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'
   try {
-    return date.toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: tz,
-    }).replace('.', ':')
+    return date
+      .toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: tz,
+      })
+      .replace('.', ':')
   } catch {
-    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':')
+    return date
+      .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      .replace('.', ':')
   }
 }
-
 
 type SchedulingTimesheetMode =
   | 'overview'
@@ -1359,6 +1365,21 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
+
+  const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
+
+  useEffect(() => {
+    if (selectedAttendanceCell) {
+      const cell = getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
+      setDraftOvertimeHours(
+        cell.overtimeHours !== undefined && cell.overtimeHours !== null
+          ? String(cell.overtimeHours)
+          : ''
+      )
+    } else {
+      setDraftOvertimeHours('')
+    }
+  }, [selectedAttendanceCell])
   const [isSavingPayroll, startSavingPayroll] = useTransition()
   const [isImportingExcel, setIsImportingExcel] = useState(false)
   const attendanceFileInputRef = useRef<HTMLInputElement>(null)
@@ -1708,10 +1729,9 @@ export function SchedulingTimesheetWorkspace({
       grouped.set(key, list)
     }
 
-
     for (const [key, records] of grouped.entries()) {
       const sorted = [...records].sort((a, b) => a.eventTime.localeCompare(b.eventTime))
-      
+
       // Find the latest explicit OUT record (searching backwards from most recent)
       const explicitOut = [...sorted].reverse().find((r) => {
         const ev = normalizeLocation(r.eventType)
@@ -1720,17 +1740,19 @@ export function SchedulingTimesheetWorkspace({
 
       // Find the corresponding IN record prior to or equal to explicitOut (or fallback to first punch)
       const explicitIn = explicitOut
-        ? [...sorted].reverse().find((r) => {
+        ? ([...sorted].reverse().find((r) => {
             const ev = normalizeLocation(r.eventType)
             const isOut = ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
             return !isOut && r.eventTime <= explicitOut.eventTime
-          }) ?? sorted[0]
+          }) ?? sorted[0])
         : sorted[0]
 
       const last = sorted[sorted.length - 1]
       const firstTime = new Date(explicitIn.eventTime).getTime()
       const lastTime = new Date(last.eventTime).getTime()
-      const isValidOut = explicitOut ?? (last !== explicitIn && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
+      const isValidOut =
+        explicitOut ??
+        (last !== explicitIn && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
 
       map.set(key, {
         clockIn: explicitIn,
@@ -1738,7 +1760,6 @@ export function SchedulingTimesheetWorkspace({
         records: sorted,
       })
     }
-
 
     return map
   }, [attendanceRecords, period, siteId])
@@ -1782,6 +1803,10 @@ export function SchedulingTimesheetWorkspace({
         scoped.map((override) => {
           const status = normalizeAttendanceStatus(override.status)
           const clearsTime = status === 'standby' || status === 'field_break'
+          const overtimeHours =
+            override.overtimeHours !== null && override.overtimeHours !== undefined
+              ? Number(override.overtimeHours)
+              : null
           return [
             attendanceKey(override.employeeId, override.day),
             {
@@ -1793,6 +1818,7 @@ export function SchedulingTimesheetWorkspace({
                 override.source === 'excel' || override.source === 'attendance'
                   ? override.source
                   : 'manual',
+              overtimeHours,
             },
           ]
         })
@@ -3932,9 +3958,7 @@ export function SchedulingTimesheetWorkspace({
 
     const real = attendanceByCell.get(key)
     if (!real) {
-      const code =
-        scheduleCode ??
-        rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+      const code = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
       const rosterStatus = normalizeAttendanceStatus(code)
       if (
         rosterStatus === 'off' ||
@@ -4341,11 +4365,11 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  function saveAttendanceReal() {
+  function saveAttendanceRealWithData(nextManual: Record<string, ManualAttendanceCell>) {
     if (!guardOpenPeriod('Save attendance')) return
     const numericSiteId = Number(siteId)
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
-    const overrides = Object.entries(manualAttendance).map(([key, cell]) => {
+    const overrides = Object.entries(nextManual).map(([key, cell]) => {
       const [employeeId, day] = key.split('-').map(Number)
       return {
         employeeId,
@@ -4355,8 +4379,16 @@ export function SchedulingTimesheetWorkspace({
         clockOut: cell.clockOut,
         note: cell.note,
         source: cell.source ?? 'manual',
+        overtimeHours:
+          cell.overtimeHours !== undefined && cell.overtimeHours !== null
+            ? cell.overtimeHours
+            : null,
       }
     })
+    console.log(
+      '[CLIENT] overrides payload being sent:',
+      overrides.filter((o) => o.overtimeHours !== null)
+    )
 
     startSavingAttendance(async () => {
       try {
@@ -4368,6 +4400,7 @@ export function SchedulingTimesheetWorkspace({
         if (result.ok) {
           setAttendanceSavedAt(new Date().toISOString())
           setIsAttendanceDirty(false)
+          router.refresh()
           toast.success('Attendance saved')
         }
       } catch (error) {
@@ -4376,6 +4409,10 @@ export function SchedulingTimesheetWorkspace({
         })
       }
     })
+  }
+
+  function saveAttendanceReal() {
+    saveAttendanceRealWithData(manualAttendance)
   }
 
   function clearImportedAttendance() {
@@ -4628,8 +4665,7 @@ export function SchedulingTimesheetWorkspace({
         isHoliday: day.isHoliday,
         rosterType: siteConfig.rosterType,
       })
-      const configuredIntervals =
-        siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
+      const configuredIntervals = siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
       const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
       const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
       return {
@@ -4918,7 +4954,11 @@ export function SchedulingTimesheetWorkspace({
       for (const day of days) {
         const cell = getAttendanceCell(row.employee.id, day)
         if (cell.status === 'empty') continue
-        if (cell.source === 'attendance' && attendanceByCell.has(attendanceKey(row.employee.id, day))) faceDays++
+        if (
+          cell.source === 'attendance' &&
+          attendanceByCell.has(attendanceKey(row.employee.id, day))
+        )
+          faceDays++
         else if (cell.source === 'excel') excelDays++
         else if (cell.source === 'manual') manualDays++
       }
@@ -5013,14 +5053,24 @@ export function SchedulingTimesheetWorkspace({
     clockIn: string,
     clockOut: string,
     staff: boolean,
-    employeeId: number
+    employeeId: number,
+    ignoreOverride = false
   ): OvertimeCalculationResult {
+    if (!ignoreOverride) {
+      const key = attendanceKey(employeeId, day)
+      const cell = manualAttendance[key]
+      if (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+        return legacyOvertimeResult(cell.overtimeHours)
+      }
+    }
+
     if (staff || siteConfig.overtimeType === 'none' || (!clockIn && !clockOut)) {
       return legacyOvertimeResult(0)
     }
     const shiftCode = schedule[day - 1] ?? 'IN'
     const defaultIn = shiftCode === 'NS' ? siteConfig.nightShiftClockIn : siteConfig.dayShiftClockIn
-    const defaultOut = shiftCode === 'NS' ? siteConfig.nightShiftClockOut : siteConfig.dayShiftClockOut
+    const defaultOut =
+      shiftCode === 'NS' ? siteConfig.nightShiftClockOut : siteConfig.dayShiftClockOut
     const effectiveClockIn = clockIn || defaultIn
     const effectiveClockOut = clockOut || defaultOut
 
@@ -6467,7 +6517,8 @@ export function SchedulingTimesheetWorkspace({
                       <div>
                         <p className="text-sm font-semibold">Acuan Perhitungan Overtime</p>
                         <p className="text-muted-foreground mt-0.5 text-xs">
-                          Pilih acuan perhitungan overtime: mengikuti Template/Jam Wajib Roster atau Jam Realtime (Aktual).
+                          Pilih acuan perhitungan overtime: mengikuti Template/Jam Wajib Roster atau
+                          Jam Realtime (Aktual).
                         </p>
                       </div>
                       <div className="bg-surface-container-low flex items-center gap-1 rounded-xl p-1">
@@ -6592,7 +6643,13 @@ export function SchedulingTimesheetWorkspace({
                         ['hariLibur', 'Hari Libur', 'Tanggal merah atau schedule OFF/Libur.'],
                         ['hariKe6', 'Hari ke-6', 'Hari kerja tepat sebelum schedule OFF/Libur.'],
                         ...(siteConfig.rosterType === '13:1'
-                          ? [['hariKe7', 'Hari ke-7', 'Hari kerja ke-7 dalam Roster 13:1.'] as const]
+                          ? [
+                              [
+                                'hariKe7',
+                                'Hari ke-7',
+                                'Hari kerja ke-7 dalam Roster 13:1.',
+                              ] as const,
+                            ]
                           : []),
                       ] as const
                     ).map(([dayKey, title, description]) => {
@@ -9260,90 +9317,198 @@ export function SchedulingTimesheetWorkspace({
           <DialogHeader>
             <DialogTitle>Edit Attendance Real {selectedAttendanceEmployee?.name}</DialogTitle>
           </DialogHeader>
-          {selectedAttendanceCell && selectedAttendanceValue ? (
-            <div className="grid gap-4 py-2">
-              <div className="bg-surface-container-low text-muted-foreground rounded-2xl p-3 text-sm">
-                Tanggal {selectedAttendanceCell.day} • jam ini dipakai otomatis untuk hitung
-                Overtime.
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <NativeSelect
-                    value={selectedAttendanceValue.status}
-                    onValueChange={(value) =>
-                      updateAttendanceCell(
-                        selectedAttendanceCell.employeeId,
-                        selectedAttendanceCell.day,
-                        { status: value as AttendanceCellStatus }
-                      )
-                    }
-                    options={[
-                      { value: 'present', label: 'Masuk' },
-                      { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
-                      { value: 'standby', label: 'Standby (ST)' },
-                      { value: 'field_break', label: 'Field Break (GB)' },
-                      { value: 'sick', label: 'Sakit' },
-                      { value: 'leave', label: 'Izin' },
-                      { value: 'absent', label: 'Alpha' },
-                      { value: 'empty', label: '-' },
-                    ]}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Jam Masuk</Label>
-                  <Input
-                    type="time"
-                    value={selectedAttendanceValue.clockIn}
-                    onChange={(event) =>
-                      updateAttendanceCell(
-                        selectedAttendanceCell.employeeId,
-                        selectedAttendanceCell.day,
-                        {
-                          clockIn: event.target.value,
-                          status: event.target.value ? 'present' : selectedAttendanceValue.status,
-                        }
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Jam Pulang</Label>
-                  <Input
-                    type="time"
-                    value={selectedAttendanceValue.clockOut}
-                    onChange={(event) =>
-                      updateAttendanceCell(
-                        selectedAttendanceCell.employeeId,
-                        selectedAttendanceCell.day,
-                        {
-                          clockOut: event.target.value,
-                          status: event.target.value ? 'present' : selectedAttendanceValue.status,
-                        }
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Catatan</Label>
-                <Input
-                  value={selectedAttendanceValue.note}
-                  onChange={(event) =>
-                    updateAttendanceCell(
+          {selectedAttendanceCell && selectedAttendanceValue
+            ? (() => {
+                const employeeRowForDialog = rows.find(
+                  (r) => r.employee.id === selectedAttendanceCell.employeeId
+                )
+                const employeeScheduleForDialog = employeeRowForDialog?.schedule ?? []
+                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role || '')
+                const defaultOtCalculation = calculateDayOvertime(
+                  employeeScheduleForDialog,
+                  selectedAttendanceCell.day,
+                  selectedAttendanceValue.clockIn,
+                  selectedAttendanceValue.clockOut,
+                  isStaffForDialog,
+                  selectedAttendanceCell.employeeId,
+                  true
+                )
+                const defaultOtHours = defaultOtCalculation.totalHours
+
+                const onSaveAndClose = async () => {
+                  const key = attendanceKey(
+                    selectedAttendanceCell.employeeId,
+                    selectedAttendanceCell.day
+                  )
+                  // When user hasn't changed anything, treat the shown default value as the intended override
+                  const finalOt =
+                    draftOvertimeHours === '' ? defaultOtHours : Number(draftOvertimeHours)
+                  logClientActionAction(
+                    `[CLIENT LOG] onSaveAndClose key=${key} draftOvertimeHours='${draftOvertimeHours}' finalOt=${finalOt}`
+                  )
+                  // Update local state immediately so UI reflects change
+                  const updatedCell: ManualAttendanceCell = {
+                    ...getAttendanceCell(
                       selectedAttendanceCell.employeeId,
-                      selectedAttendanceCell.day,
-                      { note: event.target.value }
-                    )
+                      selectedAttendanceCell.day
+                    ),
+                    ...selectedAttendanceValue,
+                    overtimeHours: finalOt,
+                    source: 'manual' as const,
                   }
-                  placeholder="Face loc / izin / sakit / manual"
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={() => setSelectedAttendanceCell(null)}>Simpan</Button>
-              </div>
-            </div>
-          ) : null}
+                  setManualAttendance((prev) => ({ ...prev, [key]: updatedCell }))
+                  setSelectedAttendanceCell(null)
+
+                  // Save ONLY this single cell directly to the server
+                  if (!guardOpenPeriod('Save attendance')) return
+                  const numericSiteId = Number(siteId)
+                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+                  startSavingAttendance(async () => {
+                    try {
+                      const result = await saveAttendanceRealOverridesAction({
+                        siteId: numericSiteId,
+                        period,
+                        overrides: [
+                          {
+                            employeeId: selectedAttendanceCell.employeeId,
+                            day: selectedAttendanceCell.day,
+                            status: updatedCell.status,
+                            clockIn: updatedCell.clockIn,
+                            clockOut: updatedCell.clockOut,
+                            note: updatedCell.note,
+                            source: 'manual',
+                            overtimeHours: finalOt,
+                          },
+                        ],
+                      })
+                      if (result.ok) {
+                        router.refresh()
+                        toast.success('Attendance saved')
+                      }
+                    } catch (error) {
+                      toast.error('Save attendance failed', {
+                        description: error instanceof Error ? error.message : 'Unknown error',
+                      })
+                    }
+                  })
+                }
+
+                return (
+                  <div className="grid gap-4 py-2">
+                    <div className="bg-surface-container-low text-muted-foreground rounded-2xl p-3 text-sm">
+                      Tanggal {selectedAttendanceCell.day} • jam ini dipakai otomatis untuk hitung
+                      Overtime.
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <NativeSelect
+                          value={selectedAttendanceValue.status}
+                          onValueChange={(value) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              { status: value as AttendanceCellStatus }
+                            )
+                          }
+                          options={[
+                            { value: 'present', label: 'Masuk' },
+                            { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
+                            { value: 'standby', label: 'Standby (ST)' },
+                            { value: 'field_break', label: 'Field Break (GB)' },
+                            { value: 'sick', label: 'Sakit' },
+                            { value: 'leave', label: 'Izin' },
+                            { value: 'absent', label: 'Alpha' },
+                            { value: 'empty', label: '-' },
+                          ]}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Jam Masuk</Label>
+                        <Input
+                          type="time"
+                          value={selectedAttendanceValue.clockIn}
+                          onChange={(event) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              {
+                                clockIn: event.target.value,
+                                status: event.target.value
+                                  ? 'present'
+                                  : selectedAttendanceValue.status,
+                              }
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Jam Pulang</Label>
+                        <Input
+                          type="time"
+                          value={selectedAttendanceValue.clockOut}
+                          onChange={(event) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              {
+                                clockOut: event.target.value,
+                                status: event.target.value
+                                  ? 'present'
+                                  : selectedAttendanceValue.status,
+                              }
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Catatan</Label>
+                      <Input
+                        value={selectedAttendanceValue.note}
+                        onChange={(event) =>
+                          updateAttendanceCell(
+                            selectedAttendanceCell.employeeId,
+                            selectedAttendanceCell.day,
+                            { note: event.target.value }
+                          )
+                        }
+                        placeholder="Face loc / izin / sakit / manual"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center space-x-2">
+                        <Label
+                          htmlFor="overtime-hours-override"
+                          className="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                        >
+                          Total Overtime:
+                        </Label>
+                        <Input
+                          id="overtime-hours-override"
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="24"
+                          className="h-9 w-24"
+                          value={draftOvertimeHours !== '' ? draftOvertimeHours : defaultOtHours}
+                          onChange={(event) => {
+                            setDraftOvertimeHours(event.target.value)
+                          }}
+                        />
+                        {draftOvertimeHours !== '' &&
+                          Number(draftOvertimeHours) !== defaultOtHours && (
+                            <span className="text-xs font-medium text-amber-600 italic">
+                              (Override)
+                            </span>
+                          )}
+                      </div>
+                      <Button onClick={onSaveAndClose}>Simpan</Button>
+                    </div>
+                  </div>
+                )
+              })()
+            : null}
         </DialogContent>
       </Dialog>
 
