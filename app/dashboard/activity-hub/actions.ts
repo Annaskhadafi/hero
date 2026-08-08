@@ -111,6 +111,16 @@ const manageLibrarySchema = z.object({
   autoApproveIfGpsValid: formBoolean(false),
   isActive: formBoolean(true),
   createdByEmployeeId: optionalPositiveInt,
+  isGroupActivity: formBoolean(false),
+  routeGroupIds: z.string().optional().transform(v => {
+    if (!v) return []
+    return v.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))
+  }),
+}).transform(data => {
+  if (!data.isGroupActivity) {
+    data.routeGroupIds = []
+  }
+  return data
 })
 
 const manageAssignmentSchema = z.object({
@@ -971,17 +981,56 @@ export async function manageActivityLibraryAction(formData: FormData) {
     updatedAt: new Date(),
   }
 
+  let libraryActivityId = payload.id
+
   if (payload.intent === 'create') {
-    await db.insert(activityLibraries).values({
+    const inserted = await db.insert(activityLibraries).values({
       ...values,
       createdAt: new Date(),
-    })
+    }).returning({ id: activityLibraries.id })
+    libraryActivityId = inserted[0]?.id
   } else {
-    if (!payload.id) {
+    if (!libraryActivityId) {
       throw new Error('Library activity tidak valid.')
     }
 
-    await db.update(activityLibraries).set(values).where(eq(activityLibraries.id, payload.id))
+    await db.update(activityLibraries).set(values).where(eq(activityLibraries.id, libraryActivityId))
+  }
+
+  if (libraryActivityId) {
+    const existingItems = await db
+      .select({ id: activityRouteItems.id, routeGroupId: activityRouteItems.routeGroupId })
+      .from(activityRouteItems)
+      .where(eq(activityRouteItems.libraryActivityId, libraryActivityId))
+
+    const submittedGroupIds = payload.routeGroupIds || []
+    
+    // Items to delete (if they belong to a group that was unselected)
+    const itemsToDelete = existingItems.filter(item => !submittedGroupIds.includes(item.routeGroupId))
+    if (itemsToDelete.length > 0) {
+      await db.delete(activityRouteItems).where(
+        inArray(activityRouteItems.id, itemsToDelete.map(item => item.id))
+      )
+    }
+
+    // Groups to insert (if they don't have an existing item for this library activity)
+    const existingGroupIds = existingItems.map(item => item.routeGroupId)
+    const groupsToInsert = submittedGroupIds.filter(id => !existingGroupIds.includes(id))
+
+    if (groupsToInsert.length > 0) {
+      await db.insert(activityRouteItems).values(
+        groupsToInsert.map(groupId => ({
+          routeGroupId: groupId,
+          libraryActivityId: libraryActivityId,
+          itemCode: payload.activityCode,
+          itemLabel: payload.activityName,
+          requiresTime: payload.requiresDuration,
+          requiresPhoto: payload.requiresPhoto,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }))
+      )
+    }
   }
 
   revalidateDailyActivitySurfaces()

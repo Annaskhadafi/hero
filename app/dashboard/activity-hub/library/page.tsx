@@ -1,16 +1,12 @@
 import { redirect } from "next/navigation";
 import { Layers3, Settings2 } from "lucide-react";
 import { AdminCrudDialog } from "@/components/admin/admin-crud-dialog";
-import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityLibraryCreateForm } from "@/components/activity-library-create-form";
 import { ActivityLibraryFilters } from "@/components/activity-library-filters";
 import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
 import { ActivityLibraryRowActions } from "@/components/activity-library-row-actions";
-import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,104 +20,6 @@ function SummaryChip({ label, value }: { label: string; value: string | number }
       <span className="text-xs font-black uppercase text-muted-foreground">{label}</span>
       <span className="ml-3 font-display text-xl font-black text-foreground">{value}</span>
     </div>
-  );
-}
-
-type DailyActivityLibraryData = Awaited<ReturnType<typeof getDailyActivityLibraryData>>;
-
-function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData }) {
-  return (
-    <form action={manageActivityLibraryAction} className="space-y-4">
-      <input type="hidden" name="intent" value="create" />
-      <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Label className="grid gap-2">
-          Activity code
-          <Input name="activityCode" placeholder="TS-003" required />
-        </Label>
-        <Label className="grid gap-2">
-          Category
-          <select name="category" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-            {["Technical", "HSE", "Administrative", "Training", "Wellness", "Standby"].map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </Label>
-        <Label className="grid gap-2 sm:col-span-2">
-          Activity name
-          <Input name="activityName" placeholder="Official activity name shown to employees" required />
-        </Label>
-        <Label className="grid gap-2 sm:col-span-2">
-          Lokasi kerja / Site
-          <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-            <option value="">Global - semua site</option>
-            {data.sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
-          </select>
-        </Label>
-        <ActivityRouteDepartmentSectionFields
-          departments={data.departments}
-          sections={data.sections}
-          selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-          departmentPlaceholder="No specific department"
-          sectionPlaceholder="No specific section"
-        />
-        <Label className="grid gap-2">
-          Base points
-          <Input name="basePoints" type="number" defaultValue={10} />
-        </Label>
-        <Label className="grid gap-2">
-          Complexity
-          <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={2} />
-        </Label>
-        <Label className="grid gap-2">
-          Max daily count
-          <Input name="maxDailyCount" type="number" defaultValue={3} />
-        </Label>
-        <Label className="grid gap-2">
-          Max points per day
-          <Input name="maxPointsPerDay" type="number" defaultValue={50} />
-        </Label>
-        <Label className="grid gap-2 sm:col-span-2">
-          SLA hours
-          <Input name="slaHours" type="number" defaultValue={24} />
-        </Label>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          ["requiresPhoto", "Wajib foto"],
-          ["requiresEquipmentNo", "Wajib nomor equipment"],
-          ["requiresDuration", "Wajib durasi"],
-          ["requiresLocationGps", "Wajib GPS"],
-          ["requiresMaterialUsed", "Wajib material"],
-          ["isAssignable", "Bisa di-assign"],
-          ["isSelfInput", "Bisa self-input"],
-          ["approvalRequired", "Butuh approval"],
-          ["autoApproveIfGpsValid", "Auto-approve jika GPS valid"],
-          ["isActive", "Aktif"],
-        ].map(([field, label]) => (
-          <Label key={field} className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm">
-            <input
-              type="checkbox"
-              name={field}
-              defaultChecked={["requiresDuration", "isAssignable", "isSelfInput", "approvalRequired", "isActive"].includes(field)}
-            />
-            {label}
-          </Label>
-        ))}
-      </div>
-
-      <Button type="submit" className="w-full rounded-lg">
-        Simpan activity library
-      </Button>
-    </form>
   );
 }
 
@@ -191,7 +89,13 @@ export default async function DailyActivityLibraryPage({
                     description="Tambah pekerjaan resmi beserta base point dan requirement validasinya."
                     size="lg"
                   >
-                    <ActivityLibraryCreateForm data={data} />
+                    <ActivityLibraryCreateForm
+                      currentEmployeeId={data.currentEmployee?.id ?? null}
+                      routeFolders={data.routeFolders}
+                      sites={data.sites}
+                      departments={data.departments}
+                      sections={data.sections}
+                    />
                   </AdminCrudDialog>
                 }
               >
@@ -266,6 +170,8 @@ export default async function DailyActivityLibraryPage({
                             sections={data.sections}
                             sites={data.sites}
                             currentEmployeeId={data.currentEmployee?.id ?? null}
+                            routeFolders={data.routeFolders}
+                            routeGroupMappings={data.routeGroupMappings}
                           />
                         </TableCell>
                       </TableRow>
@@ -296,97 +202,13 @@ export default async function DailyActivityLibraryPage({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form action={manageActivityLibraryAction} className="space-y-4">
-                <input type="hidden" name="intent" value="create" />
-                <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Label className="grid gap-2">
-                    Activity code
-                    <Input name="activityCode" placeholder="TS-003" required />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Category
-                    <select name="category" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      {["Technical", "HSE", "Administrative", "Training", "Wellness", "Standby"].map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2 sm:col-span-2">
-                    Activity name
-                    <Input name="activityName" placeholder="Official activity name shown to employees" required />
-                  </Label>
-                  <Label className="grid gap-2 sm:col-span-2">
-                    Lokasi kerja / Site
-                    <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      <option value="">Global - semua site</option>
-                      {data.sites.map((site) => (
-                        <option key={site.id} value={site.id}>
-                          {site.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <ActivityRouteDepartmentSectionFields
-                    departments={data.departments}
-                    sections={data.sections}
-                    selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                    departmentPlaceholder="No specific department"
-                    sectionPlaceholder="No specific section"
-                  />
-                  <Label className="grid gap-2">
-                    Base points
-                    <Input name="basePoints" type="number" defaultValue={10} />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Complexity
-                    <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={2} />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Max daily count
-                    <Input name="maxDailyCount" type="number" defaultValue={3} />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Max points per day
-                    <Input name="maxPointsPerDay" type="number" defaultValue={50} />
-                  </Label>
-                  <Label className="grid gap-2 sm:col-span-2">
-                    SLA hours
-                    <Input name="slaHours" type="number" defaultValue={24} />
-                  </Label>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    ["requiresPhoto", "Wajib foto"],
-                    ["requiresEquipmentNo", "Wajib nomor equipment"],
-                    ["requiresDuration", "Wajib durasi"],
-                    ["requiresLocationGps", "Wajib GPS"],
-                    ["requiresMaterialUsed", "Wajib material"],
-                    ["isAssignable", "Bisa di-assign"],
-                    ["isSelfInput", "Bisa self-input"],
-                    ["approvalRequired", "Butuh approval"],
-                    ["autoApproveIfGpsValid", "Auto-approve jika GPS valid"],
-                    ["isActive", "Aktif"],
-                  ].map(([field, label]) => (
-                    <Label key={field} className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm">
-                      <input
-                        type="checkbox"
-                        name={field}
-                        defaultChecked={["requiresDuration", "isAssignable", "isSelfInput", "approvalRequired", "isActive"].includes(field)}
-                      />
-                      {label}
-                    </Label>
-                  ))}
-                </div>
-
-                <Button type="submit" className="w-full rounded-2xl">
-                  Simpan activity library
-                </Button>
-              </form>
+              <ActivityLibraryCreateForm
+                currentEmployeeId={data.currentEmployee?.id ?? null}
+                routeFolders={data.routeFolders}
+                sites={data.sites}
+                departments={data.departments}
+                sections={data.sections}
+              />
             </CardContent>
           </Card>
         </TabsContent>

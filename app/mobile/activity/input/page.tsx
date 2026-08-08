@@ -116,6 +116,7 @@ export default async function MobileActivityInputPage() {
         defaultStartTime={defaultStartTime}
         defaultEndTime={defaultEndTime}
         routeChecklist={data.routeChecklist}
+        availableRouteFolders={data.availableRouteFolders}
         standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
         site={data.site}
       />
