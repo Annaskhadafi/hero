@@ -1318,6 +1318,32 @@ export async function runCsForecastDailyReportTick(referenceDate = new Date()) {
     }
   }
 
+  // Claim the slot via optimistic locking before sending the email to prevent concurrent double sends
+  if (config.id) {
+    const { eq, and } = await import('drizzle-orm')
+    const sentTokens = config.lastSentKey?.startsWith(`${utc8.date}|`) ? (config.lastSentKey.split('|')[1] || '').split(',').filter(Boolean) : []
+    const newTokens = Array.from(new Set([...sentTokens, slot])).filter(Boolean)
+    const newKey = `${utc8.date}|${newTokens.join(',')}`
+
+    const updated = await db
+      .update(csForecastDailyReportConfig)
+      .set({
+        lastSentKey: newKey,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(csForecastDailyReportConfig.id, config.id),
+          eq(csForecastDailyReportConfig.lastSentKey, config.lastSentKey || '')
+        )
+      )
+      .returning({ id: csForecastDailyReportConfig.id })
+
+    if (updated.length === 0) {
+      return { status: 'skipped' as const, reason: 'already_sent_concurrent', sent: false, key }
+    }
+  }
+
   const result = await sendCsForecastDailyReportEmail({ force: true, slotKey: key })
   return { ...result, sent: result.status === 'sent', key, now: utc8 }
 }
