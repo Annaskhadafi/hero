@@ -252,7 +252,41 @@ export function buildAttendanceImportPreview(params: {
   const validationSummary = emptyValidationSummary()
   const workingHours = params.workingHours ?? { start: '08:00', end: '17:00' }
 
-  const previewRows: AttendancePreviewRow[] = params.rows.map((raw, index) => {
+  // Preprocess raw rows for Night Shift cross-day checkouts
+  const adjustedRows = params.rows.map((row) => ({ ...row }))
+  for (let i = 0; i < adjustedRows.length; i++) {
+    const cur = adjustedRows[i]
+    if (!cur.clockOut) continue
+    const outHour = Number(cur.clockOut.split(':')[0])
+    const inHour = cur.clockIn ? Number(cur.clockIn.split(':')[0]) : null
+    const isEarlyOutOnly = outHour < 9 && (inHour === null || inHour < 9)
+
+    if (isEarlyOutOnly && cur.day > 1) {
+      const prev = adjustedRows.find(
+        (r) =>
+          r.day === cur.day - 1 &&
+          (r.employeeSn && cur.employeeSn
+            ? normalizeAttendanceImportIdentity(r.employeeSn) === normalizeAttendanceImportIdentity(cur.employeeSn)
+            : normalizeAttendanceImportIdentity(r.employeeName) === normalizeAttendanceImportIdentity(cur.employeeName))
+      )
+      if (prev) {
+        const prevInHour = prev.clockIn ? Number(prev.clockIn.split(':')[0]) : null
+        if (prevInHour !== null && (prevInHour >= 15 || prevInHour < 5)) {
+          if (!prev.clockOut) {
+            prev.clockOut = cur.clockOut
+          }
+          adjustedRows[i] = {
+            ...cur,
+            clockIn: '',
+            clockOut: '',
+            status: 'off',
+          }
+        }
+      }
+    }
+  }
+
+  const previewRows: AttendancePreviewRow[] = adjustedRows.map((raw, index) => {
     const row = {
       ...raw,
       clockIn: normalizeTime(raw.clockIn),

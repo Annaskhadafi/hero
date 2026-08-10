@@ -789,4 +789,44 @@ describe('scheduling timesheet workflow', () => {
     expect(verificationSource).toContain('GPS ${Math.round(accuracyMeters)}m accuracy')
     expect(fallbackSource).toContain("formData.append('accuracy', accuracy.toString())")
   })
+
+  it('maps Night Shift checkout on next day to check-in day and keeps next day OFF', () => {
+    const preview = buildAttendanceImportPreview({
+      siteId: 1,
+      employees: [{ id: 10, name: 'Budi Night', employeeSn: 'SN-NIGHT', siteId: 1 }],
+      fixedSchedule: [{ employeeId: 10, schedule: ['NS', 'OFF'] }],
+      rows: [
+        {
+          employeeSn: 'SN-NIGHT',
+          employeeName: 'Budi Night',
+          siteName: '',
+          day: 1,
+          status: 'present',
+          clockIn: '20:00',
+          clockOut: '',
+          note: '',
+        },
+        {
+          employeeSn: 'SN-NIGHT',
+          employeeName: 'Budi Night',
+          siteName: '',
+          day: 2,
+          status: 'present',
+          clockIn: '',
+          clockOut: '04:00',
+          note: '',
+        },
+      ],
+    })
+
+    // Day 1 (Night Shift check-in day) should receive the 04:00 checkout from Day 2
+    expect(preview.previewRows[0].clockIn).toBe('20:00')
+    expect(preview.previewRows[0].clockOut).toBe('04:00')
+
+    // Day 2 (OFF day) should be cleared and NOT cause a conflict
+    expect(preview.previewRows[1].clockIn).toBe('')
+    expect(preview.previewRows[1].clockOut).toBe('')
+    expect(preview.previewRows[1].status).toBe('off')
+    expect(preview.conflicts).toHaveLength(0)
+  })
 })

@@ -4228,9 +4228,35 @@ export function SchedulingTimesheetWorkspace({
           }
           continue
         }
+
         if (row.status !== 'present' && !row.clockIn && !row.clockOut) continue
 
-        const status: 'present' | 'empty' = row.clockIn || row.clockOut ? 'present' : 'empty'
+        // Check if this row is an early-morning checkout (< 09:00) without a check-in >= 09:00,
+        // following a Night Shift on the previous day.
+        const prevDayKey = row.day > 1 ? attendanceKey(matchedEmployee.id, row.day - 1) : null
+        const prevCell = prevDayKey ? cellUpdates[prevDayKey] : undefined
+        const prevScheduleCode = row.day > 1 ? rows.find((r) => r.employee.id === matchedEmployee.id)?.schedule[row.day - 2] : undefined
+        const isPrevNightShift =
+          (prevCell && prevCell.clockIn && Number(prevCell.clockIn.split(':')[0]) >= 15) ||
+          ['NS', 'NG', 'NIGHT', 'NIGHTSHIFT', 'MALAM', 'SHIFT2'].includes((prevScheduleCode || '').toUpperCase())
+
+        const isEarlyMorningOnly =
+          row.clockOut &&
+          Number(row.clockOut.split(':')[0]) < 9 &&
+          (!row.clockIn || Number(row.clockIn.split(':')[0]) < 9)
+
+        if (isPrevNightShift && isEarlyMorningOnly && prevDayKey) {
+          // Map checkout to previous day (the check-in day)
+          cellUpdates[prevDayKey] = {
+            ...cellUpdates[prevDayKey],
+            clockOut: row.clockOut || cellUpdates[prevDayKey].clockOut,
+            status: 'present',
+          }
+          // Day D+1 remains OFF / empty, not marked as present
+          continue
+        }
+
+        const status: 'present' | 'empty' = row.clockIn ? 'present' : row.clockOut && !isEarlyMorningOnly ? 'present' : 'empty'
         const key = attendanceKey(matchedEmployee.id, row.day)
         cellUpdates[key] = {
           status,

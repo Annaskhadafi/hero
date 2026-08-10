@@ -146,16 +146,62 @@ export async function syncFaceAttendanceToTimesheet(
 
   const sortedRecords = [...records].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
 
+  // Check if today's earliest punch is an early-morning checkout (< 09:00 WIB) belonging to yesterday's Night Shift
+  const firstPunch = sortedRecords[0]
+  const firstPunchWibHours = firstPunch ? wibParts(firstPunch.eventTime).hours : 0
+  const isEarlyMorningPunch = firstPunchWibHours < 9
+
+  if (isEarlyMorningPunch) {
+    const previousDayDate = new Date(startOfDay.getTime() - 12 * 60 * 60 * 1000)
+    const prevBoundaries = wibDayBoundaries(previousDayDate)
+    const prevRecords = await db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.employeeId, employeeId),
+          eq(attendanceRecords.siteId, siteId),
+          gte(attendanceRecords.eventTime, prevBoundaries.startOfDay),
+          lt(attendanceRecords.eventTime, prevBoundaries.startOfNextDay)
+        )
+      )
+    const prevSorted = [...prevRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+    const prevFirstPunch = prevSorted[0]
+    const prevFirstPunchHours = prevFirstPunch ? wibParts(prevFirstPunch.eventTime).hours : 0
+    const prevHasNightCheckIn = prevFirstPunchHours >= 15
+
+    if (prevHasNightCheckIn) {
+      // Sync previous day so it gets updated with today's early morning checkout
+      await syncFaceAttendanceToTimesheet(employeeId, siteId, previousDayDate)
+
+      // If today has NO punches at or after 09:00 WIB, all punches today are just yesterday's Night Shift checkout
+      const punchesAfterMorning = sortedRecords.filter((r) => wibParts(r.eventTime).hours >= 9)
+      if (punchesAfterMorning.length === 0) {
+        const { period, day } = derivePeriodAndDay(eventDate)
+        await db
+          .delete(timesheetAttendanceRealOverrides)
+          .where(
+            and(
+              eq(timesheetAttendanceRealOverrides.siteId, siteId),
+              eq(timesheetAttendanceRealOverrides.period, period),
+              eq(timesheetAttendanceRealOverrides.employeeId, employeeId),
+              eq(timesheetAttendanceRealOverrides.day, day),
+              eq(timesheetAttendanceRealOverrides.source, 'attendance')
+            )
+          )
+        return null
+      }
+    }
+  }
+
   // Partition into check-ins and check-outs
   const checkIns = records.filter((r) => !isCheckOutEvent(r.eventType))
   const checkOuts = records.filter((r) => isCheckOutEvent(r.eventType))
 
   // Timesheet attendance uses earliest punch as clock-in and latest valid punch as clock-out.
-  const firstPunch = sortedRecords[0]
   const clockIn = firstPunch ? formatTimeHHMM(firstPunch.eventTime) : ''
 
   // Determine if this punch is a Night Shift candidate (e.g. evening start >= 15:00 or early morning < 05:00)
-  const firstPunchWibHours = firstPunch ? wibParts(firstPunch.eventTime).hours : 0
   const isNightShift = firstPunchWibHours >= 15 || firstPunchWibHours < 5
 
   let clockOut = ''
