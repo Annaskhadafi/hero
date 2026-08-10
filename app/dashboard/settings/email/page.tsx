@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
+import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
 import { CsForecastDailyReportSettingsPanel } from "@/components/cs-forecast-daily-report-settings-panel";
@@ -44,6 +45,7 @@ import {
   getCsForecastDailyReportConfigData,
   getActiveEmployeesForSelect,
   getPwaPushSettingsData,
+  getApdNotificationConfigData,
 } from "@/lib/hero-admin";
 
 const bellRules = [
@@ -111,7 +113,7 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, apdConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -120,6 +122,7 @@ export default async function EmailSettingsPage() {
     getHseSafetyNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
     getCsForecastDailyReportConfigData(),
+    getApdNotificationConfigData(),
     getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
@@ -178,6 +181,10 @@ export default async function EmailSettingsPage() {
             <Users className="size-4" />
             Human Capital
           </TabsTrigger>
+          <TabsTrigger value="apd">
+            <Users className="size-4" />
+            APD & CS
+          </TabsTrigger>
           <TabsTrigger value="mine-permit">
             <Users className="size-4" />
             Mine Permit
@@ -224,6 +231,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="hc">
           <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="apd">
+          <ApdNotificationSettingsPanel config={apdConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="mine-permit">

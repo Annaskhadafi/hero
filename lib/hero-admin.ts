@@ -39,6 +39,7 @@ import {
   csForecastDailyReportConfig,
   hcNotificationConfig,
   hseSafetyNotificationConfig,
+  apdNotificationConfig,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -7014,6 +7015,26 @@ export async function getHseSafetyNotificationConfigData() {
     .select()
     .from(hseSafetyNotificationConfig)
     .orderBy(desc(hseSafetyNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
+export async function getApdNotificationConfigData() {
+  await ensureHeroGovernanceSeedData()
+
+  const [config] = await db
+    .select()
+    .from(apdNotificationConfig)
+    .orderBy(desc(apdNotificationConfig.updatedAt))
     .limit(1)
 
   return (

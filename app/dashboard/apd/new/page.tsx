@@ -7,9 +7,16 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { fetchApdItemOptions } from "@/lib/apd-data";
 
-export default async function NewApdRequestPage() {
+export default async function NewApdRequestPage(props: {
+  searchParams: Promise<{ category?: string }>;
+}) {
+  const searchParams = await props.searchParams;
   const currentEmployee = await getCurrentEmployee();
   if (!currentEmployee) return notFound();
+  
+  const defaultMode = (searchParams?.category === "tools" || searchParams?.category === "material" || searchParams?.category === "apd") 
+    ? searchParams.category 
+    : "apd";
 
   const [employeeProfile] = await db
     .select({
@@ -44,6 +51,7 @@ export default async function NewApdRequestPage() {
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
           itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          defaultMode={defaultMode}
         />
       </div>
     </AdminPageShell>

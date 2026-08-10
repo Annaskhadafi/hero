@@ -42,6 +42,7 @@ interface ApdRequestFormProps {
   departmentName: string | null;
   sectionName: string | null;
   itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
+  defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
 }
 
@@ -51,11 +52,12 @@ export function ApdRequestForm({
   departmentName,
   sectionName,
   itemOptions,
+  defaultMode = "apd",
   mobileWide = false,
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">("apd");
+  const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ApdItemInput[]>([
     { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFile: null },
@@ -93,6 +95,15 @@ export function ApdRequestForm({
         throw new Error("Pilih minimal 1 item APD");
       }
 
+      for (const item of items) {
+        if (!item.itemType || item.itemType.trim() === "") {
+          throw new Error("Terdapat item yang jenis/namanya belum diisi");
+        }
+        if (item.requestType === "pergantian" && !item.photoFile) {
+          throw new Error(`Foto bukti pergantian wajib diupload untuk item: ${item.itemType}`);
+        }
+      }
+
       let signatureUrl = "";
       if (signatureFile) {
         signatureUrl = await new Promise<string>((resolve) => {
@@ -115,8 +126,6 @@ export function ApdRequestForm({
             } else {
               throw new Error("Gagal mengupload foto bukti pergantian");
             }
-          } else if (item.requestType === "pergantian" && !item.photoFile) {
-             throw new Error(`Foto bukti pergantian wajib diupload untuk item: ${item.itemType}`);
           }
           return {
             itemType: item.itemType,
@@ -231,7 +240,6 @@ export function ApdRequestForm({
                     ) : (
                       <>
                         <Input
-                          required
                           list={`apd-item-options-${requestMode}`}
                           placeholder={`Pilih atau tulis ${requestMode === "tools" ? "tools" : "material"}`}
                           value={item.itemType}
@@ -286,7 +294,6 @@ export function ApdRequestForm({
                       type="file" 
                       accept="image/*"
                       onChange={(e) => updateItem(item.id, "photoFile", e.target.files?.[0] || null)} 
-                      required
                     />
                   </div>
                 )}

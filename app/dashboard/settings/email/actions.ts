@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  apdNotificationConfig,
   csForecastDailyReportConfig,
   emailSmtpSettings,
   emailTemplates,
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelSettings,
+  pwaPushSettings,
 } from "@/db/schema/hero";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
@@ -120,6 +122,12 @@ const hseSafetyNotificationSchema = z.object({
 });
 
 const humanCapitalNotificationSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const apdNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
@@ -846,6 +854,59 @@ export async function saveHseSafetyNotificationConfigAction(
     };
   }
 }
+
+export async function saveApdNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = apdNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima APD belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: apdNotificationConfig.id })
+      .from(apdNotificationConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails: parsed.data.recipientEmails,
+      ccEmails: parsed.data.ccEmails,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(apdNotificationConfig)
+        .set(values)
+        .where(eq(apdNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(apdNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Penerima APD berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan penerima APD.",
+    };
+  }
+}
+
 
 export async function saveHumanCapitalNotificationConfigAction(
   _state: EmailSettingsActionState = INITIAL_STATE,

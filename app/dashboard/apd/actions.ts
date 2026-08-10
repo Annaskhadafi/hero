@@ -1,11 +1,11 @@
 "use server";
 
 import { db } from "@/db";
-import { apdRequests, apdRequestItems, approvals, employees } from "@/db/schema/hero";
+import { apdRequests, apdRequestItems, approvals, employees, employeeAssets } from "@/db/schema/hero";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
 import { sendApdRequestSubmittedEmail } from "@/lib/apd-email";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 import { normalizeApdRequestCategory, normalizeApdRequestStatus } from "@/lib/apd-status";
@@ -126,14 +126,15 @@ export async function submitApdRequest(formData: FormData) {
       if (firstStep?.approverEmployeeId) {
         const [approverEmailRec] = await tx.select({ email: employees.email }).from(employees).where(eq(employees.id, firstStep.approverEmployeeId));
         if (approverEmailRec?.email) {
-          await sendApdRequestSubmittedEmail({
+          // Send asynchronously to prevent blocking the user response if SMTP is slow
+          sendApdRequestSubmittedEmail({
              employeeName: currentEmployee.name,
              requestNumber,
              approverEmail: approverEmailRec.email,
              approverName: firstStep.approverName
           }).catch(console.error);
 
-          await notifyWorkflowBellRecipients({
+          notifyWorkflowBellRecipients({
             recipientEmails: [approverEmailRec.email],
             eventType: "apd_request_review",
             category: "approval",
@@ -196,10 +197,52 @@ export async function updateApdRequestStatus(id: number, rawStatus: string) {
   const status = normalizeApdRequestStatus(rawStatus);
   if (!status) throw new Error("Status APD tidak valid");
 
-  const [request] = await db.select({ id: apdRequests.id }).from(apdRequests).where(eq(apdRequests.id, id));
+  const [request] = await db.select({ 
+    id: apdRequests.id,
+    employeeId: apdRequests.employeeId,
+    requestCategory: apdRequests.requestCategory
+  }).from(apdRequests).where(eq(apdRequests.id, id));
   if (!request) throw new Error("Request tidak ditemukan");
 
-  await db.update(apdRequests).set({ status, updatedAt: new Date() }).where(eq(apdRequests.id, id));
+  await db.transaction(async (tx) => {
+    await tx.update(apdRequests).set({ status, updatedAt: new Date() }).where(eq(apdRequests.id, id));
+
+    if (status === "complete") {
+      const items = await tx.select().from(apdRequestItems).where(eq(apdRequestItems.requestId, id));
+      
+      for (const item of items) {
+        if (item.requestType === 'pergantian') {
+          await tx.update(employeeAssets)
+            .set({ status: 'REPLACED', updatedAt: new Date() })
+            .where(
+              and(
+                eq(employeeAssets.employeeId, request.employeeId),
+                eq(employeeAssets.itemName, item.itemType),
+                eq(employeeAssets.status, 'ACTIVE')
+              )
+            );
+        }
+
+        let nextReplacementDue: Date | null = null;
+        if (item.itemType === 'Sepatu Safety') {
+          nextReplacementDue = new Date();
+          nextReplacementDue.setMonth(nextReplacementDue.getMonth() + 8);
+        }
+
+        for (let i = 0; i < item.quantity; i++) {
+          await tx.insert(employeeAssets).values({
+            employeeId: request.employeeId,
+            itemCategory: request.requestCategory,
+            itemName: item.itemType,
+            status: 'ACTIVE',
+            assignedAt: new Date(),
+            nextReplacementDue,
+            lastRequestId: id,
+          });
+        }
+      }
+    }
+  });
   revalidatePath("/dashboard/apd");
   revalidatePath(`/dashboard/apd/${id}`);
   revalidatePath("/dashboard/approval");

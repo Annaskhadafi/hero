@@ -2742,6 +2742,14 @@ export const hcNotificationConfig = pgTable('hero_hc_notification_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const apdNotificationConfig = pgTable('hero_apd_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // Central Service Forecast Daily Report auto-email schedule
 export const csForecastDailyReportConfig = pgTable('hero_cs_forecast_daily_report_config', {
   id: serial('id').primaryKey(),
@@ -3908,4 +3916,23 @@ export const apdRequestItems = pgTable('hero_apd_request_items', {
   photoUrl: text('photo_url'),
   quantity: integer('quantity').notNull().default(1),
   notes: text('notes').notNull().default(''),
+})
+
+export const employeeAssets = pgTable('hero_employee_assets', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  itemCategory: text('item_category').notNull().default('APD'),
+  itemName: text('item_name').notNull(),
+  size: text('size'),
+  attachmentUrl: text('attachment_url'),
+  status: text('status').notNull().default('ACTIVE'), // ACTIVE, REPLACED, BROKEN, RETURNED
+  assignedAt: timestamp('assigned_at').notNull().defaultNow(),
+  nextReplacementDue: timestamp('next_replacement_due'),
+  lastRequestId: integer('last_request_id')
+    .references(() => apdRequests.id, { onDelete: 'set null' }),
+  remarks: text('remarks').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

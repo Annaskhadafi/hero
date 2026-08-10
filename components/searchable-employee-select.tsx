@@ -51,7 +51,7 @@ export function SearchableEmployeeSelect({
     const result: EmployeeOption[] = []
     
     // Sort so we prioritize records with more complete details (e.g. has role/SN)
-    const sorted = [...employees].sort((a, b) => {
+    const sorted = [...(employees || [])].sort((a, b) => {
       const aScore = (a.role ? 2 : 0) + (a.employeeSn ? 1 : 0)
       const bScore = (b.role ? 2 : 0) + (b.employeeSn ? 1 : 0)
       return bScore - aScore
