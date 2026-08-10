@@ -41,6 +41,7 @@ export const repairFormWo = pgTable("repair_form_wo", {
   totalAmount: varchar("total_amount", { length: 100 }),
   items: text("items"), // Stores JSON array of item rows
   noPo: varchar("no_po", { length: 255 }),
+  tanggalPo: varchar("tanggal_po", { length: 50 }),
 
   // Audit
   sortOrder: integer("sort_order").default(0).notNull(),
@@ -64,5 +65,6 @@ export const repairMasterCai = pgTable("repair_master_cai", {
 export const repairWipPo = pgTable("repair_wip_po", {
   idWo: varchar("id_wo", { length: 100 }).primaryKey().notNull(),
   noPo: varchar("no_po", { length: 255 }).notNull(),
+  poDate: varchar("po_date", { length: 50 }),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })

@@ -64,6 +64,7 @@ async function ensureFormWoTable() {
       CREATE TABLE IF NOT EXISTS "repair_wip_po" (
         "id_wo" varchar(100) PRIMARY KEY NOT NULL,
         "no_po" varchar(255) NOT NULL,
+        "po_date" varchar(50),
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
@@ -76,6 +77,8 @@ async function ensureFormWoTable() {
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "items" text`)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal_po" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_wip_po" ADD COLUMN IF NOT EXISTS "po_date" varchar(50)`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     if (msg.includes("already exists") || msg.includes("duplicate key")) {
@@ -131,6 +134,7 @@ const formWoCreateSchema = z.object({
   totalAmount: z.string().optional(),
   items: z.string().optional(),
   noPo: z.string().optional(),
+  tanggalPo: z.string().optional(),
 })
 
 const formWoUpdateSchema = z.object({
@@ -160,25 +164,27 @@ const formWoUpdateSchema = z.object({
   totalAmount: z.string().optional(),
   items: z.string().optional(),
   noPo: z.string().optional(),
+  tanggalPo: z.string().optional(),
 })
 
 // ─── Actions ────────────────────────────────────────────────────────────────
 
-export async function saveWipPo(idWo: string, noPo: string) {
+export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
   try {
     await ensureFormWoTable()
     const cleanId = idWo.trim()
     const cleanPo = noPo.trim()
+    const cleanPoDate = poDate !== undefined ? poDate.trim() : ""
     await db.execute(sql`
-      INSERT INTO "repair_wip_po" ("id_wo", "no_po", "updated_at")
-      VALUES (${cleanId}, ${cleanPo}, NOW())
-      ON CONFLICT ("id_wo") DO UPDATE SET "no_po" = ${cleanPo}, "updated_at" = NOW()
+      INSERT INTO "repair_wip_po" ("id_wo", "no_po", "po_date", "updated_at")
+      VALUES (${cleanId}, ${cleanPo}, ${cleanPoDate}, NOW())
+      ON CONFLICT ("id_wo") DO UPDATE SET "no_po" = ${cleanPo}, "po_date" = ${cleanPoDate}, "updated_at" = NOW()
     `)
     revalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {
     console.error("Failed to save WIP PO:", error)
-    return { success: false, error: "Gagal menyimpan Nomor PO" }
+    return { success: false, error: "Gagal menyimpan Nomor PO & Tanggal PO" }
   }
 }
 
@@ -208,15 +214,26 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
     // Filter hanya yang "waiting wo"
     let waitingList = payload.data.filter((item) => isWaitingWorkOrder(item.wo))
 
-    // Merge saved PO numbers from database repair_wip_po
+    // Merge saved PO numbers & PO dates from database repair_wip_po
     try {
       await ensureFormWoTable()
       const savedPoList = await db.select().from(repairWipPo)
-      const poMap = new Map(savedPoList.map((r) => [r.idWo, r.noPo]))
-      waitingList = waitingList.map((item) => ({
-        ...item,
-        po: poMap.get(item.id_wo) ?? item.po ?? null,
-      }))
+      const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
+      waitingList = waitingList.map((item) => {
+        const saved = poMap.get(item.id_wo)
+        if (saved) {
+          return {
+            ...item,
+            po: saved.noPo ?? "",
+            po_date: saved.poDate ?? "",
+          }
+        }
+        return {
+          ...item,
+          po: item.po ?? "",
+          po_date: item.po_date ?? item.inspect_date ?? "",
+        }
+      })
     } catch (e) {
       console.error("Failed to merge saved WIP PO:", e)
     }

@@ -152,6 +152,7 @@ type FormWoRow = {
   totalAmount: string | null
   items: string | null // JSON string of ServiceItemRow[] or RepairItemRow[]
   noPo: string | null
+  tanggalPo: string | null
   createdBy: string | null
   createdAt: Date
   updatedAt: Date
@@ -300,6 +301,7 @@ function CreateOrEditWoDialog({
   const [statusPengajuan, setStatusPengajuan] = useState<"pending" | "approved" | "rejected" | "diproses">("pending")
   const [noWoTerbit, setNoWoTerbit] = useState("")
   const [noPo, setNoPo] = useState("")
+  const [tanggalPo, setTanggalPo] = useState("")
 
   // Multi-item tables
   const [serviceItems, setServiceItems] = useState<ServiceItemRow[]>([
@@ -321,6 +323,7 @@ function CreateOrEditWoDialog({
         setStatusPengajuan((editItem.statusPengajuan as any) || "pending")
         setNoWoTerbit(editItem.noWoTerbit || "")
         setNoPo(editItem.noPo || "")
+        setTanggalPo(editItem.tanggalPo || "")
 
         if (editItem.jenisPengajuan === "service") {
           const parsed = parseItems<ServiceItemRow>(editItem.items, [
@@ -360,6 +363,8 @@ function CreateOrEditWoDialog({
         setTanggal(getTodayFormattedDate())
         setPemohon("")
         setCatatanPengajuan("")
+        setNoPo(prefillWip.po || "")
+        setTanggalPo(prefillWip.po_date || prefillWip.inspect_date || "")
         setRepairItems([
           {
             id: "1",
@@ -382,6 +387,8 @@ function CreateOrEditWoDialog({
         setCatatanPengajuan("")
         setStatusPengajuan("pending")
         setNoWoTerbit("")
+        setNoPo("")
+        setTanggalPo("")
         setServiceItems([
           { id: "1", description: "Labour Service", job: "", customer: "", site: "", serialNo: "", refNo: "", noWoCp: "", price: "" },
         ])
@@ -488,6 +495,7 @@ function CreateOrEditWoDialog({
         statusPengajuan,
         noWoTerbit: noWoTerbit || undefined,
         noPo: noPo || undefined,
+        tanggalPo: tanggalPo || undefined,
         totalAmount: currentTotalAmount > 0 ? String(currentTotalAmount) : undefined,
         items: itemsJson,
         // Header summary values
@@ -592,7 +600,7 @@ function CreateOrEditWoDialog({
             </div>
 
             {/* Additional Pemohon & Status Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 pt-1">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-slate-500">Pemohon</Label>
                 <Input
@@ -608,6 +616,15 @@ function CreateOrEditWoDialog({
                   value={noPo}
                   onChange={(e) => setNoPo(e.target.value)}
                   placeholder="e.g. 401234565 / SUM REPAIR"
+                  className="h-9 bg-white text-xs font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-slate-500">Date PO (Optional)</Label>
+                <Input
+                  value={tanggalPo}
+                  onChange={(e) => setTanggalPo(e.target.value)}
+                  placeholder="e.g. 10.08.2026 / 2026-08-10"
                   className="h-9 bg-white text-xs font-mono"
                 />
               </div>
@@ -1354,28 +1371,38 @@ function WaitingWoTab({
   customerList?: CustomerRecord[]
 }) {
   const [query, setQuery] = useState("")
-  const [poMap, setPoMap] = useState<Record<string, string>>({})
+  const [poMap, setPoMap] = useState<Record<string, { noPo: string; poDate: string }>>({})
 
   useEffect(() => {
-    const map: Record<string, string> = {}
+    const map: Record<string, { noPo: string; poDate: string }> = {}
     data.forEach((item) => {
       if (item.id_wo) {
-        map[item.id_wo] = item.po || ""
+        map[item.id_wo] = {
+          noPo: item.po ?? "",
+          poDate: item.po_date !== null && item.po_date !== undefined ? item.po_date : (item.inspect_date || ""),
+        }
       }
     })
     setPoMap(map)
   }, [data])
 
-  const handlePoChange = (idWo: string, val: string) => {
-    setPoMap((prev) => ({ ...prev, [idWo]: val }))
+  const handlePoChange = (idWo: string, field: "noPo" | "poDate", val: string) => {
+    setPoMap((prev) => ({
+      ...prev,
+      [idWo]: {
+        noPo: field === "noPo" ? val : (prev[idWo]?.noPo ?? ""),
+        poDate: field === "poDate" ? val : (prev[idWo]?.poDate ?? ""),
+      },
+    }))
   }
 
-  const handlePoBlur = async (idWo: string, val: string) => {
-    const res = await saveWipPo(idWo, val)
+  const handlePoBlur = async (idWo: string) => {
+    const entry = poMap[idWo] || { noPo: "", poDate: "" }
+    const res = await saveWipPo(idWo, entry.noPo, entry.poDate)
     if (res.success) {
-      toast.success(`Nomor PO untuk ID WO '${idWo}' tersimpan!`, { duration: 1500 })
+      toast.success(`Nomor & Date PO untuk ID WO '${idWo}' tersimpan!`, { duration: 1500 })
     } else {
-      toast.error(res.error || "Gagal menyimpan Nomor PO")
+      toast.error(res.error || "Gagal menyimpan Nomor/Date PO")
     }
   }
 
@@ -1383,8 +1410,10 @@ function WaitingWoTab({
     const q = query.trim().toLowerCase()
     if (!q) return data
     return data.filter((item) => {
-      const currentPo = poMap[item.id_wo] ?? item.po ?? ""
-      return [item.id_wo, item.tire_sn, item.customer, item.site, item.brand, item.size, item.inspector, currentPo]
+      const entry = poMap[item.id_wo]
+      const currentPo = entry?.noPo ?? item.po ?? ""
+      const currentPoDate = entry?.poDate ?? item.po_date ?? item.inspect_date ?? ""
+      return [item.id_wo, item.tire_sn, item.customer, item.site, item.brand, item.size, item.inspector, currentPo, currentPoDate]
         .map((v) => nv(v).toLowerCase())
         .some((v) => v.includes(q))
     })
@@ -1401,11 +1430,13 @@ function WaitingWoTab({
     const rows = filtered.map((item) => {
       const orderDesc = buildOrderDesc(item.customer, item.site, item.size, item.tire_sn, item.brand)
       const caiCode = findCaiCode(item.customer, item.size, item.brand, caiList)
-      const poDateDot = formatDateDot(item.inspect_date)
 
-      // Strict user PO check: if user filled PO or item has PO, use it; IF EMPTY, EXPORT AS "" (NO ID_WO FALLBACK)
-      const rawPo = poMap[item.id_wo] !== undefined ? poMap[item.id_wo] : (item.po || "")
+      const entry = poMap[item.id_wo]
+      const rawPo = entry?.noPo !== undefined ? entry.noPo : (item.po || "")
       const userPo = rawPo.trim()
+
+      const rawPoDate = entry?.poDate !== undefined ? entry.poDate : (item.po_date || item.inspect_date || "")
+      const poDateDot = formatDateDot(rawPoDate || item.inspect_date)
 
       const custMatch = findCustomerMatchFuzzy(item.customer, customerList)
 
@@ -1438,7 +1469,7 @@ function WaitingWoTab({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari ID WO, Tire SN, Customer, Site, Brand, Nomor PO..."
+              placeholder="Cari ID WO, Tire SN, Customer, Site, Brand, Nomor PO, Date PO..."
               className="h-10 rounded-xl pl-9"
             />
           </div>
@@ -1462,7 +1493,8 @@ function WaitingWoTab({
                 <TableHead className="px-4 py-3">Tire SN</TableHead>
                 <TableHead className="px-4 py-3">Customer / Site</TableHead>
                 <TableHead className="px-4 py-3">Brand / Size</TableHead>
-                <TableHead className="px-4 py-3 min-w-[200px]">Nomor PO (Editable)</TableHead>
+                <TableHead className="px-4 py-3 min-w-[180px]">Nomor PO (Editable)</TableHead>
+                <TableHead className="px-4 py-3 min-w-[150px]">Date PO (Editable)</TableHead>
                 <TableHead className="px-4 py-3">Job Type</TableHead>
                 <TableHead className="px-4 py-3">Inspect Date</TableHead>
               </TableRow>
@@ -1470,7 +1502,7 @@ function WaitingWoTab({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                     Tidak ada unit Waiting WO yang ditemukan.
                   </TableCell>
                 </TableRow>
@@ -1502,18 +1534,33 @@ function WaitingWoTab({
                       <div>{nv(item.brand)}</div>
                       <div className="text-slate-500 font-mono">{nv(item.size)}</div>
                     </TableCell>
-                    <TableCell className="px-4 py-3 min-w-[200px]">
+                    <TableCell className="px-4 py-3 min-w-[180px]">
                       <Input
-                        value={poMap[item.id_wo] ?? item.po ?? ""}
-                        onChange={(e) => handlePoChange(item.id_wo, e.target.value)}
-                        onBlur={(e) => void handlePoBlur(item.id_wo, e.target.value)}
+                        value={poMap[item.id_wo]?.noPo ?? item.po ?? ""}
+                        onChange={(e) => handlePoChange(item.id_wo, "noPo", e.target.value)}
+                        onBlur={() => void handlePoBlur(item.id_wo)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
-                            void handlePoBlur(item.id_wo, (e.target as HTMLInputElement).value)
+                            void handlePoBlur(item.id_wo)
                             ;(e.target as HTMLInputElement).blur()
                           }
                         }}
                         placeholder="Ketik Nomor PO..."
+                        className="h-8 text-xs font-mono border-slate-200 bg-white"
+                      />
+                    </TableCell>
+                    <TableCell className="px-4 py-3 min-w-[150px]">
+                      <Input
+                        value={poMap[item.id_wo]?.poDate ?? item.po_date ?? item.inspect_date ?? ""}
+                        onChange={(e) => handlePoChange(item.id_wo, "poDate", e.target.value)}
+                        onBlur={() => void handlePoBlur(item.id_wo)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            void handlePoBlur(item.id_wo)
+                            ;(e.target as HTMLInputElement).blur()
+                          }
+                        }}
+                        placeholder="e.g. 10.08.2026"
                         className="h-8 text-xs font-mono border-slate-200 bg-white"
                       />
                     </TableCell>
@@ -1586,6 +1633,7 @@ function DaftarPengajuanTab({
       Customer: nv(item.customer),
       Site: nv(item.site),
       "Nomor PO": nv(item.noPo),
+      "Date PO": nv(item.tanggalPo),
       Pemohon: nv(item.pemohon),
       "Total Amount": item.totalAmount ? formatCurrency(item.totalAmount) : "-",
       "No WO Terbit": nv(item.noWoTerbit),
@@ -1608,7 +1656,7 @@ function DaftarPengajuanTab({
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Cari no. pengajuan, customer, site, pemohon, nomor PO..."
+                  placeholder="Cari no. pengajuan, customer, site, pemohon, nomor PO, date PO..."
                   className="h-10 rounded-xl pl-9"
                 />
               </div>
@@ -1658,6 +1706,7 @@ function DaftarPengajuanTab({
                 <TableHead className="px-4 py-3">Status</TableHead>
                 <TableHead className="px-4 py-3">Customer / Site</TableHead>
                 <TableHead className="px-4 py-3">Nomor PO</TableHead>
+                <TableHead className="px-4 py-3">Date PO</TableHead>
                 <TableHead className="px-4 py-3">Pemohon</TableHead>
                 <TableHead className="px-4 py-3 text-right">Total Amount</TableHead>
                 <TableHead className="px-4 py-3">No WO Terbit</TableHead>
@@ -1666,7 +1715,7 @@ function DaftarPengajuanTab({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                     {data.length === 0 ? "Belum ada pengajuan Form WO." : "Tidak ada data yang cocok dengan filter."}
                   </TableCell>
                 </TableRow>
@@ -1735,6 +1784,9 @@ function DaftarPengajuanTab({
                       </TableCell>
                       <TableCell className="px-4 py-3 font-mono text-xs font-semibold text-violet-700">
                         <HighlightText value={item.noPo} query={query} />
+                      </TableCell>
+                      <TableCell className="px-4 py-3 font-mono text-xs text-slate-600">
+                        <HighlightText value={item.tanggalPo} query={query} />
                       </TableCell>
                       <TableCell className="px-4 py-3 text-xs">
                         <HighlightText value={item.pemohon} query={query} />
