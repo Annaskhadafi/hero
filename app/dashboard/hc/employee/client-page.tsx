@@ -423,7 +423,7 @@ export function EmployeeClientPage({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.employeeId.trim() || !formData.fullName.trim()) {
-      toast.error("NIK dan Nama wajib diisi.");
+      toast.error("SN dan Nama wajib diisi.");
       return;
     }
 
@@ -576,7 +576,7 @@ export function EmployeeClientPage({
       <MinimalTableShell
         label="karyawan"
         fileName="Data_Karyawan"
-        searchPlaceholder="Cari nama, NIK, atau departemen..."
+        searchPlaceholder="Cari nama, SN, atau departemen..."
         scorecards={scorecards}
         access={access}
         dateFilter={false}
@@ -647,7 +647,7 @@ export function EmployeeClientPage({
                 />
               </TableHead>
               <TableHead className="w-14 text-center">No</TableHead>
-              <TableHead>NIK</TableHead>
+              <TableHead>SN</TableHead>
               <TableHead>Nama</TableHead>
               <TableHead>Manpower</TableHead>
               <TableHead>Departemen</TableHead>
@@ -873,7 +873,7 @@ export function EmployeeClientPage({
             {/* Row 1: ID & Name */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
-                NIK <span className="text-destructive">*</span>
+                SN <span className="text-destructive">*</span>
               </label>
               <input
                 type="text"
@@ -1118,7 +1118,7 @@ export function EmployeeClientPage({
         {viewingEmployee && (
           <div className="space-y-4">
             <div className="grid gap-3 rounded-[1rem] border border-border/70 bg-muted/20 p-4 sm:grid-cols-2">
-              <DetailRow label="NIK" value={viewingEmployee.employeeId} />
+              <DetailRow label="SN" value={viewingEmployee.employeeId} />
               <DetailRow label="Nama" value={viewingEmployee.fullName} />
               <DetailRow label="Email" value={viewingEmployee.email} />
               <DetailRow
@@ -1226,7 +1226,7 @@ export function EmployeeClientPage({
                 {deletingEmployee.fullName}
               </div>
               <div className="text-xs text-muted-foreground">
-                NIK: {deletingEmployee.employeeId} &middot;{" "}
+                SN: {deletingEmployee.employeeId} &middot;{" "}
                 {deletingEmployee.departmentName ?? "-"}
               </div>
             </div>
