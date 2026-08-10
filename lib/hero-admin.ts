@@ -737,6 +737,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'secondary',
+    section: 'Data Induk',
+    title: 'Customer Management',
+    url: '/dashboard/customers',
+    iconName: 'users',
+    resource: 'customers',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Human Capital
   {
     menuArea: 'main',
