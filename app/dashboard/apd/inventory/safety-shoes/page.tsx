@@ -1,3 +1,4 @@
+import React from "react";
 import { fetchSafetyShoesMatrix } from "@/lib/apd-inventory-data";
 import { format } from "date-fns";
 import { SizeInputCell, AttachmentCell } from "./safety-shoes-cell-actions";
@@ -115,14 +116,12 @@ export default async function SafetyShoesInventoryPage({
                 <tr className="border-b border-border text-xs">
                   <th colSpan={7}></th>
                   {years.map((y) => (
-                    <td key={`sub-${y}`} colSpan={2} className="p-0">
-                      <div className="grid grid-cols-2 h-8 divide-x divide-border/50 border-l border-border/50">
-                        <div className="flex items-center justify-center font-medium">I</div>
-                        <div className="flex items-center justify-center font-medium">II</div>
-                      </div>
-                    </td>
+                    <React.Fragment key={`sub-${y}`}>
+                      <th className="h-8 px-2 font-medium border-l border-border/50 text-center">I</th>
+                      <th className="h-8 px-2 font-medium border-l border-border/50 text-center">II</th>
+                    </React.Fragment>
                   ))}
-                  <td className="p-0 border-l border-border/50"></td>
+                  <th className="p-0 border-l border-border/50"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-card">
@@ -159,16 +158,14 @@ export default async function SafetyShoesInventoryPage({
                         const date1 = datesArray[0];
                         const date2 = datesArray[1];
                         return (
-                          <td key={y} colSpan={2} className="p-0 border-l border-border/50">
-                            <div className="grid grid-cols-2 h-full divide-x divide-border/50 min-h-[60px]">
-                              <div className="flex items-center justify-center p-2 text-center whitespace-nowrap">
-                                {date1 ? format(date1, "dd-MMM-yy") : "-"}
-                              </div>
-                              <div className="flex items-center justify-center p-2 text-center whitespace-nowrap">
-                                {date2 ? format(date2, "dd-MMM-yy") : "-"}
-                              </div>
-                            </div>
-                          </td>
+                          <React.Fragment key={y}>
+                            <td className="p-2 align-middle text-center border-l border-border/50 whitespace-nowrap">
+                              {date1 ? format(date1, "dd-MMM-yy") : "-"}
+                            </td>
+                            <td className="p-2 align-middle text-center border-l border-border/50 whitespace-nowrap">
+                              {date2 ? format(date2, "dd-MMM-yy") : "-"}
+                            </td>
+                          </React.Fragment>
                         );
                       })}
                       <td className="p-4 align-middle border-l border-border/50">
