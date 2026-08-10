@@ -35,9 +35,34 @@ export const repairFormWo = pgTable("repair_form_wo", {
   noWoTerbit: varchar("no_wo_terbit", { length: 100 }),
   tanggalWoTerbit: timestamp("tanggal_wo_terbit"),
 
+  // Additional header & items fields for Repair & Service WO forms
+  hari: varchar("hari", { length: 50 }),
+  tanggal: varchar("tanggal", { length: 50 }),
+  totalAmount: varchar("total_amount", { length: 100 }),
+  items: text("items"), // Stores JSON array of item rows
+  noPo: varchar("no_po", { length: 255 }),
+
   // Audit
   sortOrder: integer("sort_order").default(0).notNull(),
   createdBy: varchar("created_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const repairMasterCai = pgTable("repair_master_cai", {
+  id: serial("id").primaryKey(),
+  customer: varchar("customer", { length: 255 }).default("OTHER CUSTOMER").notNull(),
+  size: varchar("size", { length: 100 }).notNull(),
+  brand: varchar("brand", { length: 100 }),
+  cai: varchar("cai", { length: 100 }).notNull(),
+  type: varchar("type", { length: 50 }).default("Tire Repair").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const repairWipPo = pgTable("repair_wip_po", {
+  idWo: varchar("id_wo", { length: 100 }).primaryKey().notNull(),
+  noPo: varchar("no_po", { length: 255 }).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })

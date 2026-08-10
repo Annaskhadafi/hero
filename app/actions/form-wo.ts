@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/db"
-import { repairFormWo } from "@/db/schema/form-wo"
+import { repairFormWo, repairWipPo } from "@/db/schema/form-wo"
 import type { WipRepairRecord } from "@/lib/types/wip-repair"
 
 const FORM_WO_PATH = "/dashboard/repair-retread/form-wo"
@@ -60,13 +60,24 @@ async function ensureFormWoTable() {
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_wip_po" (
+        "id_wo" varchar(100) PRIMARY KEY NOT NULL,
+        "no_po" varchar(255) NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
     _tableEnsured = true
     // Ensure new columns exist (idempotent ALTER)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "jenis_pengajuan" varchar(50) DEFAULT 'repair' NOT NULL`)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "deskripsi_pekerjaan" text`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "hari" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "items" text`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    // Ignore race-condition duplicate DDL — table was created by a concurrent request
     if (msg.includes("already exists") || msg.includes("duplicate key")) {
       _tableEnsured = true
       return
@@ -74,7 +85,6 @@ async function ensureFormWoTable() {
     throw error
   }
 }
-
 
 async function generateNoPengajuan(): Promise<string> {
   const now = new Date()
@@ -96,7 +106,7 @@ async function generateNoPengajuan(): Promise<string> {
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const formWoCreateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "non_repair"]).default("repair"),
+  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional().default("repair"),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -116,10 +126,15 @@ const formWoCreateSchema = z.object({
   pemohon: z.string().optional(),
   catatanPengajuan: z.string().optional(),
   createdBy: z.string().optional(),
+  hari: z.string().optional(),
+  tanggal: z.string().optional(),
+  totalAmount: z.string().optional(),
+  items: z.string().optional(),
+  noPo: z.string().optional(),
 })
 
 const formWoUpdateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "non_repair"]).optional(),
+  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional(),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -140,9 +155,32 @@ const formWoUpdateSchema = z.object({
   catatanPengajuan: z.string().optional(),
   statusPengajuan: z.enum(["pending", "approved", "rejected", "diproses"]).optional(),
   noWoTerbit: z.string().optional(),
+  hari: z.string().optional(),
+  tanggal: z.string().optional(),
+  totalAmount: z.string().optional(),
+  items: z.string().optional(),
+  noPo: z.string().optional(),
 })
 
 // ─── Actions ────────────────────────────────────────────────────────────────
+
+export async function saveWipPo(idWo: string, noPo: string) {
+  try {
+    await ensureFormWoTable()
+    const cleanId = idWo.trim()
+    const cleanPo = noPo.trim()
+    await db.execute(sql`
+      INSERT INTO "repair_wip_po" ("id_wo", "no_po", "updated_at")
+      VALUES (${cleanId}, ${cleanPo}, NOW())
+      ON CONFLICT ("id_wo") DO UPDATE SET "no_po" = ${cleanPo}, "updated_at" = NOW()
+    `)
+    revalidatePath(FORM_WO_PATH)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to save WIP PO:", error)
+    return { success: false, error: "Gagal menyimpan Nomor PO" }
+  }
+}
 
 export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
   try {
@@ -168,7 +206,22 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
     }
 
     // Filter hanya yang "waiting wo"
-    return payload.data.filter((item) => isWaitingWorkOrder(item.wo))
+    let waitingList = payload.data.filter((item) => isWaitingWorkOrder(item.wo))
+
+    // Merge saved PO numbers from database repair_wip_po
+    try {
+      await ensureFormWoTable()
+      const savedPoList = await db.select().from(repairWipPo)
+      const poMap = new Map(savedPoList.map((r) => [r.idWo, r.noPo]))
+      waitingList = waitingList.map((item) => ({
+        ...item,
+        po: poMap.get(item.id_wo) ?? item.po ?? null,
+      }))
+    } catch (e) {
+      console.error("Failed to merge saved WIP PO:", e)
+    }
+
+    return waitingList
   } catch (error) {
     console.error("Failed to fetch Waiting WO data", error)
     return []
