@@ -363,7 +363,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const hasAttendance = !isAbsent && Boolean(
       day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
     )
-    const overtime = input.isNonStaff && hasAttendance ? day.overtime : undefined
+    const overtime = hasAttendance ? day.overtime : undefined
     const ot = overtime?.totalHours ?? 0
     totalOT += ot
 
