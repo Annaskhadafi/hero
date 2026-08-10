@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     if (centralServiceEmp && !centralServiceEmp.email) {
       return NextResponse.json(
         { error: 'SN ditemukan tapi belum terdaftar email. Hubungi admin untuk aktivasi akun.' },
-        { status: 404 }
+        { status: 400 } // Used 400 instead of 404 to prevent Next.js not-found UI interception
       )
     }
 
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ email: empEmail.email, name: empEmail.name })
     }
 
-    return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Employee not found' }, { status: 400 }) // Used 400 instead of 404 to prevent Next.js not-found UI interception
   } catch (error) {
     console.error('resolve-sn error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

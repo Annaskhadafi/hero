@@ -4304,6 +4304,40 @@ async function applyApprovalDecision(params: {
           routeSnapshot: approval.routeSnapshot,
         })
       }
+
+      if (decisionStatus === 'proses_order' && approval.apdRequestId != null && !nextStep) {
+        // Fully approved, notify requester and CC central admin
+        const reqInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (reqInfo?.requesterEmail) {
+          const { getApdNotificationConfigData } = await import('@/lib/hero-admin');
+          const apdConfig = await getApdNotificationConfigData();
+          let ccEmails: string[] = [];
+          
+          if (apdConfig.isActive) {
+             const parseEmails = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean);
+             ccEmails = [...parseEmails(apdConfig.recipientEmails), ...parseEmails(apdConfig.ccEmails)];
+          }
+
+          const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email');
+          // Send asynchronously
+          sendApdRequestApprovedEmail({
+            requesterEmail: reqInfo.requesterEmail,
+            requesterName: reqInfo.requesterName,
+            requestNumber: reqInfo.requestNumber,
+            approverName: actorName,
+            ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+          }).catch(console.error);
+        }
+      }
     })
     return true
   }

@@ -12,16 +12,17 @@ import { DeleteApdButton } from "./delete-button";
 import { ApdStatusActions } from "./status-actions";
 import { normalizeApdRequestStatus } from "@/lib/apd-status";
 
-export default async function ApdRequestsPage() {
+export default async function ApdRequestsPage(props: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const searchParams = await props.searchParams;
   const currentEmployee = await getCurrentEmployee();
   const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin";
   
-  // For now, if the user is a superadmin (or specific roles), we might want to show all requests.
-  // But typically this page shows the user's own requests. Let's fetch all if they have permission, or their own.
-  // We'll just fetch all for now, as it's an admin-like dashboard view, but filter by employee if needed.
-  // Wait, if it's "User Mengajukan", maybe they only see their own, unless they are admin.
-  // To keep it simple and fulfill "List Semua Permintaan", we'll fetch all.
+  const activeTab = searchParams?.tab === "tools" || searchParams?.tab === "material" || searchParams?.tab === "apd" ? searchParams.tab : "all";
+  
   const rows = await fetchApdRequests();
+  const filteredRows = activeTab === "all" ? rows : rows.filter((row) => row.requestCategory === activeTab.toUpperCase());
   
   return (
     <AdminPageShell
@@ -29,36 +30,88 @@ export default async function ApdRequestsPage() {
       title="Request Barang"
       description="Daftar request APD, tools, dan material beserta status prosesnya."
       actions={
-        <Button asChild className="gap-2">
-          <Link href="/dashboard/apd/new">
-            <Plus className="size-4" />
-            Ajukan Barang
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          {canManageStatus && (
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/dashboard/apd/inventory">
+                Inventory Aset
+              </Link>
+            </Button>
+          )}
+          <Button asChild className="gap-2">
+            <Link href={`/dashboard/apd/new?category=${activeTab === "all" ? "apd" : activeTab}`}>
+              <Plus className="size-4" />
+              Ajukan Barang
+            </Link>
+          </Button>
+        </div>
       }
     >
+      <div className="mb-6 inline-flex h-10 flex-wrap items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground gap-1">
+        <Link
+          href="/dashboard/apd?tab=all"
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+            activeTab === "all" ? "bg-background text-foreground shadow" : "hover:text-foreground hover:bg-muted-foreground/10"
+          }`}
+        >
+          Semua Permintaan
+        </Link>
+        <Link
+          href="/dashboard/apd?tab=tools"
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+            activeTab === "tools" ? "bg-background text-foreground shadow" : "hover:text-foreground hover:bg-muted-foreground/10"
+          }`}
+        >
+          Daftar Request Tools
+        </Link>
+        <Link
+          href="/dashboard/apd?tab=apd"
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+            activeTab === "apd" ? "bg-background text-foreground shadow" : "hover:text-foreground hover:bg-muted-foreground/10"
+          }`}
+        >
+          Daftar Request APD
+        </Link>
+        <Link
+          href="/dashboard/apd?tab=material"
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+            activeTab === "material" ? "bg-background text-foreground shadow" : "hover:text-foreground hover:bg-muted-foreground/10"
+          }`}
+        >
+          Daftar Request Material
+        </Link>
+      </div>
+
       <AdminMetricGrid
         mode="compact"
         items={[
-          { label: "Total Permintaan", value: `${rows.length}`, meta: "Total pengajuan tercatat" },
+          { label: "Total Permintaan", value: `${filteredRows.length}`, meta: "Total pengajuan tercatat" },
           {
             label: "Pending Approval",
-            value: `${rows.filter((row) => row.status === "pending" || row.status === "pending_approval").length}`,
+            value: `${filteredRows.filter((row) => row.status === "pending" || row.status === "pending_approval").length}`,
             meta: "Sedang dalam proses approval",
           },
           {
             label: "Selesai",
-            value: `${rows.filter((row) => row.status === "complete" || row.status === "completed").length}`,
+            value: `${filteredRows.filter((row) => row.status === "complete" || row.status === "completed").length}`,
             meta: "Request sudah selesai",
           },
         ]}
       />
 
       <AdminTableCard
-        title="Daftar Request Barang"
-        description="Pantau status permintaan APD dari seluruh karyawan."
+        title={
+          activeTab === "all"
+            ? "Seluruh Daftar Request Barang"
+            : activeTab === "tools"
+            ? "Daftar Request Tools"
+            : activeTab === "material"
+            ? "Daftar Request Material"
+            : "Daftar Request APD"
+        }
+        description={activeTab === "all" ? "Pantau status semua permintaan barang dari seluruh karyawan." : `Pantau status permintaan ${activeTab.toUpperCase()} dari seluruh karyawan.`}
         columns={["No. Tiket", "Tanggal", "Jenis Request", "Karyawan", "Lokasi", "Menunggu Review", "Status", "Aksi"]}
-        rows={rows.map((row) => [
+        rows={filteredRows.map((row) => [
           <span className="font-medium text-foreground" key="req">{row.requestNumber}</span>,
           row.requestDate?.toLocaleDateString("id-ID", { dateStyle: "medium" }),
           row.requestCategory,
@@ -78,7 +131,7 @@ export default async function ApdRequestsPage() {
               </DialogTrigger>
               <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
                 <DialogHeader>
-                  <DialogTitle>Preview Permintaan APD</DialogTitle>
+                  <DialogTitle>Preview Permintaan {activeTab === "all" ? row.requestCategory : activeTab.toUpperCase()}</DialogTitle>
                 </DialogHeader>
                 <div className="flex-1 overflow-hidden mt-4 rounded-md border">
                   <iframe 

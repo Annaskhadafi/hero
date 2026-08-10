@@ -2852,6 +2852,23 @@ Tim Human Capital`,
       reason: 'Barang sedang tidak tersedia'
     }
   },
+  {
+    name: 'APD Replacement Reminder',
+    templateCode: 'apd_reminder_replacement',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'admin',
+    ccEmail: '',
+    subject: 'Pengingat Pergantian APD: {{itemName}} ({{employeeName}})',
+    htmlContent: 'Waktu pergantian {{itemName}} untuk karyawan {{employeeName}} sudah dekat (Jadwal 8 Bulan). Silakan proses pergantian APD.',
+    textContent: 'Waktu pergantian {{itemName}} untuk karyawan {{employeeName}} sudah dekat (Jadwal 8 Bulan). Silakan proses pergantian APD.',
+    description: 'Notifikasi pengingat pergantian APD untuk admin',
+    variables: ['employeeName', 'itemName'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      itemName: 'Sepatu Safety',
+    }
+  },
   ...[
     ['SPL Submitted', 'spl_submitted', 'SPL {{splNumber}} menunggu approval', 'Pengajuan {{splNumber}} oleh {{requesterName}} menunggu approval.'],
     ['SPL Assigned', 'spl_assigned', 'SPL {{splNumber}} siap dikerjakan', '{{employeeName}}, SPL {{splNumber}} telah disetujui. Lengkapi attendance, aktivitas, dan foto.'],

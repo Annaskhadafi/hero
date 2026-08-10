@@ -13,10 +13,11 @@ export const APD_REQUEST_STATUS_LABELS: Record<ApdRequestStatus, string> = {
 };
 
 export function normalizeApdRequestStatus(value: string): ApdRequestStatus | null {
-  if (value === "pending" || value === "pending_approval") return "pending_approval";
-  if (value === "approved" || value === "proses_order") return "proses_order";
-  if (value === "completed" || value === "complete") return "complete";
-  if (value === "cancelled" || value === "cancel") return "cancel";
+  const v = value.toLowerCase().replace(" ", "_");
+  if (v === "pending" || v === "pending_approval") return "pending_approval";
+  if (v === "approved" || v === "proses_order") return "proses_order";
+  if (v === "completed" || v === "complete") return "complete";
+  if (v === "cancelled" || v === "cancel") return "cancel";
   return null;
 }
 
