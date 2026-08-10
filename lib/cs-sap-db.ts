@@ -1,6 +1,9 @@
 import { Pool } from "pg";
+import { parseMonthYearToYearMonth } from "./cs-forecast-daily-report";
 
-const SAP_DB_URL = "postgresql://satuchitra:Wusthochq2018-@31.97.187.38:5432/satuchitra";
+const SAP_DB_URL =
+  process.env.SAP_DB_URL?.trim() ||
+  "postgresql://onechitranewdb:Wusthochq2018-@31.97.187.38:5475/onechitranewdb";
 
 let sapPool: Pool | null = null;
 
@@ -86,20 +89,11 @@ export async function fetchSapRevenue(monthYear: string): Promise<{
 }
 
 function monthYearToKey(monthYear: string): string {
-  // "July 2026" → "2026-07"
-  const months: Record<string, string> = {
-    January: "01", February: "02", March: "03", April: "04",
-    May: "05", June: "06", July: "07", August: "08",
-    September: "09", October: "10", November: "11", December: "12",
-  };
-  const parts = monthYear.trim().split(/\s+/);
-  if (parts.length === 2) {
-    const month = months[parts[0]] || "01";
-    const year = parts[1];
-    return `${year}-${month}`;
+  if (!monthYear) return monthYear;
+  const parsed = parseMonthYearToYearMonth(monthYear);
+  if (parsed) {
+    return `${parsed.year}-${String(parsed.month).padStart(2, "0")}`;
   }
-  // If already in YYYY-MM format
-  if (/^\d{4}-\d{2}$/.test(monthYear)) return monthYear;
   return monthYear;
 }
 
