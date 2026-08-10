@@ -83,7 +83,7 @@ function SignInContent() {
             // Resolve SN to email if input is not an email
             let loginEmail = email.trim();
             if (!loginEmail.includes("@")) {
-                const res = await fetch("/api/auth/resolve-sn", {
+                const res = await fetch("/api/resolve-sn", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ sn: loginEmail }),
