@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 const EXPLICIT_TEXT_COLOR_PATTERN =
-  /\btext-(white|black|foreground|primary|primary-foreground|secondary-foreground|muted-foreground|(?:slate|blue|emerald|amber|rose|sky|violet|cyan)-\d{2,3})(?:\/\d+)?\b|\btext-\[[^\]]+\]/
+  /\btext-(white|black|foreground|primary|primary-foreground|secondary-foreground|muted-foreground|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d+)?\b|\btext-\[[^\]]+\]/
 
 const LIGHT_BACKGROUND_TOKENS = [
   "bg-white",
@@ -109,7 +109,7 @@ export function hasCustomBackgroundFill(className?: string) {
 
   const hasGradientBackground = className.includes("bg-[linear-gradient")
   const hasColorBackground =
-    /\bbg-(white|black|background|card|popover|muted|primary|secondary|destructive|tertiary-container|surface-[\w-]+|(?:slate|blue|emerald|amber|rose|sky|violet|cyan|teal|indigo)-\d{2,3})(?:\/\d+)?\b|\bbg-\[[^\]]+\]/.test(
+    /\bbg-(white|black|background|card|popover|muted|primary|secondary|destructive|tertiary-container|surface-[\w-]+|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d+)?\b|\bbg-\[[^\]]+\]/.test(
       className,
     )
 
