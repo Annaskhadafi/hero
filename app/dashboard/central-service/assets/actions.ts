@@ -221,6 +221,7 @@ export async function createAsset(data: AssetData) {
       };
     });
     revalidatePath("/dashboard/central-service/assets");
+    revalidatePath("/mobile/central-service/assets");
     return { success: true, data: result };
   } catch (error) {
     console.error("Failed to create asset:", error);
@@ -290,6 +291,7 @@ export async function updateAsset(id: number, data: AssetData) {
       };
     });
     revalidatePath("/dashboard/central-service/assets");
+    revalidatePath("/mobile/central-service/assets");
     return { success: true, data: result };
   } catch (error) {
     console.error("Failed to update asset:", error);
@@ -326,6 +328,7 @@ export async function updateAssetCondition(id: number, condition: string) {
     if (!result) return { success: false, error: "Asset tidak ditemukan" };
 
     revalidatePath("/dashboard/central-service/assets");
+    revalidatePath("/mobile/central-service/assets");
     return { success: true, data: result };
   } catch (error) {
     console.error("Failed to update asset condition:", error);
@@ -337,6 +340,7 @@ export async function deleteAsset(id: number) {
   try {
     await db.delete(centralServiceAssets).where(eq(centralServiceAssets.id, id));
     revalidatePath("/dashboard/central-service/assets");
+    revalidatePath("/mobile/central-service/assets");
     return { success: true };
   } catch (error) {
     console.error("Failed to delete asset:", error);

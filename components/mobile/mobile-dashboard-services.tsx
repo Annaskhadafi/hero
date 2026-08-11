@@ -20,7 +20,8 @@ import {
   Route,
   HardHat,
   BookOpen,
-  TrendingUp
+  TrendingUp,
+  Package,
 } from "lucide-react";
 import {
   IconBook,
@@ -153,6 +154,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "cs-forecast",
       icon: TrendingUp,
       bg: "bg-emerald-500/10 text-emerald-600",
+    },
+    {
+      title: "CS Assets",
+      href: "/mobile/central-service/assets",
+      resource: "central-service-assets",
+      icon: Package,
+      bg: "bg-indigo-500/10 text-indigo-600",
     },
     {
       title: "Pengaduan HR",
