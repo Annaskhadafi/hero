@@ -339,8 +339,8 @@ export function MobileDailyClientPage({
     setStatusDoc(actual.itemStatus || actual.statusDoc || '-')
     setActualDate(formatDateDisplay(actual.updateDate))
     setInvoiceNumber(actual.invoiceNumber || '')
-    setAmountIdr(String(actual.amountIdr || ''))
-    setAmountUsd(String(actual.amountUsd || ''))
+    setAmountIdr(actual.amountIdr !== undefined && actual.amountIdr !== null ? String(actual.amountIdr) : '0')
+    setAmountUsd(actual.amountUsd !== undefined && actual.amountUsd !== null ? String(actual.amountUsd) : '0')
     setNote(actual.remark || actual.note || '')
     setActualModalOpen(true)
   }
@@ -349,7 +349,7 @@ export function MobileDailyClientPage({
     setInvoiceNumber(invNum)
     const match = sapInvoices.find((s) => s.invoiceNumber === invNum)
     if (match) {
-      setAmountIdr(String(match.amountIdr || ''))
+      setAmountIdr(String(match.amountIdr ?? '0'))
       if (exchangeRate > 0) {
         setAmountUsd((match.amountIdr / exchangeRate).toFixed(2))
       }
@@ -366,7 +366,10 @@ export function MobileDailyClientPage({
 
   const handleSaveActual = async () => {
     if (!selectedItemForActual) return
-    if (!amountIdr || isNaN(Number(amountIdr))) {
+    const rawIdr = amountIdr !== undefined && amountIdr !== null && amountIdr !== '' ? amountIdr : '0'
+    const rawUsd = amountUsd !== undefined && amountUsd !== null && amountUsd !== '' ? amountUsd : String(Number(rawIdr) / (exchangeRate || 1))
+
+    if (isNaN(Number(rawIdr))) {
       toast.error('Masukkan jumlah nominal IDR yang valid')
       return
     }
@@ -380,8 +383,8 @@ export function MobileDailyClientPage({
           itemStatus: statusDoc,
           statusDoc: statusDoc,
           invoiceNumber,
-          amountIdr,
-          amountUsd: amountUsd || String(Number(amountIdr) / exchangeRate),
+          amountIdr: rawIdr,
+          amountUsd: rawUsd,
           remark: note,
           note,
         })
@@ -401,8 +404,8 @@ export function MobileDailyClientPage({
                           itemStatus: statusDoc,
                           statusDoc: statusDoc,
                           invoiceNumber,
-                          amountIdr: Number(amountIdr),
-                          amountUsd: Number(amountUsd),
+                          amountIdr: Number(rawIdr),
+                          amountUsd: Number(rawUsd),
                           remark: note,
                           note,
                         }
@@ -425,8 +428,8 @@ export function MobileDailyClientPage({
           statusDoc: statusDoc,
           updateDate: actualDate,
           invoiceNumber,
-          amountIdr,
-          amountUsd: amountUsd || String(Number(amountIdr) / exchangeRate),
+          amountIdr: rawIdr,
+          amountUsd: rawUsd,
           remark: note,
           note,
         })
@@ -1115,7 +1118,7 @@ export function MobileDailyClientPage({
                   <Label className="text-[11px] font-bold text-[#486275]">Amount (IDR)</Label>
                   <Input
                     type="number"
-                    value={amountIdr || ''}
+                    value={amountIdr ?? ''}
                     onChange={(e) => handleAmountIdrChange(e.target.value)}
                     placeholder="0"
                     className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-semibold"
@@ -1125,7 +1128,7 @@ export function MobileDailyClientPage({
                   <Label className="text-[11px] font-bold text-[#486275]">Amount (USD)</Label>
                   <Input
                     type="number"
-                    value={amountUsd || ''}
+                    value={amountUsd ?? ''}
                     onChange={(e) => setAmountUsd(e.target.value)}
                     placeholder="0.00"
                     className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
