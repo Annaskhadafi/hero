@@ -10,7 +10,7 @@ import { ChevronLeft } from "lucide-react";
 
 export default async function ApdInventoryPage() {
   const currentEmployee = await getCurrentEmployee();
-  const inventoryPermission = await getCurrentMenuPermission('hse_inventaris');
+  const inventoryPermission = await getCurrentMenuPermission('apd_inventory');
   
   const canManageLegacy = currentEmployee && ["admin", "superadmin"].includes(currentEmployee.role);
   
