@@ -2750,6 +2750,17 @@ export const apdNotificationConfig = pgTable('hero_apd_notification_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const formWoNotificationConfig = pgTable('hero_form_wo_notification_config', {
+  id: serial('id').primaryKey(),
+  tier1ApproverEmails: text('tier1_approver_emails').notNull().default(''),
+  tier2ApproverEmails: text('tier2_approver_emails').notNull().default(''),
+  tier3ApproverEmails: text('tier3_approver_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  tier3ThresholdAmount: text('tier3_threshold_amount').notNull().default('20000000'),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // Central Service Forecast Daily Report auto-email schedule
 export const csForecastDailyReportConfig = pgTable('hero_cs_forecast_daily_report_config', {
   id: serial('id').primaryKey(),

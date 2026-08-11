@@ -258,6 +258,7 @@ function hasMobileCounterpart(
   if (cleanUrl === '/dashboard/security/roles') return true
   if (cleanUrl === '/dashboard/reports') return true
   if (cleanUrl === '/dashboard/training') return true
+  if (cleanUrl.startsWith('/dashboard/central-service/forecast')) return true
   if (cleanUrl === '/dashboard/attendance' || cleanUrl.startsWith('/dashboard/attendance/'))
     return true
 

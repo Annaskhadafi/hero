@@ -9,12 +9,14 @@ import {
   ShieldAlert,
   Smartphone,
   Users,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
+import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
 import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
 import { CsForecastDailyReportSettingsPanel } from "@/components/cs-forecast-daily-report-settings-panel";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
@@ -46,6 +48,7 @@ import {
   getActiveEmployeesForSelect,
   getPwaPushSettingsData,
   getApdNotificationConfigData,
+  getFormWoNotificationConfigData,
 } from "@/lib/hero-admin";
 
 const bellRules = [
@@ -113,7 +116,7 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, apdConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -123,6 +126,7 @@ export default async function EmailSettingsPage() {
     getHumanCapitalNotificationConfigData(),
     getCsForecastDailyReportConfigData(),
     getApdNotificationConfigData(),
+    getFormWoNotificationConfigData(),
     getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
@@ -172,6 +176,10 @@ export default async function EmailSettingsPage() {
             <Badge className="ml-1 rounded-full border-0 bg-muted text-muted-foreground">
               {templates.length}
             </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="form-wo">
+            <Wrench className="size-4" />
+            Form WO Approval
           </TabsTrigger>
           <TabsTrigger value="hse">
             <ShieldAlert className="size-4" />
@@ -223,6 +231,10 @@ export default async function EmailSettingsPage() {
             hcCcEmails={humanCapitalConfig.ccEmails}
             employees={employees}
           />
+        </TabsContent>
+
+        <TabsContent value="form-wo">
+          <FormWoNotificationSettingsPanel config={formWoConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="hse">

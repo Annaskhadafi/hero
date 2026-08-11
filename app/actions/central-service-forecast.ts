@@ -28,31 +28,36 @@ export async function syncAllCarryOverItems() {
 }
 
 export async function getForecastPeriods() {
-  await syncAllCarryOverItems()
-  const rawPeriods = await db
-    .select()
-    .from(centralServiceForecastPeriods)
+  try {
+    await syncAllCarryOverItems()
+    const rawPeriods = await db
+      .select()
+      .from(centralServiceForecastPeriods)
 
-  // ponytail: sort chronologically desc (year * 12 + month)
-  const allPeriods = [...rawPeriods].sort((a, b) => {
-    const parsedA = parseMonthYearToYearMonth(a.monthYear)
-    const parsedB = parseMonthYearToYearMonth(b.monthYear)
-    const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
-    const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
-    if (keyA !== keyB) return keyB - keyA
-    return b.id - a.id
-  })
+    // ponytail: sort chronologically desc (year * 12 + month)
+    const allPeriods = [...rawPeriods].sort((a, b) => {
+      const parsedA = parseMonthYearToYearMonth(a.monthYear)
+      const parsedB = parseMonthYearToYearMonth(b.monthYear)
+      const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
+      const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
+      if (keyA !== keyB) return keyB - keyA
+      return b.id - a.id
+    })
 
-  const uniquePeriods: typeof allPeriods = []
-  const seen = new Set<string>()
-  for (const p of allPeriods) {
-    const key = (p.monthYear || '').trim().toLowerCase()
-    if (!seen.has(key)) {
-      seen.add(key)
-      uniquePeriods.push(p)
+    const uniquePeriods: typeof allPeriods = []
+    const seen = new Set<string>()
+    for (const p of allPeriods) {
+      const key = (p.monthYear || '').trim().toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        uniquePeriods.push(p)
+      }
     }
+    return uniquePeriods
+  } catch (err) {
+    console.error('Error in getForecastPeriods:', err)
+    return []
   }
-  return uniquePeriods
 }
 
 export async function getSalesEmployees() {
@@ -144,83 +149,88 @@ export async function getWaitingForecastItems() {
 }
 
 export async function getDailyForecastItems() {
-  await syncAllCarryOverItems()
-  const [items, allActuals, periods] = await Promise.all([
-    db
-      .select({
-        item: centralServiceForecastItems,
-        period: centralServiceForecastPeriods,
-      })
-      .from(centralServiceForecastItems)
-      .innerJoin(
-        centralServiceForecastPeriods,
-        eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
-      )
-      .orderBy(desc(centralServiceForecastPeriods.monthYear)),
-    db
-      .select()
-      .from(centralServiceForecastActuals)
-      .orderBy(desc(centralServiceForecastActuals.updateDate)),
-    db.select().from(centralServiceForecastPeriods),
-  ])
+  try {
+    await syncAllCarryOverItems()
+    const [items, allActuals, periods] = await Promise.all([
+      db
+        .select({
+          item: centralServiceForecastItems,
+          period: centralServiceForecastPeriods,
+        })
+        .from(centralServiceForecastItems)
+        .innerJoin(
+          centralServiceForecastPeriods,
+          eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
+        )
+        .orderBy(desc(centralServiceForecastPeriods.monthYear)),
+      db
+        .select()
+        .from(centralServiceForecastActuals)
+        .orderBy(desc(centralServiceForecastActuals.updateDate)),
+      db.select().from(centralServiceForecastPeriods),
+    ])
 
-  const periodMap = new Map(periods.map((p) => [p.id, p]))
+    const periodMap = new Map(periods.map((p) => [p.id, p]))
 
-  const actualsByItemId = new Map<number, typeof allActuals>()
-  const unplannedActuals: typeof allActuals = []
+    const actualsByItemId = new Map<number, typeof allActuals>()
+    const unplannedActuals: typeof allActuals = []
 
-  allActuals.forEach((a) => {
-    if (a.forecastItemId) {
-      const list = actualsByItemId.get(a.forecastItemId) || []
-      list.push(a)
-      actualsByItemId.set(a.forecastItemId, list)
-    } else {
-      unplannedActuals.push(a)
-    }
-  })
-
-  const result: any[] = items.map((i) => ({
-    ...i,
-    actuals: actualsByItemId.get(i.item.id) || [],
-  }))
-
-  const unplannedGrouped = new Map<string, typeof allActuals>()
-  unplannedActuals.forEach((a) => {
-    const key = `${a.customer || 'Unknown'}_${a.periodId || 0}`
-    const list = unplannedGrouped.get(key) || []
-    list.push(a)
-    unplannedGrouped.set(key, list)
-  })
-
-  let syntheticIdCounter = -1
-  unplannedGrouped.forEach((actualList, _key) => {
-    const first = actualList[0]
-    const period = periodMap.get(first.periodId || 0) || {
-      id: first.periodId || 0,
-      monthYear: 'Unknown',
-    }
-    result.push({
-      item: {
-        id: syntheticIdCounter--,
-        periodId: first.periodId,
-        customer: first.customer || 'Unplanned Customer',
-        picSales: 'Unplanned',
-        isProductAccessories: false,
-        accessoriesAmountIdr: '0',
-        osInvoicePrevMonth: '0',
-        repairForecast: '0',
-        retreadForecast: '0',
-        serviceForecast: '0',
-        status: 'Unplanned SAP',
-        remark: 'Unplanned Actual',
-        isUnplanned: true,
-      },
-      period,
-      actuals: actualList,
+    allActuals.forEach((a) => {
+      if (a.forecastItemId) {
+        const list = actualsByItemId.get(a.forecastItemId) || []
+        list.push(a)
+        actualsByItemId.set(a.forecastItemId, list)
+      } else {
+        unplannedActuals.push(a)
+      }
     })
-  })
 
-  return result
+    const result: any[] = items.map((i) => ({
+      ...i,
+      actuals: actualsByItemId.get(i.item.id) || [],
+    }))
+
+    const unplannedGrouped = new Map<string, typeof allActuals>()
+    unplannedActuals.forEach((a) => {
+      const key = `${a.customer || 'Unknown'}_${a.periodId || 0}`
+      const list = unplannedGrouped.get(key) || []
+      list.push(a)
+      unplannedGrouped.set(key, list)
+    })
+
+    let syntheticIdCounter = -1
+    unplannedGrouped.forEach((actualList, _key) => {
+      const first = actualList[0]
+      const period = periodMap.get(first.periodId || 0) || {
+        id: first.periodId || 0,
+        monthYear: 'Unknown',
+      }
+      result.push({
+        item: {
+          id: syntheticIdCounter--,
+          periodId: first.periodId,
+          customer: first.customer || 'Unplanned Customer',
+          picSales: 'Unplanned',
+          isProductAccessories: false,
+          accessoriesAmountIdr: '0',
+          osInvoicePrevMonth: '0',
+          repairForecast: '0',
+          retreadForecast: '0',
+          serviceForecast: '0',
+          status: 'Unplanned SAP',
+          remark: 'Unplanned Actual',
+          isUnplanned: true,
+        },
+        period,
+        actuals: actualList,
+      })
+    })
+
+    return result
+  } catch (err) {
+    console.error('Error in getDailyForecastItems:', err)
+    return []
+  }
 }
 
 const MONTH_NAMES = [

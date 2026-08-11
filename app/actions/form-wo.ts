@@ -6,6 +6,11 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { repairFormWo, repairWipPo } from "@/db/schema/form-wo"
+import {
+  sendFormWoApprovalRequestEmail,
+  sendFormWoStatusApprovedEmail,
+  sendFormWoStatusRejectedEmail,
+} from "@/lib/form-wo-email"
 import type { WipRepairRecord } from "@/lib/types/wip-repair"
 
 const FORM_WO_PATH = "/dashboard/repair-retread/form-wo"
@@ -290,6 +295,28 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       updatedAt: new Date(),
     })
 
+    // Trigger Email Notifikasi Approval secara Asinkron
+    void (async () => {
+      try {
+        await sendFormWoApprovalRequestEmail({
+          approverEmail: process.env.WO_APPROVER_EMAIL || "approver@chitraparatama.com",
+          approverName: "Foreman / PJO Site",
+          pemohon: parsed.pemohon || "Karyawan Site",
+          noPengajuan,
+          customer: parsed.customer,
+          site: parsed.site,
+          jobType: parsed.jobType,
+          tireSn: parsed.tireSn,
+          brand: parsed.brand,
+          size: parsed.size,
+          totalAmount: parsed.totalAmount,
+          catatanPengajuan: parsed.catatanPengajuan,
+        })
+      } catch (e) {
+        console.error("Form WO Approval Email notification error:", e)
+      }
+    })()
+
     revalidatePath(FORM_WO_PATH)
     return { success: true, noPengajuan }
   } catch (error) {
@@ -327,7 +354,43 @@ export async function updateFormWoStatus(id: number, status: "pending" | "approv
       values.noWoTerbit = noWoTerbit
       values.tanggalWoTerbit = new Date()
     }
+    
+    // Fetch record details before update for email context
+    const existing = await db.select().from(repairFormWo).where(eq(repairFormWo.id, id))
+    const record = existing[0]
+
     await db.update(repairFormWo).set(values).where(eq(repairFormWo.id, id))
+
+    // Trigger Status Update Email
+    if (record) {
+      void (async () => {
+        try {
+          const requesterEmail = record.createdBy || "requester@chitraparatama.com"
+          if (status === "approved" || status === "diproses") {
+            await sendFormWoStatusApprovedEmail({
+              requesterEmail,
+              pemohon: record.pemohon || "Pemohon",
+              noPengajuan: record.noPengajuan || "-",
+              noWoTerbit: noWoTerbit || record.noWoTerbit || "-",
+              customer: record.customer || "-",
+              site: record.site || "-",
+              jobType: record.jobType || "-",
+              totalAmount: record.totalAmount || "-",
+            })
+          } else if (status === "rejected") {
+            await sendFormWoStatusRejectedEmail({
+              requesterEmail,
+              pemohon: record.pemohon || "Pemohon",
+              noPengajuan: record.noPengajuan || "-",
+              catatanPengajuan: record.catatanPengajuan || "Pengajuan tidak memenuhi syarat.",
+            })
+          }
+        } catch (e) {
+          console.error("Form WO Status Email notification error:", e)
+        }
+      })()
+    }
+
     revalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {

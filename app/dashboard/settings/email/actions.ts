@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   apdNotificationConfig,
+  formWoNotificationConfig,
   csForecastDailyReportConfig,
   emailSmtpSettings,
   emailTemplates,
@@ -903,6 +904,70 @@ export async function saveApdNotificationConfigAction(
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal menyimpan penerima APD.",
+    };
+  }
+}
+
+const formWoNotificationSchema = z.object({
+  tier1ApproverEmails: z.string().default(""),
+  tier2ApproverEmails: z.string().default(""),
+  tier3ApproverEmails: z.string().default(""),
+  ccEmails: z.string().default(""),
+  tier3ThresholdAmount: z.string().default("20000000"),
+  isActive: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()),
+});
+
+export async function saveFormWoNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = formWoNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Approval Form WO belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: formWoNotificationConfig.id })
+      .from(formWoNotificationConfig)
+      .limit(1);
+
+    const values = {
+      tier1ApproverEmails: parsed.data.tier1ApproverEmails,
+      tier2ApproverEmails: parsed.data.tier2ApproverEmails,
+      tier3ApproverEmails: parsed.data.tier3ApproverEmails,
+      ccEmails: parsed.data.ccEmails,
+      tier3ThresholdAmount: parsed.data.tier3ThresholdAmount,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(formWoNotificationConfig)
+        .set(values)
+        .where(eq(formWoNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(formWoNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Konfigurasi Approval Berjenjang Form WO berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan konfigurasi Approval Form WO.",
     };
   }
 }

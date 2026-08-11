@@ -40,6 +40,7 @@ import {
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   apdNotificationConfig,
+  formWoNotificationConfig,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -82,6 +83,7 @@ import {
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { mergeActiveSchedulePlans, type ScheduleV2Row } from '@/lib/timesheet/schedule-v2'
 import { ensureDepartmentSectionSeedData } from '@/lib/org-seed-data'
+import { EMAIL_TEMPLATE_PRESETS } from '@/lib/email-template-presets'
 
 let seedPromise: Promise<void> | null = null
 let governanceSeedPromise: Promise<void> | null = null
@@ -1886,7 +1888,7 @@ const EMAIL_SMTP_SETTING_SEED = {
   isActive: true,
 }
 
-const EMAIL_TEMPLATE_SEEDS = [
+const RAW_EMAIL_TEMPLATE_SEEDS = [
   {
     name: 'ChitraLearning Enrollment Request',
     templateCode: 'chitralearning_enrollment_request',
@@ -3888,6 +3890,38 @@ Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract 
     isActive: true,
   },
 ]
+
+const EMAIL_TEMPLATE_SEEDS = [
+  ...RAW_EMAIL_TEMPLATE_SEEDS,
+  ...EMAIL_TEMPLATE_PRESETS.map((p) => ({
+    name: p.name,
+    templateCode: p.templateCode,
+    templateType: p.templateType,
+    deliveryChannel: p.deliveryChannel,
+    recipientScope: p.recipientScope,
+    ccEmail: p.ccEmail ?? '',
+    subject: p.subject,
+    htmlContent: p.htmlContent,
+    textContent: p.textContent,
+    isActive: true,
+  })),
+].reduce((acc, current) => {
+  if (!acc.some((item) => item.templateCode === current.templateCode)) {
+    acc.push(current)
+  }
+  return acc
+}, [] as Array<{
+  name: string
+  templateCode: string
+  templateType: string
+  deliveryChannel: string
+  recipientScope: string
+  ccEmail: string
+  subject: string
+  htmlContent: string
+  textContent: string
+  isActive: boolean
+}>)
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
   {
@@ -7053,6 +7087,44 @@ export async function getApdNotificationConfigData() {
       id: 0,
       recipientEmails: '',
       ccEmails: '',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
+export async function getFormWoNotificationConfigData() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_form_wo_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "tier1_approver_emails" text DEFAULT '' NOT NULL,
+        "tier2_approver_emails" text DEFAULT '' NOT NULL,
+        "tier3_approver_emails" text DEFAULT '' NOT NULL,
+        "cc_emails" text DEFAULT '' NOT NULL,
+        "tier3_threshold_amount" text DEFAULT '20000000' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+  } catch (e) {
+    // Table already exists or DDL bypass
+  }
+
+  const [config] = await db
+    .select()
+    .from(formWoNotificationConfig)
+    .orderBy(desc(formWoNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      tier1ApproverEmails: '',
+      tier2ApproverEmails: '',
+      tier3ApproverEmails: '',
+      ccEmails: '',
+      tier3ThresholdAmount: '20000000',
       isActive: true,
       updatedAt: new Date(),
     }
