@@ -380,25 +380,59 @@ async function handleCarryOverPropagation(tx: any, item: any) {
 }
 
 export async function upsertForecastItem(data: any) {
-  if (data.id) {
-    await db
-      .update(centralServiceForecastItems)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(centralServiceForecastItems.id, data.id))
-  } else {
-    await db.insert(centralServiceForecastItems).values(data)
-  }
+  try {
+    const payload: any = {
+      customer: data.customer || data.customerName || '',
+      picSales: data.picSales || data.salesmanName || '',
+      poNumber: data.poNumber || '',
+      prNumber: data.prNumber || '',
+      description: data.description || '',
+      osInvoicePrevMonth: String(data.osInvoicePrevMonth || '0'),
+      repairForecast: String(data.repairForecast || '0'),
+      retreadForecast: String(data.retreadForecast || '0'),
+      serviceForecast: String(data.serviceForecast || '0'),
+      accessoriesAmountIdr: String(data.accessoriesAmountIdr || '0'),
+      accessoriesAmountUsd: String(data.accessoriesAmountUsd || '0'),
+      status: data.status || 'Waiting',
+      remark: data.remark || '',
+      updatedAt: new Date(),
+    }
 
-  if (data.status?.trim().toLowerCase() === 'carry over') {
-    await handleCarryOverPropagation(db, data)
-  }
+    const totalFc =
+      Number(payload.osInvoicePrevMonth) +
+      Number(payload.repairForecast) +
+      Number(payload.retreadForecast) +
+      Number(payload.serviceForecast)
+    payload.totalForecastIdr = totalFc.toString()
 
-  revalidatePath('/dashboard/central-service/forecast/monthly')
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast/report')
+    if (data.id && Number(data.id) > 0) {
+      await db
+        .update(centralServiceForecastItems)
+        .set(payload)
+        .where(eq(centralServiceForecastItems.id, Number(data.id)))
+    } else {
+      payload.periodId = Number(data.periodId)
+      payload.remainingRepair = payload.repairForecast
+      payload.remainingRetread = payload.retreadForecast
+      payload.remainingService = payload.serviceForecast
+      payload.remainingTotalIdr = payload.totalForecastIdr
+      await db.insert(centralServiceForecastItems).values(payload)
+    }
+
+    if (data.status?.trim().toLowerCase() === 'carry over') {
+      await handleCarryOverPropagation(db, { ...data, ...payload })
+    }
+
+    revalidatePath('/dashboard/central-service/forecast/monthly')
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast/report')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error in upsertForecastItem:', err)
+    return { success: false, error: err.message || 'Gagal merubah item forecast' }
+  }
 }
 
 export async function deleteForecastItem(id: number) {
@@ -442,6 +476,8 @@ export async function deleteForecastItem(id: number) {
 
   await db.delete(centralServiceForecastItems).where(eq(centralServiceForecastItems.id, id))
   revalidatePath('/dashboard/central-service/forecast/monthly')
+  revalidatePath('/mobile/central-service/forecast/daily')
+  revalidatePath('/mobile/central-service/forecast/report')
 }
 
 export async function updateForecastItemStatus(
@@ -484,6 +520,8 @@ export async function updateForecastItemStatus(
   revalidatePath('/dashboard/central-service/forecast/daily')
   revalidatePath('/dashboard/central-service/forecast/monthly')
   revalidatePath('/dashboard/central-service/forecast/report')
+  revalidatePath('/mobile/central-service/forecast/daily')
+  revalidatePath('/mobile/central-service/forecast/report')
 }
 
 async function recalculateItemRemaining(tx: any, itemId: number) {
@@ -562,30 +600,32 @@ export async function addForecastActual(data: any, userId?: string) {
   try {
     let created: any = null
     await db.transaction(async (tx) => {
-      const { exchangeRate: _exchangeRate, ...actualData } = data
-
       let periodId = data.periodId
       if (!periodId && data.forecastItemId) {
         const [item] = await tx
           .select({ periodId: centralServiceForecastItems.periodId })
           .from(centralServiceForecastItems)
-          .where(eq(centralServiceForecastItems.id, data.forecastItemId))
+          .where(eq(centralServiceForecastItems.id, Number(data.forecastItemId)))
           .limit(1)
         if (item) periodId = item.periodId
       }
 
       const payload = {
-        ...actualData,
-        periodId: periodId || data.periodId,
+        periodId: Number(periodId),
+        forecastItemId: data.forecastItemId ? Number(data.forecastItemId) : null,
+        updateDate: data.updateDate ? new Date(data.updateDate) : new Date(),
+        invoiceNumber: data.invoiceNumber || data.poNumber || '',
         category: data.category || 'Repair',
-        invoiceNumber: data.invoiceNumber || '',
+        amountIdr: String(data.amountIdr || '0'),
+        amountUsd: String(data.amountUsd || '0'),
+        remark: data.remark || data.note || '',
         createdById: userId,
       }
       const inserted = await tx.insert(centralServiceForecastActuals).values(payload).returning()
       created = inserted[0]
 
       if (data.forecastItemId) {
-        await recalculateItemRemaining(tx, data.forecastItemId)
+        await recalculateItemRemaining(tx, Number(data.forecastItemId))
       }
     })
 
@@ -603,7 +643,6 @@ export async function addForecastActual(data: any, userId?: string) {
 export async function updateForecastActual(id: number, data: any) {
   try {
     await db.transaction(async (tx) => {
-      const { exchangeRate: _exchangeRate, ...actualData } = data
       const actuals = await tx
         .select()
         .from(centralServiceForecastActuals)
@@ -612,20 +651,27 @@ export async function updateForecastActual(id: number, data: any) {
       const actual = actuals[0]
       if (!actual) return
 
+      const payload: any = {
+        invoiceNumber: data.invoiceNumber || data.poNumber || actual.invoiceNumber || '',
+        category: data.category || actual.category || 'Repair',
+        amountIdr: String(data.amountIdr ?? actual.amountIdr),
+        amountUsd: String(data.amountUsd ?? actual.amountUsd),
+        remark: data.remark || data.note || actual.remark || '',
+      }
+      if (data.updateDate) {
+        payload.updateDate = new Date(data.updateDate)
+      }
+
       await tx
         .update(centralServiceForecastActuals)
-        .set({
-          ...actualData,
-          category: data.category || actual.category || 'Repair',
-          invoiceNumber: data.invoiceNumber || '',
-        })
+        .set(payload)
         .where(eq(centralServiceForecastActuals.id, id))
 
       if (actual.forecastItemId) {
         await recalculateItemRemaining(tx, actual.forecastItemId)
       }
       if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
-        await recalculateItemRemaining(tx, data.forecastItemId)
+        await recalculateItemRemaining(tx, Number(data.forecastItemId))
       }
     })
     revalidatePath('/dashboard/central-service/forecast/daily')

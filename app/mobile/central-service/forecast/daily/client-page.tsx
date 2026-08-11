@@ -273,7 +273,11 @@ export function MobileDailyClientPage({
     if (!editingItemData) return
     setIsSubmittingItem(true)
     try {
-      await upsertForecastItem(editingItemData)
+      const res = await upsertForecastItem(editingItemData)
+      if (res && res.success === false) {
+        toast.error(res.error || 'Gagal merubah item forecast')
+        return
+      }
       toast.success('Forecast item berhasil diperbarui')
       setItems((prev) =>
         prev.map((e) => {
