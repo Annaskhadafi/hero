@@ -7,7 +7,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ManualEntryModal } from "./manual-entry-modal";
 import { EmployeeCrudModal } from "./employee-crud-modal";
-import { DeleteSiteButton, DeleteSafetyShoesButton } from "./safety-shoes-client-buttons";
+import { 
+  DeleteSafetyShoesButton, 
+  DeleteSiteButton, 
+  DeleteAttachmentButton,
+  AddManualDateButton
+} from "./safety-shoes-client-buttons";
 import { db } from "@/db";
 import { sites, employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
@@ -179,6 +184,10 @@ export default async function SafetyShoesInventoryPage({
                               siteName: row.siteName
                             }} 
                           />
+                          <AddManualDateButton employeeId={row.employeeId} />
+                          {row.latestAssetId && row.attachmentUrl && (
+                            <DeleteAttachmentButton assetId={row.latestAssetId} />
+                          )}
                           <DeleteSafetyShoesButton employeeId={row.employeeId} />
                         </div>
                       </td>

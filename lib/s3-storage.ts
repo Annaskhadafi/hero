@@ -204,6 +204,7 @@ export async function uploadProfilePhotoToS3(file: File) {
       Body: buffer,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
+      ACL: "public-read",
     }),
   );
 
@@ -229,6 +230,7 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
       Body: buffer,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000, immutable",
+      ACL: "public-read",
     }),
   );
 
@@ -252,6 +254,7 @@ export async function createDirectS3UploadUrl(
       Bucket: serverEnv.s3BucketName,
       Key: key,
       ContentType: contentType,
+      ACL: "public-read",
     }),
     { expiresIn: 15 * 60 },
   );

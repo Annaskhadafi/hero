@@ -10,7 +10,7 @@ export async function updateAssetSize(assetId: number, size: string) {
   revalidatePath("/dashboard/apd/inventory/safety-shoes");
 }
 
-export async function updateAssetAttachment(assetId: number, attachmentUrl: string) {
+export async function updateAssetAttachment(assetId: number, attachmentUrl: string | null) {
   await db.update(employeeAssets).set({ attachmentUrl }).where(eq(employeeAssets.id, assetId));
   revalidatePath("/dashboard/apd/inventory/safety-shoes");
 }
