@@ -4,6 +4,7 @@ import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
 import { fetchApdRequests } from "@/lib/apd-data";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -17,7 +18,15 @@ export default async function ApdRequestsPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const currentEmployee = await getCurrentEmployee();
+  
+  // Use proper RBAC check for the inventory button
+  const inventoryPermission = await getCurrentMenuPermission('hse_inventaris');
+  
+  // Legacy status check for backward compatibility on other UI elements if needed
   const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin";
+  
+  // Determine if the user can view the inventory button based on either legacy or new RBAC
+  const canViewInventory = canManageStatus || inventoryPermission.canView;
   
   const activeTab = searchParams?.tab === "tools" || searchParams?.tab === "material" || searchParams?.tab === "apd" ? searchParams.tab : "all";
   
@@ -31,7 +40,7 @@ export default async function ApdRequestsPage(props: {
       description="Daftar request APD, tools, dan material beserta status prosesnya."
       actions={
         <div className="flex gap-2">
-          {canManageStatus && (
+          {canViewInventory && (
             <Button asChild variant="outline" className="gap-2">
               <Link href="/dashboard/apd/inventory">
                 Inventory Aset
