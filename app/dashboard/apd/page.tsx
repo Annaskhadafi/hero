@@ -20,7 +20,7 @@ export default async function ApdRequestsPage(props: {
   const currentEmployee = await getCurrentEmployee();
   
   // Use proper RBAC check for the inventory button
-  const inventoryPermission = await getCurrentMenuPermission('apd_inventory');
+  const inventoryPermission = await getCurrentMenuPermission('hse_inventaris');
   
   // Legacy status check for backward compatibility on other UI elements if needed
   const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin";
