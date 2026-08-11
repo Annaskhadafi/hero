@@ -545,6 +545,7 @@ async function recalculateItemRemaining(tx: any, itemId: number) {
     sumAccUsd = 0
 
   for (const a of actuals) {
+    if (String(a.itemStatus || '').trim().toLowerCase() === 'cancel') continue
     const amtIdr = Number(a.amountIdr)
     const amtUsd = Number(a.amountUsd)
     if (a.category === 'Repair') sumRepairIdr += amtIdr
@@ -619,6 +620,7 @@ export async function addForecastActual(data: any, userId?: string) {
         amountIdr: String(data.amountIdr || '0'),
         amountUsd: String(data.amountUsd || '0'),
         remark: data.remark || data.note || '',
+        itemStatus: data.itemStatus || data.statusDoc || '-',
         createdById: userId,
       }
       const inserted = await tx.insert(centralServiceForecastActuals).values(payload).returning()
@@ -657,6 +659,7 @@ export async function updateForecastActual(id: number, data: any) {
         amountIdr: String(data.amountIdr ?? actual.amountIdr),
         amountUsd: String(data.amountUsd ?? actual.amountUsd),
         remark: data.remark || data.note || actual.remark || '',
+        itemStatus: data.itemStatus || data.statusDoc || actual.itemStatus || '-',
       }
       if (data.updateDate) {
         payload.updateDate = new Date(data.updateDate)

@@ -106,7 +106,7 @@ export function EmployeeMultiSelect({
 
           <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-border/60 bg-white p-1">
             {filteredEmployees.map((emp) => {
-              const isSelected = selectedEmails.includes(emp.email);
+              const isSelected = normalizedSelectedEmails.includes(emp.email.trim().toLowerCase());
               return (
                 <button
                   key={emp.email}

@@ -92,6 +92,7 @@ export default async function DailyActivityLibraryPage({
                     <ActivityLibraryCreateForm
                       currentEmployeeId={data.currentEmployee?.id ?? null}
                       routeFolders={data.routeFolders}
+                      existingActivities={filteredRows}
                       sites={data.sites}
                       departments={data.departments}
                       sections={data.sections}
@@ -123,10 +124,28 @@ export default async function DailyActivityLibraryPage({
                       >
                         <TableCell className="align-top">
                           <div className="space-y-1">
-                            <p className="font-semibold text-foreground">{row.activityName}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-foreground">{row.activityName}</p>
+                              {row.children && row.children.length > 0 ? (
+                                <Badge variant="secondary">Group</Badge>
+                              ) : null}
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               {row.activityCode} • {row.category} • creator {row.creatorName ?? "-"}
                             </p>
+                            {row.children && row.children.length > 0 ? (
+                              <div className="mt-1.5 space-y-1 rounded-lg bg-surface-container-low/70 p-2">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-primary">
+                                  Anggota group ({row.children.length})
+                                </p>
+                                {row.children.map((child) => (
+                                  <p key={child.id} className="text-xs text-muted-foreground">
+                                    <span className="font-bold text-foreground">{child.activityCode}</span> •{" "}
+                                    {child.activityName}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
@@ -172,6 +191,7 @@ export default async function DailyActivityLibraryPage({
                             currentEmployeeId={data.currentEmployee?.id ?? null}
                             routeFolders={data.routeFolders}
                             routeGroupMappings={data.routeGroupMappings}
+                            existingActivities={filteredRows}
                           />
                         </TableCell>
                       </TableRow>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { user } from '@/db/schema/auth'
 import {
@@ -3298,6 +3298,11 @@ export async function getDailyActivityLibraryData(email?: string | null) {
 
   const routeFolders = await getActiveRouteFolders()
   const routeGroupMappings = await getLibraryRouteGroupMappings()
+  const groupChildrenByCode = await getActivityLibraryGroupChildrenByCode()
+  const libraryRows = rows.map((row) => ({
+    ...row,
+    children: groupChildrenByCode.get(row.activityCode) ?? [],
+  }))
 
   return {
     currentEmployee,
@@ -3310,7 +3315,7 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     categories: Object.entries(categoryCount)
       .map(([label, count]) => ({ label, count }))
       .sort((left, right) => right.count - left.count),
-    rows,
+    rows: libraryRows,
     departments: departmentsRows,
     sections: sectionsRows,
     sites: siteRows,
@@ -3664,6 +3669,42 @@ export async function getActiveRouteFolders(): Promise<AdminRouteFolder[]> {
       })
     }
   })
+}
+
+export type ActivityLibraryGroupChild = {
+  id: number
+  activityCode: string
+  activityName: string
+}
+
+async function getActivityLibraryGroupChildrenByCode(): Promise<Map<string, ActivityLibraryGroupChild[]>> {
+  const childRows = await db
+    .select({
+      parentCode: activityRouteTemplates.routeCode,
+      childId: activityLibraries.id,
+      childCode: activityLibraries.activityCode,
+      childName: activityLibraries.activityName,
+    })
+    .from(activityRouteTemplates)
+    .innerJoin(activityRouteGroups, eq(activityRouteGroups.routeTemplateId, activityRouteTemplates.id))
+    .innerJoin(activityRouteItems, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
+    .innerJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
+    .where(like(activityRouteTemplates.routeCode, 'GRP-%'))
+    .orderBy(asc(activityRouteItems.routeGroupId), asc(activityRouteItems.sortOrder), asc(activityRouteItems.id))
+
+  const byCode = new Map<string, ActivityLibraryGroupChild[]>()
+  for (const rowItem of childRows) {
+    const parentCode = rowItem.parentCode.replace(/^GRP-/, '')
+    const list = byCode.get(parentCode) ?? []
+    if (list.some((child) => child.id === rowItem.childId)) continue
+    list.push({
+      id: rowItem.childId,
+      activityCode: rowItem.childCode,
+      activityName: rowItem.childName,
+    })
+    byCode.set(parentCode, list)
+  }
+  return byCode
 }
 
 export async function getLibraryRouteGroupMappings(): Promise<Record<number, number[]>> {

@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityGroupMemberSelector, type MinimalActivityOption } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
 import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,20 +33,45 @@ const CREATE_DEFAULT_CHECKED = ["requiresDuration", "isAssignable", "isSelfInput
 export function ActivityLibraryCreateForm({
   currentEmployeeId,
   routeFolders,
+  existingActivities = [],
   sites,
   departments,
   sections,
 }: {
   currentEmployeeId: number | null;
   routeFolders: AdminRouteFolder[];
+  existingActivities?: MinimalActivityOption[];
   sites: Array<{ id: number; name: string }>;
   departments: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; name: string; departmentId: number | null }>;
 }) {
   const [isGroupChecked, setIsGroupChecked] = useState(false);
+  const router = useRouter();
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState<{ status: "success" | "error"; message: string } | null>(null);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFeedback(null);
+    setIsSaving(true);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      await manageActivityLibraryAction(formData);
+      setFeedback({ status: "success", message: "Kamus aktivitas tersimpan." });
+      router.refresh();
+    } catch (error) {
+      setFeedback({
+        status: "error",
+        message: error instanceof Error ? error.message : "Gagal menyimpan kamus aktivitas.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
-    <form action={manageActivityLibraryAction} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <input type="hidden" name="intent" value="create" />
       <input type="hidden" name="createdByEmployeeId" value={currentEmployeeId ?? ""} />
 
@@ -81,8 +110,14 @@ export function ActivityLibraryCreateForm({
         </Label>
 
         {isGroupChecked ? (
-          <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200">
-            <ActivityLibraryRouteMappingField routeFolders={routeFolders} />
+          <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
+            <ActivityGroupMemberSelector existingActivities={existingActivities} />
+            <div className="pt-1">
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                Atau Petakan ke Route Template (Opsional):
+              </span>
+              <ActivityLibraryRouteMappingField routeFolders={routeFolders} />
+            </div>
           </div>
         ) : null}
 
@@ -142,7 +177,21 @@ export function ActivityLibraryCreateForm({
         ))}
       </div>
 
-      <Button type="submit" className="w-full rounded-lg">
+      {feedback ? (
+        <Alert
+          variant={feedback.status === "error" ? "destructive" : "default"}
+          className={
+            feedback.status === "success"
+              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+              : "bg-red-50 text-red-700 ring-red-200"
+          }
+        >
+          <AlertDescription>{feedback.message}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Button type="submit" className="w-full rounded-lg" disabled={isSaving}>
+        {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
         Simpan activity library
       </Button>
     </form>

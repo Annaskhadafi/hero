@@ -115,7 +115,22 @@ export function FaceLoginModal({ isOpen, onClose, onSuccess, identifier }: FaceL
         body: JSON.stringify({ imageDataUrl, identifier }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        try {
+          data = await res.json();
+        } catch {
+          data = { success: false, error: "Respon dari server bukan JSON yang valid." };
+        }
+      } else {
+        const text = await res.text();
+        console.error("[FaceLoginModal] Non-JSON server response:", res.status, text.slice(0, 200));
+        data = {
+          success: false,
+          error: `Gagal verifikasi biometrik (HTTP ${res.status}). Silakan coba beberapa saat lagi.`,
+        };
+      }
 
       if (!res.ok || !data.success) {
         setStatus("error");

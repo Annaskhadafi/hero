@@ -136,6 +136,7 @@ export function MobileDailyClientPage({
   const [actualDate, setActualDate] = useState(new Date().toISOString().split('T')[0])
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [actualCategory, setActualCategory] = useState('Repair')
+  const [statusDoc, setStatusDoc] = useState('-')
   const [amountIdr, setAmountIdr] = useState('')
   const [amountUsd, setAmountUsd] = useState('')
   const [note, setNote] = useState('')
@@ -321,6 +322,7 @@ export function MobileDailyClientPage({
     setEditingActual(null)
     setSelectedSapInvoice('')
     setActualCategory('Repair')
+    setStatusDoc('-')
     setActualDate(new Date().toISOString().split('T')[0])
     setInvoiceNumber('')
     setAmountIdr('')
@@ -334,6 +336,7 @@ export function MobileDailyClientPage({
     setEditingActual(actual)
     setSelectedSapInvoice('')
     setActualCategory(actual.category || 'Repair')
+    setStatusDoc(actual.itemStatus || actual.statusDoc || '-')
     setActualDate(formatDateDisplay(actual.updateDate))
     setInvoiceNumber(actual.invoiceNumber || '')
     setAmountIdr(String(actual.amountIdr || ''))
@@ -374,6 +377,8 @@ export function MobileDailyClientPage({
         const res = await updateForecastActual(editingActual.id, {
           updateDate: actualDate,
           category: actualCategory,
+          itemStatus: statusDoc,
+          statusDoc: statusDoc,
           invoiceNumber,
           amountIdr,
           amountUsd: amountUsd || String(Number(amountIdr) / exchangeRate),
@@ -393,6 +398,8 @@ export function MobileDailyClientPage({
                           ...a,
                           updateDate: actualDate,
                           category: actualCategory,
+                          itemStatus: statusDoc,
+                          statusDoc: statusDoc,
                           invoiceNumber,
                           amountIdr: Number(amountIdr),
                           amountUsd: Number(amountUsd),
@@ -414,6 +421,8 @@ export function MobileDailyClientPage({
           forecastItemId: selectedItemForActual.id,
           periodId: Number(selectedPeriodId),
           category: actualCategory,
+          itemStatus: statusDoc,
+          statusDoc: statusDoc,
           updateDate: actualDate,
           invoiceNumber,
           amountIdr,
@@ -428,7 +437,7 @@ export function MobileDailyClientPage({
               if (e.item.id === selectedItemForActual.id) {
                 return {
                   ...e,
-                  actuals: [res.data, ...(e.actuals || [])],
+                  actuals: [{ ...res.data, itemStatus: statusDoc, statusDoc }, ...(e.actuals || [])],
                 }
               }
               return e
@@ -1072,6 +1081,22 @@ export function MobileDailyClientPage({
                   <option value="Repair">Repair</option>
                   <option value="Retread">Retread</option>
                   <option value="Service">Service</option>
+                </select>
+              </div>
+
+              {/* Status Doc Selector */}
+              <div>
+                <Label className="text-[11px] font-bold text-[#486275]">Status Doc</Label>
+                <select
+                  value={statusDoc}
+                  onChange={(e) => setStatusDoc(e.target.value)}
+                  className="w-full h-9 bg-[#f8fafc] border border-slate-200 text-[#003461] text-xs font-bold mt-1 rounded-xl px-2.5 outline-none focus:ring-1 focus:ring-[#003461]"
+                >
+                  <option value="-">-</option>
+                  <option value="PO Release">PO Release</option>
+                  <option value="Waiting PO">Waiting PO</option>
+                  <option value="Invoice">Invoice</option>
+                  <option value="Cancel">Cancel</option>
                 </select>
               </div>
 

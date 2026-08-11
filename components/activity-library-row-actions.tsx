@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityGroupMemberSelector } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
 import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -48,6 +49,7 @@ type ActivityLibraryRow = {
   autoApproveIfGpsValid: boolean;
   slaHours: number;
   isActive: boolean;
+  children?: Array<{ id: number; activityCode: string; activityName: string }>;
 };
 
 type DepartmentOption = {
@@ -112,6 +114,7 @@ export function ActivityLibraryRowActions({
   currentEmployeeId,
   routeFolders,
   routeGroupMappings,
+  existingActivities = [],
 }: {
   row: ActivityLibraryRow;
   departments: DepartmentOption[];
@@ -120,6 +123,7 @@ export function ActivityLibraryRowActions({
   currentEmployeeId: number | null;
   routeFolders: any[];
   routeGroupMappings: Record<number, number[]>;
+  existingActivities?: { id: number; activityCode: string; activityName: string }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -259,11 +263,21 @@ export function ActivityLibraryRowActions({
                   <Input name="activityName" defaultValue={row.activityName} required />
                 </Label>
                 {isGroupChecked ? (
-                  <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <ActivityLibraryRouteMappingField
-                      routeFolders={routeFolders}
-                      initialMappedIds={routeGroupMappings[row.id] || []}
+                  <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
+                    <ActivityGroupMemberSelector
+                      existingActivities={existingActivities}
+                      currentActivityId={row.id}
+                      initialChildIds={(row.children ?? []).map((child) => child.id)}
                     />
+                    <div className="pt-1">
+                      <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">
+                        Atau Petakan ke Route Template (Opsional):
+                      </span>
+                      <ActivityLibraryRouteMappingField
+                        routeFolders={routeFolders}
+                        initialMappedIds={routeGroupMappings[row.id] || []}
+                      />
+                    </div>
                   </div>
                 ) : null}
                 <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
