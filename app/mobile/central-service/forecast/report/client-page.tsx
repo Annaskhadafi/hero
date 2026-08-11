@@ -53,6 +53,20 @@ const getForecastAmountIdr = (item: any) => {
 const isCarryOverItem = (item: any) =>
   (item?.status || '').trim().toLowerCase() === 'carry over'
 
+const normalizeStatusDoc = (status?: string | null) => {
+  if (!status) return '-'
+  const s = status.trim()
+  if (s === 'Complete' || s === 'Done') return 'Invoice'
+  if (s === 'Pending' || s === 'Waiting') return 'Waiting PO'
+  return s || '-'
+}
+
+const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
+  const normalized = normalizeStatusDoc(status)
+  const po = (poNumber || '').trim()
+  return ['PO Release', 'Invoice'].includes(normalized) && po ? `${normalized} / ${po}` : normalized
+}
+
 export function MobileReportClientPage({
   periods,
   dailyItems,
@@ -215,18 +229,21 @@ export function MobileReportClientPage({
         0
       )
 
+      const docStatus = formatStatusDoc(item.status, item.poNumber || item.prNumber)
+
       const existing = map.get(name) || {
         customerName: name,
         salesmen: salesman,
+        statusDoc: docStatus,
         totalForecast: 0,
         totalActual: 0,
         itemsCount: 0,
         categories: {
-          accessories: { amount: 0, remarkMonthly: '', remarkDaily: '' },
-          osInvoice: { amount: 0, remarkMonthly: '', remarkDaily: '' },
-          repair: { amount: 0, remarkMonthly: '', remarkDaily: '' },
-          retread: { amount: 0, remarkMonthly: '', remarkDaily: '' },
-          service: { amount: 0, remarkMonthly: '', remarkDaily: '' },
+          accessories: { amount: 0, remarkMonthly: '', remarkDaily: '', statusDoc: '' },
+          osInvoice: { amount: 0, remarkMonthly: '', remarkDaily: '', statusDoc: '' },
+          repair: { amount: 0, remarkMonthly: '', remarkDaily: '', statusDoc: '' },
+          retread: { amount: 0, remarkMonthly: '', remarkDaily: '', statusDoc: '' },
+          service: { amount: 0, remarkMonthly: '', remarkDaily: '', statusDoc: '' },
         },
       }
 
@@ -234,6 +251,9 @@ export function MobileReportClientPage({
         existing.salesmen = existing.salesmen
           ? `${existing.salesmen}, ${salesman}`
           : salesman
+      }
+      if (docStatus && docStatus !== '-' && (!existing.statusDoc || existing.statusDoc === '-')) {
+        existing.statusDoc = docStatus
       }
 
       existing.totalForecast += fc
@@ -243,6 +263,7 @@ export function MobileReportClientPage({
       if (item.isProductAccessories) {
         const accAmt = Number(item.accessoriesAmountIdr || 0)
         existing.categories.accessories.amount += accAmt
+        if (docStatus && docStatus !== '-') existing.categories.accessories.statusDoc = docStatus
         if (item.remark && !existing.categories.accessories.remarkMonthly.includes(item.remark)) {
           existing.categories.accessories.remarkMonthly = existing.categories.accessories.remarkMonthly
             ? `${existing.categories.accessories.remarkMonthly}; ${item.remark}`
@@ -258,6 +279,11 @@ export function MobileReportClientPage({
         existing.categories.repair.amount += repAmt
         existing.categories.retread.amount += retAmt
         existing.categories.service.amount += srvAmt
+
+        if (osAmt > 0 && docStatus && docStatus !== '-') existing.categories.osInvoice.statusDoc = docStatus
+        if (repAmt > 0 && docStatus && docStatus !== '-') existing.categories.repair.statusDoc = docStatus
+        if (retAmt > 0 && docStatus && docStatus !== '-') existing.categories.retread.statusDoc = docStatus
+        if (srvAmt > 0 && docStatus && docStatus !== '-') existing.categories.service.statusDoc = docStatus
 
         const osRem = item.osRemark || item.remark
         if (osRem && !existing.categories.osInvoice.remarkMonthly.includes(osRem)) {
@@ -605,6 +631,13 @@ export function MobileReportClientPage({
                           </>
                         ) : null}
                         {cust.itemsCount} item forecast
+                        {cust.statusDoc && cust.statusDoc !== '-' ? (
+                          <>
+                            {' '}
+                            • Status Doc:{' '}
+                            <span className="text-[#003461] font-bold">{cust.statusDoc}</span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px] font-bold">
@@ -671,6 +704,11 @@ export function MobileReportClientPage({
                                 {fmtIdr(cat.amount)}
                               </span>
                             </div>
+                            {cat.statusDoc ? (
+                              <div className="text-[10px] text-[#003461] font-bold">
+                                <span className="text-[#486275]">Status Doc:</span> {cat.statusDoc}
+                              </div>
+                            ) : null}
                             {cat.remarkDaily ? (
                               <div className="text-[10px] text-[#003461] font-medium bg-[#f0f9ff] px-2 py-1 rounded border border-blue-100 mt-1">
                                 <span className="font-bold text-[#0ea5b0]">Remark Daily:</span>{' '}

@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
+// ponytail: removed Badge (Radix Slot) — replaced with plain spans to fix infinite setRef loop
 import {
   Dialog,
   DialogContent,
@@ -97,6 +97,20 @@ const getForecastAmountIdr = (item: any) => {
 const isCarryOverItem = (item: any) =>
   (item?.status || '').trim().toLowerCase() === 'carry over'
 
+const normalizeStatusDoc = (status?: string | null) => {
+  if (!status) return '-'
+  const s = status.trim()
+  if (s === 'Complete' || s === 'Done') return 'Invoice'
+  if (s === 'Pending' || s === 'Waiting') return 'Waiting PO'
+  return s || '-'
+}
+
+const formatStatusDoc = (status?: string | null, poNumber?: string | null) => {
+  const normalized = normalizeStatusDoc(status)
+  const po = (poNumber || '').trim()
+  return ['PO Release', 'Invoice'].includes(normalized) && po ? `${normalized} / ${po}` : normalized
+}
+
 export function MobileDailyClientPage({
   initialItems,
   periods,
@@ -121,6 +135,7 @@ export function MobileDailyClientPage({
   const [selectedItemForActual, setSelectedItemForActual] = useState<any | null>(null)
   const [actualDate, setActualDate] = useState(new Date().toISOString().split('T')[0])
   const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [actualCategory, setActualCategory] = useState('Repair')
   const [amountIdr, setAmountIdr] = useState('')
   const [amountUsd, setAmountUsd] = useState('')
   const [note, setNote] = useState('')
@@ -145,16 +160,32 @@ export function MobileDailyClientPage({
 
   const exchangeRate = Number(selectedPeriod?.exchangeRateIdrToUsd || 15000)
 
+  const [selectedSapInvoice, setSelectedSapInvoice] = useState('')
+
   // Fetch SAP Invoices when period changes
   useEffect(() => {
+    let isMounted = true
     if (selectedPeriod?.monthYear) {
-      getSapInvoices(selectedPeriod.monthYear).then((res) => {
-        if (res.success && res.data) {
-          setSapInvoices(res.data)
-        }
-      })
+      getSapInvoices(selectedPeriod.monthYear)
+        .then((res: any) => {
+          if (!isMounted) return
+          const list = Array.isArray(res) ? res : res?.data || []
+          setSapInvoices(list)
+        })
+        .catch(() => {
+          if (isMounted) setSapInvoices([])
+        })
     }
-  }, [selectedPeriod])
+    return () => {
+      isMounted = false
+    }
+  }, [selectedPeriod?.monthYear])
+
+  const validSapInvoices = useMemo(() => {
+    return sapInvoices.filter(
+      (s: any) => s && typeof s.invoiceNumber === 'string' && s.invoiceNumber.trim() !== ''
+    )
+  }, [sapInvoices])
 
   // Filter items by period, search query, status
   const filteredItems = useMemo(() => {
@@ -284,6 +315,8 @@ export function MobileDailyClientPage({
   const handleOpenAddActual = (entry: any) => {
     setSelectedItemForActual(entry.item)
     setEditingActual(null)
+    setSelectedSapInvoice('')
+    setActualCategory('Repair')
     setActualDate(new Date().toISOString().split('T')[0])
     setInvoiceNumber('')
     setAmountIdr('')
@@ -295,11 +328,13 @@ export function MobileDailyClientPage({
   const handleOpenEditActual = (entry: any, actual: any) => {
     setSelectedItemForActual(entry.item)
     setEditingActual(actual)
+    setSelectedSapInvoice('')
+    setActualCategory(actual.category || 'Repair')
     setActualDate(formatDateDisplay(actual.updateDate))
     setInvoiceNumber(actual.invoiceNumber || '')
     setAmountIdr(String(actual.amountIdr || ''))
     setAmountUsd(String(actual.amountUsd || ''))
-    setNote(actual.note || '')
+    setNote(actual.remark || actual.note || '')
     setActualModalOpen(true)
   }
 
@@ -334,9 +369,11 @@ export function MobileDailyClientPage({
       if (editingActual) {
         const res = await updateForecastActual(editingActual.id, {
           updateDate: actualDate,
+          category: actualCategory,
           invoiceNumber,
           amountIdr,
           amountUsd: amountUsd || String(Number(amountIdr) / exchangeRate),
+          remark: note,
           note,
         })
         if (res.success) {
@@ -351,9 +388,11 @@ export function MobileDailyClientPage({
                       ? {
                           ...a,
                           updateDate: actualDate,
+                          category: actualCategory,
                           invoiceNumber,
                           amountIdr: Number(amountIdr),
                           amountUsd: Number(amountUsd),
+                          remark: note,
                           note,
                         }
                       : a
@@ -369,10 +408,13 @@ export function MobileDailyClientPage({
       } else {
         const res = await addForecastActual({
           forecastItemId: selectedItemForActual.id,
+          periodId: Number(selectedPeriodId),
+          category: actualCategory,
           updateDate: actualDate,
           invoiceNumber,
           amountIdr,
           amountUsd: amountUsd || String(Number(amountIdr) / exchangeRate),
+          remark: note,
           note,
         })
         if (res.success && res.data) {
@@ -492,15 +534,16 @@ export function MobileDailyClientPage({
 
   const getStatusBadge = (status?: string) => {
     const st = (status || '').trim().toLowerCase()
+    const base = 'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border'
     if (st === 'complete' || st === 'done' || st === 'invoice')
-      return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 font-bold">Complete</Badge>
+      return <span className={`${base} bg-emerald-100 text-emerald-700 border-emerald-200`}>Complete</span>
     if (st === 'in progress' || st === 'po release')
-      return <Badge className="bg-[#eaf4fb] text-[#003f78] border border-blue-200 font-bold">In Progress</Badge>
+      return <span className={`${base} bg-[#eaf4fb] text-[#003f78] border-blue-200`}>In Progress</span>
     if (st === 'carry over')
-      return <Badge className="bg-purple-100 text-purple-700 border-purple-200 font-bold">Carry Over</Badge>
+      return <span className={`${base} bg-purple-100 text-purple-700 border-purple-200`}>Carry Over</span>
     if (st === 'cancel')
-      return <Badge className="bg-rose-100 text-rose-700 border-rose-200 font-bold">Cancel</Badge>
-    return <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-bold">Pending</Badge>
+      return <span className={`${base} bg-rose-100 text-rose-700 border-rose-200`}>Cancel</span>
+    return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>Pending</span>
   }
 
   return (
@@ -675,11 +718,23 @@ export function MobileDailyClientPage({
                     <span className="font-bold text-[#003f78]">{formatSisaCurrency(remaining)}</span>
                   </div>
                   <div>
+                    <span className="text-[#486275] block text-[10px] font-bold">Status Doc</span>
+                    <span className="text-[#003461] font-bold truncate block">
+                      {formatStatusDoc(item.status, item.poNumber || item.prNumber)}
+                    </span>
+                  </div>
+                  <div className="col-span-2 border-t border-slate-200/60 pt-1.5 mt-0.5">
                     <span className="text-[#486275] block text-[10px] font-bold">Salesman / Site</span>
                     <span className="text-[#003461] font-semibold truncate block">
                       {item.salesmanName || item.picSales || item.site || '-'}
                     </span>
                   </div>
+                  {item.remark && (
+                    <div className="col-span-2 bg-white p-2 rounded-lg border border-slate-200/60 text-[11px]">
+                      <span className="font-bold text-[#003461]">Remark Item: </span>
+                      <span className="text-[#486275]">{item.remark}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Direct EDIT Actions Footer */}
@@ -746,9 +801,14 @@ export function MobileDailyClientPage({
                               <Calendar className="w-3.5 h-3.5 text-[#486275]" />
                               {formatDateDisplay(a.updateDate)}
                               {a.invoiceNumber && (
-                                <Badge className="text-[9px] bg-slate-200 text-[#003461] py-0 h-4 font-bold border-0">
-                                  Inv: {a.invoiceNumber}
-                                </Badge>
+                                <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-bold bg-slate-200 text-[#003461] h-4">
+                                  PO: {a.invoiceNumber}
+                                </span>
+                              )}
+                              {a.category && (
+                                <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-bold bg-blue-100 text-[#003461] h-4">
+                                  {a.category}
+                                </span>
                               )}
                             </div>
                             <div className="text-emerald-600 font-black text-xs">
@@ -757,9 +817,10 @@ export function MobileDailyClientPage({
                                 ({formatUsd(Number(a.amountUsd || 0))})
                               </span>
                             </div>
-                            {a.note && (
-                              <div className="text-[10px] text-[#486275] italic">
-                                Note: {a.note}
+                            {(a.remark || a.note) && (
+                              <div className="text-[11px] text-[#003461] font-semibold bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80 mt-1 shadow-2xs">
+                                <span className="font-bold text-[#0ea5b0]">Remark Daily: </span>
+                                <span>{a.remark || a.note}</span>
                               </div>
                             )}
                           </div>
@@ -792,357 +853,361 @@ export function MobileDailyClientPage({
       </div>
 
       {/* --- EDIT FORECAST ITEM DIALOG --- */}
-      <Dialog open={itemEditModalOpen} onOpenChange={setItemEditModalOpen}>
-        <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-sm rounded-2xl p-4 max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-black text-[#003461] flex items-center gap-1.5">
-              <FileSignature className="w-4 h-4 text-[#0ea5b0]" />
-              Edit Forecast Item
-            </DialogTitle>
-          </DialogHeader>
+      {itemEditModalOpen && (
+        <Dialog open={itemEditModalOpen} onOpenChange={setItemEditModalOpen}>
+          <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-sm rounded-2xl p-4 max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-black text-[#003461] flex items-center gap-1.5">
+                <Edit className="w-4 h-4 text-[#0ea5b0]" />
+                Edit Forecast Item
+              </DialogTitle>
+            </DialogHeader>
 
-          {editingItemData && (
+            {editingItemData && (
+              <div className="space-y-3 py-2 text-xs">
+                <div>
+                  <Label className="text-[11px] font-bold text-[#486275]">Nama Customer</Label>
+                  <Input
+                    value={editingItemData.customer || ''}
+                    onChange={(e) =>
+                      setEditingItemData({ ...editingItemData, customer: e.target.value })
+                    }
+                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-semibold"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px] font-bold text-[#486275]">Salesman / PIC</Label>
+                    <Input
+                      value={editingItemData.picSales || ''}
+                      onChange={(e) =>
+                        setEditingItemData({ ...editingItemData, picSales: e.target.value })
+                      }
+                      className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-[11px] font-bold text-[#486275]">No. PR / PO</Label>
+                    <Input
+                      value={editingItemData.poNumber || editingItemData.prNumber || ''}
+                      onChange={(e) =>
+                        setEditingItemData({
+                          ...editingItemData,
+                          poNumber: e.target.value,
+                          prNumber: e.target.value,
+                        })
+                      }
+                      className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-[11px] font-bold text-[#486275]">Deskripsi Item</Label>
+                  <Input
+                    value={editingItemData.description || ''}
+                    onChange={(e) =>
+                      setEditingItemData({ ...editingItemData, description: e.target.value })
+                    }
+                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
+                  />
+                </div>
+
+                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-200 space-y-2">
+                  <span className="text-[11px] font-black text-[#003461] block">
+                    Nilai Forecast Categories (IDR)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-[#486275]">Repair Forecast</Label>
+                      <Input
+                        type="number"
+                        value={editingItemData.repairForecast || ''}
+                        onChange={(e) =>
+                          setEditingItemData({ ...editingItemData, repairForecast: e.target.value })
+                        }
+                        className="h-8 bg-white border-slate-200 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-[#486275]">Retread Forecast</Label>
+                      <Input
+                        type="number"
+                        value={editingItemData.retreadForecast || ''}
+                        onChange={(e) =>
+                          setEditingItemData({ ...editingItemData, retreadForecast: e.target.value })
+                        }
+                        className="h-8 bg-white border-slate-200 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-[#486275]">Service Forecast</Label>
+                      <Input
+                        type="number"
+                        value={editingItemData.serviceForecast || ''}
+                        onChange={(e) =>
+                          setEditingItemData({ ...editingItemData, serviceForecast: e.target.value })
+                        }
+                        className="h-8 bg-white border-slate-200 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-[#486275]">OS Invoice Prev</Label>
+                      <Input
+                        type="number"
+                        value={editingItemData.osInvoicePrevMonth || ''}
+                        onChange={(e) =>
+                          setEditingItemData({
+                            ...editingItemData,
+                            osInvoicePrevMonth: e.target.value,
+                          })
+                        }
+                        className="h-8 bg-white border-slate-200 text-xs mt-0.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-[11px] font-bold text-[#486275]">Status Item</Label>
+                    <Select
+                      value={editingItemData.status || ''}
+                      onValueChange={(val) => setEditingItemData({ ...editingItemData, status: val })}
+                    >
+                      <SelectTrigger className="h-9 bg-[#f8fafc] border-slate-200 text-xs font-bold text-[#003461] mt-1">
+                        <SelectValue placeholder="Pilih status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white text-[#003461]">
+                        <SelectItem value="Pending">Pending</SelectItem>
+                        <SelectItem value="In Progress">In Progress</SelectItem>
+                        <SelectItem value="Complete">Complete</SelectItem>
+                        <SelectItem value="Carry Over">Carry Over</SelectItem>
+                        <SelectItem value="Cancel">Cancel</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-[11px] font-bold text-[#486275]">Remark</Label>
+                    <Input
+                      value={editingItemData.remark || ''}
+                      onChange={(e) =>
+                        setEditingItemData({ ...editingItemData, remark: e.target.value })
+                      }
+                      placeholder="Catatan..."
+                      className="h-9 bg-[#f8fafc] border-slate-200 text-xs mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 sm:gap-0 mt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setItemEditModalOpen(false)}
+                className="text-[#486275] hover:text-[#003461] text-xs h-9"
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveItemEdit}
+                disabled={isSubmittingItem}
+                className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 font-bold"
+              >
+                {isSubmittingItem ? 'Menyimpan...' : 'Simpan Perubahan Item'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* --- ADD / EDIT ACTUAL MODAL --- */}
+      {actualModalOpen && (
+        <Dialog open={actualModalOpen} onOpenChange={setActualModalOpen}>
+          <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-sm rounded-2xl p-4">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-black text-[#003461] flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-[#0ea5b0]" />
+                {editingActual ? 'Edit Actual Revenue' : 'Tambah Actual Revenue'}
+              </DialogTitle>
+            </DialogHeader>
+
             <div className="space-y-3 py-2 text-xs">
-              <div>
-                <Label className="text-[11px] font-bold text-[#486275]">Nama Customer</Label>
-                <Input
-                  value={editingItemData.customer}
-                  onChange={(e) =>
-                    setEditingItemData({ ...editingItemData, customer: e.target.value })
-                  }
-                  className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-semibold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[11px] font-bold text-[#486275]">Salesman / PIC</Label>
-                  <Input
-                    value={editingItemData.picSales}
-                    onChange={(e) =>
-                      setEditingItemData({ ...editingItemData, picSales: e.target.value })
-                    }
-                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
-                  />
+              {selectedItemForActual && (
+                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] text-[#486275] font-bold block">Customer</span>
+                  <span className="font-black text-[#003461] block truncate">
+                    {selectedItemForActual.customerName || selectedItemForActual.customer}
+                  </span>
                 </div>
-                <div>
-                  <Label className="text-[11px] font-bold text-[#486275]">No. PR / PO</Label>
-                  <Input
-                    value={editingItemData.poNumber || editingItemData.prNumber}
-                    onChange={(e) =>
-                      setEditingItemData({
-                        ...editingItemData,
-                        poNumber: e.target.value,
-                        prNumber: e.target.value,
-                      })
-                    }
-                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
-                  />
-                </div>
-              </div>
+              )}
 
               <div>
-                <Label className="text-[11px] font-bold text-[#486275]">Deskripsi Item</Label>
+                <Label className="text-[11px] font-bold text-[#486275]">Tanggal Update / Invoice</Label>
                 <Input
-                  value={editingItemData.description}
-                  onChange={(e) =>
-                    setEditingItemData({ ...editingItemData, description: e.target.value })
-                  }
+                  type="date"
+                  value={actualDate || ''}
+                  onChange={(e) => setActualDate(e.target.value)}
                   className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
                 />
               </div>
 
-              <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-200 space-y-2">
-                <span className="text-[11px] font-black text-[#003461] block">
-                  Nilai Forecast Categories (IDR)
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-[10px] text-[#486275]">Repair Forecast</Label>
-                    <Input
-                      type="number"
-                      value={editingItemData.repairForecast}
-                      onChange={(e) =>
-                        setEditingItemData({ ...editingItemData, repairForecast: e.target.value })
-                      }
-                      className="h-8 bg-white border-slate-200 text-xs mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-[#486275]">Retread Forecast</Label>
-                    <Input
-                      type="number"
-                      value={editingItemData.retreadForecast}
-                      onChange={(e) =>
-                        setEditingItemData({ ...editingItemData, retreadForecast: e.target.value })
-                      }
-                      className="h-8 bg-white border-slate-200 text-xs mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-[#486275]">Service Forecast</Label>
-                    <Input
-                      type="number"
-                      value={editingItemData.serviceForecast}
-                      onChange={(e) =>
-                        setEditingItemData({ ...editingItemData, serviceForecast: e.target.value })
-                      }
-                      className="h-8 bg-white border-slate-200 text-xs mt-0.5"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-[#486275]">OS Invoice Prev</Label>
-                    <Input
-                      type="number"
-                      value={editingItemData.osInvoicePrevMonth}
-                      onChange={(e) =>
-                        setEditingItemData({
-                          ...editingItemData,
-                          osInvoicePrevMonth: e.target.value,
-                        })
-                      }
-                      className="h-8 bg-white border-slate-200 text-xs mt-0.5"
-                    />
-                  </div>
-                </div>
+              {/* Category Selector (Outstanding / Repair / Retread / Service) */}
+              <div>
+                <Label className="text-[11px] font-bold text-[#486275]">Kategori Revenue / Actual</Label>
+                <select
+                  value={actualCategory}
+                  onChange={(e) => setActualCategory(e.target.value)}
+                  className="w-full h-9 bg-[#f8fafc] border border-slate-200 text-[#003461] text-xs font-bold mt-1 rounded-xl px-2.5 outline-none focus:ring-1 focus:ring-[#003461]"
+                >
+                  <option value="Outstanding">Outstanding (OS)</option>
+                  <option value="Repair">Repair</option>
+                  <option value="Retread">Retread</option>
+                  <option value="Service">Service</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-[11px] font-bold text-[#486275]">Nomor PO / SAP Ref</Label>
+                <Input
+                  value={invoiceNumber || ''}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Contoh: PO-2026-001"
+                  className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[11px] font-bold text-[#486275]">Status Item</Label>
-                  <Select
-                    value={editingItemData.status}
-                    onValueChange={(val) => setEditingItemData({ ...editingItemData, status: val })}
-                  >
-                    <SelectTrigger className="h-9 bg-[#f8fafc] border-slate-200 text-xs font-bold text-[#003461] mt-1">
-                      <SelectValue placeholder="Pilih status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white text-[#003461]">
-                      <SelectItem value="Pending">Pending</SelectItem>
-                      <SelectItem value="In Progress">In Progress</SelectItem>
-                      <SelectItem value="Complete">Complete</SelectItem>
-                      <SelectItem value="Carry Over">Carry Over</SelectItem>
-                      <SelectItem value="Cancel">Cancel</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-[11px] font-bold text-[#486275]">Amount (IDR)</Label>
+                  <Input
+                    type="number"
+                    value={amountIdr || ''}
+                    onChange={(e) => handleAmountIdrChange(e.target.value)}
+                    placeholder="0"
+                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-semibold"
+                  />
                 </div>
                 <div>
-                  <Label className="text-[11px] font-bold text-[#486275]">Remark</Label>
+                  <Label className="text-[11px] font-bold text-[#486275]">Amount (USD)</Label>
                   <Input
-                    value={editingItemData.remark}
-                    onChange={(e) =>
-                      setEditingItemData({ ...editingItemData, remark: e.target.value })
-                    }
-                    placeholder="Catatan..."
-                    className="h-9 bg-[#f8fafc] border-slate-200 text-xs mt-1"
+                    type="number"
+                    value={amountUsd || ''}
+                    onChange={(e) => setAmountUsd(e.target.value)}
+                    placeholder="0.00"
+                    className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
                   />
                 </div>
               </div>
-            </div>
-          )}
 
-          <DialogFooter className="gap-2 sm:gap-0 mt-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setItemEditModalOpen(false)}
-              className="text-[#486275] hover:text-[#003461] text-xs h-9"
-            >
-              Batal
-            </Button>
-            <Button
-              size="sm"
-              disabled={isSubmittingItem}
-              onClick={handleSaveEditItem}
-              className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 font-bold"
-            >
-              {isSubmittingItem ? 'Menyimpan...' : 'Simpan Perubahan Item'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- ACTUAL FORM MODAL (Add/Edit Actual) --- */}
-      <Dialog open={actualModalOpen} onOpenChange={setActualModalOpen}>
-        <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-sm rounded-2xl p-4">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-black text-[#003461] flex items-center gap-1.5">
-              <Banknote className="w-4 h-4 text-emerald-600" />
-              {editingActual ? 'Edit Actual Revenue' : 'Tambah Actual Revenue'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2 text-xs">
-            {selectedItemForActual && (
-              <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-200">
-                <span className="text-[10px] text-[#486275] font-bold block">Customer</span>
-                <span className="font-black text-[#003461] block truncate">
-                  {selectedItemForActual.customerName || selectedItemForActual.customer}
-                </span>
-              </div>
-            )}
-
-            <div>
-              <Label className="text-[11px] font-bold text-[#486275]">Tanggal Update / Invoice</Label>
-              <Input
-                type="date"
-                value={actualDate}
-                onChange={(e) => setActualDate(e.target.value)}
-                className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
-              />
-            </div>
-
-            {/* SAP Invoice Quick Selector */}
-            {sapInvoices.length > 0 && !editingActual && (
               <div>
-                <Label className="text-[11px] font-bold text-[#486275]">Pilih dari SAP Invoices</Label>
-                <Select onValueChange={handleSelectSapInvoice}>
-                  <SelectTrigger className="w-full h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1">
-                    <SelectValue placeholder="-- Auto-fill dari SAP Invoice --" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white text-[#003461] max-h-40">
-                    {sapInvoices.map((sap) => (
-                      <SelectItem key={sap.invoiceNumber} value={sap.invoiceNumber}>
-                        {sap.invoiceNumber} - {formatCurrency(sap.amountIdr)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div>
-              <Label className="text-[11px] font-bold text-[#486275]">Nomor Invoice / SAP Ref</Label>
-              <Input
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="Contoh: INV-2026-001"
-                className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-[11px] font-bold text-[#486275]">Nominal IDR</Label>
+                <Label className="text-[11px] font-bold text-[#486275]">Remark Daily / Catatan</Label>
                 <Input
-                  type="number"
-                  value={amountIdr}
-                  onChange={(e) => handleAmountIdrChange(e.target.value)}
-                  placeholder="0"
-                  className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-bold"
-                />
-              </div>
-              <div>
-                <Label className="text-[11px] font-bold text-[#486275]">Nominal USD</Label>
-                <Input
-                  type="number"
-                  value={amountUsd}
-                  onChange={(e) => setAmountUsd(e.target.value)}
-                  placeholder="0.00"
-                  className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1 font-bold"
+                  value={note || ''}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Catatan / Remark daily..."
+                  className="h-9 bg-[#f8fafc] border-slate-200 text-xs mt-1"
                 />
               </div>
             </div>
 
-            <div>
-              <Label className="text-[11px] font-bold text-[#486275]">Catatan / Note</Label>
-              <Input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Keterangan opsional..."
-                className="h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs mt-1"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0 mt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setActualModalOpen(false)}
-              className="text-[#486275] hover:text-[#003461] text-xs h-9"
-            >
-              Batal
-            </Button>
-            <Button
-              size="sm"
-              disabled={isSubmittingActual}
-              onClick={handleSaveActual}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 font-bold"
-            >
-              {isSubmittingActual ? 'Simpan...' : 'Simpan Revenue'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2 sm:gap-0 mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActualModalOpen(false)}
+                className="text-[#486275] hover:text-[#003461] text-xs h-9"
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveActual}
+                disabled={isSubmittingActual}
+                className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 font-bold"
+              >
+                {isSubmittingActual ? 'Menyimpan...' : editingActual ? 'Update Actual' : 'Simpan Actual'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* --- STATUS CHANGE DIALOG --- */}
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-xs rounded-2xl p-4">
-          <DialogHeader>
-            <DialogTitle className="text-xs font-black text-[#003461]">Ubah Status Item</DialogTitle>
-          </DialogHeader>
-          <div className="py-2 space-y-2">
-            <Label className="text-[11px] font-bold text-[#486275]">Pilih Status Baru</Label>
-            <Select value={newStatus} onValueChange={setNewStatus}>
-              <SelectTrigger className="w-full h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs font-bold">
-                <SelectValue placeholder="Pilih status" />
-              </SelectTrigger>
-              <SelectContent className="bg-white text-[#003461]">
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Complete">Complete</SelectItem>
-                <SelectItem value="Carry Over">Carry Over</SelectItem>
-                <SelectItem value="Cancel">Cancel</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter className="mt-2">
-            <Button
-              size="sm"
-              onClick={handleUpdateStatus}
-              className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 w-full font-bold"
-            >
-              Update Status
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {statusDialogOpen && (
+        <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+          <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-xs rounded-2xl p-4">
+            <DialogHeader>
+              <DialogTitle className="text-xs font-black text-[#003461]">Ubah Status Item</DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-2">
+              <Label className="text-[11px] font-bold text-[#486275]">Pilih Status Baru</Label>
+              <Select value={newStatus || ''} onValueChange={setNewStatus}>
+                <SelectTrigger className="w-full h-9 bg-[#f8fafc] border-slate-200 text-[#003461] text-xs font-bold">
+                  <SelectValue placeholder="Pilih status" />
+                </SelectTrigger>
+                <SelectContent className="bg-white text-[#003461]">
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Complete">Complete</SelectItem>
+                  <SelectItem value="Carry Over">Carry Over</SelectItem>
+                  <SelectItem value="Cancel">Cancel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter className="mt-2">
+              <Button
+                size="sm"
+                onClick={handleUpdateStatus}
+                className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 w-full font-bold"
+              >
+                Update Status
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* --- DELETE CONFIRMATION DIALOG --- */}
-      <Dialog
-        open={deleteActualId !== null}
-        onOpenChange={(open) => !open && setDeleteActualId(null)}
-      >
-        <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-xs rounded-2xl p-4">
-          <DialogHeader>
-            <DialogTitle className="text-xs font-black text-rose-600 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4" />
-              Hapus Actual Revenue?
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-[#486275] py-1 font-semibold">
-            Data actual revenue yang dihapus tidak dapat dikembalikan.
-          </p>
-          <DialogFooter className="gap-2 mt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDeleteActualId(null)}
-              className="text-[#486275] hover:text-[#003461] text-xs h-9"
-            >
-              Batal
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleDeleteActual}
-              className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 font-bold"
-            >
-              Ya, Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {deleteActualId !== null && (
+        <Dialog
+          open={deleteActualId !== null}
+          onOpenChange={(open) => !open && setDeleteActualId(null)}
+        >
+          <DialogContent className="bg-white text-[#003461] border-slate-200 max-w-xs rounded-2xl p-4">
+            <DialogHeader>
+              <DialogTitle className="text-xs font-black text-rose-600 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4" />
+                Hapus Actual Revenue?
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-[#486275] py-1 font-semibold">
+              Data actual revenue yang dihapus tidak dapat dikembalikan.
+            </p>
+            <DialogFooter className="gap-2 mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteActualId(null)}
+                className="text-[#486275] hover:text-[#003461] text-xs h-9"
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleDeleteActual}
+                className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 font-bold"
+              >
+                Ya, Hapus
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

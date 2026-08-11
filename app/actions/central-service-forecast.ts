@@ -559,53 +559,85 @@ async function syncLatestActualRemark(tx: any, itemId: number) {
 }
 
 export async function addForecastActual(data: any, userId?: string) {
-  await db.transaction(async (tx) => {
-    const { exchangeRate: _exchangeRate, ...actualData } = data
-    const payload = {
-      ...actualData,
-      invoiceNumber: data.invoiceNumber || '',
-      createdById: userId,
-    }
-    await tx.insert(centralServiceForecastActuals).values(payload)
+  try {
+    let created: any = null
+    await db.transaction(async (tx) => {
+      const { exchangeRate: _exchangeRate, ...actualData } = data
 
-    if (data.forecastItemId) {
-      await recalculateItemRemaining(tx, data.forecastItemId)
-    }
-  })
+      let periodId = data.periodId
+      if (!periodId && data.forecastItemId) {
+        const [item] = await tx
+          .select({ periodId: centralServiceForecastItems.periodId })
+          .from(centralServiceForecastItems)
+          .where(eq(centralServiceForecastItems.id, data.forecastItemId))
+          .limit(1)
+        if (item) periodId = item.periodId
+      }
 
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast')
+      const payload = {
+        ...actualData,
+        periodId: periodId || data.periodId,
+        category: data.category || 'Repair',
+        invoiceNumber: data.invoiceNumber || '',
+        createdById: userId,
+      }
+      const inserted = await tx.insert(centralServiceForecastActuals).values(payload).returning()
+      created = inserted[0]
+
+      if (data.forecastItemId) {
+        await recalculateItemRemaining(tx, data.forecastItemId)
+      }
+    })
+
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true, data: created }
+  } catch (err: any) {
+    console.error('Error in addForecastActual:', err)
+    return { success: false, error: err.message || 'Gagal menambahkan actual' }
+  }
 }
 
 export async function updateForecastActual(id: number, data: any) {
-  await db.transaction(async (tx) => {
-    const { exchangeRate: _exchangeRate, ...actualData } = data
-    const actuals = await tx
-      .select()
-      .from(centralServiceForecastActuals)
-      .where(eq(centralServiceForecastActuals.id, id))
-      .limit(1)
-    const actual = actuals[0]
-    if (!actual) return
+  try {
+    await db.transaction(async (tx) => {
+      const { exchangeRate: _exchangeRate, ...actualData } = data
+      const actuals = await tx
+        .select()
+        .from(centralServiceForecastActuals)
+        .where(eq(centralServiceForecastActuals.id, id))
+        .limit(1)
+      const actual = actuals[0]
+      if (!actual) return
 
-    await tx
-      .update(centralServiceForecastActuals)
-      .set({
-        ...actualData,
-        invoiceNumber: data.invoiceNumber || '',
-      })
-      .where(eq(centralServiceForecastActuals.id, id))
+      await tx
+        .update(centralServiceForecastActuals)
+        .set({
+          ...actualData,
+          category: data.category || actual.category || 'Repair',
+          invoiceNumber: data.invoiceNumber || '',
+        })
+        .where(eq(centralServiceForecastActuals.id, id))
 
-    if (actual.forecastItemId) {
-      await recalculateItemRemaining(tx, actual.forecastItemId)
-    }
-    if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
-      await recalculateItemRemaining(tx, data.forecastItemId)
-    }
-  })
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast/monthly')
-  revalidatePath('/dashboard/central-service/forecast')
+      if (actual.forecastItemId) {
+        await recalculateItemRemaining(tx, actual.forecastItemId)
+      }
+      if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
+        await recalculateItemRemaining(tx, data.forecastItemId)
+      }
+    })
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast/monthly')
+    revalidatePath('/dashboard/central-service/forecast')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error in updateForecastActual:', err)
+    return { success: false, error: err.message || 'Gagal memperbarui actual' }
+  }
 }
 
 export async function deleteForecastActual(id: number) {
