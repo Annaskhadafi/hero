@@ -386,6 +386,11 @@ const GOVERNANCE_ROLE_SEEDS = [
     description: 'Akses penuh untuk modul HSE, safety tools, dan MCU Wellness.',
     scope: 'all_sites',
   },
+  {
+    name: 'Khusus Mas Rendi',
+    description: 'Role spesial untuk Mas Rendi dengan akses ke inventory asset dan fitur kustom.',
+    scope: 'all_sites',
+  },
 ]
 
 const RAW_SIDEBAR_MENU_SEEDS = [
@@ -4095,7 +4100,7 @@ const OWN_SCOPE_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
-  if (roleName === 'Super Admin') {
+  if (roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi') {
     return {
       canView: true,
       canEdit: true,
