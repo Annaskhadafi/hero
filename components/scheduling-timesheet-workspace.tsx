@@ -51,6 +51,7 @@ import { Switch } from '@/components/ui/switch'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   applyAttendanceImportPreviewAction,
+  applyMealsConfigToAllSitesAction,
   clearAttendanceRealOverridesAction,
   createAttendanceImportPreviewAction,
   deleteSchedulingTimesheetPlanAction,
@@ -3393,13 +3394,28 @@ export function SchedulingTimesheetWorkspace({
 
   function saveAllowanceVariables() {
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
+    const sourceSiteId = Number(siteId)
     void saveSchedulingConfigAction({
-      siteId: Number(siteId),
+      siteId: sourceSiteId,
       ...dbConfig,
       fieldBreakConfig,
       pdfConfig,
       allowanceVariables,
       overtimeVariables,
+    }).then(async (result) => {
+      if (!result?.ok) return
+      const applied = await applyMealsConfigToAllSitesAction({
+        sourceSiteId,
+        mealsType: siteConfig.mealsType,
+        allowanceVariables,
+      })
+      if (applied?.ok) {
+        toast.success(
+          `Konfigurasi MSA/Meals disimpan dan diterapkan ke ${applied.count} site lainnya.`
+        )
+      } else {
+        toast.error(applied?.error || 'Gagal menerapkan MSA/Meals ke semua site.')
+      }
     })
   }
 
