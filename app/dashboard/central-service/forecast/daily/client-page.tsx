@@ -137,6 +137,7 @@ export function DailyClientPage({
   const [sapSearch, setSapSearch] = useState('')
   const [sapCustomerFilter, setSapCustomerFilter] = useState('')
   const [sapSalesmanFilter, setSapSalesmanFilter] = useState('')
+  const [sapInco2Filter, setSapInco2Filter] = useState('')
 
   const searchParams = useSearchParams()
   const autoOpenedRef = useRef(false)
@@ -558,7 +559,8 @@ export function DailyClientPage({
           !r.billingNo?.toLowerCase().includes(q) &&
           !r.materialNo?.toLowerCase().includes(q) &&
           !r.customerName?.toLowerCase().includes(q) &&
-          !r.poNo?.toLowerCase().includes(q)
+          !r.poNo?.toLowerCase().includes(q) &&
+          !r.inco2?.toLowerCase().includes(q)
         )
           return false
       }
@@ -570,9 +572,16 @@ export function DailyClientPage({
         return false
       if (sapSalesmanFilter && sapSalesmanFilter !== '__all__' && r.salesman !== sapSalesmanFilter)
         return false
+      if (sapInco2Filter && sapInco2Filter !== '__all__' && r.inco2 !== sapInco2Filter)
+        return false
       return true
     })
-  }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter])
+  }, [sapInvoices, sapSearch, sapCustomerFilter, sapSalesmanFilter, sapInco2Filter])
+
+  const sapInco2Options = useMemo(() => {
+    const names = Array.from(new Set(sapInvoices.map((r: any) => r.inco2).filter(Boolean)))
+    return names.sort()
+  }, [sapInvoices])
 
   // ponytail: row SAP dianggap cancelled jika kolom C = 'X' DAN Cancelled ada nilainya
   const isSapCancelledRow = (r: any) =>
@@ -597,6 +606,7 @@ export function DailyClientPage({
       'Billing No',
       'Customer',
       'Customer Name',
+      'Inco2',
       'Material No',
       'Material Desc',
       'Qty',
@@ -615,6 +625,7 @@ export function DailyClientPage({
       r.billingNo,
       r.customer,
       r.customerName,
+      r.inco2,
       r.materialNo,
       r.materialDesc,
       r.qty,
@@ -1276,7 +1287,7 @@ export function DailyClientPage({
             </div>
             <div className="flex flex-wrap items-center gap-3 border-b p-4">
               <Input
-                placeholder="Search billing, material, No PO..."
+                placeholder="Search billing, material, No PO, Inco2..."
                 className="h-8 w-[200px] text-xs"
                 value={sapSearch}
                 onChange={(e) => setSapSearch(e.target.value)}
@@ -1307,6 +1318,19 @@ export function DailyClientPage({
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={sapInco2Filter} onValueChange={setSapInco2Filter}>
+                <SelectTrigger className="h-8 w-48 text-xs bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="Filter: Inco2" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Inco2</SelectItem>
+                  {sapInco2Options.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 size="sm"
@@ -1326,6 +1350,7 @@ export function DailyClientPage({
                     <TableHead className="text-xs font-bold text-white">Billing No</TableHead>
                     <TableHead className="text-xs font-bold text-white">Customer</TableHead>
                     <TableHead className="text-xs font-bold text-white">Customer Name</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Inco2</TableHead>
                     <TableHead className="text-xs font-bold text-white">Material No</TableHead>
                     <TableHead className="text-xs font-bold text-white">Material Desc</TableHead>
                     <TableHead className="text-right text-xs font-bold text-white">Qty</TableHead>
@@ -1360,6 +1385,7 @@ export function DailyClientPage({
                         <TableCell className="text-xs font-medium">{row.billingNo}</TableCell>
                         <TableCell className="text-xs">{row.customer}</TableCell>
                         <TableCell className="text-xs font-medium">{row.customerName}</TableCell>
+                        <TableCell className="text-xs">{row.inco2}</TableCell>
                         <TableCell className="text-xs">{row.materialNo}</TableCell>
                         <TableCell
                           className="max-w-[200px] truncate text-xs"
