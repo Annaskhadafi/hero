@@ -7405,10 +7405,14 @@ export async function getEmployeeDisplayDataByEmail(email: string) {
 
   const [employee] = await db
     .select({
+      id: employees.id,
+      siteId: employees.siteId,
       name: employees.name,
       email: employees.email,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
+      faceRegisteredAt: employees.faceRegisteredAt,
+      faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
     })
     .from(employees)
     .leftJoin(authUser, eq(employees.authUserId, authUser.id))
