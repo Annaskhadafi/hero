@@ -538,6 +538,8 @@ export const activities = pgTable('hero_activities', {
   remarks: text('remarks').notNull().default(''),
   pointsAwarded: integer('points_awarded').notNull().default(0),
   penaltyDeducted: integer('penalty_deducted').notNull().default(0),
+  isTeamActivity: boolean('is_team_activity').notNull().default(false),
+  teamNameList: text('team_name_list').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 export const approvals = pgTable('hero_approvals', {

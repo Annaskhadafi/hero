@@ -1326,6 +1326,7 @@ export function SchedulingTimesheetWorkspace({
     'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
   >('attendance')
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
+  const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -4898,6 +4899,58 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
+  function openPdfPreview(pdf: Uint8Array, title: string) {
+    if (pdfPreview) {
+      URL.revokeObjectURL(pdfPreview.url)
+    }
+    const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    setPdfPreview({ url, title })
+  }
+
+  async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
+    try {
+      const pdf = await buildEmployeeOvertimePdf(employee, true)
+      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
+    } catch (error) {
+      console.error('[Preview PDF OT Error]', error)
+      toast.error('Preview PDF Overtime gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function previewAllSiteOvertimePdf() {
+    const allEmployees = rows.map((row) => row.employee)
+    if (allEmployees.length === 0) {
+      toast.error('Tidak ada karyawan untuk site ini.')
+      return
+    }
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+      for (const employee of allEmployees) {
+        for (const pdf of [
+          await buildEmployeeOvertimePdf(employee, true),
+          await buildEmployeeAllowancePdf(employee),
+        ]) {
+          const source = await PDFDocument.load(pdf)
+          const pages = await merged.copyPages(source, source.getPageIndices())
+          pages.forEach((page) => merged.addPage(page))
+        }
+      }
+      openPdfPreview(
+        await merged.save(),
+        `Priview OT + Benefit • ${site?.name ?? 'Site'} • ${period} (${allEmployees.length} karyawan)`
+      )
+    } catch (error) {
+      console.error('[Preview PDF Site Error]', error)
+      toast.error('Preview PDF site gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   async function downloadAttendanceTemplate() {
     const templateRows = visibleEmployees.map((employee) => {
       const row: Record<string, string | number> = {
@@ -7650,6 +7703,15 @@ export function SchedulingTimesheetWorkspace({
                     <Button
                       size="sm"
                       variant="outline"
+                      disabled={rows.length === 0 || siteId === 'all'}
+                      onClick={() => void previewAllSiteOvertimePdf()}
+                      title={`Priview PDF OT + Benefit untuk semua karyawan site ${site?.name ?? ''}`}
+                    >
+                      <Eye className="mr-2 size-4" /> Priview Semua PDF
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
                       disabled={selectedOvertimeEmployeeIds.length === 0}
                       onClick={() => void bulkDownloadOvertimePdf(true)}
                     >
@@ -8116,6 +8178,15 @@ export function SchedulingTimesheetWorkspace({
                                             </div>
                                           </div>
                                           <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                            <button
+                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              title="Priview Overtime Record PDF"
+                                              onClick={() =>
+                                                previewEmployeeOvertimePdf(row.employee)
+                                              }
+                                            >
+                                              Priview
+                                            </button>
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
                                               title="Generate Overtime Record PDF"
@@ -9359,7 +9430,15 @@ export function SchedulingTimesheetWorkspace({
                   selectedAttendanceCell.employeeId,
                   true
                 )
-                const defaultOtHours = defaultOtCalculation.totalHours
+                const legacyOt = isStaffForDialog
+                  ? 0
+                  : calculateLegacyOvertime(
+                      employeeScheduleForDialog,
+                      selectedAttendanceCell.day,
+                      selectedAttendanceValue.clockIn,
+                      selectedAttendanceValue.clockOut
+                    )
+                const defaultOtHours = defaultOtCalculation.totalHours > 0 ? defaultOtCalculation.totalHours : legacyOt
 
                 const onSaveAndClose = async () => {
                   const key = attendanceKey(
@@ -9744,6 +9823,54 @@ export function SchedulingTimesheetWorkspace({
               })()}
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pdfPreview)}
+        onOpenChange={(open) => {
+          if (!open && pdfPreview) {
+            URL.revokeObjectURL(pdfPreview.url)
+            setPdfPreview(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl gap-0 overflow-hidden bg-white p-0">
+          <DialogHeader className="flex flex-row items-center justify-between border-b p-4">
+            <DialogTitle className="truncate pr-4 text-sm font-black text-[#082033]">
+              {pdfPreview?.title ?? 'Preview PDF'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="h-[80vh] bg-[#f5f7fb]">
+            {pdfPreview ? (
+              <iframe
+                src={pdfPreview.url}
+                title={pdfPreview.title}
+                className="h-full w-full"
+              />
+            ) : null}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t p-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (pdfPreview) {
+                  URL.revokeObjectURL(pdfPreview.url)
+                  setPdfPreview(null)
+                }
+              }}
+            >
+              <X className="mr-1.5 size-3.5" /> Tutup
+            </Button>
+            {pdfPreview ? (
+              <Button size="sm" asChild>
+                <a href={pdfPreview.url} download>
+                  <Download className="mr-1.5 size-3.5" /> Download PDF
+                </a>
+              </Button>
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
 
