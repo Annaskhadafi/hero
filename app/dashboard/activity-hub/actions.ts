@@ -116,9 +116,14 @@ const manageLibrarySchema = z.object({
     if (!v) return []
     return v.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))
   }),
+  childActivityIds: z.string().optional().transform(v => {
+    if (!v) return []
+    return v.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n))
+  }),
 }).transform(data => {
   if (!data.isGroupActivity) {
     data.routeGroupIds = []
+    data.childActivityIds = []
   }
   return data
 })
@@ -1030,6 +1035,74 @@ export async function manageActivityLibraryAction(formData: FormData) {
           updatedAt: new Date(),
         }))
       )
+    }
+
+    if (payload.isGroupActivity && payload.childActivityIds.length > 0) {
+      const groupName = `Group: ${payload.activityName}`
+      const existingTemplates = await db
+        .select({ id: activityRouteTemplates.id })
+        .from(activityRouteTemplates)
+        .where(eq(activityRouteTemplates.routeName, groupName))
+        .limit(1)
+
+      let autoTemplateId = existingTemplates[0]?.id
+      if (!autoTemplateId) {
+        const insertedTemplate = await db.insert(activityRouteTemplates).values({
+          routeCode: `GRP-${payload.activityCode}`,
+          routeName: groupName,
+          description: `Auto-generated group for ${payload.activityName}`,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning({ id: activityRouteTemplates.id })
+        autoTemplateId = insertedTemplate[0]?.id
+      }
+
+      if (autoTemplateId) {
+        const existingGroups = await db
+          .select({ id: activityRouteGroups.id })
+          .from(activityRouteGroups)
+          .where(eq(activityRouteGroups.routeTemplateId, autoTemplateId))
+          .limit(1)
+
+        let autoGroupId = existingGroups[0]?.id
+        if (!autoGroupId) {
+          const insertedGroup = await db.insert(activityRouteGroups).values({
+            routeTemplateId: autoTemplateId,
+            groupKey: `GRP-${payload.activityCode}`,
+            groupName: payload.activityName,
+            sortOrder: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }).returning({ id: activityRouteGroups.id })
+          autoGroupId = insertedGroup[0]?.id
+        }
+
+        if (autoGroupId) {
+          await db.delete(activityRouteItems).where(eq(activityRouteItems.routeGroupId, autoGroupId))
+
+          const childLibraries = await db
+            .select()
+            .from(activityLibraries)
+            .where(inArray(activityLibraries.id, payload.childActivityIds))
+
+          if (childLibraries.length > 0) {
+            await db.insert(activityRouteItems).values(
+              childLibraries.map((lib, idx) => ({
+                routeGroupId: autoGroupId,
+                libraryActivityId: lib.id,
+                itemCode: lib.activityCode,
+                itemLabel: lib.activityName,
+                requiresTime: lib.requiresDuration,
+                requiresPhoto: lib.requiresPhoto,
+                sortOrder: idx + 1,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              }))
+            )
+          }
+        }
+      }
     }
   }
 

@@ -28,31 +28,36 @@ export async function syncAllCarryOverItems() {
 }
 
 export async function getForecastPeriods() {
-  await syncAllCarryOverItems()
-  const rawPeriods = await db
-    .select()
-    .from(centralServiceForecastPeriods)
+  try {
+    await syncAllCarryOverItems()
+    const rawPeriods = await db
+      .select()
+      .from(centralServiceForecastPeriods)
 
-  // ponytail: sort chronologically desc (year * 12 + month)
-  const allPeriods = [...rawPeriods].sort((a, b) => {
-    const parsedA = parseMonthYearToYearMonth(a.monthYear)
-    const parsedB = parseMonthYearToYearMonth(b.monthYear)
-    const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
-    const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
-    if (keyA !== keyB) return keyB - keyA
-    return b.id - a.id
-  })
+    // ponytail: sort chronologically desc (year * 12 + month)
+    const allPeriods = [...rawPeriods].sort((a, b) => {
+      const parsedA = parseMonthYearToYearMonth(a.monthYear)
+      const parsedB = parseMonthYearToYearMonth(b.monthYear)
+      const keyA = parsedA ? parsedA.year * 12 + parsedA.month : 0
+      const keyB = parsedB ? parsedB.year * 12 + parsedB.month : 0
+      if (keyA !== keyB) return keyB - keyA
+      return b.id - a.id
+    })
 
-  const uniquePeriods: typeof allPeriods = []
-  const seen = new Set<string>()
-  for (const p of allPeriods) {
-    const key = (p.monthYear || '').trim().toLowerCase()
-    if (!seen.has(key)) {
-      seen.add(key)
-      uniquePeriods.push(p)
+    const uniquePeriods: typeof allPeriods = []
+    const seen = new Set<string>()
+    for (const p of allPeriods) {
+      const key = (p.monthYear || '').trim().toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        uniquePeriods.push(p)
+      }
     }
+    return uniquePeriods
+  } catch (err) {
+    console.error('Error in getForecastPeriods:', err)
+    return []
   }
-  return uniquePeriods
 }
 
 export async function getSalesEmployees() {
@@ -144,83 +149,88 @@ export async function getWaitingForecastItems() {
 }
 
 export async function getDailyForecastItems() {
-  await syncAllCarryOverItems()
-  const [items, allActuals, periods] = await Promise.all([
-    db
-      .select({
-        item: centralServiceForecastItems,
-        period: centralServiceForecastPeriods,
-      })
-      .from(centralServiceForecastItems)
-      .innerJoin(
-        centralServiceForecastPeriods,
-        eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
-      )
-      .orderBy(desc(centralServiceForecastPeriods.monthYear)),
-    db
-      .select()
-      .from(centralServiceForecastActuals)
-      .orderBy(desc(centralServiceForecastActuals.updateDate)),
-    db.select().from(centralServiceForecastPeriods),
-  ])
+  try {
+    await syncAllCarryOverItems()
+    const [items, allActuals, periods] = await Promise.all([
+      db
+        .select({
+          item: centralServiceForecastItems,
+          period: centralServiceForecastPeriods,
+        })
+        .from(centralServiceForecastItems)
+        .innerJoin(
+          centralServiceForecastPeriods,
+          eq(centralServiceForecastItems.periodId, centralServiceForecastPeriods.id)
+        )
+        .orderBy(desc(centralServiceForecastPeriods.monthYear)),
+      db
+        .select()
+        .from(centralServiceForecastActuals)
+        .orderBy(desc(centralServiceForecastActuals.updateDate)),
+      db.select().from(centralServiceForecastPeriods),
+    ])
 
-  const periodMap = new Map(periods.map((p) => [p.id, p]))
+    const periodMap = new Map(periods.map((p) => [p.id, p]))
 
-  const actualsByItemId = new Map<number, typeof allActuals>()
-  const unplannedActuals: typeof allActuals = []
+    const actualsByItemId = new Map<number, typeof allActuals>()
+    const unplannedActuals: typeof allActuals = []
 
-  allActuals.forEach((a) => {
-    if (a.forecastItemId) {
-      const list = actualsByItemId.get(a.forecastItemId) || []
-      list.push(a)
-      actualsByItemId.set(a.forecastItemId, list)
-    } else {
-      unplannedActuals.push(a)
-    }
-  })
-
-  const result: any[] = items.map((i) => ({
-    ...i,
-    actuals: actualsByItemId.get(i.item.id) || [],
-  }))
-
-  const unplannedGrouped = new Map<string, typeof allActuals>()
-  unplannedActuals.forEach((a) => {
-    const key = `${a.customer || 'Unknown'}_${a.periodId || 0}`
-    const list = unplannedGrouped.get(key) || []
-    list.push(a)
-    unplannedGrouped.set(key, list)
-  })
-
-  let syntheticIdCounter = -1
-  unplannedGrouped.forEach((actualList, _key) => {
-    const first = actualList[0]
-    const period = periodMap.get(first.periodId || 0) || {
-      id: first.periodId || 0,
-      monthYear: 'Unknown',
-    }
-    result.push({
-      item: {
-        id: syntheticIdCounter--,
-        periodId: first.periodId,
-        customer: first.customer || 'Unplanned Customer',
-        picSales: 'Unplanned',
-        isProductAccessories: false,
-        accessoriesAmountIdr: '0',
-        osInvoicePrevMonth: '0',
-        repairForecast: '0',
-        retreadForecast: '0',
-        serviceForecast: '0',
-        status: 'Unplanned SAP',
-        remark: 'Unplanned Actual',
-        isUnplanned: true,
-      },
-      period,
-      actuals: actualList,
+    allActuals.forEach((a) => {
+      if (a.forecastItemId) {
+        const list = actualsByItemId.get(a.forecastItemId) || []
+        list.push(a)
+        actualsByItemId.set(a.forecastItemId, list)
+      } else {
+        unplannedActuals.push(a)
+      }
     })
-  })
 
-  return result
+    const result: any[] = items.map((i) => ({
+      ...i,
+      actuals: actualsByItemId.get(i.item.id) || [],
+    }))
+
+    const unplannedGrouped = new Map<string, typeof allActuals>()
+    unplannedActuals.forEach((a) => {
+      const key = `${a.customer || 'Unknown'}_${a.periodId || 0}`
+      const list = unplannedGrouped.get(key) || []
+      list.push(a)
+      unplannedGrouped.set(key, list)
+    })
+
+    let syntheticIdCounter = -1
+    unplannedGrouped.forEach((actualList, _key) => {
+      const first = actualList[0]
+      const period = periodMap.get(first.periodId || 0) || {
+        id: first.periodId || 0,
+        monthYear: 'Unknown',
+      }
+      result.push({
+        item: {
+          id: syntheticIdCounter--,
+          periodId: first.periodId,
+          customer: first.customer || 'Unplanned Customer',
+          picSales: 'Unplanned',
+          isProductAccessories: false,
+          accessoriesAmountIdr: '0',
+          osInvoicePrevMonth: '0',
+          repairForecast: '0',
+          retreadForecast: '0',
+          serviceForecast: '0',
+          status: 'Unplanned SAP',
+          remark: 'Unplanned Actual',
+          isUnplanned: true,
+        },
+        period,
+        actuals: actualList,
+      })
+    })
+
+    return result
+  } catch (err) {
+    console.error('Error in getDailyForecastItems:', err)
+    return []
+  }
 }
 
 const MONTH_NAMES = [
@@ -370,25 +380,59 @@ async function handleCarryOverPropagation(tx: any, item: any) {
 }
 
 export async function upsertForecastItem(data: any) {
-  if (data.id) {
-    await db
-      .update(centralServiceForecastItems)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(centralServiceForecastItems.id, data.id))
-  } else {
-    await db.insert(centralServiceForecastItems).values(data)
-  }
+  try {
+    const payload: any = {
+      customer: data.customer || data.customerName || '',
+      picSales: data.picSales || data.salesmanName || '',
+      poNumber: data.poNumber || '',
+      prNumber: data.prNumber || '',
+      description: data.description || '',
+      osInvoicePrevMonth: String(data.osInvoicePrevMonth || '0'),
+      repairForecast: String(data.repairForecast || '0'),
+      retreadForecast: String(data.retreadForecast || '0'),
+      serviceForecast: String(data.serviceForecast || '0'),
+      accessoriesAmountIdr: String(data.accessoriesAmountIdr || '0'),
+      accessoriesAmountUsd: String(data.accessoriesAmountUsd || '0'),
+      status: data.status || 'Waiting',
+      remark: data.remark || '',
+      updatedAt: new Date(),
+    }
 
-  if (data.status?.trim().toLowerCase() === 'carry over') {
-    await handleCarryOverPropagation(db, data)
-  }
+    const totalFc =
+      Number(payload.osInvoicePrevMonth) +
+      Number(payload.repairForecast) +
+      Number(payload.retreadForecast) +
+      Number(payload.serviceForecast)
+    payload.totalForecastIdr = totalFc.toString()
 
-  revalidatePath('/dashboard/central-service/forecast/monthly')
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast/report')
+    if (data.id && Number(data.id) > 0) {
+      await db
+        .update(centralServiceForecastItems)
+        .set(payload)
+        .where(eq(centralServiceForecastItems.id, Number(data.id)))
+    } else {
+      payload.periodId = Number(data.periodId)
+      payload.remainingRepair = payload.repairForecast
+      payload.remainingRetread = payload.retreadForecast
+      payload.remainingService = payload.serviceForecast
+      payload.remainingTotalIdr = payload.totalForecastIdr
+      await db.insert(centralServiceForecastItems).values(payload)
+    }
+
+    if (data.status?.trim().toLowerCase() === 'carry over') {
+      await handleCarryOverPropagation(db, { ...data, ...payload })
+    }
+
+    revalidatePath('/dashboard/central-service/forecast/monthly')
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast/report')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error in upsertForecastItem:', err)
+    return { success: false, error: err.message || 'Gagal merubah item forecast' }
+  }
 }
 
 export async function deleteForecastItem(id: number) {
@@ -432,6 +476,8 @@ export async function deleteForecastItem(id: number) {
 
   await db.delete(centralServiceForecastItems).where(eq(centralServiceForecastItems.id, id))
   revalidatePath('/dashboard/central-service/forecast/monthly')
+  revalidatePath('/mobile/central-service/forecast/daily')
+  revalidatePath('/mobile/central-service/forecast/report')
 }
 
 export async function updateForecastItemStatus(
@@ -474,6 +520,8 @@ export async function updateForecastItemStatus(
   revalidatePath('/dashboard/central-service/forecast/daily')
   revalidatePath('/dashboard/central-service/forecast/monthly')
   revalidatePath('/dashboard/central-service/forecast/report')
+  revalidatePath('/mobile/central-service/forecast/daily')
+  revalidatePath('/mobile/central-service/forecast/report')
 }
 
 async function recalculateItemRemaining(tx: any, itemId: number) {
@@ -497,6 +545,7 @@ async function recalculateItemRemaining(tx: any, itemId: number) {
     sumAccUsd = 0
 
   for (const a of actuals) {
+    if (String(a.itemStatus || '').trim().toLowerCase() === 'cancel') continue
     const amtIdr = Number(a.amountIdr)
     const amtUsd = Number(a.amountUsd)
     if (a.category === 'Repair') sumRepairIdr += amtIdr
@@ -549,53 +598,95 @@ async function syncLatestActualRemark(tx: any, itemId: number) {
 }
 
 export async function addForecastActual(data: any, userId?: string) {
-  await db.transaction(async (tx) => {
-    const { exchangeRate: _exchangeRate, ...actualData } = data
-    const payload = {
-      ...actualData,
-      invoiceNumber: data.invoiceNumber || '',
-      createdById: userId,
-    }
-    await tx.insert(centralServiceForecastActuals).values(payload)
+  try {
+    let created: any = null
+    await db.transaction(async (tx) => {
+      let periodId = data.periodId
+      if (!periodId && data.forecastItemId) {
+        const [item] = await tx
+          .select({ periodId: centralServiceForecastItems.periodId })
+          .from(centralServiceForecastItems)
+          .where(eq(centralServiceForecastItems.id, Number(data.forecastItemId)))
+          .limit(1)
+        if (item) periodId = item.periodId
+      }
 
-    if (data.forecastItemId) {
-      await recalculateItemRemaining(tx, data.forecastItemId)
-    }
-  })
+      const payload = {
+        periodId: Number(periodId),
+        forecastItemId: data.forecastItemId ? Number(data.forecastItemId) : null,
+        updateDate: data.updateDate ? new Date(data.updateDate) : new Date(),
+        invoiceNumber: data.invoiceNumber || data.poNumber || '',
+        category: data.category || 'Repair',
+        amountIdr: String(data.amountIdr ?? '0'),
+        amountUsd: String(data.amountUsd ?? '0'),
+        remark: data.remark || data.note || '',
+        itemStatus: data.itemStatus || data.statusDoc || '-',
+        createdById: userId,
+      }
+      const inserted = await tx.insert(centralServiceForecastActuals).values(payload).returning()
+      created = inserted[0]
 
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast')
+      if (data.forecastItemId) {
+        await recalculateItemRemaining(tx, Number(data.forecastItemId))
+      }
+    })
+
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true, data: created }
+  } catch (err: any) {
+    console.error('Error in addForecastActual:', err)
+    return { success: false, error: err.message || 'Gagal menambahkan actual' }
+  }
 }
 
 export async function updateForecastActual(id: number, data: any) {
-  await db.transaction(async (tx) => {
-    const { exchangeRate: _exchangeRate, ...actualData } = data
-    const actuals = await tx
-      .select()
-      .from(centralServiceForecastActuals)
-      .where(eq(centralServiceForecastActuals.id, id))
-      .limit(1)
-    const actual = actuals[0]
-    if (!actual) return
+  try {
+    await db.transaction(async (tx) => {
+      const actuals = await tx
+        .select()
+        .from(centralServiceForecastActuals)
+        .where(eq(centralServiceForecastActuals.id, id))
+        .limit(1)
+      const actual = actuals[0]
+      if (!actual) return
 
-    await tx
-      .update(centralServiceForecastActuals)
-      .set({
-        ...actualData,
-        invoiceNumber: data.invoiceNumber || '',
-      })
-      .where(eq(centralServiceForecastActuals.id, id))
+      const payload: any = {
+        invoiceNumber: data.invoiceNumber || data.poNumber || actual.invoiceNumber || '',
+        category: data.category || actual.category || 'Repair',
+        amountIdr: String(data.amountIdr ?? actual.amountIdr),
+        amountUsd: String(data.amountUsd ?? actual.amountUsd),
+        remark: data.remark || data.note || actual.remark || '',
+        itemStatus: data.itemStatus || data.statusDoc || actual.itemStatus || '-',
+      }
+      if (data.updateDate) {
+        payload.updateDate = new Date(data.updateDate)
+      }
 
-    if (actual.forecastItemId) {
-      await recalculateItemRemaining(tx, actual.forecastItemId)
-    }
-    if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
-      await recalculateItemRemaining(tx, data.forecastItemId)
-    }
-  })
-  revalidatePath('/dashboard/central-service/forecast/daily')
-  revalidatePath('/dashboard/central-service/forecast/monthly')
-  revalidatePath('/dashboard/central-service/forecast')
+      await tx
+        .update(centralServiceForecastActuals)
+        .set(payload)
+        .where(eq(centralServiceForecastActuals.id, id))
+
+      if (actual.forecastItemId) {
+        await recalculateItemRemaining(tx, actual.forecastItemId)
+      }
+      if (data.forecastItemId && data.forecastItemId !== actual.forecastItemId) {
+        await recalculateItemRemaining(tx, Number(data.forecastItemId))
+      }
+    })
+    revalidatePath('/dashboard/central-service/forecast/daily')
+    revalidatePath('/dashboard/central-service/forecast/monthly')
+    revalidatePath('/dashboard/central-service/forecast')
+    revalidatePath('/mobile/central-service/forecast/daily')
+    revalidatePath('/mobile/central-service/forecast/report')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error in updateForecastActual:', err)
+    return { success: false, error: err.message || 'Gagal memperbarui actual' }
+  }
 }
 
 export async function deleteForecastActual(id: number) {

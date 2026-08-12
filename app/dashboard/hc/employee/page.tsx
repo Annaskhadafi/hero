@@ -1,40 +1,47 @@
-import { getEmployeesForContract, getEmployeeFilterOptions } from "@/app/actions/employee";
-import { EmployeeClientPage } from "./client-page";
-import type { TableRbacAccess } from "@/components/ui/enterprise-table-kit";
+import { getEmployeesForContract, getEmployeeFilterOptions } from '@/app/actions/employee'
+import { EmployeeClientPage } from './client-page'
+import type { TableRbacAccess } from '@/components/ui/enterprise-table-kit'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { redirect } from 'next/navigation'
 
 export const metadata = {
-  title: "Data Karyawan - HC",
-};
+  title: 'Data Karyawan - HC',
+}
 
 export default async function EmployeePage() {
   const [allEmployees, filterOptions] = await Promise.all([
     getEmployeesForContract(),
     getEmployeeFilterOptions(),
-  ]);
+  ])
 
-  const employees = allEmployees.filter(e => e.departmentName === "Central Services");
-  const csDeptId = filterOptions.departments.find(d => d.name === "Central Services")?.id;
-  
+  const employees = allEmployees.filter((e) => e.departmentName === 'Central Services')
+  const csDeptId = filterOptions.departments.find((d) => d.name === 'Central Services')?.id
+
   const filteredOptions = {
-    departments: csDeptId ? filterOptions.departments.filter(d => d.id === csDeptId) : filterOptions.departments,
-    sections: csDeptId ? filterOptions.sections.filter(s => s.departmentId === csDeptId) : filterOptions.sections,
+    departments: csDeptId
+      ? filterOptions.departments.filter((d) => d.id === csDeptId)
+      : filterOptions.departments,
+    sections: csDeptId
+      ? filterOptions.sections.filter((s) => s.departmentId === csDeptId)
+      : filterOptions.sections,
     locations: filterOptions.locations,
     positions: filterOptions.positions,
-  };
+  }
 
-  // TODO: Replace with real RBAC lookup once Phase 4 is complete
+  const fullAccess = await getCurrentMenuPermission('hc_employee')
+
+  if (!fullAccess.canView) {
+    redirect('/403')
+  }
+
   const access: TableRbacAccess = {
-    canView: true,
-    canEdit: true,
-    canDelete: true,
-    canSelectAll: false,
-  };
+    canView: fullAccess.canView,
+    canEdit: fullAccess.canEdit,
+    canDelete: fullAccess.canDelete,
+    canSelectAll: fullAccess.canSelectAll,
+  }
 
   return (
-    <EmployeeClientPage
-      employees={employees}
-      filterOptions={filteredOptions}
-      access={access}
-    />
-  );
+    <EmployeeClientPage employees={employees} filterOptions={filteredOptions} access={access} />
+  )
 }

@@ -128,34 +128,34 @@ function conditionBadge(condition: string) {
   const c = condition?.toUpperCase();
   if (c === "ACTIVE")
     return (
-      <Badge className="border-0 bg-blue-700 text-white shadow-sm ring-1 ring-blue-950/20 font-semibold">
+      <Badge className="border-0 bg-green-600 text-white hover:bg-green-700 shadow-sm font-medium">
         <CheckCircle2 className="mr-1 h-3 w-3" />
         ACTIVE
       </Badge>
     );
   if (c === "REPAIR")
     return (
-      <Badge className="border-0 bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-950/20 font-semibold">
+      <Badge className="border-0 bg-cyan-600 text-white hover:bg-cyan-700 shadow-sm font-medium">
         <CheckCircle2 className="mr-1 h-3 w-3" />
         REPAIR
       </Badge>
     );
   if (c === "BAD")
     return (
-      <Badge className="border-0 bg-yellow-300 text-slate-950 shadow-sm ring-1 ring-yellow-700/50 font-semibold">
+      <Badge className="border-0 bg-red-600 text-white hover:bg-red-700 shadow-sm font-medium">
         <AlertTriangle className="mr-1 h-3 w-3" />
         BAD
       </Badge>
     );
   if (c === "SCRAP")
     return (
-      <Badge className="border-0 bg-red-700 text-white shadow-sm ring-1 ring-red-950/20 font-semibold">
+      <Badge className="border-0 bg-blue-700 text-white hover:bg-blue-800 shadow-sm font-medium">
         <XCircle className="mr-1 h-3 w-3" />
         SCRAP
       </Badge>
     );
   return (
-    <Badge className="border-0 bg-slate-700 text-white shadow-sm ring-1 ring-slate-950/20">
+    <Badge className="border-0 bg-slate-200 text-slate-800 hover:bg-slate-300 shadow-sm font-medium">
       <HelpCircle className="mr-1 h-3 w-3" />
       {condition || "-"}
     </Badge>
@@ -408,10 +408,10 @@ function exportToCSV(data: Asset[]) {
     "Description",
     "Nomor Aset",
     "SN",
-    "Tanggal Pembelian",
+    "Certificate Date",
     "Delivery To Site",
     "Condition",
-    "Umur Aset",
+    "Certificate Due",
     "Qty",
     "Remarks",
   ];
@@ -423,10 +423,10 @@ function exportToCSV(data: Asset[]) {
     a.description,
     a.assetNumber ?? "",
     a.serialNumber ?? "",
-    fmtDate(a.purchaseDate),
+    fmtDate(a.certificateDate),
     fmtDate(a.deliveryToSiteDate),
     a.condition,
-    calcAge(a.purchaseDate),
+    fmtDate(a.certificateDueDate),
     a.qty,
     a.remarks ?? "",
   ]);
@@ -576,7 +576,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
   const setConditionFilters = useCallback((next: string[]) => {
     setColumnFilters((filters) => {
       const others = filters.filter((filter) => filter.id !== "condition");
-      return next.length === CONDITIONS.length ? others : [...others, { id: "condition", value: next }];
+      return [...others, { id: "condition", value: next }];
     });
   }, []);
 
@@ -682,31 +682,34 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         ),
       },
       {
-        accessorKey: "purchaseDate",
-        header: "Tgl Pembelian",
+        accessorKey: "certificateDate",
+        header: "Certificate Date",
         size: 110,
         cell: ({ getValue }) => (
           <span className="text-xs">{fmtDate(getValue() as Date)}</span>
         ),
       },
       {
-        id: "umurAset",
-        header: "Umur Aset",
-        size: 100,
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {calcAge(row.original.purchaseDate)}
-          </span>
-        ),
-        enableSorting: false,
+        accessorKey: "certificateDueDate",
+        header: "Certificate Due",
+        size: 110,
+        cell: ({ getValue }) => dueDateCell(getValue() as Date),
+        enableSorting: true,
       },
       {
         accessorKey: "deliveryToSiteDate",
         header: "Delivery Site",
         size: 110,
-        cell: ({ getValue }) => (
-          <span className="text-xs">{fmtDate(getValue() as Date)}</span>
-        ),
+        cell: ({ getValue }) => {
+          const v = getValue() as Date;
+          return v ? (
+            <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
+              {fmtDate(v)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground text-xs">-</span>
+          );
+        }
       },
       {
         accessorKey: "condition",

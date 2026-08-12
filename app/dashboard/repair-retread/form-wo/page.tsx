@@ -2,15 +2,21 @@ import { Suspense } from "react"
 import { ClipboardList, FileText, Loader2, Wrench } from "lucide-react"
 
 import { getFormWoList, getFormWoStats, getWaitingWoFromApi } from "@/app/actions/form-wo"
+import { getMasterDataCaiList } from "@/app/actions/master-data-cai"
+import { getCustomersAction } from "@/app/actions/customer-management"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormWoClient } from "./_components/form-wo-client"
 
 async function FormWoContent() {
-  const [waitingWoList, formWoList, stats] = await Promise.all([
+  const [waitingWoList, formWoList, stats, masterCaiList, customerRes] = await Promise.all([
     getWaitingWoFromApi(),
     getFormWoList(),
     getFormWoStats(),
+    getMasterDataCaiList(),
+    getCustomersAction({ limit: 1000 }),
   ])
+
+  const customerList = customerRes.success && Array.isArray(customerRes.data) ? customerRes.data : []
 
   return (
     <>
@@ -72,7 +78,12 @@ async function FormWoContent() {
         </Card>
       </div>
 
-      <FormWoClient waitingWoList={waitingWoList} formWoList={formWoList} />
+      <FormWoClient
+        waitingWoList={waitingWoList}
+        formWoList={formWoList}
+        masterCaiList={masterCaiList}
+        customerList={customerList}
+      />
     </>
   )
 }

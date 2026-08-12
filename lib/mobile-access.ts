@@ -61,16 +61,23 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/hc/permission', mobile: '/mobile/attendance/permission' },
   { desktop: '/dashboard/attendance', mobile: '/mobile/attendance' },
   { desktop: '/dashboard/chitralearning-lms', mobile: '/mobile/chitralearning' },
+  { desktop: '/dashboard/central-service/assets', mobile: '/mobile/central-service/assets' },
+  { desktop: '/dashboard/central-service/forecast/daily', mobile: '/mobile/central-service/forecast/daily' },
+  { desktop: '/dashboard/central-service/forecast/report', mobile: '/mobile/central-service/forecast/report' },
+  { desktop: '/dashboard/central-service/forecast', mobile: '/mobile/central-service/forecast' },
   { desktop: '/dashboard/hc/leader-performance', mobile: '/mobile/leader-performance' },
 ]
 
 const fallbackMobileSegments = new Set([
   'activity',
   'approval',
+  'assets',
   'attendance',
   'cargo-manifest',
   'curhat',
   'executive',
+  'forecast',
+  'central-service',
   'gamification',
   'hr-counseling',
   'hse',

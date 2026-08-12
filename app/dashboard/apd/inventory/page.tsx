@@ -1,6 +1,7 @@
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { ApdInventoryTable } from "@/components/apd-inventory-table";
 import { fetchApdInventory } from "@/lib/apd-inventory-data";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -9,8 +10,11 @@ import { ChevronLeft } from "lucide-react";
 
 export default async function ApdInventoryPage() {
   const currentEmployee = await getCurrentEmployee();
+  const inventoryPermission = await getCurrentMenuPermission('hse_inventaris');
   
-  if (!currentEmployee || !["admin", "superadmin"].includes(currentEmployee.role)) {
+  const canManageLegacy = currentEmployee && ["admin", "superadmin"].includes(currentEmployee.role);
+  
+  if (!canManageLegacy && !inventoryPermission.canView) {
     redirect("/dashboard");
   }
 

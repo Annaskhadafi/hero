@@ -20,14 +20,16 @@ interface ActivityLibraryRouteMappingFieldProps {
   initialMappedIds?: number[]
 }
 
-export function ActivityLibraryRouteMappingField({ routeFolders, initialMappedIds = [] }: ActivityLibraryRouteMappingFieldProps) {
-  const [selections, setSelections] = useState<{ id: number, templateId: string, groupId: string }[]>([])
-  
-  useEffect(() => {
+const EMPTY_MAPPED_IDS: number[] = []
+
+export function ActivityLibraryRouteMappingField({ routeFolders, initialMappedIds = EMPTY_MAPPED_IDS }: ActivityLibraryRouteMappingFieldProps) {
+  const mappedKey = useMemo(() => (initialMappedIds || []).join(','), [initialMappedIds])
+
+  const [selections, setSelections] = useState<{ id: number; templateId: string; groupId: string }[]>(() => {
     if (initialMappedIds.length > 0 && routeFolders.length > 0) {
-      const initialSelections: { id: number, templateId: string, groupId: string }[] = []
-      
-      initialMappedIds.forEach(mappedId => {
+      const initialSelections: { id: number; templateId: string; groupId: string }[] = []
+
+      initialMappedIds.forEach((mappedId) => {
         for (const template of routeFolders) {
           for (const group of template.groups) {
             if (group.id === mappedId) {
@@ -40,16 +42,35 @@ export function ActivityLibraryRouteMappingField({ routeFolders, initialMappedId
           }
         }
       })
-      
+
+      if (initialSelections.length > 0) return initialSelections
+    }
+    return [{ id: Date.now(), templateId: '', groupId: '' }]
+  })
+
+  useEffect(() => {
+    if (initialMappedIds.length > 0 && routeFolders.length > 0) {
+      const initialSelections: { id: number; templateId: string; groupId: string }[] = []
+
+      initialMappedIds.forEach((mappedId) => {
+        for (const template of routeFolders) {
+          for (const group of template.groups) {
+            if (group.id === mappedId) {
+              initialSelections.push({
+                id: Date.now() + Math.random(),
+                templateId: template.id.toString(),
+                groupId: group.id.toString(),
+              })
+            }
+          }
+        }
+      })
+
       if (initialSelections.length > 0) {
         setSelections(initialSelections)
-      } else {
-        setSelections([{ id: Date.now(), templateId: '', groupId: '' }])
       }
-    } else {
-      setSelections([{ id: Date.now(), templateId: '', groupId: '' }])
     }
-  }, [initialMappedIds, routeFolders])
+  }, [mappedKey, routeFolders])
 
   const addSelection = () => {
     setSelections([...selections, { id: Date.now(), templateId: '', groupId: '' }])
@@ -131,6 +152,39 @@ export function ActivityLibraryRouteMappingField({ routeFolders, initialMappedId
                 </Select>
               </div>
             </div>
+
+            {(() => {
+              const selectedGroup = groups.find(g => g.id.toString() === selection.groupId)
+              if (!selectedGroup) return null
+              const groupItems = selectedGroup.items || []
+
+              return (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between font-bold text-primary">
+                    <span>List Activity dalam Group ini ({groupItems.length} item):</span>
+                    <span className="text-[10px] font-medium text-muted-foreground bg-white/80 px-2 py-0.5 rounded-full border border-primary/10">
+                      Otomatis keluar semua di Mobile
+                    </span>
+                  </div>
+                  {groupItems.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {groupItems.map((item) => (
+                        <span
+                          key={item.id}
+                          className="inline-flex items-center gap-1 rounded-md bg-white border border-primary/20 px-2.5 py-1 text-[11px] font-semibold text-foreground shadow-2xs"
+                        >
+                          <span className="text-primary font-bold">✓</span> {item.itemLabel}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground italic text-[11px]">
+                      Belum ada activity terdaftar di group ini. Tambahkan pekerjaan di menu Activity Routes.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
             
             {index < selections.length - 1 && <div className="my-1 h-px bg-border/50" />}
           </div>

@@ -8,12 +8,14 @@ export function RouteFolderTree({
   availableLibraryMap,
   selectedLibraryIds,
   toggleLibrarySelection,
+  toggleGroupSelection,
   librarySearch,
 }: {
   routeFolders: RouteFolder[]
   availableLibraryMap: Map<string, LibraryOption>
   selectedLibraryIds: string[]
   toggleLibrarySelection: (id: string) => void
+  toggleGroupSelection?: (libraryIds: string[]) => void
   librarySearch: string
 }) {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
@@ -68,18 +70,55 @@ export function RouteFolderTree({
               <div className="space-y-1 p-2">
                 {matchingGroups.map(group => {
                   const isGroupExpanded = expandedGroups.has(group.id) || !!normalizedSearch
+                  const groupLibraryIds = group.matchingItems.map(i => `${i.id}`)
+                  const selectedInGroupCount = groupLibraryIds.filter(id => selectedLibraryIds.includes(id)).length
+                  const isAllGroupSelected = groupLibraryIds.length > 0 && selectedInGroupCount === groupLibraryIds.length
+
+                  const handleBatchGroupToggle = (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    if (toggleGroupSelection) {
+                      toggleGroupSelection(groupLibraryIds)
+                    } else {
+                      groupLibraryIds.forEach(id => {
+                        if (isAllGroupSelected) {
+                          if (selectedLibraryIds.includes(id)) toggleLibrarySelection(id)
+                        } else {
+                          if (!selectedLibraryIds.includes(id)) toggleLibrarySelection(id)
+                        }
+                      })
+                    }
+                  }
+
                   return (
                     <div key={group.id} className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50/50">
-                      <button
-                        type="button"
-                        onClick={() => toggleGroup(group.id)}
-                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-gray-700"
-                      >
-                        <div className="flex items-center gap-2">
-                          {isGroupExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                          <span>{group.groupName}</span>
-                        </div>
-                      </button>
+                      <div className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-gray-700">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(group.id)}
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                        >
+                          {isGroupExpanded ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
+                          <span className="truncate">{group.groupName}</span>
+                          {group.matchingItems.length > 0 && (
+                            <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                              {selectedInGroupCount}/{group.matchingItems.length}
+                            </span>
+                          )}
+                        </button>
+                        {group.matchingItems.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleBatchGroupToggle}
+                            className={
+                              isAllGroupSelected
+                                ? "text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 active:scale-95 transition shrink-0"
+                                : "text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white active:scale-95 transition shadow-xs shrink-0"
+                            }
+                          >
+                            {isAllGroupSelected ? "Hapus Semua" : "Pilih Group (Semua)"}
+                          </button>
+                        )}
+                      </div>
 
                       {isGroupExpanded && (
                         <div className="space-y-1 p-2 pt-0">

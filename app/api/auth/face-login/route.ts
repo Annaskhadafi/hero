@@ -53,7 +53,11 @@ export async function POST(request: NextRequest) {
       imageBuffer.length
     );
 
-    // 1. Primary: 1:1 Verification Mode (highly recommended for speed & reliability)
+    // 1. Primary: 1:1 Verification Mode — resolves employee by SN/email first, then verifies face
+    // When identifier is provided, this is the ONLY path that can succeed.
+    // Fallbacks (1:N / local) are ONLY used when no identifier was given (anonymous scan).
+    let identifierBoundEmployee: typeof employees.$inferSelect | null = null;
+
     if (identifier && typeof identifier === "string" && identifier.trim()) {
       const cleanIdentifier = identifier.trim().toLowerCase();
       
@@ -71,36 +75,76 @@ export async function POST(request: NextRequest) {
         )
         .limit(1);
 
-      if (emp) {
-        verificationMode = "1:1";
-        console.log("[face-login] Resolved employee for 1:1 verification:", emp.name, "ID:", emp.id);
+      if (!emp) {
+        console.log("[face-login] Identifier provided but employee not found in active database:", cleanIdentifier);
+        return NextResponse.json(
+          { success: false, error: `SN/email "${identifier.trim()}" tidak ditemukan di database karyawan aktif.` },
+          { status: 404 }
+        );
+      }
+
+      identifierBoundEmployee = emp;
+      verificationMode = "1:1";
+      console.log("[face-login] Resolved employee for 1:1 verification:", emp.name, "ID:", emp.id);
+
+      // Try Raray 1:1 verify
+      try {
+        const verifyRes = await rarayVerifyFace({
+          employeeId: emp.id,
+          imageBuffer,
+          mimeType,
+        });
+
+        console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
+
+        if (verifyRes.status === "success" && verifyRes.verified) {
+          matchedEmployee = emp;
+          confidenceScore = verifyRes.confidence || 0.85;
+          console.log("[face-login] 1:1 verification succeeded for:", emp.name);
+        } else {
+          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold.");
+        }
+      } catch (err) {
+        console.error("[face-login] Raray 1:1 verify request failed:", err);
+      }
+
+      // If Raray 1:1 failed, try local embedding as last resort — but ONLY against the same employee
+      if (!matchedEmployee) {
+        console.log("[face-login] Raray 1:1 failed. Trying local embedding for same employee:", emp.name);
         try {
-          const verifyRes = await rarayVerifyFace({
-            employeeId: emp.id,
-            imageBuffer,
-            mimeType,
-          });
-
-          console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
-
-          if (verifyRes.status === "success" && verifyRes.verified) {
-            matchedEmployee = emp;
-            confidenceScore = verifyRes.confidence || 0.85;
-            console.log("[face-login] 1:1 verification succeeded for:", emp.name);
-          } else {
-            console.log("[face-login] 1:1 verification failed / match confidence below threshold.");
+          const extraction = await extractServerFaceEmbedding(imageBuffer);
+          if (extraction && extraction.embedding && Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
+            const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
+            console.log("[face-login] Local 1:1 embedding similarity for", emp.name, ":", sim);
+            if (sim >= 0.55) {
+              matchedEmployee = emp;
+              confidenceScore = sim;
+              verificationMode = "local-1:1";
+              console.log("[face-login] Local 1:1 embedding match succeeded for:", emp.name);
+            } else {
+              console.log("[face-login] Local 1:1 embedding similarity too low:", sim);
+            }
           }
         } catch (err) {
-          console.error("[face-login] Raray 1:1 verify request failed:", err);
+          console.error("[face-login] Local 1:1 embedding failed:", err);
         }
-      } else {
-        console.log("[face-login] Identifier provided but employee not found in active database:", cleanIdentifier);
+      }
+
+      // If still no match, reject — do NOT fall through to 1:N against other employees
+      if (!matchedEmployee) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Wajah tidak cocok dengan data biometrik ${emp.name}. Pastikan wajah Anda menghadap kamera dengan jelas, atau gunakan metode login lain.`,
+          },
+          { status: 401 }
+        );
       }
     }
 
-    // 2. Secondary: Fallback to 1:N Recognition Search (only if 1:1 mode didn't run or fail)
-    if (!matchedEmployee) {
-      console.log("[face-login] Trying Raray 1:N recognition fallback...");
+    // 2. Anonymous mode: No identifier provided — try 1:N recognition across all employees
+    if (!matchedEmployee && !identifierBoundEmployee) {
+      console.log("[face-login] No identifier. Trying Raray 1:N anonymous recognition...");
       try {
         const rarayResult = await rarayRecognizeFace({
           imageBuffer,
@@ -130,13 +174,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Fallback: Local Server Face-API Embedding comparison
-    if (!matchedEmployee) {
-      console.log("[face-login] Raray Vision could not match face. Trying local face-api comparison...");
+    // 3. Anonymous fallback: Local embedding comparison across all employees (no identifier)
+    if (!matchedEmployee && !identifierBoundEmployee) {
+      console.log("[face-login] Anonymous: Raray Vision could not match. Trying local embedding...");
       try {
         const extraction = await extractServerFaceEmbedding(imageBuffer);
         if (extraction && extraction.embedding) {
-          console.log("[face-login] Local face-api embedding extracted successfully. Score:", extraction.detectionScore);
+          console.log("[face-login] Local embedding extracted. Score:", extraction.detectionScore);
           const registeredEmployees = await db
             .select()
             .from(employees)
@@ -168,6 +212,7 @@ export async function POST(request: NextRequest) {
         console.error("[face-login] Local embedding matching failed:", err);
       }
     }
+
 
     // 4. Verification failed response
     if (!matchedEmployee) {

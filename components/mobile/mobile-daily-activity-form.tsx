@@ -814,6 +814,36 @@ export function MobileDailyActivityForm({
     })
   }
 
+  function toggleGroupSelection(libraryIds: string[]) {
+    if (libraryIds.length === 0) return
+    setSelectedLibraryIds((current) => {
+      const allSelected = libraryIds.every((id) => current.includes(id))
+      let nextIds: string[]
+      if (allSelected) {
+        nextIds = current.filter((id) => !libraryIds.includes(id))
+      } else {
+        const toAdd = libraryIds.filter((id) => !current.includes(id))
+        nextIds = [...current, ...toAdd]
+      }
+
+      setSelfInputEntries((previous) => {
+        const next = { ...previous }
+        if (allSelected) {
+          libraryIds.forEach((id) => delete next[id])
+        } else {
+          libraryIds.forEach((id, idx) => {
+            if (!next[id]) {
+              next[id] = buildDefaultSelfInputEntry(Object.keys(next).length + idx, defaultStartTime, defaultEndTime)
+            }
+          })
+        }
+        return next
+      })
+
+      return nextIds
+    })
+  }
+
   const routeSessionItems: RouteSessionSyncItem[] =
     checklistContext?.groups.flatMap((group) =>
       group.items.map((item) => {
@@ -1285,6 +1315,7 @@ export function MobileDailyActivityForm({
                   availableLibraryMap={availableLibraryMap}
                   selectedLibraryIds={selectedLibraryIds}
                   toggleLibrarySelection={toggleLibrarySelection}
+                  toggleGroupSelection={toggleGroupSelection}
                   librarySearch={librarySearch}
                 />
               ) : filteredLibraries.length > 0 ? (

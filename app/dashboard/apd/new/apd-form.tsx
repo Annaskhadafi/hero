@@ -16,14 +16,25 @@ import { SignaturePad } from "@/components/signature-pad";
 import type { ApdRequestCategory } from "@/lib/apd-status";
 
 const APD_ITEMS = [
-  "Sepatu Safety",
-  "Helm Safety",
-  "Kacamata",
-  "Sarung Tangan",
-  "Earplug",
-  "Baju Reflector",
-  "Celana Jeans",
-  "APD Khusus Ketinggian",
+  "Safety Glasses",
+  "Masker",
+  "Ear Plug",
+  "Sarung Tangan Ansel",
+  "Safety Shoes",
+  "Safety Boot Petrova",
+  "Helmet Kuning",
+  "Helmet Putih",
+  "Padlock Merah",
+  "Padlock Kuning",
+  "Sisor",
+  "Tali Kacamata",
+  "Chin Strap",
+  "Dalaman Helm",
+  "Kaos Tangan Dotting",
+  "Safety Goggles",
+  "Apron",
+  "Face Shield Helmet",
+  "Sunbrim Helmet",
 ];
 
 type ApdItemInput = {

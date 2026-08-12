@@ -19,7 +19,9 @@ import {
   Trophy,
   Route,
   HardHat,
-  BookOpen
+  BookOpen,
+  TrendingUp,
+  Package,
 } from "lucide-react";
 import {
   IconBook,
@@ -145,6 +147,20 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "chitralearning_lms_workspace",
       icon: BookOpen,
       bg: "bg-[#0ea5b0]/10 text-[#003461]",
+    },
+    {
+      title: "CS Forecast",
+      href: "/mobile/central-service/forecast",
+      resource: "cs-forecast",
+      icon: TrendingUp,
+      bg: "bg-emerald-500/10 text-emerald-600",
+    },
+    {
+      title: "CS Assets",
+      href: "/mobile/central-service/assets",
+      resource: "central-service-assets",
+      icon: Package,
+      bg: "bg-indigo-500/10 text-indigo-600",
     },
     {
       title: "Pengaduan HR",

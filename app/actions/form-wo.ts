@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { db } from "@/db"
-import { repairFormWo } from "@/db/schema/form-wo"
+import { repairFormWo, repairWipPo } from "@/db/schema/form-wo"
+import {
+  sendFormWoApprovalRequestEmail,
+  sendFormWoStatusApprovedEmail,
+  sendFormWoStatusRejectedEmail,
+} from "@/lib/form-wo-email"
 import type { WipRepairRecord } from "@/lib/types/wip-repair"
 
 const FORM_WO_PATH = "/dashboard/repair-retread/form-wo"
@@ -60,13 +65,27 @@ async function ensureFormWoTable() {
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_wip_po" (
+        "id_wo" varchar(100) PRIMARY KEY NOT NULL,
+        "no_po" varchar(255) NOT NULL,
+        "po_date" varchar(50),
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
     _tableEnsured = true
     // Ensure new columns exist (idempotent ALTER)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "jenis_pengajuan" varchar(50) DEFAULT 'repair' NOT NULL`)
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "deskripsi_pekerjaan" text`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "hari" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "items" text`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`)
+    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal_po" varchar(50)`)
+    await db.execute(sql`ALTER TABLE "repair_wip_po" ADD COLUMN IF NOT EXISTS "po_date" varchar(50)`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    // Ignore race-condition duplicate DDL — table was created by a concurrent request
     if (msg.includes("already exists") || msg.includes("duplicate key")) {
       _tableEnsured = true
       return
@@ -74,7 +93,6 @@ async function ensureFormWoTable() {
     throw error
   }
 }
-
 
 async function generateNoPengajuan(): Promise<string> {
   const now = new Date()
@@ -96,7 +114,7 @@ async function generateNoPengajuan(): Promise<string> {
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const formWoCreateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "non_repair"]).default("repair"),
+  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional().default("repair"),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -116,10 +134,16 @@ const formWoCreateSchema = z.object({
   pemohon: z.string().optional(),
   catatanPengajuan: z.string().optional(),
   createdBy: z.string().optional(),
+  hari: z.string().optional(),
+  tanggal: z.string().optional(),
+  totalAmount: z.string().optional(),
+  items: z.string().optional(),
+  noPo: z.string().optional(),
+  tanggalPo: z.string().optional(),
 })
 
 const formWoUpdateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "non_repair"]).optional(),
+  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional(),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -140,9 +164,34 @@ const formWoUpdateSchema = z.object({
   catatanPengajuan: z.string().optional(),
   statusPengajuan: z.enum(["pending", "approved", "rejected", "diproses"]).optional(),
   noWoTerbit: z.string().optional(),
+  hari: z.string().optional(),
+  tanggal: z.string().optional(),
+  totalAmount: z.string().optional(),
+  items: z.string().optional(),
+  noPo: z.string().optional(),
+  tanggalPo: z.string().optional(),
 })
 
 // ─── Actions ────────────────────────────────────────────────────────────────
+
+export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
+  try {
+    await ensureFormWoTable()
+    const cleanId = idWo.trim()
+    const cleanPo = noPo.trim()
+    const cleanPoDate = poDate !== undefined ? poDate.trim() : ""
+    await db.execute(sql`
+      INSERT INTO "repair_wip_po" ("id_wo", "no_po", "po_date", "updated_at")
+      VALUES (${cleanId}, ${cleanPo}, ${cleanPoDate}, NOW())
+      ON CONFLICT ("id_wo") DO UPDATE SET "no_po" = ${cleanPo}, "po_date" = ${cleanPoDate}, "updated_at" = NOW()
+    `)
+    revalidatePath(FORM_WO_PATH)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to save WIP PO:", error)
+    return { success: false, error: "Gagal menyimpan Nomor PO & Tanggal PO" }
+  }
+}
 
 export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
   try {
@@ -168,7 +217,33 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
     }
 
     // Filter hanya yang "waiting wo"
-    return payload.data.filter((item) => isWaitingWorkOrder(item.wo))
+    let waitingList = payload.data.filter((item) => isWaitingWorkOrder(item.wo))
+
+    // Merge saved PO numbers & PO dates from database repair_wip_po
+    try {
+      await ensureFormWoTable()
+      const savedPoList = await db.select().from(repairWipPo)
+      const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
+      waitingList = waitingList.map((item) => {
+        const saved = poMap.get(item.id_wo)
+        if (saved) {
+          return {
+            ...item,
+            po: saved.noPo ?? "",
+            po_date: saved.poDate ?? "",
+          }
+        }
+        return {
+          ...item,
+          po: item.po ?? "",
+          po_date: item.po_date ?? item.inspect_date ?? "",
+        }
+      })
+    } catch (e) {
+      console.error("Failed to merge saved WIP PO:", e)
+    }
+
+    return waitingList
   } catch (error) {
     console.error("Failed to fetch Waiting WO data", error)
     return []
@@ -220,6 +295,28 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       updatedAt: new Date(),
     })
 
+    // Trigger Email Notifikasi Approval secara Asinkron
+    void (async () => {
+      try {
+        await sendFormWoApprovalRequestEmail({
+          approverEmail: process.env.WO_APPROVER_EMAIL || "approver@chitraparatama.com",
+          approverName: "Foreman / PJO Site",
+          pemohon: parsed.pemohon || "Karyawan Site",
+          noPengajuan,
+          customer: parsed.customer,
+          site: parsed.site,
+          jobType: parsed.jobType,
+          tireSn: parsed.tireSn,
+          brand: parsed.brand,
+          size: parsed.size,
+          totalAmount: parsed.totalAmount,
+          catatanPengajuan: parsed.catatanPengajuan,
+        })
+      } catch (e) {
+        console.error("Form WO Approval Email notification error:", e)
+      }
+    })()
+
     revalidatePath(FORM_WO_PATH)
     return { success: true, noPengajuan }
   } catch (error) {
@@ -257,7 +354,43 @@ export async function updateFormWoStatus(id: number, status: "pending" | "approv
       values.noWoTerbit = noWoTerbit
       values.tanggalWoTerbit = new Date()
     }
+    
+    // Fetch record details before update for email context
+    const existing = await db.select().from(repairFormWo).where(eq(repairFormWo.id, id))
+    const record = existing[0]
+
     await db.update(repairFormWo).set(values).where(eq(repairFormWo.id, id))
+
+    // Trigger Status Update Email
+    if (record) {
+      void (async () => {
+        try {
+          const requesterEmail = record.createdBy || "requester@chitraparatama.com"
+          if (status === "approved" || status === "diproses") {
+            await sendFormWoStatusApprovedEmail({
+              requesterEmail,
+              pemohon: record.pemohon || "Pemohon",
+              noPengajuan: record.noPengajuan || "-",
+              noWoTerbit: noWoTerbit || record.noWoTerbit || "-",
+              customer: record.customer || "-",
+              site: record.site || "-",
+              jobType: record.jobType || "-",
+              totalAmount: record.totalAmount || "-",
+            })
+          } else if (status === "rejected") {
+            await sendFormWoStatusRejectedEmail({
+              requesterEmail,
+              pemohon: record.pemohon || "Pemohon",
+              noPengajuan: record.noPengajuan || "-",
+              catatanPengajuan: record.catatanPengajuan || "Pengajuan tidak memenuhi syarat.",
+            })
+          }
+        } catch (e) {
+          console.error("Form WO Status Email notification error:", e)
+        }
+      })()
+    }
+
     revalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {
