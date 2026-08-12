@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     formData.append('gpsLng', payload.gpsLng)
     formData.append('gpsValid', String(payload.gpsValid))
     formData.append('photoUrlsJson', JSON.stringify(payload.photoUrls))
+    formData.append('teamMemberEmployeeIdsJson', JSON.stringify(payload.teamMemberEmployeeIds || []))
 
     const queuedPhotos = payload.photos ?? []
     const photos = queuedPhotos.length > 0 ? queuedPhotos : payload.photo ? [payload.photo] : []

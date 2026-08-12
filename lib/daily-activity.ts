@@ -2407,6 +2407,8 @@ export async function getDailyActivityEmployeeData(
           photoCount: activities.photoCount,
           remarks: activities.remarks,
           assignmentId: activities.assignmentId,
+          isTeamActivity: activities.isTeamActivity,
+          teamNameList: activities.teamNameList,
           libraryName: activityLibraries.activityName,
         })
         .from(activities)
