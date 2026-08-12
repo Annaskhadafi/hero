@@ -113,6 +113,7 @@ export interface SapInvoiceRow {
   poNo: string;
   c: string;
   cancelled: string;
+  inco2: string;
 }
 
 export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow[]> {
@@ -134,7 +135,8 @@ export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow
         COALESCE(salesman, '') AS "salesman",
         COALESCE(po_no, '') AS "poNo",
         COALESCE(c, '') AS "c",
-        COALESCE(cancelled, '') AS "cancelled"
+        COALESCE(cancelled, '') AS "cancelled",
+        COALESCE(inco2, '') AS "inco2"
       FROM sales_revenue_sap
       WHERE billing_date IS NOT NULL
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1

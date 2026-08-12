@@ -597,6 +597,7 @@ export function DailyClientPage({
       'Billing No',
       'Customer',
       'Customer Name',
+      'Inco2',
       'Material No',
       'Material Desc',
       'Qty',
@@ -615,6 +616,7 @@ export function DailyClientPage({
       r.billingNo,
       r.customer,
       r.customerName,
+      r.inco2,
       r.materialNo,
       r.materialDesc,
       r.qty,
@@ -1326,6 +1328,7 @@ export function DailyClientPage({
                     <TableHead className="text-xs font-bold text-white">Billing No</TableHead>
                     <TableHead className="text-xs font-bold text-white">Customer</TableHead>
                     <TableHead className="text-xs font-bold text-white">Customer Name</TableHead>
+                    <TableHead className="text-xs font-bold text-white">Inco2</TableHead>
                     <TableHead className="text-xs font-bold text-white">Material No</TableHead>
                     <TableHead className="text-xs font-bold text-white">Material Desc</TableHead>
                     <TableHead className="text-right text-xs font-bold text-white">Qty</TableHead>
@@ -1360,6 +1363,7 @@ export function DailyClientPage({
                         <TableCell className="text-xs font-medium">{row.billingNo}</TableCell>
                         <TableCell className="text-xs">{row.customer}</TableCell>
                         <TableCell className="text-xs font-medium">{row.customerName}</TableCell>
+                        <TableCell className="text-xs">{row.inco2}</TableCell>
                         <TableCell className="text-xs">{row.materialNo}</TableCell>
                         <TableCell
                           className="max-w-[200px] truncate text-xs"
