@@ -86,6 +86,7 @@ export type ActivitySyncPayload = {
   photo: QueuedFilePayload | null
   photos?: QueuedFilePayload[]
   photoUrls?: string[]
+  teamMemberEmployeeIds?: number[]
 }
 
 export type AttendanceSyncPayload = {
@@ -232,6 +233,7 @@ export const activitySyncPayloadSchema = z.object({
   photo: queuedImageFileSchema.nullable(),
   photos: z.array(queuedImageFileSchema).optional().default([]),
   photoUrls: z.array(z.string().url().max(2000)).optional().default([]),
+  teamMemberEmployeeIds: z.array(z.number().int().positive()).optional().default([]),
 })
 
 export function parseOfflineSyncPayload<T>(schema: z.ZodType<T>, payload: unknown): T {

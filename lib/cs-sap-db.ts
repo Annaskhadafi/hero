@@ -142,7 +142,13 @@ export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow
       ORDER BY billing_date DESC, billing_no
     `, [monthYearToKey(monthYear)]);
 
-    return result.rows as SapInvoiceRow[];
+    return result.rows.map(r => {
+      let bNo = r.billingNo || '';
+      if (bNo.endsWith('.0')) {
+        bNo = bNo.slice(0, -2);
+      }
+      return { ...r, billingNo: bNo };
+    }) as SapInvoiceRow[];
   } catch (error) {
     console.error("[SAP DB] Failed to fetch invoices:", error);
     return [];

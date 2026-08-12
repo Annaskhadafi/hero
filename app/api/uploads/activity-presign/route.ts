@@ -14,8 +14,13 @@ export async function POST(request: Request) {
 
   try {
     const file = (await request.formData()).get('file')
-    if (!(file instanceof File) || file.size === 0 || !file.type.startsWith('image/')) {
-      return Response.json({ error: 'Evidence harus berupa gambar.' }, { status: 400 })
+    if (!(file instanceof File) || file.size === 0) {
+      return Response.json({ error: 'File tidak valid.' }, { status: 400 })
+    }
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isImage && !isPdf) {
+      return Response.json({ error: 'File harus berupa gambar atau PDF.' }, { status: 400 })
     }
     if (file.size > MAX_EVIDENCE_SIZE) {
       return Response.json({ error: 'Ukuran evidence maksimal 10 MB.' }, { status: 413 })
