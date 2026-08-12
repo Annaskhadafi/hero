@@ -2999,6 +2999,74 @@ export async function saveSchedulingConfigAction(
   return { ok: true }
 }
 
+const applyMealsConfigToAllSitesSchema = z.object({
+  sourceSiteId: z.number().int().positive(),
+  mealsType: z.string().trim().max(60),
+  allowanceVariables: z.array(z.unknown()).default([]),
+})
+
+export async function applyMealsConfigToAllSitesAction(
+  input: z.input<typeof applyMealsConfigToAllSitesSchema>
+) {
+  const payload = applyMealsConfigToAllSitesSchema.parse(input)
+  await assertSchedulingSiteScope(payload.sourceSiteId, 'edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+
+  const [sourceSite] = await db
+    .select({ id: sites.id, name: sites.name })
+    .from(sites)
+    .where(eq(sites.id, payload.sourceSiteId))
+    .limit(1)
+  if (!sourceSite) return { ok: false, error: 'Site not found' }
+
+  const allSites = await db
+    .select({ id: sites.id, name: sites.name })
+    .from(sites)
+    .orderBy(asc(sites.name))
+  const targetSites = allSites.filter((site) => site.id !== payload.sourceSiteId)
+  if (targetSites.length === 0) {
+    return { ok: false, error: 'Tidak ada site lain untuk diterapkan.' }
+  }
+
+  await db.transaction(async (tx) => {
+    for (const site of targetSites) {
+      await tx
+        .insert(timesheetSchedulingConfigs)
+        .values({
+          siteId: site.id,
+          mealsType: payload.mealsType,
+          allowanceVariables: payload.allowanceVariables,
+          savedByUserId,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [timesheetSchedulingConfigs.siteId],
+          set: {
+            mealsType: payload.mealsType,
+            allowanceVariables: payload.allowanceVariables,
+            savedByUserId,
+            updatedAt: now,
+          },
+        })
+    }
+  })
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.meals_config_applied_all',
+    entityType: 'timesheet_scheduling_config',
+    entityLabel: `${sourceSite.name} → ${targetSites.length} site`,
+    description: `Applied MSA/Meals config from ${sourceSite.name} to ${targetSites.length} sites.`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/scheduling-timesheet/setup')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
+  return { ok: true, count: targetSites.length }
+}
+
 const saveActivityDraftSchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   activityCode: z.string().trim().max(4).optional().default(''),
