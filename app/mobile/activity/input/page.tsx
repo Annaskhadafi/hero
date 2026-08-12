@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, Clock3, UserRound } from "lucide-react";
 
 import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
+import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
+import { and, eq, isNull, ne, asc } from "drizzle-orm";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -24,6 +27,31 @@ export default async function MobileActivityInputPage() {
       </div>
     );
   }
+
+  // Team members must belong to the same site AND section as the account so
+  // "tambah anggota" (team logging) only offers colleagues in the same scope.
+  const teamMembers = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      role: employees.role,
+      department: employees.department,
+      siteId: employees.siteId,
+      sectionId: employees.sectionId,
+      section: employees.section,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isActive, true),
+        eq(employees.siteId, data.employee.siteId),
+        data.employee.sectionId != null
+          ? eq(employees.sectionId, data.employee.sectionId)
+          : isNull(employees.sectionId),
+        ne(employees.id, data.employee.id)
+      )
+    )
+    .orderBy(asc(employees.name));
 
   const activeSpl = data.routeChecklist?.activeSpl ?? data.standaloneOvertimeChecklist;
   const now = new Date();
@@ -119,6 +147,7 @@ export default async function MobileActivityInputPage() {
         availableRouteFolders={data.availableRouteFolders}
         standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
         site={data.site}
+        teamMembers={teamMembers}
       />
     </div>
   );

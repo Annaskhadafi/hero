@@ -9,6 +9,8 @@ import { MobileBroadcastPopup } from "@/components/mobile/mobile-broadcast-popup
 import { getEligibleBroadcastsForMobile } from "@/app/actions/broadcast";
 import { getSidebarDataForUser } from "@/lib/hero-admin";
 import { buildMobileAllowedLinks } from "@/lib/mobile-access";
+import { FaceRegistrationReminderPopup } from "@/components/face-registration-reminder-popup";
+import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 
 import "@/app/dashboard/theme.css";
 
@@ -62,6 +64,20 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     console.error("[mobile/layout] getSidebarDataForUser failed:", err);
   }
 
+  let isFaceRegistered = true;
+  let employeeId = null;
+  let siteId = null;
+  if (session.user.email) {
+    try {
+      const empData = await getEmployeeDisplayDataByEmail(session.user.email);
+      isFaceRegistered = !!(empData?.faceRegisteredAt || empData?.faceRarayRegisteredAt);
+      employeeId = empData?.id;
+      siteId = empData?.siteId;
+    } catch (err) {
+      console.error("[mobile/layout] getEmployeeDisplayDataByEmail failed:", err);
+    }
+  }
+
   return (
     <MobileAppShell
       userName={session.user.name || session.user.email || "HERO User"}
@@ -70,6 +86,11 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     >
       {children}
       <MobileBroadcastPopup initialBroadcasts={eligibleBroadcasts} />
+      <FaceRegistrationReminderPopup 
+        isRegistered={isFaceRegistered} 
+        employeeId={employeeId}
+        siteId={siteId}
+      />
     </MobileAppShell>
   );
 }

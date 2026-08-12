@@ -42,6 +42,8 @@ type ActivityLogItem = {
   libraryName?: string | null
   durationLabel: string
   pointsNet: number
+  isTeamActivity?: boolean | null
+  teamNameList?: string | null
 }
 
 type MobileActivityLogProps = {
@@ -163,6 +165,11 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef6fb] px-3 py-1.5">
                         <Camera className="size-3.5" />
                         {activity.photoCount} foto
+                      </span>
+                    ) : null}
+                    {activity.isTeamActivity ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1.5">
+                        Tim
                       </span>
                     ) : null}
                   </div>
@@ -316,6 +323,24 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
                     </DetailField>
                   </div>
                 </section>
+
+                {selected.isTeamActivity ? (
+                  <section className="rounded-[1.25rem] bg-white p-4 ring-1 ring-[#dbe8f0]">
+                    <h3 className="mb-3 text-xs font-black tracking-[0.12em] text-[#486275] uppercase">
+                      Aktivitas Bersama Tim
+                    </h3>
+                    <div className="space-y-3">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 text-[11px] font-black uppercase">
+                        Team Activity
+                      </span>
+                      <DetailField label="Anggota Tim" className="col-span-2">
+                        <p className="text-sm font-semibold text-[#082033] leading-relaxed">
+                          {selected.teamNameList || '-'}
+                        </p>
+                      </DetailField>
+                    </div>
+                  </section>
+                ) : null}
 
                 <section className="rounded-[1.25rem] bg-[#fff8e8] p-4 ring-1 ring-[#f4e4bd]">
                   <h3 className="mb-3 text-xs font-black tracking-[0.12em] text-[#8a5a00] uppercase">

@@ -13,6 +13,7 @@ import {
   getSidebarDataForUser,
 } from '@/lib/hero-admin'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
+import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
 
 import '@/app/dashboard/theme.css'
 
@@ -77,6 +78,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
         <div className="flex flex-1 flex-col">{children}</div>
       </SidebarInset>
+      <FaceRegistrationReminderPopup
+        isRegistered={!!(employeeDisplay?.faceRegisteredAt || employeeDisplay?.faceRarayRegisteredAt)}
+        employeeId={employeeDisplay?.id}
+        siteId={employeeDisplay?.siteId}
+      />
     </SidebarProvider>
   )
 }

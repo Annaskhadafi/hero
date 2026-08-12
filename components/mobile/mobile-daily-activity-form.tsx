@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Camera,
   Check,
+  ChevronDown,
   ImagePlus,
   ListFilter,
   Navigation,
@@ -23,6 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -194,6 +197,15 @@ type MobileDailyActivityFormProps = {
     geoLongitude?: string | null
     geoRadiusMeters?: number | null
   } | null
+  teamMembers?: Array<{
+    id: number
+    name: string
+    role: string
+    department: string
+    siteId?: number | null
+    sectionId?: number | null
+    section?: string | null
+  }>
 }
 
 type GeoState = {
@@ -376,6 +388,7 @@ export function MobileDailyActivityForm({
   routeChecklist,
   standaloneOvertimeChecklist,
   site,
+  teamMembers = [],
 }: MobileDailyActivityFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -408,6 +421,17 @@ export function MobileDailyActivityForm({
   }>({ kind: 'idle', message: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({})
+
+  const [isTeamLog, setIsTeamLog] = useState(false)
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([])
+  const [memberSearch, setMemberSearch] = useState('')
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false)
+
+  const filteredTeamMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase()
+    if (!q) return teamMembers
+    return teamMembers.filter((m) => m.name.toLowerCase().includes(q))
+  }, [teamMembers, memberSearch])
 
   const availableLibraryMap = useMemo(
     () => new Map(availableLibrary.map((item) => [`${item.id}`, item])),
@@ -698,6 +722,10 @@ export function MobileDailyActivityForm({
         ) as Record<number, RouteItemState>
       )
     }
+    if (Array.isArray(draft.teamMemberEmployeeIds) && draft.teamMemberEmployeeIds.length > 0) {
+      setSelectedMemberIds(draft.teamMemberEmployeeIds)
+      setIsTeamLog(true)
+    }
   }, [checklistContext, defaultEndTime, defaultStartTime, queuedDraftKey])
 
   useEffect(() => {
@@ -933,6 +961,7 @@ export function MobileDailyActivityForm({
     boundaryMessage: boundary.message,
     photo: null,
     photos: [],
+    teamMemberEmployeeIds: selectedMemberIds,
   }
 
   useEffect(() => {
@@ -1418,6 +1447,136 @@ export function MobileDailyActivityForm({
           >
             {submitState.message}
           </div>
+        ) : null}
+
+        {teamMembers && teamMembers.length > 0 ? (
+          <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Team Logging
+                </span>
+                <p className="text-sm font-semibold text-gray-900">Input Sekaligus untuk Tim</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTeamLog(!isTeamLog)
+                  if (isTeamLog) {
+                    setSelectedMemberIds([])
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isTeamLog ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    isTeamLog ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {isTeamLog && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <Label className="block space-y-2">
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    Pilih Anggota Tim
+                  </span>
+                  <Popover open={memberPickerOpen} onOpenChange={setMemberPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex h-12 w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 text-left text-sm font-semibold text-[#082033]"
+                      >
+                        <span className="truncate">
+                          {selectedMemberIds.length > 0
+                            ? `${selectedMemberIds.length} anggota tim dipilih`
+                            : 'Pilih anggota tim...'}
+                        </span>
+                        <ChevronDown className="size-4 text-gray-500" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[calc(100vw-2.5rem)] max-w-sm rounded-[1.25rem] border border-gray-100 bg-white p-3 shadow-lg" align="start">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2">
+                          <Search className="size-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari nama anggota..."
+                            value={memberSearch}
+                            onChange={(e) => setMemberSearch(e.target.value)}
+                            className="w-full bg-transparent text-sm font-semibold text-gray-900 outline-none placeholder:text-gray-400"
+                          />
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-1">
+                          {filteredTeamMembers.length > 0 ? (
+                            filteredTeamMembers.map((member) => {
+                              const isChecked = selectedMemberIds.includes(member.id)
+                              return (
+                                <div
+                                  key={member.id}
+                                  onClick={() => {
+                                    if (isChecked) {
+                                      setSelectedMemberIds(selectedMemberIds.filter((id) => id !== member.id))
+                                    } else {
+                                      setSelectedMemberIds([...selectedMemberIds, member.id])
+                                    }
+                                  }}
+                                  className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors"
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-semibold text-gray-900">{member.name}</span>
+                                    <span className="text-[10px] text-gray-500">
+                                      {member.role}
+                                      {member.section ? ` • ${member.section}` : ''}
+                                      {site?.name ? ` • ${site.name}` : ''}
+                                    </span>
+                                  </div>
+                                  <Checkbox checked={isChecked} onCheckedChange={() => {}} className="pointer-events-none rounded-md" />
+                                </div>
+                              )
+                            })
+                          ) : (
+                            <p className="text-center py-4 text-xs font-medium text-gray-500">
+                              Tidak ada anggota tim yang cocok
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </Label>
+
+                {selectedMemberIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {selectedMemberIds.map((id) => {
+                      const member = teamMembers.find((m) => m.id === id)
+                      if (!member) return null
+                      return (
+                        <Badge
+                          key={id}
+                          variant="secondary"
+                          className="flex items-center gap-1 bg-blue-50 hover:bg-blue-50 border border-blue-100 text-blue-800 rounded-full px-2.5 py-1 text-xs font-semibold"
+                        >
+                          {member.name}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedMemberIds(selectedMemberIds.filter((mId) => mId !== id))}
+                            className="rounded-full hover:bg-blue-100 p-0.5"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         ) : null}
 
         <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">

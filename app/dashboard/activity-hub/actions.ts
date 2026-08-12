@@ -282,6 +282,7 @@ const submitActivitySchema = z.object({
   gpsValid: formBoolean(false),
   photoUrl: z.string().trim().max(1000).optional().default(''),
   photoUrlsJson: z.string().trim().max(200000).optional().default('[]'),
+  teamMemberEmployeeIdsJson: z.string().trim().max(10000).optional().default('[]'),
 })
 
 const updateConfigSchema = z.object({
@@ -2329,29 +2330,60 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Activity hanya bisa disubmit untuk akun Anda sendiri.')
   }
 
+  const teamMemberIds: number[] = JSON.parse(payload.teamMemberEmployeeIdsJson || '[]')
+  const targetMemberIds = teamMemberIds.length > 0 ? [employeeId, ...teamMemberIds] : [employeeId]
+  const allTargetEmployees = await db
+    .select()
+    .from(employees)
+    .where(inArray(employees.id, targetMemberIds))
+
+  if (allTargetEmployees.length !== targetMemberIds.length) {
+    throw new Error('Beberapa anggota tim tidak ditemukan.')
+  }
+
+  // Verify that team members belong to the same site and section as the submitter
+  for (const emp of allTargetEmployees) {
+    if (emp.id !== employeeId) {
+      if (emp.siteId !== employee.siteId || emp.sectionId !== employee.sectionId) {
+        throw new Error(`Anggota tim ${emp.name} tidak berada di site dan section yang sama.`)
+      }
+    }
+  }
+
+  // Sort them so that submitter (employeeId) is always first
+  allTargetEmployees.sort((a, b) => {
+    if (a.id === employeeId) return -1
+    if (b.id === employeeId) return 1
+    return 0
+  })
+
+  const teamNameList = allTargetEmployees.map((emp) => emp.name).join(', ')
+
   const startTime = parseDateTime(payload.startTime, 'Waktu mulai')
   const endTime = parseDateTime(payload.endTime, 'Waktu selesai')
   if (endTime <= startTime) {
     throw new Error('Waktu selesai harus setelah waktu mulai.')
   }
 
-  const [existingOverlap] = await db
-    .select({
-      id: activities.id,
-      title: activities.title,
-    })
-    .from(activities)
-    .where(
-      and(
-        eq(activities.employeeId, employeeId),
-        sql`${activities.startTime} < ${endTime} and ${activities.endTime} > ${startTime}`
+  for (const emp of allTargetEmployees) {
+    const [existingOverlap] = await db
+      .select({
+        id: activities.id,
+        title: activities.title,
+      })
+      .from(activities)
+      .where(
+        and(
+          eq(activities.employeeId, emp.id),
+          sql`${activities.startTime} < ${endTime} and ${activities.endTime} > ${startTime}`
+        )
       )
-    )
-    .orderBy(desc(activities.startTime))
-    .limit(1)
+      .orderBy(desc(activities.startTime))
+      .limit(1)
 
-  if (existingOverlap) {
-    throw new Error(`Waktu bertabrakan dengan aktivitas ${existingOverlap.title}.`)
+    if (existingOverlap) {
+      throw new Error(`Waktu bertabrakan dengan aktivitas ${existingOverlap.title} untuk ${emp.name}.`)
+    }
   }
 
   if (payload.assignmentId) {
@@ -2614,141 +2646,273 @@ export async function submitDailyActivityAction(formData: FormData) {
       : payload.sourceMode === 'assigned'
         ? 'Assigned'
         : 'Custom')
-  const approvalRoute = needsApproval
-    ? await resolveApprovalRouteForActivity({
-        employeeId,
-        activityType,
-        priority: selectedAssignment?.priority ?? 'normal',
-        transactionType: 'activity',
-        overtimeMinutes: 0,
-        at: endTime,
-      })
-    : null
-  const firstApprovalStep = approvalRoute?.steps[0]?.stepOrder ?? null
-  const firstApprovers =
-    firstApprovalStep == null
-      ? []
-      : approvalRoute!.steps.filter(
-          (step) => step.stepOrder === firstApprovalStep && step.approverEmployeeId != null
-        )
-  if (needsApproval && firstApprovers.length === 0) {
-    throw new Error('Approval route Daily Activity belum memiliki approver aktif.')
+  const memberRoutes = await Promise.all(
+    allTargetEmployees.map(async (emp) => {
+      const route = needsApproval
+        ? await resolveApprovalRouteForActivity({
+            employeeId: emp.id,
+            activityType,
+            priority: selectedAssignment?.priority ?? 'normal',
+            transactionType: 'activity',
+            overtimeMinutes: 0,
+            at: endTime,
+          })
+        : null
+      return { employeeId: emp.id, route }
+    })
+  )
+
+  for (const emp of allTargetEmployees) {
+    const memberRouteObj = memberRoutes.find((r) => r.employeeId === emp.id)
+    const route = memberRouteObj?.route ?? null
+    const firstApprovalStep = route?.steps[0]?.stepOrder ?? null
+    const firstApprovers =
+      firstApprovalStep == null
+        ? []
+        : route!.steps.filter(
+            (step) => step.stepOrder === firstApprovalStep && step.approverEmployeeId != null
+          )
+    if (needsApproval && firstApprovers.length === 0) {
+      throw new Error(`Approval route Daily Activity belum memiliki approver aktif untuk ${emp.name}.`)
+    }
   }
+
+  const memberActivityInfos: Array<{
+    memberEmployee: typeof employee
+    createdActivityId: number
+    activityTitle: string
+    activityStatus: string
+    needsApproval: boolean
+    approvalRoute: any
+    firstApprovers: any[]
+    projectedNet: number
+    pointsAwarded: number
+  }> = []
 
   await db.transaction(async (tx) => {
     if (isSplEvidenceSubmission) {
       await tx.execute(
         sql`select pg_advisory_xact_lock(${employeeId}, ${payload.overtimeCommandLetterId!})`
       )
-      const [existingSession] = await tx
-        .select({
-          activityId: dailyActivitySessions.activityId,
-          status: dailyActivitySessions.status,
-        })
-        .from(dailyActivitySessions)
-        .where(
-          and(
-            eq(dailyActivitySessions.employeeId, employeeId),
-            eq(
-              dailyActivitySessions.overtimeCommandLetterId,
-              payload.overtimeCommandLetterId!
-            )
-          )
-        )
-        .orderBy(desc(dailyActivitySessions.updatedAt))
-        .limit(1)
-
-      if (
-        existingSession?.activityId &&
-        ['submitted', 'approved'].includes(existingSession.status.toLowerCase())
-      ) {
-        const existingPhotos = await tx
-          .select({ fileUrl: activityPhotos.fileUrl })
-          .from(activityPhotos)
-          .where(eq(activityPhotos.activityId, existingSession.activityId))
-        const existingUrls = new Set(existingPhotos.map((photo) => photo.fileUrl))
-        const newPhotoUrls = Array.from(new Set(uploadedPhotoUrls)).filter(
-          (fileUrl) => !existingUrls.has(fileUrl)
-        )
-
-        if (newPhotoUrls.length > 0) {
-          await tx.insert(activityPhotos).values(
-            newPhotoUrls.map((fileUrl, index) => ({
-              activityId: existingSession.activityId!,
-              fileUrl,
-              caption: `Upload field documentation ${existingPhotos.length + index + 1}`,
-              uploadedAt: submissionTime,
-            }))
-          )
-          await tx
-            .update(activities)
-            .set({ photoCount: existingPhotos.length + newPhotoUrls.length })
-            .where(eq(activities.id, existingSession.activityId))
-        }
-
-        createdActivityId = existingSession.activityId
-        reusedExistingActivity = true
-        return
-      }
     }
 
-    const [createdActivity] = await tx
-      .insert(activities)
-      .values({
-        siteId: employee.siteId,
-        employeeId,
-        activityCode,
-        activityType,
-        title: activityTitle,
-        unitNumber: payload.equipmentNo || '-',
-        libraryActivityId: effectiveLibraryActivityId,
-        assignmentId: payload.assignmentId ?? null,
-        sourceMode: payload.sourceMode,
-        customActivityName: payload.customActivityName,
-        customActivityDescription: payload.customActivityDescription,
-        startTime,
-        endTime,
-        status: activityStatus,
-        priority:
-          selectedAssignment?.priority ?? (payload.sourceMode === 'assigned' ? 'High' : 'Normal'),
-        submissionTime,
-        submissionCategory,
-        equipmentNo: payload.equipmentNo,
-        materialUsed: payload.materialUsed,
-        gpsLat: payload.gpsLat,
-        gpsLng: payload.gpsLng,
-        gpsValid: payload.gpsValid,
-        photoCount: uploadedPhotoUrls.length,
-        remarks: payload.notes,
+    for (const memberEmployee of allTargetEmployees) {
+      const empId = memberEmployee.id
+      const memberRouteObj = memberRoutes.find((r) => r.employeeId === empId)
+      const approvalRoute = memberRouteObj?.route ?? null
+      const firstApprovalStep = approvalRoute?.steps[0]?.stepOrder ?? null
+      const firstApprovers =
+        firstApprovalStep == null
+          ? []
+          : approvalRoute!.steps.filter(
+              (step) => step.stepOrder === firstApprovalStep && step.approverEmployeeId != null
+            )
+
+      if (isSplEvidenceSubmission) {
+        const [existingSession] = await tx
+          .select({
+            activityId: dailyActivitySessions.activityId,
+            status: dailyActivitySessions.status,
+          })
+          .from(dailyActivitySessions)
+          .where(
+            and(
+              eq(dailyActivitySessions.employeeId, empId),
+              eq(
+                dailyActivitySessions.overtimeCommandLetterId,
+                payload.overtimeCommandLetterId!
+              )
+            )
+          )
+          .orderBy(desc(dailyActivitySessions.updatedAt))
+          .limit(1)
+
+        if (
+          existingSession?.activityId &&
+          ['submitted', 'approved'].includes(existingSession.status.toLowerCase())
+        ) {
+          const existingPhotos = await tx
+            .select({ fileUrl: activityPhotos.fileUrl })
+            .from(activityPhotos)
+            .where(eq(activityPhotos.activityId, existingSession.activityId))
+          const existingUrls = new Set(existingPhotos.map((photo) => photo.fileUrl))
+          const newPhotoUrls = Array.from(new Set(uploadedPhotoUrls)).filter(
+            (fileUrl) => !existingUrls.has(fileUrl)
+          )
+
+          if (newPhotoUrls.length > 0) {
+            await tx.insert(activityPhotos).values(
+              newPhotoUrls.map((fileUrl, index) => ({
+                activityId: existingSession.activityId!,
+                fileUrl,
+                caption: `Upload field documentation ${existingPhotos.length + index + 1}`,
+                uploadedAt: submissionTime,
+              }))
+            )
+            await tx
+              .update(activities)
+              .set({ photoCount: existingPhotos.length + newPhotoUrls.length })
+              .where(eq(activities.id, existingSession.activityId))
+          }
+
+          if (empId === employeeId) {
+            createdActivityId = existingSession.activityId
+            reusedExistingActivity = true
+          }
+          continue
+        }
+      }
+
+      const [createdActivity] = await tx
+        .insert(activities)
+        .values({
+          siteId: memberEmployee.siteId,
+          employeeId: empId,
+          activityCode,
+          activityType,
+          title: activityTitle,
+          unitNumber: payload.equipmentNo || '-',
+          libraryActivityId: effectiveLibraryActivityId,
+          assignmentId: empId === employeeId ? (payload.assignmentId ?? null) : null,
+          sourceMode: payload.sourceMode,
+          customActivityName: payload.customActivityName,
+          customActivityDescription: payload.customActivityDescription,
+          startTime,
+          endTime,
+          status: activityStatus,
+          priority:
+            selectedAssignment?.priority ?? (payload.sourceMode === 'assigned' ? 'High' : 'Normal'),
+          submissionTime,
+          submissionCategory,
+          equipmentNo: payload.equipmentNo,
+          materialUsed: payload.materialUsed,
+          gpsLat: payload.gpsLat,
+          gpsLng: payload.gpsLng,
+          gpsValid: payload.gpsValid,
+          photoCount: uploadedPhotoUrls.length,
+          remarks: payload.notes,
+          pointsAwarded,
+          penaltyDeducted: penaltyPoints,
+          isTeamActivity: allTargetEmployees.length > 1,
+          teamNameList: allTargetEmployees.length > 1 ? teamNameList : '',
+          createdAt: startTime,
+        })
+        .returning({ id: activities.id })
+
+      if (empId === employeeId) {
+        createdActivityId = createdActivity.id
+      }
+
+      memberActivityInfos.push({
+        memberEmployee,
+        createdActivityId: createdActivity.id,
+        activityTitle,
+        activityStatus,
+        needsApproval,
+        approvalRoute,
+        firstApprovers,
+        projectedNet,
         pointsAwarded,
-        penaltyDeducted: penaltyPoints,
-        createdAt: startTime,
       })
-      .returning({ id: activities.id })
 
-    createdActivityId = createdActivity.id
+      await syncDailyRouteSessionForActivity({
+        tx,
+        activityId: createdActivity.id,
+        employee: memberEmployee,
+        payload: {
+          ...payload,
+          routeSummaryRemark: payload.routeSummaryRemark || payload.notes,
+        },
+        submissionTime,
+        startTime,
+      })
 
-    await syncDailyRouteSessionForActivity({
-      tx,
-      activityId: createdActivity.id,
-      employee,
-      payload: {
-        ...payload,
-        routeSummaryRemark: payload.routeSummaryRemark || payload.notes,
-      },
-      submissionTime,
-      startTime,
-    })
+      if (uploadedPhotoUrls.length > 0) {
+        await tx.insert(activityPhotos).values(
+          uploadedPhotoUrls.map((fileUrl, index) => ({
+            activityId: createdActivity.id,
+            fileUrl,
+            caption: `Upload field documentation ${index + 1}`,
+            uploadedAt: submissionTime,
+          }))
+        )
+      }
 
-    if (uploadedPhotoUrls.length > 0) {
-      await tx.insert(activityPhotos).values(
-        uploadedPhotoUrls.map((fileUrl, index) => ({
+      if (penaltyPoints > 0) {
+        await tx.insert(penaltyEvents).values({
+          employeeId: empId,
+          siteId: memberEmployee.siteId,
           activityId: createdActivity.id,
-          fileUrl,
-          caption: `Upload field documentation ${index + 1}`,
-          uploadedAt: submissionTime,
-        }))
-      )
+          penaltyCode:
+            submissionCategory === 'late_minor'
+              ? 'PEN-02'
+              : submissionCategory === 'late_major'
+                ? 'PEN-03'
+                : 'PEN-01',
+          penaltyType: submissionCategory,
+          referenceDate: submissionTime,
+          pointsDeducted: penaltyPoints,
+          description: `Penalty otomatis karena submission ${submissionCategory}.`,
+          isDisputed: false,
+          disputeStatus: 'none',
+          createdAt: submissionTime,
+        })
+      }
+
+      if (isSplEvidenceSubmission) {
+        // Approval SPL owns the decision for its linked Daily Activity evidence.
+      } else if (autoApprove || !needsApproval) {
+        await tx
+          .update(dailyActivitySessions)
+          .set({ status: 'approved', approvedAt: submissionTime, updatedAt: submissionTime })
+          .where(eq(dailyActivitySessions.activityId, createdActivity.id))
+        const updatedBalance = Math.max(0, memberEmployee.totalPoints + projectedNet)
+
+        await tx.insert(pointEvents).values({
+          employeeId: empId,
+          transactionType: projectedNet >= 0 ? 'reward' : 'penalty',
+          sourceType: 'activity',
+          sourceId: createdActivity.id,
+          category: 'Daily Activity',
+          label: `${activityTitle} • Auto approved`,
+          points: pointsAwarded,
+          balanceAfter: updatedBalance,
+          metadata: JSON.stringify({
+            submissionCategory,
+            modifierMultiplier,
+            morningBonus,
+            penaltyPoints,
+          }),
+          createdAt: submissionTime,
+        })
+
+        await tx
+          .update(employees)
+          .set({
+            totalPoints: updatedBalance,
+          })
+          .where(eq(employees.id, empId))
+      } else {
+        const routeSnapshot = serializeApprovalRoute(approvalRoute!)
+        await tx.insert(approvals).values(
+          firstApprovers.map((approver) => ({
+            activityId: createdActivity.id,
+            level: approver.stepOrder,
+            approverName: approver.approverName,
+            approverEmployeeId: approver.approverEmployeeId,
+            approvalMatrixId: approvalRoute!.matrixId,
+            approvalStepId: approver.approvalMatrixStepId,
+            status: 'pending',
+            submittedAt: submissionTime,
+            reviewedAt: null,
+            overtimeMinutes: 0,
+            resolutionSource: approver.resolutionSource,
+            routeSnapshot,
+            decisionNote: '',
+            createdAt: submissionTime,
+          }))
+        )
+      }
     }
 
     if (payload.assignmentId) {
@@ -2760,89 +2924,6 @@ export async function submitDailyActivityAction(formData: FormData) {
         })
         .where(eq(jobAssignments.id, payload.assignmentId))
     }
-
-    if (penaltyPoints > 0) {
-      await tx.insert(penaltyEvents).values({
-        employeeId,
-        siteId: employee.siteId,
-        activityId: createdActivity.id,
-        penaltyCode:
-          submissionCategory === 'late_minor'
-            ? 'PEN-02'
-            : submissionCategory === 'late_major'
-              ? 'PEN-03'
-              : 'PEN-01',
-        penaltyType: submissionCategory,
-        referenceDate: submissionTime,
-        pointsDeducted: penaltyPoints,
-        description: `Penalty otomatis karena submission ${submissionCategory}.`,
-        isDisputed: false,
-        disputeStatus: 'none',
-        createdAt: submissionTime,
-      })
-    }
-
-    if (isSplEvidenceSubmission) {
-      // Approval SPL owns the decision for its linked Daily Activity evidence.
-    } else if (autoApprove || !needsApproval) {
-      await tx
-        .update(dailyActivitySessions)
-        .set({ status: 'approved', approvedAt: submissionTime, updatedAt: submissionTime })
-        .where(eq(dailyActivitySessions.activityId, createdActivity.id))
-      const updatedBalance = Math.max(0, employee.totalPoints + projectedNet)
-
-      await tx.insert(pointEvents).values({
-        employeeId,
-        transactionType: projectedNet >= 0 ? 'reward' : 'penalty',
-        sourceType: 'activity',
-        sourceId: createdActivity.id,
-        category: 'Daily Activity',
-        label: `${activityTitle} • Auto approved`,
-        points: projectedNet,
-        balanceAfter: updatedBalance,
-        metadata: JSON.stringify({
-          submissionCategory,
-          modifierMultiplier,
-          morningBonus,
-          penaltyPoints,
-        }),
-        createdAt: submissionTime,
-      })
-
-      await tx
-        .update(employees)
-        .set({
-          totalPoints: updatedBalance,
-        })
-        .where(eq(employees.id, employeeId))
-    } else {
-      const routeSnapshot = serializeApprovalRoute(approvalRoute!)
-      pendingApproverName = firstApprovers[0].approverName
-      const [approverContact] = await tx
-        .select({ email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, firstApprovers[0].approverEmployeeId!))
-        .limit(1)
-      pendingApproverEmail = approverContact?.email ?? null
-      await tx.insert(approvals).values(
-        firstApprovers.map((approver) => ({
-          activityId: createdActivity.id,
-          level: approver.stepOrder,
-          approverName: approver.approverName,
-          approverEmployeeId: approver.approverEmployeeId,
-          approvalMatrixId: approvalRoute!.matrixId,
-          approvalStepId: approver.approvalMatrixStepId,
-          status: 'pending',
-          submittedAt: submissionTime,
-          reviewedAt: null,
-          overtimeMinutes: 0,
-          resolutionSource: approver.resolutionSource,
-          routeSnapshot,
-          decisionNote: '',
-          createdAt: submissionTime,
-        }))
-      )
-    }
   })
 
   if (reusedExistingActivity) {
@@ -2850,105 +2931,118 @@ export async function submitDailyActivityAction(formData: FormData) {
     return
   }
 
-  await updateStreakForEmployee(employeeId, endTime)
-  revalidateDailyActivitySurfaces()
+  for (const info of memberActivityInfos) {
+    const empId = info.memberEmployee.id
+    await updateStreakForEmployee(empId, endTime)
 
-  // EWH & Unit Utility: Trigger realtime recalculation
-  try {
-    const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
-    await recalculateEwhForEmployee(employeeId, employee.siteId, startTime)
-
-    const uniqueUnits = Array.from(new Set(
-      routeSessionItems
-        .map((item) => item.unitNumber?.trim())
-        .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
-    ))
-
-    await Promise.allSettled(
-      uniqueUnits.map((unit) => recalculateUnitUtility(unit, employee.siteId, startTime))
-    )
-  } catch (err) {
-    console.error('[EWH/Utility] Recalculate after daily activity save failed:', err)
-  }
-
-  await logAuditEvent({
-    actorEmail: employee.email,
-    action: 'daily_activity.submitted',
-    entityType: 'daily_activity',
-    entityLabel: `${createdActivityId}`,
-    description: `${activityTitle} disubmit dengan status ${activityStatus}.`,
-  })
-
-  if (needsApproval) {
     try {
-      await Promise.all(
-        firstApprovers.map(async (approver) => {
-          const event = await createNotificationEventForEmployee({
-            employeeId: approver.approverEmployeeId!,
-            eventType: 'daily_activity_pending_approval',
-            category: 'approval_requests',
-            title: 'Daily Activity menunggu approval',
-            body: `${employee.name} - ${activityTitle}`,
-            url: '/dashboard/approval',
-          })
-          await sendPushNotification({
-            employeeId: approver.approverEmployeeId!,
-            category: 'approval_requests',
-            title: 'Daily Activity menunggu approval',
-            body: `${employee.name} - ${activityTitle}`,
-            url: '/dashboard/approval',
-            tag: `daily-activity-${createdActivityId}-${approver.approverEmployeeId}`,
-            notificationEventId: event?.id,
-          })
-        })
+      const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
+      await recalculateEwhForEmployee(empId, info.memberEmployee.siteId, startTime)
+
+      const uniqueUnits = Array.from(new Set(
+        routeSessionItems
+          .map((item) => item.unitNumber?.trim())
+          .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+      ))
+
+      await Promise.allSettled(
+        uniqueUnits.map((unit) => recalculateUnitUtility(unit, info.memberEmployee.siteId, startTime))
       )
-    } catch (notificationError) {
-      console.error('Failed to dispatch Daily Activity approval notification', notificationError)
+    } catch (err) {
+      console.error(`[EWH/Utility] Recalculate failed for ${info.memberEmployee.name}:`, err)
+    }
+
+    await logAuditEvent({
+      actorEmail: employee.email,
+      action: 'daily_activity.submitted',
+      entityType: 'daily_activity',
+      entityLabel: `${info.createdActivityId}`,
+      description: `${info.activityTitle} disubmit untuk ${info.memberEmployee.name} dengan status ${info.activityStatus}.`,
+    })
+
+    if (info.needsApproval) {
+      try {
+        await Promise.all(
+          info.firstApprovers.map(async (approver) => {
+            const event = await createNotificationEventForEmployee({
+              employeeId: approver.approverEmployeeId!,
+              eventType: 'daily_activity_pending_approval',
+              category: 'approval_requests',
+              title: 'Daily Activity menunggu approval',
+              body: `${info.memberEmployee.name} - ${info.activityTitle}`,
+              url: '/dashboard/approval',
+            })
+            await sendPushNotification({
+              employeeId: approver.approverEmployeeId!,
+              category: 'approval_requests',
+              title: 'Daily Activity menunggu approval',
+              body: `${info.memberEmployee.name} - ${info.activityTitle}`,
+              url: '/dashboard/approval',
+              tag: `daily-activity-${info.createdActivityId}-${approver.approverEmployeeId}`,
+              notificationEventId: event?.id,
+            })
+          })
+        )
+      } catch (notificationError) {
+        console.error('Failed to dispatch Daily Activity approval notification', notificationError)
+      }
+
+      const firstApprover = info.firstApprovers[0]
+      if (firstApprover) {
+        try {
+          const [approverContact] = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, firstApprover.approverEmployeeId!))
+            .limit(1)
+
+          if (approverContact?.email) {
+            const emailContent = buildWorkflowEmailContent({
+              title: 'Daily Activity menunggu approval',
+              greeting: `Halo ${firstApprover.approverName || 'Approver'},`,
+              intro: `${employee.name} mengirim daily activity baru untuk ${info.memberEmployee.name} dan membutuhkan review Anda.`,
+              details: [
+                `Karyawan: ${info.memberEmployee.name}`,
+                `Aktivitas: ${info.activityTitle}`,
+                `Kategori: ${activityType}`,
+                `Waktu: ${submissionTime.toLocaleString('id-ID', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}`,
+                payload.notes ? `Catatan: ${payload.notes}` : null,
+              ],
+              ctaLabel: 'Buka Approval',
+              ctaUrl: getAppUrl('/dashboard/approval'),
+            })
+
+            await sendWorkflowEmail({
+              to: approverContact.email,
+              actorEmail: employee.email,
+              templateCode: 'daily_activity_pending_approval',
+              templateName: 'Daily Activity Pending Approval',
+              variables: {
+                employeeName: info.memberEmployee.name,
+                activityTitle: info.activityTitle,
+                activityType,
+                submissionTime: submissionTime.toLocaleString('id-ID', {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                }),
+                notes: payload.notes ? `Catatan: ${payload.notes}` : '',
+              },
+              fallbackSubject: `Daily Activity menunggu approval - ${info.memberEmployee.name}`,
+              fallbackHtml: emailContent.html,
+              fallbackText: emailContent.text,
+            })
+          }
+        } catch (emailError) {
+          console.error('Failed to send daily activity approval email', emailError)
+        }
+      }
     }
   }
 
-  if (pendingApproverEmail) {
-    try {
-      const emailContent = buildWorkflowEmailContent({
-        title: 'Daily Activity menunggu approval',
-        greeting: `Halo ${pendingApproverName || 'Approver'},`,
-        intro: `${employee.name} mengirim daily activity baru dan membutuhkan review Anda.`,
-        details: [
-          `Aktivitas: ${activityTitle}`,
-          `Kategori: ${activityType}`,
-          `Waktu: ${submissionTime.toLocaleString('id-ID', {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })}`,
-          payload.notes ? `Catatan: ${payload.notes}` : null,
-        ],
-        ctaLabel: 'Buka Approval',
-        ctaUrl: getAppUrl('/dashboard/approval'),
-      })
-
-      await sendWorkflowEmail({
-        to: pendingApproverEmail,
-        actorEmail: employee.email,
-        templateCode: 'daily_activity_pending_approval',
-        templateName: 'Daily Activity Pending Approval',
-        variables: {
-          employeeName: employee.name,
-          activityTitle,
-          activityType,
-          submissionTime: submissionTime.toLocaleString('id-ID', {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          }),
-          notes: payload.notes ? `Catatan: ${payload.notes}` : '',
-        },
-        fallbackSubject: 'Daily Activity menunggu approval',
-        fallbackHtml: emailContent.html,
-        fallbackText: emailContent.text,
-      })
-    } catch (emailError) {
-      console.error('Failed to send daily activity approval email', emailError)
-    }
-  }
+  revalidateDailyActivitySurfaces()
 
   if (createdActivityId == null) {
     throw new Error('Activity failed to create.')
