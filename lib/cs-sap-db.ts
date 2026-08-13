@@ -47,7 +47,7 @@ export async function fetchSapRevenue(monthYear: string): Promise<{
         COALESCE(billing_date::text, '') AS "billingDate"
       FROM sales_revenue_sap
       WHERE billing_date IS NOT NULL
-        AND (cancelled IS NULL OR cancelled = '')
+        AND (c IS NULL OR c <> 'X' OR cancelled IS NULL OR cancelled = '')
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1
         AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
       ORDER BY billing_date DESC
