@@ -158,6 +158,7 @@ export const employeeSiteAssignments = pgTable(
 export const activityLibraries = pgTable('hero_activity_libraries', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  siteIds: jsonb('site_ids').$type<number[]>().default([]),
   activityCode: text('activity_code').notNull().unique(),
   activityName: text('activity_name').notNull(),
   category: text('category').notNull().default('Technical'),

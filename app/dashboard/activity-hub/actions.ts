@@ -93,6 +93,16 @@ const manageLibrarySchema = z.object({
   activityName: z.string().trim().min(3).max(160).optional().default(''),
   category: z.string().trim().min(3).max(50).optional().default('Technical'),
   siteId: optionalPositiveInt,
+  siteIds: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value) return []
+      return value
+        .split(',')
+        .map((part) => parseInt(part.trim(), 10))
+        .filter((part) => Number.isInteger(part) && part > 0)
+    }),
   departmentId: optionalPositiveInt,
   sectionId: optionalPositiveInt,
   basePoints: z.coerce.number().int().min(0).max(500).optional().default(5),
@@ -961,13 +971,23 @@ export async function manageActivityLibraryAction(formData: FormData) {
     return
   }
 
+  // Multi-site: pakai siteIds dari form (kosong = global). Kolom siteId lama tetap
+  // diisi site pertama agar data lama & join legacy tetap bermakna.
+  const siteIds =
+    payload.siteIds.length > 0
+      ? [...new Set(payload.siteIds)]
+      : payload.siteId
+        ? [payload.siteId]
+        : []
+
   const values = {
     activityCode: payload.activityCode,
     activityName: payload.activityName,
     category: payload.category,
     departmentId: payload.departmentId ?? null,
     sectionId: payload.sectionId ?? null,
-    siteId: payload.siteId ?? null,
+    siteId: siteIds[0] ?? null,
+    siteIds,
     basePoints: payload.basePoints,
     complexityLevel: payload.complexityLevel,
     requiresPhoto: payload.requiresPhoto,
@@ -1436,6 +1456,7 @@ export async function importActivityLibraryAction(
         activityName,
         category: getActivityLibraryImportValue(row, 'category') || 'Technical',
         siteId,
+        siteIds: siteId ? [siteId] : [],
         departmentId,
         sectionId,
         basePoints: parseActivityLibraryInteger(
@@ -1607,13 +1628,16 @@ export async function manageJobAssignmentAction(formData: FormData) {
 
   if (payload.libraryActivityId) {
     const [library] = await db
-      .select({ siteId: activityLibraries.siteId })
+      .select({ siteId: activityLibraries.siteId, siteIds: activityLibraries.siteIds })
       .from(activityLibraries)
       .where(eq(activityLibraries.id, payload.libraryActivityId))
       .limit(1)
 
-    if (library?.siteId && library.siteId !== assignee.siteId) {
-      throw new Error('Activity library tidak tersedia untuk site assignment ini.')
+    if (library) {
+      const librarySiteIds = library.siteIds ?? (library.siteId ? [library.siteId] : [])
+      if (assignee.siteId != null && librarySiteIds.length > 0 && !librarySiteIds.includes(assignee.siteId)) {
+        throw new Error('Activity library tidak tersedia untuk site assignment ini.')
+      }
     }
   }
 

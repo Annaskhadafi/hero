@@ -8,6 +8,7 @@ import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/action
 import { ActivityGroupMemberSelector } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
 import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
+import { ActivitySiteMultiSelect } from "@/components/activity-site-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,9 @@ type ActivityLibraryRow = {
   activityName: string;
   category: string;
   siteId: number | null;
+  siteIds: number[];
   siteName: string | null;
+  siteNames?: string | null;
   departmentId: number | null;
   sectionId: number | null;
   departmentName: string | null;
@@ -280,21 +283,13 @@ export function ActivityLibraryRowActions({
                     </div>
                   </div>
                 ) : null}
-                <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
-                  Lokasi kerja / Site
-                  <select
-                    name="siteId"
-                    defaultValue={row.siteId ?? ""}
-                    className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                  >
-                    <option value="">Global - semua site</option>
-                    {sites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                  </select>
-                </Label>
+                <div className="md:col-span-2">
+                  <ActivitySiteMultiSelect
+                    key={`${row.id}-${open}`}
+                    sites={sites}
+                    defaultSelected={row.siteIds ?? []}
+                  />
+                </div>
                 <ActivityRouteDepartmentSectionFields
                   departments={departments}
                   sections={sections}
