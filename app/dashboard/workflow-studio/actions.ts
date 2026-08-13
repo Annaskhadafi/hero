@@ -2,14 +2,17 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { db } from '@/db'
 import {
   approvalMatrices,
   approvalMatrixSteps,
+  approvals,
   emailTemplates,
   employees,
+  formSubmissions,
+  formTemplates,
   inboxItems,
   notificationDeliveries,
   notificationEvents,
@@ -42,7 +45,13 @@ const approvalStepSchema = z.object({
 
 const siteApprovalEntrySchema = z.object({
   siteId: z.coerce.number().int().positive(),
-  values: z.record(z.string(), z.coerce.number().int().positive().optional()),
+  // Nilai kolom yang belum diisi dikirim sebagai string kosong ("") dari form —
+  // ubah jadi undefined supaya baris site dengan kolom kosong tetap valid,
+  // dan kolom yang terisi tetap ter-coerce ke number.
+  values: z.record(
+    z.string(),
+    z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().positive().optional())
+  ),
 })
 
 const globalStepSchema = z.object({
@@ -148,21 +157,28 @@ export async function saveWorkflowStudioApprovalAction(
       return { status: 'error', message: 'Minimal satu langkah approval dan satu site wajib diisi.' }
     }
 
+    // Langkah bertipe Section menyimpan id section (bukan id karyawan) di values,
+    // jadi harus dikeluarkan dari validasi & pembuatan approver.
+    const sectionStepIds = new Set(
+      parsedSteps
+        .filter((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'section')
+        .map((s) => s.id)
+    )
+
     const allEmployeeIds = parsedSiteEntries.flatMap((entry) =>
-      Object.values(entry.values).filter((id): id is number => id != null && id > 0)
+      Object.entries(entry.values)
+        .filter(([stepId, id]) => !sectionStepIds.has(stepId) && id != null && id > 0)
+        .map(([, id]) => id as number)
     )
     if (allEmployeeIds.length === 0) {
       return { status: 'error', message: 'Minimal satu approver wajib dipilih.' }
     }
 
-    const activeApprovers = await db
+    // Approver disimpan apa adanya (aktif maupun nonaktif) sesuai permintaan user.
+    const employeeLookup = await db
       .select({ id: employees.id, name: employees.name })
       .from(employees)
-      .where(eq(employees.isActive, true))
-    const activeApproverIds = new Set(activeApprovers.map((employee) => employee.id))
-    if (allEmployeeIds.some((id) => !activeApproverIds.has(id))) {
-      return { status: 'error', message: 'Approver harus karyawan aktif.' }
-    }
+    const employeeNameById = new Map(employeeLookup.map((employee) => [employee.id, employee.name]))
 
     if (payload.isActive === 'true') {
       const siteRows = await db.select({ id: sites.id, name: sites.name }).from(sites)
@@ -288,6 +304,7 @@ export async function saveWorkflowStudioApprovalAction(
 
       for (const entry of parsedSiteEntries) {
         const allApprovers = parsedSteps
+          .filter((step) => !sectionStepIds.has(step.id))
           .map((step) => ({ role: step.label, employeeId: entry.values[step.id] }))
           .filter((a): a is { role: string; employeeId: number } => a.employeeId != null && a.employeeId > 0)
 
@@ -317,8 +334,7 @@ export async function saveWorkflowStudioApprovalAction(
         if (!matrix) continue
 
         for (const [index, approver] of allApprovers.entries()) {
-          const employeeName =
-            activeApprovers.find((employee) => employee.id === approver.employeeId)?.name ?? approver.role
+          const employeeName = employeeNameById.get(approver.employeeId) ?? approver.role
           const [node] = await tx
             .insert(orgChartNodes)
             .values({
@@ -521,6 +537,119 @@ export async function toggleWorkflowStatusAction(
     return {
       status: 'error',
       message: error instanceof Error ? error.message : 'Gagal mengubah status workflow.',
+    }
+  }
+}
+
+export async function deleteWorkflowStudioWorkflowAction(
+  _state: WorkflowStudioActionState,
+  formData: FormData
+): Promise<WorkflowStudioActionState> {
+  try {
+    await requireWorkflowStudioEdit()
+
+    const templateKey = String(formData.get('templateKey') ?? '').trim()
+    const transactionType = String(formData.get('transactionType') ?? '').trim()
+    if (!templateKey || !transactionType) {
+      return { status: 'error', message: 'Parameter tidak valid.' }
+    }
+
+    // Matrices milik workflow ini = transactionType + activityType kosong (dibuat lewat dialog).
+    const matrixRows = await db
+      .select({ id: approvalMatrices.id, name: approvalMatrices.name })
+      .from(approvalMatrices)
+      .where(
+        and(
+          eq(approvalMatrices.transactionType, transactionType),
+          eq(approvalMatrices.activityType, '')
+        )
+      )
+    const matrixIds = matrixRows.map((matrix) => matrix.id)
+
+    const [workflow] = await db
+      .select({ id: workflowTemplates.id, name: workflowTemplates.name })
+      .from(workflowTemplates)
+      .where(eq(workflowTemplates.templateKey, templateKey))
+      .limit(1)
+
+    // Jangan hapus kalau workflow sudah terpakai request approval (FK restrict).
+    if (matrixIds.length > 0) {
+      const usedApprovals = await db
+        .select({ id: approvals.id })
+        .from(approvals)
+        .where(inArray(approvals.approvalMatrixId, matrixIds))
+        .limit(1)
+      if (usedApprovals.length > 0) {
+        return {
+          status: 'error',
+          message:
+            'Workflow ini sudah terpakai oleh request approval — tidak bisa dihapus. Nonaktifkan via kolom Status jika sudah tidak dipakai.',
+        }
+      }
+    }
+
+    // Jangan hapus kalau masih ada request yang sedang berjalan untuk aktivitas ini.
+    const pendingSubmissions = await db
+      .select({ id: formSubmissions.id })
+      .from(formSubmissions)
+      .innerJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
+      .where(
+        and(
+          eq(formTemplates.templateKey, templateKey),
+          inArray(formSubmissions.requestStatus, ['submitted', 'in_review'])
+        )
+      )
+      .limit(1)
+    if (pendingSubmissions.length > 0) {
+      return {
+        status: 'error',
+        message:
+          'Masih ada request approval yang sedang berjalan untuk aktivitas ini — tidak bisa dihapus. Tunggu sampai selesai atau nonaktifkan via kolom Status.',
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      // Matrices (cascade menghapus approvalMatrixSteps; workflowStepRules.approvalMatrixStepId
+      // otomatis set null).
+      if (matrixIds.length > 0) {
+        await tx.delete(approvalMatrices).where(inArray(approvalMatrices.id, matrixIds))
+      }
+
+      // Struktur org milik workflow ini (cascade menghapus orgChartNodes + assignments).
+      const structures = await tx
+        .select({ id: orgChartStructures.id })
+        .from(orgChartStructures)
+        .where(and(eq(orgChartStructures.scopeType, 'workflow'), eq(orgChartStructures.scopeValue, templateKey)))
+      const structureIds = structures.map((structure) => structure.id)
+      if (structureIds.length > 0) {
+        await tx.delete(orgChartStructures).where(inArray(orgChartStructures.id, structureIds))
+      }
+
+      // Workflow template (cascade menghapus versi, branch, notification & reminder rules).
+      if (workflow) {
+        await tx.delete(workflowTemplates).where(eq(workflowTemplates.id, workflow.id))
+      }
+    })
+
+    const session = await getServerSession()
+    await logAuditEvent({
+      actorEmail: session?.user?.email ?? undefined,
+      action: 'workflow_studio.deleted',
+      entityType: 'workflow_studio',
+      entityLabel: templateKey,
+      description: `Workflow ${workflow?.name ?? templateKey} dihapus (${matrixIds.length} konfigurasi matrix).`,
+    })
+
+    revalidatePath('/dashboard/workflow-studio')
+    return {
+      status: 'success',
+      message: `Workflow ${workflow?.name ?? templateKey} berhasil dihapus (${matrixIds.length} konfigurasi matrix).`,
+    }
+  } catch (error) {
+    console.error('[workflow-studio] delete workflow failed:', error)
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal menghapus workflow.',
     }
   }
 }

@@ -2,11 +2,13 @@
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { useActionState, useMemo, useState, useTransition, useEffect, useRef } from 'react'
+import { useActionState, useMemo, useState, useTransition, useEffect, useLayoutEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Bell, ExternalLink, Plus, X, ArrowUp, ArrowDown } from 'lucide-react'
 
 import {
+  deleteWorkflowStudioWorkflowAction,
   markWorkflowStudioInvestigatedAction,
   saveWorkflowStudioApprovalAction,
   resendWorkflowStudioReminderAction,
@@ -76,6 +78,63 @@ function FilterSelect({
 
 type WorkflowInventoryItem = WorkflowStudioData['inventory'][number]
 
+function DeleteWorkflowButton({
+  templateKey,
+  transactionType,
+  name,
+}: {
+  templateKey: string
+  transactionType: string
+  name: string
+}) {
+  const [state, formAction, isPending] = useActionState(deleteWorkflowStudioWorkflowAction, actionInitialState)
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      setOpen(false)
+      router.refresh()
+    }
+  }, [state.status, router])
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive">
+          Hapus
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Hapus Workflow</DialogTitle>
+          <DialogDescription>
+            Hapus workflow <strong>{name}</strong>? Semua konfigurasi approval per site/section untuk aktivitas ini
+            akan ikut terhapus dan tidak bisa dikembalikan.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-3">
+          <input type="hidden" name="templateKey" value={templateKey} />
+          <input type="hidden" name="transactionType" value={transactionType} />
+          {state.message ? (
+            <p className={state.status === 'success' ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>
+              {state.message}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Batal
+            </Button>
+            <Button type="submit" variant="destructive" disabled={isPending}>
+              {isPending ? 'Menghapus...' : 'Ya, Hapus'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function toDateTimeLocal(value: string | null | undefined) {
   if (!value) return ''
   const date = new Date(value)
@@ -122,28 +181,131 @@ function SearchableSelect({
   onChange,
   options,
   placeholder,
+  searchPlaceholder,
 }: {
   value: string
   onChange: (v: string) => void
   options: SearchableOption[]
   placeholder?: string
+  searchPlaceholder?: string
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const popupHeightRef = useRef(240)
+  const [popupPos, setPopupPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        popupRef.current &&
+        !popupRef.current.contains(target)
+      ) {
+        setOpen(false)
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
   }, [])
+
+  // Catat tinggi asli popup setelah dirender untuk keputusan flip.
+  useLayoutEffect(() => {
+    if (open && popupRef.current) popupHeightRef.current = popupRef.current.offsetHeight
+  }, [open, popupPos])
+
+  // Posisi popup dihitung dari tombol, dirender lewat portal ke body supaya
+  // tidak terpotong oleh container tabel yang overflow-x-auto. Kalau ruang di
+  // bawah tidak cukup, popup dibalik ke atas; selalu dikunci di dalam viewport.
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return
+    const button = ref.current?.querySelector('button')
+    if (!button) return
+    const update = () => {
+      const rect = button.getBoundingClientRect()
+      const margin = 8
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const width = rect.width
+      const left = Math.max(margin, Math.min(rect.left, vw - width - margin))
+      const spaceBelow = vh - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const estHeight = Math.min(popupHeightRef.current || 240, vh - margin * 2)
+      const openUp = estHeight > spaceBelow && spaceAbove > spaceBelow
+      const top = openUp ? rect.top - estHeight - 4 : rect.bottom + 4
+      const maxHeight = Math.max(120, (openUp ? spaceAbove : spaceBelow) - 4)
+      setPopupPos({
+        top: Math.max(margin, top),
+        left,
+        width,
+        maxHeight: Math.min(estHeight, maxHeight),
+      })
+    }
+    update()
+    document.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      document.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open])
 
   const selected = options.find((o) => o.id.toString() === value)
   const filtered = query
     ? options.filter((o) => `${o.name} ${o.jobTitle ?? ''}`.toLowerCase().includes(query.toLowerCase()))
     : options
+
+  const popup = open && popupPos ? (
+    <div
+      ref={popupRef}
+      style={{
+        position: 'fixed',
+        top: popupPos.top,
+        left: popupPos.left,
+        width: popupPos.width,
+        maxHeight: popupPos.maxHeight,
+      }}
+      className="pointer-events-auto z-[60] flex flex-col overflow-hidden rounded-md border bg-white shadow-lg"
+    >
+      <input
+        type="text"
+        placeholder={searchPlaceholder ?? 'Cari karyawan...'}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="border-border/70 h-8 w-full shrink-0 border-b px-2 text-xs outline-none"
+        autoFocus
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <button
+          type="button"
+          onClick={() => { onChange(''); setOpen(false); setQuery('') }}
+          className="text-muted-foreground hover:bg-muted h-7 w-full px-2 text-left text-xs"
+        >
+          Kosong
+        </button>
+        {filtered.map((emp) => (
+          <button
+            key={emp.id}
+            type="button"
+            onClick={() => { onChange(emp.id.toString()); setOpen(false); setQuery('') }}
+            className={`hover:bg-muted h-7 w-full px-2 text-left text-xs ${value === emp.id.toString() ? 'bg-primary/10 font-medium' : ''}`}
+          >
+            {emp.name}{emp.jobTitle ? ` - ${emp.jobTitle}` : ''}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null
 
   return (
     <div ref={ref} className="relative">
@@ -154,37 +316,7 @@ function SearchableSelect({
       >
         {selected ? `${selected.name}${selected.jobTitle ? ` - ${selected.jobTitle}` : ''}` : (placeholder ?? 'Kosong')}
       </button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
-          <input
-            type="text"
-            placeholder="Cari karyawan..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="border-border/70 h-8 w-full border-b px-2 text-xs outline-none"
-            autoFocus
-          />
-          <div className="max-h-48 overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => { onChange(''); setOpen(false); setQuery('') }}
-              className="text-muted-foreground hover:bg-muted h-7 w-full px-2 text-left text-xs"
-            >
-              Kosong
-            </button>
-            {filtered.map((emp) => (
-              <button
-                key={emp.id}
-                type="button"
-                onClick={() => { onChange(emp.id.toString()); setOpen(false); setQuery('') }}
-                className={`hover:bg-muted h-7 w-full px-2 text-left text-xs ${value === emp.id.toString() ? 'bg-primary/10 font-medium' : ''}`}
-              >
-                {emp.name}{emp.jobTitle ? ` - ${emp.jobTitle}` : ''}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {typeof document !== 'undefined' ? createPortal(popup, document.body) : null}
     </div>
   )
 }
@@ -222,7 +354,9 @@ function WorkflowBuilderDialog({
     return norm === 'section'
   }
 
-  const [approvalSteps, setApprovalSteps] = useState<ApprovalStep[]>(() => {
+  // Section selalu menjadi langkah pertama secara default di setiap aktivitas —
+  // tidak perlu ditambahkan manual di "Langkah Approval".
+  function buildInitialSteps(): ApprovalStep[] {
     const defaults: ApprovalStep[] = [
       { id: 'step-0', label: 'Section', type: 'section' },
       { id: 'step-1', label: 'Leader', type: 'employee' },
@@ -230,26 +364,23 @@ function WorkflowBuilderDialog({
       { id: 'step-3', label: 'Section Head', type: 'employee' },
       { id: 'step-4', label: 'Department Head', type: 'employee' },
     ]
-    if (initial?.globalSteps && initial.globalSteps.length > 0) {
-      return initial.globalSteps.map((gs, i) => ({
-        id: `step-${i}`,
+    if (!initial?.globalSteps || initial.globalSteps.length === 0) return defaults
+    // Workflow lama mungkin belum punya langkah Section — sisipkan di depan,
+    // dan buang langkah Section lama agar tidak dobel.
+    const existing = initial.globalSteps
+      .filter((gs) => !isSectionStep(gs.label ?? ''))
+      .map((gs, i) => ({
+        id: `step-${i + 1}`,
         label: gs.label ?? '',
         type: (isSectionStep(gs.label ?? '') ? 'section' : 'employee') as 'section' | 'employee',
       }))
-    }
-    return defaults
-  })
+    return [{ id: 'step-0', label: 'Section', type: 'section' as const }, ...existing]
+  }
+
+  const [approvalSteps, setApprovalSteps] = useState<ApprovalStep[]>(buildInitialSteps)
 
   const [siteData, setSiteData] = useState<SiteData[]>(() => {
-    const steps = initial?.globalSteps && initial.globalSteps.length > 0
-      ? initial.globalSteps.map((gs, i) => ({ id: `step-${i}`, label: gs.label ?? '', type: (isSectionStep(gs.label ?? '') ? 'section' : 'employee') as 'section' | 'employee' }))
-      : [
-          { id: 'step-0', label: 'Section', type: 'section' as const },
-          { id: 'step-1', label: 'Leader', type: 'employee' as const },
-          { id: 'step-2', label: 'PJO (Head Lokasi)', type: 'employee' as const },
-          { id: 'step-3', label: 'Section Head', type: 'employee' as const },
-          { id: 'step-4', label: 'Department Head', type: 'employee' as const },
-        ]
+    const steps = buildInitialSteps()
 
     const labelToStepId: Record<string, string> = {}
     for (const s of steps) {
@@ -296,7 +427,12 @@ function WorkflowBuilderDialog({
   }
 
   function removeStep(id: string) {
-    setApprovalSteps((prev) => prev.filter((s) => s.id !== id))
+    // Langkah Section adalah default yang selalu ada — tidak bisa dihapus.
+    setApprovalSteps((prev) => {
+      const target = prev.find((s) => s.id === id)
+      if (target?.type === 'section') return prev
+      return prev.filter((s) => s.id !== id)
+    })
     setSiteData((prev) =>
       prev.map((site) => {
         const newValues = { ...site.values }
@@ -316,6 +452,9 @@ function WorkflowBuilderDialog({
       if (idx < 0) return prev
       const newIdx = idx + dir
       if (newIdx < 0 || newIdx >= prev.length) return prev
+      // Langkah Section selalu di posisi pertama — jangan izinkan langkah lain
+      // pindah ke depannya.
+      if (newIdx === 0 && prev[0].type === 'section') return prev
       const copy = [...prev]
       ;[copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]]
       return copy
@@ -436,32 +575,33 @@ function WorkflowBuilderDialog({
                 </Button>
               </div>
               <p className="text-muted-foreground mb-2 text-xs">Atur urutan langkah approval. Isi nama kolom, lalu geser posisi dengan panah. Urutan ini berlaku untuk semua site.</p>
-              {approvalSteps.length > 0 ? (
+              {approvalSteps.some((s) => s.type !== 'section') ? (
                 <div className="space-y-1.5">
-                  {approvalSteps.map((step, idx) => (
-                    <div key={step.id} className="flex items-center gap-2">
-                      <span className="w-5 text-center text-xs font-medium text-muted-foreground">{idx + 1}.</span>
-                      <Input
-                        placeholder="Nama langkah (misal: HSE Team, Safety Officer)"
-                        value={step.label}
-                        onChange={(e) => {
-                          updateStepLabel(step.id, e.target.value)
-                          const isSec = isSectionStep(e.target.value)
-                          setApprovalSteps((prev) => prev.map((s) => s.id === step.id ? { ...s, type: isSec ? 'section' : 'employee' } : s))
-                        }}
-                        className="h-8 flex-1 text-xs"
-                      />
-                      <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={idx === 0} className="h-7 w-7 p-0">
-                        <ArrowUp className="size-3" />
-                      </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={idx === approvalSteps.length - 1} className="h-7 w-7 p-0">
-                        <ArrowDown className="size-3" />
-                      </Button>
-                      <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                  {approvalSteps
+                    .filter((s) => s.type !== 'section')
+                    .map((step, idx) => {
+                      const realIdx = approvalSteps.findIndex((s) => s.id === step.id)
+                      return (
+                        <div key={step.id} className="flex items-center gap-2">
+                          <span className="w-5 text-center text-xs font-medium text-muted-foreground">{idx + 1}.</span>
+                          <Input
+                            placeholder="Nama langkah (misal: HSE Team, Safety Officer)"
+                            value={step.label}
+                            onChange={(e) => updateStepLabel(step.id, e.target.value)}
+                            className="h-8 flex-1 text-xs"
+                          />
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
+                            <ArrowUp className="size-3" />
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
+                            <ArrowDown className="size-3" />
+                          </Button>
+                          <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      )
+                    })}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-xs">Klik "Tambah Langkah" untuk menambah kolom approval baru.</p>
@@ -524,18 +664,43 @@ function WorkflowBuilderDialog({
                               <td key={step.id} className="py-2 pr-3 min-w-[180px]">
                                 <SearchableSelect
                                   value={siteRow.values[step.id] ?? ''}
+                                  placeholder={step.type === 'section' ? 'Pilih section...' : 'Kosong'}
+                                  searchPlaceholder={step.type === 'section' ? 'Cari section...' : 'Cari karyawan...'}
                                   onChange={(v) => {
                                     if (step.type === 'section' && v) {
                                       const sec = csSections.find((s) => s.id.toString() === v)
-                                      const shStepId = approvalSteps.find((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'sectionhead')?.id
-                                      setSiteData((prev) => prev.map((site) => {
-                                        if (site.key !== siteRow.key) return site
-                                        const newValues = { ...site.values, [step.id]: v }
-                                        if (shStepId && sec?.headEmployeeId) {
-                                          newValues[shStepId] = sec.headEmployeeId.toString()
-                                        }
-                                        return { ...site, values: newValues }
-                                      }))
+                                      const existing =
+                                        data.builderOptions.siteSectionApprovers?.[`${siteRow.siteId}_${v}`]
+                                      setSiteData((prev) =>
+                                        prev.map((site) => {
+                                          if (site.key !== siteRow.key) return site
+                                          const newValues = { ...site.values, [step.id]: v }
+                                          // Auto-fill semua kolom approver mengikuti section yang dipilih:
+                                          // prioritas approver matrix (site, section) yang sudah ada, lalu default section.
+                                          for (const s of approvalSteps) {
+                                            if (s.type === 'section' || s.id === step.id) continue
+                                            const norm = s.label
+                                              .toLowerCase()
+                                              .replace(/[^a-z]/g, '')
+                                            let employeeId: number | null = null
+                                            if (norm === 'leader') {
+                                              employeeId = existing?.leaderId ?? sec?.leaderEmployeeId ?? null
+                                            } else if (norm.includes('pjo') || norm.includes('headlokasi')) {
+                                              employeeId = existing?.pjoId ?? sec?.pjoEmployeeId ?? null
+                                            } else if (norm === 'sectionhead') {
+                                              employeeId =
+                                                existing?.sectionHeadId ?? sec?.sectionHeadEmployeeId ?? null
+                                            } else if (norm === 'departmenthead') {
+                                              employeeId =
+                                                existing?.departmentHeadId ?? sec?.departmentHeadEmployeeId ?? null
+                                            }
+                                            if (employeeId != null) {
+                                              newValues[s.id] = String(employeeId)
+                                            }
+                                          }
+                                          return { ...site, values: newValues }
+                                        })
+                                      )
                                     } else {
                                       updateSiteValue(siteRow.key, step.id, v)
                                     }
@@ -712,6 +877,11 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                           data={data}
                           initial={item}
                           trigger={<Button size="sm" variant="outline">Edit</Button>}
+                        />
+                        <DeleteWorkflowButton
+                          templateKey={item.templateKey}
+                          transactionType={item.transactionType}
+                          name={item.name}
                         />
                       </div>
                     </TableCell>
