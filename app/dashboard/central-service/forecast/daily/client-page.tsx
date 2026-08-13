@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   getRealtimeExchangeRate,
+  updatePeriodExchangeRate,
   updateForecastItemStatus,
   addForecastActual,
   updateForecastActual,
@@ -119,6 +120,7 @@ export function DailyClientPage({
   const [selectedItem, setSelectedItem] = useState<any>(null)
   const [globalRate, setGlobalRate] = useState<string>('15000')
   const [isFetchingGlobalRate, setIsFetchingGlobalRate] = useState(false)
+  const [isSavingGlobalRate, setIsSavingGlobalRate] = useState(false)
   const [isFetchingActualRate, setIsFetchingActualRate] = useState(false)
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
     periods.length > 0 ? periods[0].id.toString() : ''
@@ -179,9 +181,13 @@ export function DailyClientPage({
   }, [initialItems, selectedPeriodId, customerFilter])
 
   useEffect(() => {
-    const saved = localStorage.getItem('daily_usd_rate')
-    if (saved) setGlobalRate(saved)
-  }, [])
+    const period = periods.find((p) => p.id.toString() === selectedPeriodId)
+    if (period?.exchangeRateIdrToUsd) {
+      setGlobalRate(period.exchangeRateIdrToUsd)
+    } else {
+      setGlobalRate('15000')
+    }
+  }, [selectedPeriodId, periods])
 
   useEffect(() => {
     const period = periods.find((p) => p.id.toString() === selectedPeriodId)
@@ -209,9 +215,17 @@ export function DailyClientPage({
     }
   }
 
-  const handleSaveGlobalRate = () => {
-    localStorage.setItem('daily_usd_rate', globalRate)
-    toast.success('Rate saved locally')
+  const handleSaveGlobalRate = async () => {
+    if (!selectedPeriodId) return
+    setIsSavingGlobalRate(true)
+    try {
+      await updatePeriodExchangeRate(Number(selectedPeriodId), globalRate)
+      toast.success('Rate saved to database for current period')
+    } catch (error) {
+      toast.error('Failed to save rate')
+    } finally {
+      setIsSavingGlobalRate(false)
+    }
   }
 
   const [statusForm, setStatusForm] = useState({ status: '', remark: '' })
@@ -576,17 +590,15 @@ export function DailyClientPage({
   const isSapCancelledRow = (r: any) =>
     (r.c || '').toString().trim().toUpperCase() === 'X' && (r.cancelled || '').toString().trim() !== ''
 
-  const sapTotalUsd = useMemo(() => {
-    return sapFiltered
-      .filter((r: any) => !isSapCancelledRow(r))
-      .reduce((s: number, r: any) => s + (Number(r.revenueUsd) || 0), 0)
-  }, [sapFiltered])
-
   const sapTotalIdr = useMemo(() => {
     return sapFiltered
       .filter((r: any) => !isSapCancelledRow(r))
       .reduce((s: number, r: any) => s + (Number(r.revenueIdr) || 0), 0)
   }, [sapFiltered])
+
+  const sapTotalUsd = useMemo(() => {
+    return sapTotalIdr / (Number(globalRate) || 15000)
+  }, [sapTotalIdr, globalRate])
 
   const handleExportSapExcel = () => {
     const headers = [
@@ -695,8 +707,9 @@ export function DailyClientPage({
             size="sm"
             className="h-8 text-xs"
             onClick={handleSaveGlobalRate}
+            disabled={isSavingGlobalRate}
           >
-            Save
+            {isSavingGlobalRate ? 'Saving' : 'Save'}
           </Button>
           <div className="bg-border mx-2 h-6 w-px"></div>
           <Button

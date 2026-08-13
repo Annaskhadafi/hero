@@ -29,7 +29,6 @@ export async function syncAllCarryOverItems() {
 
 export async function getForecastPeriods() {
   try {
-    await syncAllCarryOverItems()
     const rawPeriods = await db
       .select()
       .from(centralServiceForecastPeriods)
@@ -150,7 +149,6 @@ export async function getWaitingForecastItems() {
 
 export async function getDailyForecastItems() {
   try {
-    await syncAllCarryOverItems()
     const [items, allActuals, periods] = await Promise.all([
       db
         .select({
