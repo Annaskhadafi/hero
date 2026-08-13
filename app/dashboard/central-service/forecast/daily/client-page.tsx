@@ -496,8 +496,7 @@ export function DailyClientPage({
     const forecastIdr = getForecastAmountIdr(wrapper.item)
     const actualIdr = wrapper.actuals
       ? wrapper.actuals.reduce(
-          (sum: number, a: any) =>
-            isCancelStatusDoc(a.itemStatus) ? sum : sum + Number(a.amountIdr),
+          (sum: number, a: any) => sum + Number(a.amountIdr),
           0
         )
       : 0
@@ -511,8 +510,7 @@ export function DailyClientPage({
     const forecast = getForecastAmountIdr(wrapper.item)
     const actual = wrapper.actuals
       ? wrapper.actuals.reduce(
-          (sum: number, a: any) =>
-            isCancelStatusDoc(a.itemStatus) ? sum : sum + Number(a.amountIdr),
+          (sum: number, a: any) => sum + Number(a.amountIdr),
           0
         )
       : 0

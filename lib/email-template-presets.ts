@@ -377,6 +377,7 @@ Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
 <tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Revenue SAP</td><td style="padding:5px 0;color:#047857;font-size:13px;font-weight:700">{{revenueSap}}</td></tr>
 <tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Achievement Rate</td><td style="padding:5px 0;color:#1d4ed8;font-size:13px;font-weight:700">{{achievement}}</td></tr>
 <tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Dokumen Pending / CO</td><td style="padding:5px 0;color:#b45309;font-size:13px;font-weight:700">{{pendingCount}} item / {{carryOverCount}} item</td></tr>
+<tr><td style="padding:5px 0;color:#64748b;font-size:13px;vertical-align:top">Dokumen Canceled</td><td style="padding:5px 0;color:#ef4444;font-size:13px;font-weight:700">{{cancelCount}} item</td></tr>
 </table>
 </div>
 <p style="color:#334155;font-size:13px;line-height:1.6;margin:0 0 16px">Rincian status dokumen customer beserta ringkasan visual chart telah terlampir secara otomatis pada email ini dalam 2 format file:</p>
@@ -403,6 +404,7 @@ RINGKASAN LAPORAN:
 - Revenue SAP: {{revenueSap}}
 - Achievement Rate: {{achievement}}
 - Dokumen Pending / Carry Over: {{pendingCount}} item / {{carryOverCount}} item
+- Dokumen Canceled: {{cancelCount}} item
 
 File Terlampir:
 1. Report Image (.jpeg): Gambar visual scorecard, bar chart, pie chart, dan tabel dokumen lengkap.
@@ -423,6 +425,7 @@ Team Central Service - HERO System`,
       'achievement',
       'pendingCount',
       'carryOverCount',
+      'cancelCount',
       'reportUrl',
     ],
     sampleValues: {
@@ -433,6 +436,7 @@ Team Central Service - HERO System`,
       achievement: '78.4%',
       pendingCount: '12',
       carryOverCount: '3',
+      cancelCount: '2',
       reportUrl: 'https://hero.example/dashboard/central-service/forecast/report',
     },
   },
