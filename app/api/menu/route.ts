@@ -1,15 +1,65 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { navbarMenuItems, securityRoles, roleMenuPermissions } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
+import { navbarMenuItems, securityRoles, roleMenuPermissions, employees } from "@/db/schema/hero";
+import { user as authUser } from "@/db/schema/auth";
+import { eq, or } from "drizzle-orm";
+import { getServerSession } from "@/lib/auth-session";
 
-export async function GET() {
-  const items = await db
+export async function GET(request: NextRequest) {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const [employee] = await db
+    .select({
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .where(or(eq(employees.email, session.user.email), eq(authUser.email, session.user.email)))
+    .limit(1);
+
+  const roleName = employee?.accessRole ?? 'Super Admin';
+  const [role] = await db
     .select()
-    .from(navbarMenuItems)
+    .from(securityRoles)
+    .where(eq(securityRoles.name, roleName))
+    .limit(1);
+
+  if (!role) {
+    return NextResponse.json([]);
+  }
+
+  // If mobile app allows passing a query param `all=true` we could allow super admins to see all.
+  // But for now, we just apply the same filtering as the web dashboard.
+  const permittedMenuItems = await db
+    .select({
+      id: navbarMenuItems.id,
+      canView: roleMenuPermissions.canView,
+      menuArea: navbarMenuItems.menuArea,
+      section: navbarMenuItems.section,
+      title: navbarMenuItems.title,
+      url: navbarMenuItems.url,
+      iconName: navbarMenuItems.iconName,
+      resource: navbarMenuItems.resource,
+      sortOrder: navbarMenuItems.sortOrder,
+      isVisible: navbarMenuItems.isVisible,
+      openInNewTab: navbarMenuItems.openInNewTab,
+      itemType: navbarMenuItems.itemType,
+      parentId: navbarMenuItems.parentId,
+      groupLabel: navbarMenuItems.groupLabel,
+      isIframe: navbarMenuItems.isIframe,
+    })
+    .from(roleMenuPermissions)
+    .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
+    .where(eq(roleMenuPermissions.roleId, role.id))
     .orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder);
 
-  return NextResponse.json(items);
+  const visibleItems = permittedMenuItems.filter((item) => item.isVisible && item.canView);
+
+  return NextResponse.json(visibleItems);
 }
 
 export async function POST(request: NextRequest) {

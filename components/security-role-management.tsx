@@ -21,7 +21,13 @@ import { manageSecurityRoleAction, type AdminMutationState } from '@/app/dashboa
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
@@ -31,6 +37,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -719,18 +736,37 @@ export function SecurityRoleManagement({
                     </DialogContent>
                   </Dialog>
 
-                  <form action={roleFormAction}>
-                    <input type="hidden" name="intent" value="delete-role" />
-                    <input
-                      type="hidden"
-                      name="roleId"
-                      value={selectedRole ? `${selectedRole.id}` : ''}
-                    />
-                    <SubmitButton variant="destructive">
-                      <Trash2 className="size-4" />
-                      Hapus
-                    </SubmitButton>
-                  </form>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive">
+                        <Trash2 className="size-4 mr-2" />
+                        Hapus
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Hapus Peran?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Apakah Anda yakin ingin menghapus peran "{selectedRole?.name}"? Aksi ini tidak dapat dibatalkan.
+                          Pengguna yang masih menggunakan peran ini akan dipindahkan ke peran aktif lainnya secara otomatis.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <form action={roleFormAction}>
+                          <input type="hidden" name="intent" value="delete-role" />
+                          <input
+                            type="hidden"
+                            name="roleId"
+                            value={selectedRole ? `${selectedRole.id}` : ''}
+                          />
+                          <SubmitButton variant="destructive">
+                            Ya, Hapus Peran
+                          </SubmitButton>
+                        </form>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </CardHeader>
