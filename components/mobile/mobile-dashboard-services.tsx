@@ -78,9 +78,11 @@ type DashboardServicesProps = {
 
 export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: DashboardServicesProps) {
   const [open, setOpen] = useState(false);
-  const allowedResources = new Set(allowedLinks.map((link) => link.resource).filter(Boolean));
+  const allowedResources = new Set(sidebarItems.map((item) => item.resource).filter(Boolean));
   const isServiceAllowed = (service: { href: string; resource?: string }) => {
-    if (service.resource && allowedResources.has(service.resource)) return true;
+    if (service.resource) {
+      return allowedResources.has(service.resource);
+    }
     return isMobileHrefAllowed(service.href, allowedLinks);
   };
 
