@@ -3508,6 +3508,66 @@ export async function getWorkflowStudioConsoleData() {
         .where(and(eq(masterSections.departmentId, csDeptId), eq(masterSections.isActive, true)))
     : []
 
+  // Approver per matrix, dikelompokkan berdasarkan role label
+  const matrixApproverByRole = new Map<number, Record<string, number | null>>()
+  for (const matrix of matrixRows) {
+    const approvers: Record<string, number | null> = {}
+    for (const step of matrixSteps) {
+      if (step.matrixId !== matrix.id) continue
+      const node = nodeRows.find((row) => row.id === step.nodeId)
+      approvers[normalizeStatus(step.label)] = node?.employeeId ?? null
+    }
+    matrixApproverByRole.set(matrix.id, approvers)
+  }
+
+  // Approver per (site, section) dari matrix section yang aktif -> untuk auto-fill paling akurat
+  const APPROVER_ROLES = ['leader', 'pjo', 'section_head', 'department_head'] as const
+  const siteSectionApprovers: Record<
+    string,
+    { leaderId: number | null; pjoId: number | null; sectionHeadId: number | null; departmentHeadId: number | null }
+  > = {}
+  // Default approver per section (nilai paling umum di semua site) untuk section yang belum punya matrix
+  const sectionRoleCounts = new Map<number, Partial<Record<(typeof APPROVER_ROLES)[number], Map<number, number>>>>()
+  for (const matrix of matrixRows) {
+    if (!matrix.isActive || matrix.sectionId == null || matrix.siteId == null) continue
+    const approvers = matrixApproverByRole.get(matrix.id) ?? {}
+    const key = `${matrix.siteId}_${matrix.sectionId}`
+    if (!siteSectionApprovers[key]) {
+      siteSectionApprovers[key] = {
+        leaderId: approvers.leader ?? null,
+        pjoId: approvers.pjo ?? null,
+        sectionHeadId: approvers.section_head ?? null,
+        departmentHeadId: approvers.department_head ?? null,
+      }
+    }
+    if (!sectionRoleCounts.has(matrix.sectionId)) sectionRoleCounts.set(matrix.sectionId, {})
+    const roleCounts = sectionRoleCounts.get(matrix.sectionId)!
+    for (const role of APPROVER_ROLES) {
+      const employeeId = approvers[role]
+      if (employeeId == null) continue
+      if (!roleCounts[role]) roleCounts[role] = new Map()
+      roleCounts[role].set(employeeId, (roleCounts[role].get(employeeId) ?? 0) + 1)
+    }
+  }
+
+  const mostCommonApprover = (
+    counts: Map<number, number> | undefined
+  ): number | null => {
+    if (!counts || counts.size === 0) return null
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  }
+
+  const csSectionsWithDefaults = csSectionsForDept.map((section) => {
+    const roleCounts = sectionRoleCounts.get(section.id) ?? {}
+    return {
+      ...section,
+      sectionHeadEmployeeId: section.headEmployeeId ?? mostCommonApprover(roleCounts.section_head),
+      pjoEmployeeId: mostCommonApprover(roleCounts.pjo),
+      leaderEmployeeId: mostCommonApprover(roleCounts.leader),
+      departmentHeadEmployeeId: mostCommonApprover(roleCounts.department_head),
+    }
+  })
+
   const siteSectionRows = csDeptId
     ? await db
         .select({
@@ -3624,8 +3684,9 @@ export async function getWorkflowStudioConsoleData() {
         .where(eq(masterSections.isActive, true))
         .orderBy(asc(masterSections.name)),
       centralServiceSiteIds: csSiteRows.map((r) => r.siteId).filter((id): id is number => id !== null),
-      csSections: csSectionsForDept,
+      csSections: csSectionsWithDefaults,
       siteSectionMap,
+      siteSectionApprovers,
     },
   }
 }
