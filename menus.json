@@ -1,0 +1,552 @@
+[
+  {
+    "title": "Tire Site Inspection",
+    "url": "/dashboard/hse/tire-inspection",
+    "resource": "hse_tire_inspection"
+  },
+  {
+    "title": "Asset Management",
+    "url": "/dashboard/central-service/assets",
+    "resource": "central-service-assets"
+  },
+  {
+    "title": "Input Aktivitas Harian",
+    "url": "/dashboard/activity-hub/my-day",
+    "resource": "tire_service"
+  },
+  {
+    "title": "Monitoring Tim & SPL",
+    "url": "/dashboard/activity-hub/team-board",
+    "resource": "tire_repair"
+  },
+  {
+    "title": "Inventory Asset",
+    "url": "/dashboard/apd/inventory",
+    "resource": "apd_inventory"
+  },
+  {
+    "title": "Kamus Aktivitas",
+    "url": "/dashboard/activity-hub/library",
+    "resource": "activity_library"
+  },
+  {
+    "title": "Timesheet Realisasi",
+    "url": "/dashboard/timesheet",
+    "resource": "tire_engineer"
+  },
+  {
+    "title": "Request Center",
+    "url": "/dashboard/request-center",
+    "resource": "request_center"
+  },
+  {
+    "title": "Employee Data",
+    "url": "/dashboard/hc/employee",
+    "resource": "hc_employee"
+  },
+  {
+    "title": "Course Builder",
+    "url": "/dashboard/chitralearning-lms/courses/new",
+    "resource": "chitralearning_lms_builder"
+  },
+  {
+    "title": "Section Management",
+    "url": "/dashboard/chitralearning-lms/management",
+    "resource": "chitralearning_lms_management"
+  },
+  {
+    "title": "Campaigns",
+    "url": "/dashboard/chitralearning-lms/campaigns",
+    "resource": "chitralearning_lms_campaigns"
+  },
+  {
+    "title": "SIA/SIO & Tools Certification",
+    "url": "/dashboard/hse/sia-sio-tools-certification",
+    "resource": "hse_sia_sio_tools_certification"
+  },
+  {
+    "title": "WIP Dashboard V2",
+    "url": "/dashboard/repair-retread/wip-repair/dashboard-v2",
+    "resource": "wip_repair_dashboard_v2"
+  },
+  {
+    "title": "Pattern Designer",
+    "url": "/dashboard/repair-retread/pattern-designer",
+    "resource": "retread_pattern_designer"
+  },
+  {
+    "title": "Form WO",
+    "url": "/dashboard/repair-retread/form-wo",
+    "resource": "repair_form_wo"
+  },
+  {
+    "title": "Barang Keluar",
+    "url": "/dashboard/warehouse-repair/barang-keluar",
+    "resource": "warehouse_repair_barang_keluar"
+  },
+  {
+    "title": "Site Condition Report",
+    "url": "/dashboard/central-service/site-condition",
+    "resource": "site_condition_report"
+  },
+  {
+    "title": "Dashboard",
+    "url": "/dashboard/warehouse-repair",
+    "resource": "warehouse_repair_dashboard"
+  },
+  {
+    "title": "EWH Dashboard",
+    "url": "/dashboard/ewh",
+    "resource": "ewh_dashboard"
+  },
+  {
+    "title": "Navbar Setting",
+    "url": "/dashboard/settings/navbar",
+    "resource": "settings_navbar"
+  },
+  {
+    "title": "Portal Chitra Settings",
+    "url": "/dashboard/settings/portal-chitra",
+    "resource": "settings_portal_chitra"
+  },
+  {
+    "title": "Email Delivery Log",
+    "url": "/dashboard/settings/email",
+    "resource": "settings_email"
+  },
+  {
+    "title": "Data Barang",
+    "url": "/dashboard/warehouse-repair/barang",
+    "resource": "warehouse_repair_barang"
+  },
+  {
+    "title": "Jenis Barang",
+    "url": "/dashboard/warehouse-repair/jenis",
+    "resource": "warehouse_repair_jenis"
+  },
+  {
+    "title": "Route Template Harian",
+    "url": "/dashboard/activity-hub/routes",
+    "resource": "activity_routes"
+  },
+  {
+    "title": "Satuan",
+    "url": "/dashboard/warehouse-repair/satuan",
+    "resource": "warehouse_repair_satuan"
+  },
+  {
+    "title": "Barang Masuk",
+    "url": "/dashboard/warehouse-repair/barang-masuk",
+    "resource": "warehouse_repair_barang_masuk"
+  },
+  {
+    "title": "Rule Aktivitas Global",
+    "url": "/dashboard/activity-hub/configuration",
+    "resource": "activity_configuration"
+  },
+  {
+    "title": "Training Enhancement",
+    "url": "/dashboard/hc/training",
+    "resource": "hc_training_enhanced"
+  },
+  {
+    "title": "Laporan Stok",
+    "url": "/dashboard/warehouse-repair/laporan-stok",
+    "resource": "warehouse_repair_laporan_stok"
+  },
+  {
+    "title": "Performance",
+    "url": "/dashboard/hc/performance",
+    "resource": "hc_performance"
+  },
+  {
+    "title": "Leader Performance",
+    "url": "/dashboard/hc/leader-performance",
+    "resource": "hc_leader_performance"
+  },
+  {
+    "title": "HSE",
+    "url": "/dashboard/hse",
+    "resource": "hse"
+  },
+  {
+    "title": "Safety Dashboard",
+    "url": "/dashboard/safety",
+    "resource": "safety_dashboard"
+  },
+  {
+    "title": "Cargo Manifest",
+    "url": "/dashboard/cargo-manifest",
+    "resource": "cargo_manifest"
+  },
+  {
+    "title": "Safety Data Management",
+    "url": "/dashboard/safety/data",
+    "resource": "safety_data_management"
+  },
+  {
+    "title": "Safety Inspections",
+    "url": "/dashboard/safety/inspections",
+    "resource": "safety_inspections"
+  },
+  {
+    "title": "HSE Checklists",
+    "url": "/dashboard/hse/checklist-generator",
+    "resource": "hse_checklist_generator"
+  },
+  {
+    "title": "HIRADC",
+    "url": "/dashboard/hse/hiradc",
+    "resource": "hse_hiradc"
+  },
+  {
+    "title": "Inventaris",
+    "url": "/dashboard/hse/inventaris",
+    "resource": "hse_inventaris"
+  },
+  {
+    "title": "Izin Kerja PTW",
+    "url": "/dashboard/hse/izin-kerja-ptw",
+    "resource": "hse_izin_kerja_ptw"
+  },
+  {
+    "title": "JSA",
+    "url": "/dashboard/hse/jsa",
+    "resource": "hse_jsa"
+  },
+  {
+    "title": "Field Break Schedule",
+    "url": "/dashboard/scheduling-timesheet/field-break",
+    "resource": "scheduling_timesheet_field_break"
+  },
+  {
+    "title": "Pengajuan Lembur (Request)",
+    "url": "/dashboard/overtime-requests",
+    "resource": "overtime_requests"
+  },
+  {
+    "title": "Approval Inbox",
+    "url": "/dashboard/approval",
+    "resource": "approval_inbox"
+  },
+  {
+    "title": "Approval Workflow Builder",
+    "url": "/dashboard/workflow-studio",
+    "resource": "workflow_studio"
+  },
+  {
+    "title": "Master Customers",
+    "url": "/dashboard/360-service/customers",
+    "resource": "service360_customers"
+  },
+  {
+    "title": "Master Items (Barang/Service)",
+    "url": "/dashboard/360-service/items",
+    "resource": "service360_items"
+  },
+  {
+    "title": "Notification Center",
+    "url": "/dashboard/notifications",
+    "resource": "notification_center"
+  },
+  {
+    "title": "Live / Import",
+    "url": "/dashboard/attendance",
+    "resource": "attendance"
+  },
+  {
+    "title": "Request Barang",
+    "url": "/dashboard/apd",
+    "resource": "apd-request"
+  },
+  {
+    "title": "CS Forecast",
+    "url": "/dashboard/central-service/forecast",
+    "resource": "cs-forecast"
+  },
+  {
+    "title": "WIP Repair",
+    "url": "/dashboard/repair-retread/wip-repair",
+    "resource": "wip_repair"
+  },
+  {
+    "title": "WIP Dashboard",
+    "url": "/dashboard/repair-retread/wip-repair/dashboard",
+    "resource": "wip_repair_dashboard"
+  },
+  {
+    "title": "Master Barang Repair",
+    "url": "/dashboard/repair-retread/master-barang-repair",
+    "resource": "master_barang_repair"
+  },
+  {
+    "title": "Stock Material SAP",
+    "url": "/dashboard/repair-retread/stock-material-sap",
+    "resource": "stock_material_sap"
+  },
+  {
+    "title": "Laporan Barang Masuk",
+    "url": "/dashboard/warehouse-repair/laporan-barang-masuk",
+    "resource": "warehouse_repair_laporan_barang_masuk"
+  },
+  {
+    "title": "Laporan Barang Keluar",
+    "url": "/dashboard/warehouse-repair/laporan-barang-keluar",
+    "resource": "warehouse_repair_laporan_barang_keluar"
+  },
+  {
+    "title": "Live Map Attendance",
+    "url": "/dashboard/attendance/live-map",
+    "resource": "attendance_live_map"
+  },
+  {
+    "title": "Quotations",
+    "url": "/dashboard/360-service/quotations",
+    "resource": "service360_quotations"
+  },
+  {
+    "title": "Service Form",
+    "url": "/dashboard/360-service/service-form",
+    "resource": "service360_service_form"
+  },
+  {
+    "title": "Portal Chitra",
+    "url": "/dashboard/portal-chitra",
+    "resource": "portal_chitra"
+  },
+  {
+    "title": "Overview Roster",
+    "url": "/dashboard/scheduling-timesheet",
+    "resource": "scheduling_timesheet"
+  },
+  {
+    "title": "Konfigurasi Roster, OT dan Meals",
+    "url": "/dashboard/scheduling-timesheet/setup",
+    "resource": "scheduling_timesheet_setup"
+  },
+  {
+    "title": "Org Structure",
+    "url": "/dashboard/hc/org-chart",
+    "resource": "hc_org_chart"
+  },
+  {
+    "title": "Pengaduan",
+    "url": "/dashboard/curhat",
+    "resource": "hr_counseling_user"
+  },
+  {
+    "title": "Org Structure V2",
+    "url": "/dashboard/hc/org-chart-v2",
+    "resource": "hc_org_chart_v2"
+  },
+  {
+    "title": "MCU Wellness",
+    "url": "/dashboard/hc/mcu-wellness",
+    "resource": "hc_mcu_wellness"
+  },
+  {
+    "title": "Recruitment",
+    "url": "/dashboard/hc/recruitment",
+    "resource": "hc_recruitment"
+  },
+  {
+    "title": "RFR (Permohonan Rekrutmen)",
+    "url": "/dashboard/hc/rfr",
+    "resource": "rfr"
+  },
+  {
+    "title": "Schedule v2",
+    "url": "/dashboard/scheduling-timesheet/schedule-v2",
+    "resource": "scheduling_timesheet_schedule_v2"
+  },
+  {
+    "title": "Dashboard Pengaduan HR",
+    "url": "/dashboard/hr-counseling",
+    "resource": "hr_counseling_admin"
+  },
+  {
+    "title": "EPR Integrasi",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=134370dc9a2d9e78eb1818e23093353050a3b8dc6f9b8d7334f9df65f4d86c01",
+    "resource": "12"
+  },
+  {
+    "title": "Online Tests",
+    "url": "/dashboard/hc/recruitment/tests",
+    "resource": "hc_recruitment_tests"
+  },
+  {
+    "title": "Training Records",
+    "url": "/dashboard/training-records",
+    "resource": "training_records"
+  },
+  {
+    "title": "HC Overview",
+    "url": "/dashboard/hc",
+    "resource": "hc_safety"
+  },
+  {
+    "title": "Central Service",
+    "url": "/dashboard/central-service",
+    "resource": "central_service"
+  },
+  {
+    "title": "Surat",
+    "url": "/dashboard/hc/surat",
+    "resource": "hc_surat"
+  },
+  {
+    "title": "Safety Induction",
+    "url": "/dashboard/safety-induction",
+    "resource": "safety_induction"
+  },
+  {
+    "title": "Incident Report",
+    "url": "/dashboard/hse/incident-report",
+    "resource": "hse_incident_report"
+  },
+  {
+    "title": "Izin Sakit & Terlambat",
+    "url": "/dashboard/hc/permission",
+    "resource": "hc_attendance_permission"
+  },
+  {
+    "title": "Analytics",
+    "url": "/dashboard/analytics",
+    "resource": "dashboard_repair"
+  },
+  {
+    "title": "Road Condition Analysis",
+    "url": "/dashboard/reports/road-condition",
+    "resource": "hse_road_condition_analysis"
+  },
+  {
+    "title": "Point Dashboard",
+    "url": "/dashboard/leaderboard",
+    "resource": "point_setting"
+  },
+  {
+    "title": "Command Center",
+    "url": "/dashboard/command-center",
+    "resource": "command_center"
+  },
+  {
+    "title": "Contract Review",
+    "url": "/dashboard/hc/contract-review",
+    "resource": "hc_contract_review"
+  },
+  {
+    "title": "Disciplinary",
+    "url": "/dashboard/hc/disciplinary",
+    "resource": "hc_disciplinary"
+  },
+  {
+    "title": "Database Quotation Vendor",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=b4182311bcfef36ba043d6d62323807cfaabfaaf1de955a0a45b52ec6d891e8f",
+    "resource": "111"
+  },
+  {
+    "title": "Procurement Next",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=26b99e974346ee864303be6215702815c41c665ad09a25cb780b13326a1359a8",
+    "resource": "199"
+  },
+  {
+    "title": "ML Stock Forecast",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=36fcb0fa2e0783d4fa268bdc4891e4b0d22c0b0a36115758e67151d50ea2be9a",
+    "resource": "1111"
+  },
+  {
+    "title": "Competitor Report",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=7a1ae8c21edf4a4ff6c77dbc3d51ff80b1a44dfa70ff3ac08cf2525b4afef74b",
+    "resource": "12312"
+  },
+  {
+    "title": "Report Hub",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=f70a4f5ab3e4be8eba3efb2d96274c70018c1d771600288d7c5d582ddd3608bd",
+    "resource": "777"
+  },
+  {
+    "title": "Billing",
+    "url": "https://one.chitraparatama.com/api/embed/login?token=24d3f23037ef319ab8218c4b9af1bb406362a139a55261cd9ce808e7247c383d",
+    "resource": "4564"
+  },
+  {
+    "title": "Slow Moving",
+    "url": "/dashboard/marketing/slow-moving",
+    "resource": "marketing_slow_moving"
+  },
+  {
+    "title": "Payroll Timesheet",
+    "url": "/dashboard/scheduling-timesheet/payroll",
+    "resource": "scheduling_timesheet_payroll"
+  },
+  {
+    "title": "Attendance",
+    "url": "/dashboard/scheduling-timesheet/attendance",
+    "resource": "scheduling_timesheet_attendance"
+  },
+  {
+    "title": "Unit Utility",
+    "url": "/dashboard/unit-utility",
+    "resource": "unit_utility"
+  },
+  {
+    "title": "Master Data",
+    "url": "/dashboard/master-data",
+    "resource": "master_data"
+  },
+  {
+    "title": "Form Builder",
+    "url": "/dashboard/form-studio",
+    "resource": "form_studio"
+  },
+  {
+    "title": "Customer Management",
+    "url": "/dashboard/customers",
+    "resource": "customers"
+  },
+  {
+    "title": "Learning Workspace",
+    "url": "/dashboard/chitralearning-lms",
+    "resource": "chitralearning_lms_workspace"
+  },
+  {
+    "title": "Records",
+    "url": "/dashboard/attendance/records",
+    "resource": "attendance_records"
+  },
+  {
+    "title": "Exceptions",
+    "url": "/dashboard/scheduling-timesheet/permission",
+    "resource": "attendance_exceptions"
+  },
+  {
+    "title": "Reports",
+    "url": "/dashboard/reports",
+    "resource": "repair_productivity"
+  },
+  {
+    "title": "Security Overview",
+    "url": "/dashboard/security",
+    "resource": "security_session"
+  },
+  {
+    "title": "Audit Log",
+    "url": "/dashboard/security/audit-logs",
+    "resource": "security_audit"
+  },
+  {
+    "title": "Role Management",
+    "url": "/dashboard/security/roles",
+    "resource": "security_roles"
+  },
+  {
+    "title": "User Management",
+    "url": "/dashboard/security/users",
+    "resource": "security_users"
+  },
+  {
+    "title": "A2R Competition",
+    "url": "/dashboard/marketing/a2r-competition",
+    "resource": "marketing_a2r_competition"
+  }
+]

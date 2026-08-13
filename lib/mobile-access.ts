@@ -71,10 +71,13 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
 const fallbackMobileSegments = new Set([
   'activity',
   'approval',
+  'assets',
   'attendance',
   'cargo-manifest',
+  'central-service',
   'curhat',
   'executive',
+  'forecast',
   'gamification',
   'hr-counseling',
   'hse',
