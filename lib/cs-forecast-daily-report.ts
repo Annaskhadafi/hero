@@ -404,10 +404,9 @@ function buildGroups(
     itemActuals.forEach((a) => {
       const existing = categories.find((c) => c.category === a.category)
       if (existing) {
-        if (!isCancelStatusDoc(a.itemStatus)) {
-          existing.actualIdr += Number(a.amountIdr || 0)
-          existing.actualUsd += Number(a.amountUsd || 0)
-        }
+        // ponytail: cancel status is now counted (as requested, could be negative)
+        existing.actualIdr += Number(a.amountIdr || 0)
+        existing.actualUsd += Number(a.amountUsd || 0)
         if (!seenDailyRemark.has(a.category)) {
           existing.remarkDaily = a.remark || existing.remarkDaily
           existing.sectionDaily = a.jobCode || existing.sectionDaily
@@ -424,9 +423,9 @@ function buildGroups(
         categories.push({
           category: a.category,
           forecastIdr: 0,
-          actualIdr: isCancelStatusDoc(a.itemStatus) ? 0 : Number(a.amountIdr || 0),
+          actualIdr: Number(a.amountIdr || 0),
           forecastUsd: 0,
-          actualUsd: isCancelStatusDoc(a.itemStatus) ? 0 : Number(a.amountUsd || 0),
+          actualUsd: Number(a.amountUsd || 0),
           remarkMonthly: '',
           remarkDaily: a.remark || '',
           sectionDaily: a.jobCode || '',
@@ -514,9 +513,10 @@ async function loadLatestPeriodReport() {
   const sap = await fetchSapRevenue(period.monthYear)
   const rate = Number(period.exchangeRateIdrToUsd) || 15000
 
-  const nonCarryOverItems = items.filter((i) => !isCarryOverStatus(i.status))
-  const pendingItems = items.filter((i) => !isCarryOverStatus(i.status) && !isCompleteStatus(i.status))
-  const carryOverItems = items.filter((i) => isCarryOverStatus(i.status) && !isCompleteStatus(i.status))
+  const nonCarryOverItems = items.filter((i) => !isCarryOverStatus(i.status) && !isCancelStatusDoc(i.status))
+  const pendingItems = items.filter((i) => !isCarryOverStatus(i.status) && !isCompleteStatus(i.status) && !isCancelStatusDoc(i.status))
+  const carryOverItems = items.filter((i) => isCarryOverStatus(i.status) && !isCompleteStatus(i.status) && !isCancelStatusDoc(i.status))
+  const cancelItems = items.filter((i) => isCancelStatusDoc(i.status))
 
   const pendingGrouped = buildGroups(pendingItems, actualsByItem, rate, period.monthYear)
   const carryOverGrouped = buildGroups(carryOverItems, actualsByItem, rate, period.monthYear)
@@ -567,6 +567,7 @@ async function loadLatestPeriodReport() {
     carryOverGrouped,
     pendingCount: pendingItems.length,
     carryCount: carryOverItems.length,
+    cancelCount: cancelItems.length,
   }
 }
 
@@ -1207,6 +1208,7 @@ export async function sendCsForecastDailyReportEmail(options?: {
       `Achievement: ${ach}%`,
       `Pending Document: ${pendingCount} item`,
       `Carry Over: ${carryCount} item`,
+      `Canceled Document: ${report.cancelCount} item`,
     ],
     ctaLabel: 'Buka Daily Report',
     ctaUrl: reportUrl,
@@ -1244,6 +1246,7 @@ export async function sendCsForecastDailyReportEmail(options?: {
       achievement: `${ach}%`,
       pendingCount,
       carryOverCount: carryCount,
+      cancelCount: report.cancelCount,
       reportUrl,
     },
     fallbackSubject: `CS Forecast Daily Report ${period.monthYear} — ${getUtc8Parts().date}`,
