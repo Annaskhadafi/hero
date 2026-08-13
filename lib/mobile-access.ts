@@ -16,6 +16,10 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/notifications',
   '/mobile/profile',
   '/mobile/information',
+  '/mobile/attendance',
+  '/mobile/chitralearning',
+  '/mobile/activity',
+  '/mobile/activity/input',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
