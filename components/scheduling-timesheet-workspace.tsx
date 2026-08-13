@@ -4757,8 +4757,46 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  async function buildEmployeeAllowanceRecordPdf(
+    employee: EmployeeOption,
+    view: 'msa' | 'meals' | 'lokasi'
+  ) {
+    const { generateEmployeeAllowanceRecordPdf } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    const dayData = await buildEmployeeAllowanceDayData(employee)
+    return generateEmployeeAllowanceRecordPdf({
+      view,
+      period,
+      employeeName: employee.name,
+      employeeSn: employee.employeeSn || '',
+      department: employee.department || '',
+      section: employee.section || '',
+      siteName: site?.name || '',
+      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      days: dayData,
+    })
+  }
+
   async function generateEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
+      // Sesuaikan record yang di-generate dengan view halaman yang sedang dibuka:
+      // Tunjangan Khusus -> TU, MSA -> MSA, Meals -> MLS, selain itu -> Overtime Record.
+      if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
+        const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
+        const label =
+          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
+        const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${label}_Record_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success(`PDF ${label} Record ${employee.name} berhasil di-generate.`)
+        return
+      }
       const pdf = await buildEmployeeOvertimePdf(employee)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -4772,7 +4810,7 @@ export function SchedulingTimesheetWorkspace({
       toast.success(`PDF Overtime Record ${employee.name} berhasil di-generate.`)
     } catch (error) {
       console.error('[PDF OT Error]', error)
-      toast.error('Generate PDF Overtime gagal', {
+      toast.error('Generate PDF Record gagal', {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -4953,8 +4991,8 @@ export function SchedulingTimesheetWorkspace({
           : view === 'msa'
             ? 'MSA'
             : view === 'meals'
-              ? 'Meals'
-              : 'Tunjangan_Khusus'
+              ? 'MLS'
+              : 'TU'
       a.download = `${label}_Summary_${sitePart}_${period}.pdf`
       document.body.appendChild(a)
       a.click()
@@ -5031,7 +5069,7 @@ export function SchedulingTimesheetWorkspace({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success(
-        `${selected.length} karyawan: 4 summary (OT/MSA/Meals/Tunjangan Khusus) di awal, lalu OT dan Benefit digabung.`
+        `${selected.length} karyawan: 4 summary (OT/MSA/MLS/TU) di awal, lalu OT dan Benefit digabung.`
       )
     } catch (error) {
       console.error('[Bulk PDF OT Error]', error)
@@ -5085,26 +5123,9 @@ export function SchedulingTimesheetWorkspace({
   async function previewEmployeeRecordPdf(employee: EmployeeOption) {
     try {
       if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
-        const { generateEmployeeAllowanceRecordPdf } =
-          await import('@/lib/timesheet/generate-attendance-pdf')
-        const dayData = await buildEmployeeAllowanceDayData(employee)
-        const pdf = await generateEmployeeAllowanceRecordPdf({
-          view: attendanceView,
-          period,
-          employeeName: employee.name,
-          employeeSn: employee.employeeSn || '',
-          department: employee.department || '',
-          section: employee.section || '',
-          siteName: site?.name || '',
-          signatures: { ...pdfSignatures, preparedBy: employee.name },
-          days: dayData,
-        })
+        const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
         const label =
-          attendanceView === 'msa'
-            ? 'MSA'
-            : attendanceView === 'meals'
-              ? 'Meals'
-              : 'Tunjangan Khusus'
+          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
         openPdfPreview(pdf, `${label} Record • ${employee.name} • ${period}`)
       } else {
         await previewEmployeeOvertimePdf(employee)
@@ -8491,12 +8512,24 @@ export function SchedulingTimesheetWorkspace({
                                             </button>
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                              title="Generate Overtime Record PDF"
+                                              title={
+                                                attendanceView === 'msa' ||
+                                                attendanceView === 'meals' ||
+                                                attendanceView === 'lokasi'
+                                                  ? 'Generate record PDF sesuai view ini'
+                                                  : 'Generate Overtime Record PDF'
+                                              }
                                               onClick={() =>
                                                 generateEmployeeOvertimePdf(row.employee)
                                               }
                                             >
-                                              OT
+                                              {attendanceView === 'msa'
+                                                ? 'MSA'
+                                                : attendanceView === 'meals'
+                                                  ? 'MLS'
+                                                  : attendanceView === 'lokasi'
+                                                    ? 'TU'
+                                                    : 'OT'}
                                             </button>
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"

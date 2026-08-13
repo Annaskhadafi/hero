@@ -899,14 +899,14 @@ export type AllowanceRecordView = 'msa' | 'meals' | 'lokasi'
 
 const ALLOWANCE_RECORD_TITLES: Record<AllowanceRecordView, string> = {
   msa: 'MSA RECORD',
-  meals: 'MEALS RECORD',
-  lokasi: 'TUNJANGAN KHUSUS RECORD',
+  meals: 'MLS RECORD',
+  lokasi: 'TU RECORD',
 }
 
 const ALLOWANCE_RECORD_COLUMNS: Record<AllowanceRecordView, string> = {
   msa: 'MSA',
-  meals: 'MEALS',
-  lokasi: 'TUNJANGAN KHUSUS',
+  meals: 'MLS',
+  lokasi: 'TU',
 }
 
 export async function generateEmployeeAllowanceRecordPdf(input: {
@@ -1138,8 +1138,8 @@ export type SummaryTableView = 'ot' | 'msa' | 'meals' | 'lokasi'
 export const SUMMARY_TABLE_TITLES: Record<SummaryTableView, string> = {
   ot: 'OVERTIME SUMMARY',
   msa: 'MSA SUMMARY',
-  meals: 'MEALS SUMMARY',
-  lokasi: 'TUNJANGAN KHUSUS SUMMARY',
+  meals: 'MLS SUMMARY',
+  lokasi: 'TU SUMMARY',
 }
 
 export type SummaryTableRow = {
