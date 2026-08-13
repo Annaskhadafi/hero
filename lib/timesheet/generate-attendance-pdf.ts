@@ -103,6 +103,7 @@ function drawCell(
     bgColor?: ReturnType<typeof rgb>
     borderColor?: ReturnType<typeof rgb>
     wrap?: boolean
+    pad?: number
   }
 ) {
   const opts = options ?? {}
@@ -119,8 +120,9 @@ function drawCell(
     const cleanText = opts.text.replace(/[\r\t]/g, ' ').trim()
     if (!cleanText) return
     if (opts.wrap) {
-      const maxWidth = Math.max(1, w - 6)
-      const lineHeight = fontSize
+      const pad = opts.pad ?? 4
+      const maxWidth = Math.max(1, w - pad * 2)
+      const lineHeight = fontSize * 0.9
       const maxLines = Math.max(1, Math.floor((h - 1) / lineHeight))
       const lines: string[] = []
       for (const paragraph of cleanText.split('\n')) {
@@ -135,6 +137,26 @@ function drawCell(
           }
         }
         if (line) lines.push(line)
+      }
+      // Pecah per karakter kata yang masih lebih lebar dari cell
+      // (mis. nominal angka panjang di cell hari yang sempit)
+      for (let i = 0; i < lines.length; i++) {
+        if (opts.font.widthOfTextAtSize(lines[i], fontSize) <= maxWidth) continue
+        let remainder = lines[i]
+        const chunks: string[] = []
+        while (remainder.length > 0) {
+          let take = 1
+          while (
+            take < remainder.length &&
+            opts.font.widthOfTextAtSize(remainder.slice(0, take + 1), fontSize) <= maxWidth
+          ) {
+            take++
+          }
+          chunks.push(remainder.slice(0, take))
+          remainder = remainder.slice(take)
+        }
+        lines.splice(i, 1, ...chunks)
+        i += chunks.length - 1
       }
       const visibleLines = lines.slice(0, maxLines)
       if (lines.length > maxLines && visibleLines.length) {
@@ -154,8 +176,8 @@ function drawCell(
           opts.align === 'center'
             ? x + (w - textWidth) / 2
             : opts.align === 'right'
-              ? x + w - textWidth - 4
-              : x + 4
+              ? x + w - textWidth - pad
+              : x + pad
         page.drawText(line, {
           x: textX,
           y: firstY - index * lineHeight,
@@ -166,16 +188,25 @@ function drawCell(
       })
       return
     }
-    const textWidth = opts.font.widthOfTextAtSize(cleanText.replace(/\n/g, ' '), fontSize)
-    let textX = x + 4
+    const cleanOneLine = cleanText.replace(/\n/g, ' ')
+    // Kecilkan font otomatis jika teks lebih lebar dari cell
+    let fitSize = fontSize
+    const pad = opts.pad ?? 4
+    const maxTextWidth = Math.max(1, w - pad * 2)
+    let textWidth = opts.font.widthOfTextAtSize(cleanOneLine, fitSize)
+    if (textWidth > maxTextWidth) {
+      fitSize = Math.max(3.5, (fitSize * maxTextWidth) / textWidth)
+      textWidth = opts.font.widthOfTextAtSize(cleanOneLine, fitSize)
+    }
+    let textX = x + pad
     if (opts.align === 'center') textX = x + (w - textWidth) / 2
-    else if (opts.align === 'right') textX = x - textWidth + w - 4
-    const textY = y + (h - fontSize) / 2 + 1
-    page.drawText(cleanText.replace(/\n/g, ' '), {
+    else if (opts.align === 'right') textX = x - textWidth + w - pad
+    const textY = y + (h - fitSize) / 2 + 1
+    page.drawText(cleanOneLine, {
       x: textX,
       y: textY,
       font: opts.font,
-      size: fontSize,
+      size: fitSize,
       color: textColor,
     })
   }
@@ -857,6 +888,528 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   // Signatures — proper spacing
   y -= 70
   drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
+
+  return doc.save()
+}
+
+// ============================================================
+// PER-PERSON ALLOWANCE RECORD PDF (MSA / Meals / Tunjangan Khusus)
+// ============================================================
+export type AllowanceRecordView = 'msa' | 'meals' | 'lokasi'
+
+const ALLOWANCE_RECORD_TITLES: Record<AllowanceRecordView, string> = {
+  msa: 'MSA RECORD',
+  meals: 'MEALS RECORD',
+  lokasi: 'TUNJANGAN KHUSUS RECORD',
+}
+
+const ALLOWANCE_RECORD_COLUMNS: Record<AllowanceRecordView, string> = {
+  msa: 'MSA',
+  meals: 'MEALS',
+  lokasi: 'TUNJANGAN KHUSUS',
+}
+
+export async function generateEmployeeAllowanceRecordPdf(input: {
+  view: AllowanceRecordView
+  period: string
+  employeeName: string
+  employeeSn: string
+  department: string
+  section: string
+  siteName: string
+  signatures: PdfSignatureNames
+  days: Array<{
+    day: number
+    dayName: string
+    scheduleCode: string
+    status: string
+    isHoliday: boolean
+    holidayName?: string
+    msaAmount: number
+    mealsAmount: number
+    specialAllowanceAmount: number
+  }>
+}): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const page = doc.addPage([595, 842])
+  const { width } = page.getSize()
+  const logo = await embedLogo(doc)
+
+  const LM = 45
+  let y = 790
+
+  // Logo + judul
+  if (logo) {
+    page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = ALLOWANCE_RECORD_TITLES[input.view] ?? 'ALLOWANCE RECORD'
+  page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
+  y -= 18
+  page.drawText(title2, { x: centerX(width, title2, fontBold, 11), y, font: fontBold, size: 11 })
+  y -= 35
+
+  // Info
+  const colonX = LM + 110
+  const valX = colonX + 15
+  page.drawText('MONTH', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
+  y -= 15
+  page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.employeeName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Department', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.department || input.section, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Site', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.siteName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 28
+
+  // Tabel: Date | Day | [View] | Total | Remark
+  const rowH = 15
+  const cols = [30, 65, 115, 75, 220]
+  const totalTableW = cols.reduce((s, c) => s + c, 0)
+  const tableStartX = (width - totalTableW) / 2
+  const colX: number[] = []
+  let cx = tableStartX
+  for (const w of cols) {
+    colX.push(cx)
+    cx += w
+  }
+  const tableBorder = rgb(0.2, 0.2, 0.2)
+  const headerBg = rgb(0.95, 0.95, 0.95)
+  const hH = 20
+  const headers = ['Date', 'Day', ALLOWANCE_RECORD_COLUMNS[input.view], 'Total', 'Remark']
+  headers.forEach((label, index) => {
+    drawCell(page, colX[index], y - hH, cols[index], hH, {
+      text: label,
+      font: fontBold,
+      fontSize: 7,
+      align: index === 4 ? 'left' : 'center',
+      bgColor: headerBg,
+      borderColor: tableBorder,
+    })
+  })
+  y -= hH
+
+  let total = 0
+  for (const day of input.days) {
+    y -= rowH
+    if (y < 100) break
+
+    const amount =
+      input.view === 'msa'
+        ? day.msaAmount
+        : input.view === 'meals'
+          ? day.mealsAmount
+          : day.specialAllowanceAmount
+    total += amount
+
+    const isFb = day.scheduleCode === 'FB' || day.status === 'field_break'
+    const isOff =
+      day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+    const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
+    const bgColor = isFb
+      ? rgb(0.95, 0.9, 1)
+      : day.isHoliday
+        ? rgb(1, 1, 0.75)
+        : isSunday || isOff
+          ? rgb(1, 0.93, 0.93)
+          : undefined
+    const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
+
+    drawCell(page, colX[0], y, cols[0], rowH, {
+      text: String(day.day),
+      font,
+      fontSize: 8,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+    drawCell(page, colX[1], y, cols[1], rowH, {
+      text: day.dayName,
+      font,
+      fontSize: 7,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+    drawCell(page, colX[2], y, cols[2], rowH, {
+      text: amount > 0 ? `Rp  ${formatMoney(amount)}` : '',
+      font,
+      fontSize: 8,
+      align: 'left',
+      bgColor,
+    })
+    drawCell(page, colX[3], y, cols[3], rowH, {
+      text: amount > 0 ? String(Math.round(amount)) : '',
+      font: fontBold,
+      fontSize: 8,
+      align: 'center',
+      bgColor,
+    })
+
+    let remark = ''
+    if (day.status === 'standby') remark = 'ST'
+    else if (day.status === 'field_break' || day.scheduleCode === 'FB') remark = 'FB'
+    else if (day.isHoliday && day.holidayName) remark = day.holidayName
+    else if (day.status === 'sick') remark = 'SICK'
+    else if (day.status === 'leave') remark = 'IJIN'
+    else if (day.status === 'absent') remark = 'ALPA'
+    else if (isOff) remark = day.scheduleCode
+    const rc =
+      day.status === 'sick'
+        ? rgb(0.7, 0.5, 0)
+        : day.status === 'leave'
+          ? rgb(0, 0.4, 0.7)
+          : day.status === 'absent'
+            ? rgb(0.8, 0, 0)
+            : rgb(0.3, 0.3, 0.3)
+    drawCell(page, colX[4], y, cols[4], rowH, {
+      text: remark,
+      font,
+      fontSize: 6,
+      align: 'left',
+      wrap: true,
+      bgColor,
+      color: rc,
+    })
+  }
+
+  // Total
+  y -= rowH
+  const tBg = rgb(0.8, 1, 0.8)
+  drawCell(page, colX[0], y, cols[0] + cols[1], rowH, {
+    text: 'TOTAL',
+    font: fontBold,
+    fontSize: 9,
+    align: 'center',
+    bgColor: tBg,
+  })
+  drawCell(page, colX[2], y, cols[2], rowH, {
+    text: total > 0 ? `Rp  ${formatMoney(total)}` : '',
+    font: fontBold,
+    fontSize: 9,
+    align: 'left',
+    bgColor: tBg,
+    color: rgb(0, 0.5, 0),
+  })
+  drawCell(page, colX[3], y, cols[3], rowH, {
+    text: total > 0 ? String(Math.round(total)) : '',
+    font: fontBold,
+    fontSize: 9,
+    align: 'center',
+    bgColor: tBg,
+    color: rgb(0, 0.5, 0),
+  })
+  drawCell(page, colX[4], y, cols[4], rowH, { bgColor: tBg })
+
+  // Tanda tangan
+  y -= 70
+  drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
+
+  return doc.save()
+}
+
+// ============================================================
+// SUMMARY TABLE PDF (OT / MSA / Meals / Tunjangan Khusus)
+// ============================================================
+export type SummaryTableView = 'ot' | 'msa' | 'meals' | 'lokasi'
+
+export const SUMMARY_TABLE_TITLES: Record<SummaryTableView, string> = {
+  ot: 'OVERTIME SUMMARY',
+  msa: 'MSA SUMMARY',
+  meals: 'MEALS SUMMARY',
+  lokasi: 'TUNJANGAN KHUSUS SUMMARY',
+}
+
+export type SummaryTableRow = {
+  no: number
+  name: string
+  sn: string
+  loc: string
+  department: string
+  section: string
+  dailyValues: Array<string | number | null>
+  total: string
+  remark: string
+}
+
+export type SummaryTableInput = {
+  view: SummaryTableView
+  period: string
+  siteName: string
+  project?: string
+  dayCount: number
+  rows: SummaryTableRow[]
+  signatures: PdfSignatureNames
+  holidays?: Array<{ day?: number; date: string; localName?: string; name?: string }>
+}
+
+export async function generateSummaryTablePdf(
+  input: SummaryTableInput
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const logo = await embedLogo(doc)
+
+  // Warna mengikuti template PDF yang sudah ada:
+  // libur = kuning, weekend/OFF = pink, FB = ungu, total = hijau
+  const holidayDays = new Set(
+    (input.holidays ?? []).map((holiday) => holiday.day ?? Number(holiday.date.slice(-2)))
+  )
+  const cHolidayBg = rgb(1, 1, 0.75)
+  const cWeekendBg = rgb(1, 0.93, 0.93)
+  const cFbBg = rgb(0.95, 0.9, 1)
+  const cTotalBg = rgb(0.8, 1, 0.8)
+  const cRedText = rgb(0.8, 0, 0)
+  const cGreenText = rgb(0, 0.5, 0)
+  const cBlueText = rgb(0, 0.4, 0.7)
+
+  const pageWidth = 842
+  const pageHeight = 595
+  const LM = 30
+  const tableW = pageWidth - LM * 2
+  const dayW = 16
+
+  const widths: number[] = [
+    18,
+    Math.max(80, tableW - 18 - 40 - 42 - dayW * input.dayCount - 40 - 34),
+    40,
+    42,
+  ]
+  for (let i = 0; i < input.dayCount; i++) widths.push(dayW)
+  widths.push(40, 34)
+
+  const colX: number[] = []
+  let cx = LM
+  for (const w of widths) {
+    colX.push(cx)
+    cx += w
+  }
+
+  const headerLabels: string[] = ['No', 'Name', 'SN', 'LOC']
+  for (let i = 1; i <= input.dayCount; i++) headerLabels.push(String(i))
+  headerLabels.push('Total', 'Remark')
+
+  const headerBg = rgb(0.9, 0.9, 0.9)
+  const rowH = 15
+  const groupH = 12
+
+  let page = doc.addPage([pageWidth, pageHeight])
+  let y = 0
+
+  const drawTableHeader = (top: number) => {
+    headerLabels.forEach((label, index) => {
+      const isDayColumn = index >= 4 && index < 4 + input.dayCount
+      const isTotalColumn = index === 4 + input.dayCount
+      let bgColor = headerBg
+      let textColor = rgb(0, 0, 0)
+      if (isDayColumn) {
+        const day = index - 3
+        const dayName = getDayName(input.period, day)
+        const isWeekend = dayName === 'Saturday' || dayName === 'Sunday'
+        const isHoliday = holidayDays.has(day)
+        if (isHoliday) {
+          bgColor = cHolidayBg
+          textColor = cRedText
+        } else if (isWeekend) {
+          bgColor = cWeekendBg
+          textColor = cRedText
+        }
+      } else if (isTotalColumn) {
+        bgColor = cTotalBg
+        textColor = cGreenText
+      }
+      drawCell(page, colX[index], top - 15, widths[index], 15, {
+        text: label,
+        font: fontBold,
+        fontSize: 6,
+        align: index === 1 ? 'left' : 'center',
+        bgColor,
+        color: textColor,
+      })
+    })
+  }
+
+  // Header halaman pertama: logo + judul (logo diposisikan agar tidak terpotong)
+  if (logo) {
+    page.drawImage(logo.image, {
+      x: LM,
+      y: pageHeight - 62,
+      width: logo.width,
+      height: logo.height,
+    })
+  }
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: pageWidth - LM - custLogo.width,
+        y: pageHeight - 62,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = SUMMARY_TABLE_TITLES[input.view] ?? 'SUMMARY'
+  page.drawText(title1, {
+    x: centerX(pageWidth, title1, fontBold, 13),
+    y: pageHeight - 32,
+    font: fontBold,
+    size: 13,
+  })
+  page.drawText(title2, {
+    x: centerX(pageWidth, title2, fontBold, 11),
+    y: pageHeight - 48,
+    font: fontBold,
+    size: 11,
+  })
+  const subtitle = [formatPeriodLabel(input.period), input.siteName, input.project]
+    .filter(Boolean)
+    .join('  ·  ')
+  page.drawText(subtitle, {
+    x: centerX(pageWidth, subtitle, font, 8),
+    y: pageHeight - 62,
+    font,
+    size: 8,
+  })
+
+  y = pageHeight - 72
+  drawTableHeader(y)
+  y -= 15
+
+  const bottomLimit = 80
+
+  const ensureSpace = (needed: number) => {
+    if (y - needed < bottomLimit) {
+      page = doc.addPage([pageWidth, pageHeight])
+      y = pageHeight - 20
+      drawTableHeader(y)
+      y -= 15
+    }
+  }
+
+  let prevDept = ''
+  let prevSection = ''
+
+  for (const row of input.rows) {
+    if (row.department !== prevDept || row.section !== prevSection) {
+      ensureSpace(groupH + rowH)
+      const label =
+        row.section && row.section !== row.department
+          ? `${row.department} · ${row.section}`
+          : row.department
+      drawCell(page, LM, y - groupH, tableW, groupH, {
+        text: label,
+        font: fontBold,
+        fontSize: 6.5,
+        align: 'left',
+        bgColor: rgb(0.96, 0.96, 0.96),
+      })
+      y -= groupH
+      prevDept = row.department
+      prevSection = row.section
+    }
+
+    ensureSpace(rowH)
+
+    drawCell(page, colX[0], y - rowH, widths[0], rowH, {
+      text: String(row.no),
+      font,
+      fontSize: 6,
+      align: 'center',
+    })
+    drawCell(page, colX[1], y - rowH, widths[1], rowH, {
+      text: row.name,
+      font,
+      fontSize: 6,
+      align: 'left',
+      wrap: true,
+    })
+    drawCell(page, colX[2], y - rowH, widths[2], rowH, {
+      text: row.sn,
+      font,
+      fontSize: 6,
+      align: 'center',
+    })
+    drawCell(page, colX[3], y - rowH, widths[3], rowH, {
+      text: row.loc,
+      font,
+      fontSize: 6,
+      align: 'center',
+    })
+    row.dailyValues.forEach((value, index) => {
+      const text =
+        value === null || value === undefined || value === '' ? '' : String(value)
+      let cellBg: ReturnType<typeof rgb> | undefined
+      let cellColor: ReturnType<typeof rgb> = rgb(0, 0, 0)
+      if (text === 'OFF' || text === 'Libur' || text === 'Sakit') {
+        cellBg = cWeekendBg
+        cellColor = cRedText
+      } else if (text === 'FB') {
+        cellBg = cFbBg
+      } else if (text === 'SPL') {
+        cellColor = cRedText
+      } else if (text === 'Izin') {
+        cellColor = cBlueText
+      } else if (text === 'Alpha') {
+        cellColor = cRedText
+      }
+      drawCell(page, colX[4 + index], y - rowH, widths[4 + index], rowH, {
+        text,
+        font,
+        fontSize: 5,
+        align: 'center',
+        bgColor: cellBg,
+        color: cellColor,
+        pad: 1.5,
+      })
+    })
+    drawCell(page, colX[4 + input.dayCount], y - rowH, widths[4 + input.dayCount], rowH, {
+      text: row.total,
+      font: fontBold,
+      fontSize: 6.5,
+      align: 'center',
+      bgColor: cTotalBg,
+      color: cGreenText,
+    })
+    drawCell(page, colX[5 + input.dayCount], y - rowH, widths[5 + input.dayCount], rowH, {
+      text: row.remark,
+      font,
+      fontSize: 5.5,
+      align: 'center',
+    })
+    y -= rowH
+  }
+
+  // Tanda tangan di halaman terakhir
+  if (y < 150) {
+    page = doc.addPage([pageWidth, pageHeight])
+  }
+  drawPdfSignatures(page, { regular: font, italic: fontItalic }, 140, input.signatures)
 
   return doc.save()
 }
