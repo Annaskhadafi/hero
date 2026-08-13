@@ -26,6 +26,7 @@ jobs:
       - name: Build application
         run: npm run build
         env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
