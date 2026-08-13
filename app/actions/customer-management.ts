@@ -1,6 +1,9 @@
 "use server"
 
 import { onechitaDb } from "@/db/onechitra-db"
+import { db } from "@/db"
+import { customers } from "@/db/schema"
+import { asc, ilike, or } from "drizzle-orm"
 
 export type CustomerRecord = {
   id: number
@@ -125,17 +128,70 @@ export async function getCustomersAction(params?: GetCustomersParams) {
       categories,
     }
   } catch (error) {
-    console.error("Failed to fetch customers:", error)
-    return {
-      success: false as const,
-      error: "Gagal mengambil data customer",
-      data: [] as CustomerRecord[],
-      total: 0,
-      page: 1,
-      limit: 50,
-      totalPages: 0,
-      stats: { totalCustomers: 0, newThisMonth: 0 },
-      categories: [],
+    console.warn("[getCustomersAction] Remote onechitranewdb query failed, attempting local HERO DB fallback:", (error as Error)?.message || error)
+
+    try {
+      const page = Math.max(1, params?.page || 1)
+      const limit = Math.max(1, Math.min(1000, params?.limit || 50))
+      const offset = (page - 1) * limit
+      const search = params?.search?.trim()
+
+      let conditions: ReturnType<typeof ilike>[] = []
+      if (search) {
+        conditions.push(ilike(customers.name, `%${search}%`))
+        conditions.push(ilike(customers.customerCode, `%${search}%`))
+      }
+
+      const localList = await db
+        .select()
+        .from(customers)
+        .where(conditions.length > 0 ? or(...conditions) : undefined)
+        .orderBy(asc(customers.name))
+        .limit(limit)
+        .offset(offset)
+
+      const formatted: CustomerRecord[] = localList.map((c) => ({
+        id: c.id,
+        customerCode: c.customerCode || "",
+        name: c.name || "",
+        contactName: c.contactName || null,
+        email: c.email || null,
+        birthday: c.birthday ? String(c.birthday) : null,
+        address1: c.address1 || null,
+        address2: c.address2 || null,
+        address3: c.address3 || null,
+        address4: c.address4 || null,
+        address5: c.address5 || null,
+        businessCategory: c.businessCategory || null,
+        businessCategorySource: c.businessCategorySource || null,
+        businessCategoryEnrichedAt: c.businessCategoryEnrichedAt || null,
+        createdAt: c.createdAt || null,
+        updatedAt: c.updatedAt || null,
+      }))
+
+      return {
+        success: true as const,
+        data: formatted,
+        total: formatted.length,
+        page,
+        limit,
+        totalPages: Math.ceil(formatted.length / limit) || 1,
+        stats: { totalCustomers: formatted.length, newThisMonth: 0 },
+        categories: [],
+      }
+    } catch (fallbackErr) {
+      console.error("[getCustomersAction] Local HERO DB fallback also failed:", fallbackErr)
+      return {
+        success: false as const,
+        error: "Gagal mengambil data customer",
+        data: [] as CustomerRecord[],
+        total: 0,
+        page: 1,
+        limit: 50,
+        totalPages: 0,
+        stats: { totalCustomers: 0, newThisMonth: 0 },
+        categories: [],
+      }
     }
   }
 }

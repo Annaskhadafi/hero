@@ -10,15 +10,15 @@ import { FormWoClient } from "./_components/form-wo-client"
 
 async function FormWoContent() {
   const [waitingWoList, formWoList, stats, masterCaiList, customerRes, masterPriceList] = await Promise.all([
-    getWaitingWoFromApi(),
-    getFormWoList(),
-    getFormWoStats(),
-    getMasterDataCaiList(),
-    getCustomersAction({ limit: 1000 }),
-    getRepairMasterPriceList(),
+    getWaitingWoFromApi().catch(() => []),
+    getFormWoList().catch(() => []),
+    getFormWoStats().catch(() => ({ total: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 })),
+    getMasterDataCaiList().catch(() => []),
+    getCustomersAction({ limit: 1000 }).catch(() => ({ success: false, data: [] })),
+    getRepairMasterPriceList().catch(() => []),
   ])
 
-  const customerList = customerRes.success && Array.isArray(customerRes.data) ? customerRes.data : []
+  const customerList = customerRes && customerRes.success && Array.isArray(customerRes.data) ? customerRes.data : []
 
   return (
     <>
