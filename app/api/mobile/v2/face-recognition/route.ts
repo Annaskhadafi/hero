@@ -217,6 +217,22 @@ export async function POST(request: NextRequest) {
       return errorResponse(502, 'RARAY_VISION_ERROR', rvResult.message || 'Face recognition service error.')
     }
 
+    if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          confidence: rvResult.confidence ?? 0,
+          resolvedEventType,
+          error: {
+            code: 'SPOOFING_DETECTED',
+            message: rvResult.message || 'Terdeteksi foto/layar HP. Harap gunakan wajah asli secara langsung (Anti-Spoofing Gagal).',
+          },
+        },
+        { status: 200 }
+      )
+    }
+
     if (rvResult.status === 'not_registered') {
       return errorResponse(
         404,

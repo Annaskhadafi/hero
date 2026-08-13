@@ -96,7 +96,7 @@ const drawerItems: DrawerItem[] = [
   { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck },
   { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck },
   { type: 'section', label: 'LAINNYA' },
-  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },
+  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance', icon: ScanFace },
   { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
   { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText },
   { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature },

@@ -111,7 +111,6 @@ export async function POST(request: NextRequest) {
       .where(eq(employees.id, employeeId))
 
     revalidatePath('/mobile/attendance')
-    revalidatePath('/mobile/attendance/face')
 
     // 7. Return success
     return NextResponse.json(

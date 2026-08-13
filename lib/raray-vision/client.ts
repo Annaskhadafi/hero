@@ -30,11 +30,13 @@ interface RarayRecognizeResult {
 }
 
 interface RarayVerifyResult {
-  status: 'success' | 'not_registered' | 'error'
+  status: 'success' | 'not_registered' | 'spoofing_detected' | 'error'
   verified: boolean
   employee_id?: string
   confidence?: number
   threshold?: number
+  liveness_score?: number
+  is_live?: boolean
   message?: string
 }
 
@@ -111,20 +113,22 @@ async function getAuthHeader(): Promise<string> {
  */
 export async function rarayRegisterFace(params: {
   employeeId: number
+  employeeSn?: string
   employeeName: string
   imageBuffer: Buffer
   mimeType?: string
   force?: boolean
 }): Promise<RarayRegisterResult> {
-  const { employeeId, employeeName, imageBuffer, mimeType = 'image/jpeg', force = false } = params
+  const { employeeId, employeeSn, employeeName, imageBuffer, mimeType = 'image/jpeg', force = false } = params
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
-  const faceId = `emp-${employeeId}`
+  const faceId = employeeSn?.trim() || `emp-${employeeId}`
 
   // 1. Try custom HERO controller endpoint
   try {
     const formData = new FormData()
     formData.append('employee_id', String(employeeId))
+    if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('employee_name', employeeName)
     formData.append('force', force ? 'true' : 'false')
     formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
@@ -148,17 +152,29 @@ export async function rarayRegisterFace(params: {
     const formData = new FormData()
     formData.append('user_id', faceId)
     formData.append('user_name', employeeName)
+    if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
 
     const endpoint = force ? `${baseUrl}/api/v1/faces/${faceId}` : `${baseUrl}/api/v1/faces/live`
     const method = force ? 'PUT' : 'POST'
 
-    const res = await fetch(endpoint, {
+    let res = await fetch(endpoint, {
       method,
       headers: { Authorization: authHeader },
       body: formData,
       cache: 'no-store',
     })
+
+    // If initial POST failed because already registered, auto retry with PUT (force)
+    if (!res.ok && res.status === 409 && !force) {
+      const putEndpoint = `${baseUrl}/api/v1/faces/${faceId}`
+      res = await fetch(putEndpoint, {
+        method: 'PUT',
+        headers: { Authorization: authHeader },
+        body: formData,
+        cache: 'no-store',
+      })
+    }
 
     if (res.ok) {
       const data = await res.json()
@@ -251,18 +267,22 @@ export async function rarayRecognizeFace(params: {
  */
 export async function rarayVerifyFace(params: {
   employeeId: number
+  employeeSn?: string
   imageBuffer: Buffer
   mimeType?: string
 }): Promise<RarayVerifyResult> {
-  const { employeeId, imageBuffer, mimeType = 'image/jpeg' } = params
+  const { employeeId, employeeSn, imageBuffer, mimeType = 'image/jpeg' } = params
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
-  const faceId = `emp-${employeeId}`
+  const candidateIds = Array.from(
+    new Set([`emp-${employeeId}`, employeeSn?.trim(), String(employeeId)].filter(Boolean) as string[])
+  )
 
   // 1. Try HERO endpoint first
   try {
     const formData = new FormData()
     formData.append('employee_id', String(employeeId))
+    if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
 
     const res = await fetch(`${baseUrl}/api/v1/hero/verify`, {
@@ -273,46 +293,103 @@ export async function rarayVerifyFace(params: {
     })
 
     if (res.ok) {
-      return (await res.json()) as RarayVerifyResult
+      const data = await res.json()
+      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
+      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+        return {
+          status: 'spoofing_detected',
+          verified: false,
+          employee_id: String(employeeId),
+          confidence: data.confidence ?? data.similarity ?? 0,
+          liveness_score: livenessScore ?? 0,
+          is_live: false,
+          message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+        }
+      }
+
+      return data as RarayVerifyResult
     }
   } catch {
     // Fall through
   }
 
-  // 2. Native endpoint fallback: POST /api/v1/faces/compare
-  try {
-    const formData = new FormData()
-    formData.append('user_id', faceId)
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
+  // 2. Native endpoint fallback: try candidate user_ids (POST /api/v1/faces/compare/live or /api/v1/faces/compare)
+  let lastErrorMessage = ''
+  for (const faceId of candidateIds) {
+    try {
+      const formData = new FormData()
+      formData.append('user_id', faceId)
+      formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
 
-    const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
-      method: 'POST',
-      headers: { Authorization: authHeader },
-      body: formData,
-      cache: 'no-store',
-    })
+      let res = await fetch(`${baseUrl}/api/v1/faces/compare/live`, {
+        method: 'POST',
+        headers: { Authorization: authHeader },
+        body: formData,
+        cache: 'no-store',
+      })
 
-    if (!res.ok) {
-      if (res.status === 404) {
-        return { status: 'not_registered', verified: false, message: 'Wajah belum terdaftar di Raray Vision' }
+      if (!res.ok) {
+        res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
+          method: 'POST',
+          headers: { Authorization: authHeader },
+          body: formData,
+          cache: 'no-store',
+        })
       }
-      const errText = await res.text()
-      return { status: 'error', verified: false, message: `Raray Vision error: ${res.status} ${errText}` }
-    }
 
-    const data = await res.json()
-    const similarity = data.similarity ?? data.data?.similarity ?? 0
-    const verified = (data.match ?? data.status === 'success') && similarity >= 0.45
+      if (res.status === 404) {
+        // Try next candidate face ID
+        continue
+      }
 
-    return {
-      status: 'success',
-      verified,
-      employee_id: String(employeeId),
-      confidence: similarity,
-      threshold: 0.45,
+      if (!res.ok) {
+        const errText = await res.text()
+        lastErrorMessage = `Raray Vision error (${res.status}): ${errText}`
+        continue
+      }
+
+      const data = await res.json()
+      const similarity = data.similarity ?? data.data?.similarity ?? 0
+      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
+      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+        return {
+          status: 'spoofing_detected',
+          verified: false,
+          employee_id: String(employeeId),
+          confidence: similarity,
+          liveness_score: livenessScore ?? 0,
+          is_live: false,
+          message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+        }
+      }
+
+      const verified = (data.match ?? data.status === 'success') && similarity >= 0.45
+
+      return {
+        status: 'success',
+        verified,
+        employee_id: String(employeeId),
+        confidence: similarity,
+        threshold: 0.45,
+        liveness_score: livenessScore ?? 1.0,
+        is_live: true,
+      }
+    } catch (err) {
+      lastErrorMessage = err instanceof Error ? err.message : 'Error'
     }
-  } catch (err) {
-    return { status: 'error', verified: false, message: err instanceof Error ? err.message : 'Error' }
+  }
+
+  // If candidate IDs return 404 or error
+  return {
+    status: 'not_registered',
+    verified: false,
+    message: lastErrorMessage || 'Wajah belum terdaftar di Raray Vision. Silakan lakukan registrasi wajah.',
   }
 }
 

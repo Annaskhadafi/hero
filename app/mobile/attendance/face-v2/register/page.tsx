@@ -180,7 +180,7 @@ function FaceV2RegisterForm() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center px-4 py-6 bg-slate-50">
         <div className="w-full max-w-sm">
-          <Link href="/mobile/attendance/face-v2" className="mb-6 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
+          <Link href="/mobile/attendance" className="mb-6 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <ArrowLeft className="size-3.5" /> Kembali
           </Link>
 
@@ -240,7 +240,7 @@ function FaceV2RegisterForm() {
         >
           <RefreshCw className="size-4" /> Coba Lagi
         </button>
-        <Link href="/mobile/attendance/face-v2" className="text-xs font-bold text-slate-400">
+        <Link href="/mobile/attendance" className="text-xs font-bold text-slate-400">
           ← Kembali
         </Link>
       </div>
@@ -282,7 +282,7 @@ function FaceV2RegisterForm() {
 
         <div className="flex flex-col gap-2 w-full max-w-xs">
           <Link
-            href="/mobile/attendance/face-v2"
+            href="/mobile/attendance"
             className="flex items-center justify-center gap-2 min-h-12 rounded-2xl bg-slate-900 text-xs font-black text-white uppercase"
           >
             <Zap className="size-4" /> Mulai Absensi V2
@@ -302,7 +302,7 @@ function FaceV2RegisterForm() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-slate-50 px-4 py-4">
       <div className="w-full max-w-sm">
-        <Link href="/mobile/attendance/face-v2" className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
+        <Link href="/mobile/attendance" className="mb-3 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
           <ArrowLeft className="size-3.5" /> Kembali
         </Link>
         <h1 className="text-lg font-black text-slate-900 flex items-center gap-1.5 mb-1">

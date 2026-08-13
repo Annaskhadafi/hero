@@ -33,21 +33,24 @@ export async function POST(request: NextRequest) {
 
     const { employeeId, imageDataUrl, force } = body as Record<string, unknown>
 
-    // 2. Validate required fields
-    if (employeeId === undefined || employeeId === null) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
-    }
-    if (typeof employeeId !== 'number' || !Number.isInteger(employeeId) || employeeId <= 0) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId must be a positive integer.', 'employeeId')
-    }
+    let empId = Number(employeeId || 0)
+
     if (!imageDataUrl || typeof imageDataUrl !== 'string') {
       return errorResponse(400, 'VALIDATION_ERROR', 'imageDataUrl is required (base64 data URL).', 'imageDataUrl')
     }
 
     // 3. Auth
-    const authResult = await authenticateMobileRequest(request, employeeId as number)
+    const authResult = await authenticateMobileRequest(request, empId > 0 ? empId : undefined)
     if (!authResult.authenticated) {
       return errorResponse(authResult.status, authResult.code, authResult.message)
+    }
+
+    if (empId <= 0 && authResult.type === 'session') {
+      empId = authResult.employeeId
+    }
+
+    if (empId <= 0) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId must be a positive integer.', 'employeeId')
     }
 
     // 4. Parse image data URL
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
         faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
       })
       .from(employees)
-      .where(eq(employees.id, employeeId as number))
+      .where(eq(employees.id, empId))
       .limit(1)
 
     if (employeeResults.length === 0 || !employeeResults[0].isActive) {

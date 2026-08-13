@@ -326,11 +326,110 @@ export function FaceAttendanceV2Client({
     return canvas.toDataURL('image/jpeg', 0.85)
   }, [])
 
+  const motionHistoryRef = useRef<number[]>([])
+  const prevFrameSampleRef = useRef<Uint8ClampedArray | null>(null)
+  const [livenessStatus, setLivenessStatus] = useState<'analyzing' | 'live-confirmed' | 'photo-detected'>('analyzing')
+
+  // Background motion sampler: measures pixel variance across video frames every 100ms
+  useEffect(() => {
+    if (flowState !== 'scanning' && flowState !== 'verifying') {
+      motionHistoryRef.current = []
+      prevFrameSampleRef.current = null
+      setLivenessStatus('analyzing')
+      return
+    }
+
+    const interval = setInterval(() => {
+      const video = videoRef.current
+      if (!video || video.readyState < 2) return
+
+      const w = 80
+      const h = 80
+      const cvs = document.createElement('canvas')
+      cvs.width = w
+      cvs.height = h
+      const ctx = cvs.getContext('2d')
+      if (!ctx) return
+
+      // Sample central face region
+      ctx.drawImage(
+        video,
+        video.videoWidth * 0.25,
+        video.videoHeight * 0.25,
+        video.videoWidth * 0.5,
+        video.videoHeight * 0.5,
+        0,
+        0,
+        w,
+        h
+      )
+      const currData = ctx.getImageData(0, 0, w, h).data
+
+      if (!prevFrameSampleRef.current) {
+        prevFrameSampleRef.current = currData
+        return
+      }
+
+      const prevData = prevFrameSampleRef.current
+      let totalDiff = 0
+      let sampled = 0
+
+      for (let i = 0; i < currData.length; i += 32) {
+        const diff =
+          Math.abs(currData[i] - prevData[i]) +
+          Math.abs(currData[i + 1] - prevData[i + 1]) +
+          Math.abs(currData[i + 2] - prevData[i + 2])
+        totalDiff += diff / 3
+        sampled++
+      }
+
+      prevFrameSampleRef.current = currData
+      const delta = totalDiff / sampled
+
+      motionHistoryRef.current.push(delta)
+      if (motionHistoryRef.current.length > 8) {
+        motionHistoryRef.current.shift()
+      }
+
+      const history = motionHistoryRef.current
+      if (history.length >= 3) {
+        const avgDelta = history.reduce((a, b) => a + b, 0) / history.length
+        if (avgDelta < 0.75) {
+          setLivenessStatus('photo-detected')
+        } else if (avgDelta >= 1.1) {
+          setLivenessStatus('live-confirmed')
+        }
+      }
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [flowState])
+
   const runRecognitionLoop = useCallback(async () => {
     if (flowState !== 'scanning' || isSendingRef.current) {
       if (flowState === 'scanning') {
         scanLoopRef.current = setTimeout(runRecognitionLoop, CAPTURE_INTERVAL)
       }
+      return
+    }
+
+    const history = motionHistoryRef.current
+
+    // Wait until at least 3 motion samples have been evaluated
+    if (history.length < 3) {
+      scanLoopRef.current = setTimeout(runRecognitionLoop, 250)
+      return
+    }
+
+    const avgDelta = history.reduce((a, b) => a + b, 0) / history.length
+
+    // Anti-spoofing check: static photo / paper / phone screen image
+    if (avgDelta < 0.75 || livenessStatus === 'photo-detected') {
+      stopCamera()
+      setFlowState('failed')
+      setErrorMessage(
+        'Terdeteksi Foto / Gambar Diam (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.'
+      )
       return
     }
 
@@ -414,10 +513,15 @@ export function FaceAttendanceV2Client({
 
       setFlowState('scanning')
       scanLoopRef.current = setTimeout(runRecognitionLoop, CAPTURE_INTERVAL)
-    } catch {
+    } catch (err) {
+      console.error('[FaceAttendanceV2] Verification catch error:', err)
       stopCamera()
       setFlowState('error')
-      setErrorMessage('Terjadi kesalahan jaringan atau server. Silakan coba lagi.')
+      setErrorMessage(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Terjadi kesalahan jaringan atau server. Silakan coba lagi.'
+      )
     } finally {
       isSendingRef.current = false
     }
@@ -442,7 +546,10 @@ export function FaceAttendanceV2Client({
 
   const startFlow = async (mode: EventType) => {
     setSelectedEventType(mode)
-    clientRequestIdRef.current = crypto.randomUUID()
+    clientRequestIdRef.current =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
     retryCountRef.current = 0
     setRetryCount(0)
     setErrorMessage('')
@@ -819,6 +926,36 @@ export function FaceAttendanceV2Client({
                   e.currentTarget.play().catch(() => {})
                 }}
               />
+
+              {/* Anti-Spoofing & Dynamic Liveness Status Badge */}
+              <div
+                className={cn(
+                  'absolute top-3 left-3 rounded-full px-3 py-1 text-[10px] font-black backdrop-blur-md border flex items-center gap-1.5 shadow-lg transition-colors',
+                  livenessStatus === 'photo-detected'
+                    ? 'bg-rose-950/90 text-rose-300 border-rose-500/50'
+                    : livenessStatus === 'live-confirmed'
+                      ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
+                      : 'bg-amber-950/90 text-amber-300 border-amber-500/50'
+                )}
+              >
+                <ShieldCheck
+                  className={cn(
+                    'size-3.5',
+                    livenessStatus === 'photo-detected'
+                      ? 'text-rose-400'
+                      : livenessStatus === 'live-confirmed'
+                        ? 'text-emerald-400 animate-pulse'
+                        : 'text-amber-400 animate-spin'
+                  )}
+                />
+                <span>
+                  {livenessStatus === 'photo-detected'
+                    ? '🔴 Anti-Spoofing: Foto / Gambar Diam!'
+                    : livenessStatus === 'live-confirmed'
+                      ? '🟢 Liveness Terverifikasi (Wajah Hidup)'
+                      : '🟡 Uji Liveness: Berkedip / Gerakkan Wajah...'}
+                </span>
+              </div>
 
               {/* Large Oval Target Guide */}
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
