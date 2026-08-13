@@ -271,3 +271,5 @@ export {
 
 // Form WO — Pengajuan Work Order Repair
 export { repairFormWo } from './form-wo'
+export { repairMasterPrice } from './repair-master-price'
+

@@ -3,18 +3,11 @@
 import * as React from "react"
 import {
   Search,
-  Plus,
-  FileSpreadsheet,
-  RefreshCw,
   Download,
-  Edit2,
-  Trash2,
   Eye,
   Users,
-  UserPlus,
   Building2,
   Mail,
-  UserCheck,
   MapPin,
   Tag,
   CheckCircle2,
@@ -82,10 +75,11 @@ export function CustomerManagementWorkspace({
   initialStats: CustomerStats
   categories: string[]
 }) {
-  const { hasResourcePermission } = usePermissions()
-  const canEdit = hasResourcePermission("customers", "edit") || hasResourcePermission("service360_customers", "edit") || true
-  const canCreate = hasResourcePermission("customers", "create") || hasResourcePermission("service360_customers", "create") || true
-  const canDelete = hasResourcePermission("customers", "delete") || hasResourcePermission("service360_customers", "delete") || true
+  // Read-only: data bersumber langsung dari onechitranewdb
+  const { hasResourcePermission: _hasResourcePermission } = usePermissions()
+  const canEdit = false
+  const canCreate = false
+  const canDelete = false
 
   const [customers, setCustomers] = React.useState<CustomerRecord[]>(initialCustomers)
   const [stats, setStats] = React.useState<CustomerStats>(initialStats)
@@ -411,8 +405,16 @@ export function CustomerManagementWorkspace({
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Customer Management</h1>
         <p className="text-sm text-slate-500">
-          Manage your customer database, contact information, and shipping addresses.
+          Data customer bersumber langsung dari sistem onechitranewdb (read-only).
         </p>
+      </div>
+
+      {/* Read-only notice */}
+      <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <Building2 className="h-4 w-4 shrink-0 text-blue-500" />
+        <span>
+          <strong>Mode Baca Saja.</strong> Data customer dikelola di sistem sumber (<code className="font-mono text-xs bg-blue-100 px-1 rounded">onechitranewdb</code>). Penambahan, pengeditan, dan penghapusan tidak tersedia di sini.
+        </span>
       </div>
 
       {/* Summary Stat Cards */}
@@ -444,7 +446,7 @@ export function CustomerManagementWorkspace({
               <p className="text-xs text-slate-400">Added in current month</p>
             </div>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100/70 text-emerald-600 shadow-inner">
-              <UserPlus className="h-6 w-6" />
+              <Users className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
@@ -488,32 +490,8 @@ export function CustomerManagementWorkspace({
           </Select>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons - Read Only: hanya Export */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Import SAP */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSyncSap}
-            disabled={isSyncingSap}
-            className="h-10 border-slate-200 bg-white shadow-sm hover:bg-slate-50 text-slate-700 font-medium"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 text-slate-500 ${isSyncingSap ? "animate-spin" : ""}`} />
-            Import dari SAP
-          </Button>
-
-          {/* Import CSV */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsImportOpen(true)}
-            className="h-10 border-slate-200 bg-white shadow-sm hover:bg-slate-50 text-slate-700 font-medium"
-          >
-            <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
-            Import CSV
-          </Button>
-
-          {/* Export CSV */}
           <Button
             variant="outline"
             size="sm"
@@ -523,17 +501,6 @@ export function CustomerManagementWorkspace({
             <Download className="mr-2 h-4 w-4 text-blue-600" />
             Export CSV
           </Button>
-
-          {/* Add Customer */}
-          {canCreate && (
-            <Button
-              onClick={openAddModal}
-              className="h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md px-4"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Customer
-            </Button>
-          )}
         </div>
       </div>
 
@@ -688,28 +655,6 @@ export function CustomerManagementWorkspace({
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {canEdit && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openEditModal(customer)}
-                              className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                              title="Edit Customer"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {canDelete && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDeleteId(customer.id)}
-                              className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                              title="Delete Customer"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
                         </div>
                       </td>
                     </tr>
