@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db } from '@/db'
 import { user } from '@/db/schema/auth'
 import {
@@ -34,6 +35,15 @@ import { ensureHeroGovernanceSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 
 let dailyActivitySeedPromise: Promise<void> | null = null
+
+// Aktivitas library bersifat global (siteIds kosong) atau tersedia untuk site yang
+// terdaftar di kolom siteIds. Menggantikan filter lama yang hanya satu site.
+function librarySiteMatches(column: AnyPgColumn, siteId: number | null | undefined) {
+  return or(
+    sql`jsonb_array_length(${column}) = 0`,
+    sql`${column} @> jsonb_build_array(${siteId}::integer)`
+  )
+}
 
 const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   '/dashboard/activity-hub/my-day',
@@ -1727,6 +1737,7 @@ async function seedDailyActivityReferenceData() {
       DEFAULT_LIBRARY_SEEDS.map((item) => ({
         activityCode: item.activityCode,
         siteId: defaultSite?.id ?? null,
+        siteIds: defaultSite?.id ? [defaultSite.id] : [],
         activityName: item.activityName,
         category: item.category,
         departmentId: departmentByName.get(item.departmentName.trim().toLowerCase())?.id ?? null,
@@ -2464,6 +2475,7 @@ export async function getDailyActivityEmployeeData(
           activityName: activityLibraries.activityName,
           category: activityLibraries.category,
           siteId: activityLibraries.siteId,
+          siteIds: activityLibraries.siteIds,
           siteName: sites.name,
           basePoints: activityLibraries.basePoints,
           complexityLevel: activityLibraries.complexityLevel,
@@ -2484,7 +2496,7 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(activityLibraries.isActive, true),
             eq(activityLibraries.isSelfInput, true),
-            or(eq(activityLibraries.siteId, employee.siteId), isNull(activityLibraries.siteId)),
+            librarySiteMatches(activityLibraries.siteIds, employee.siteId),
             or(
               eq(activityLibraries.departmentId, employee.departmentId ?? -1),
               isNull(activityLibraries.departmentId)
@@ -2568,6 +2580,7 @@ export async function getDailyActivityEmployeeData(
           activityName: activityLibraries.activityName,
           category: activityLibraries.category,
           siteId: activityLibraries.siteId,
+          siteIds: activityLibraries.siteIds,
           siteName: sites.name,
           basePoints: activityLibraries.basePoints,
           complexityLevel: activityLibraries.complexityLevel,
@@ -2891,10 +2904,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         and(
           eq(activityLibraries.isActive, true),
           eq(activityLibraries.isSelfInput, true),
-          or(
-            eq(activityLibraries.siteId, currentEmployee.siteId),
-            isNull(activityLibraries.siteId)
-          ),
+          librarySiteMatches(activityLibraries.siteIds, currentEmployee.siteId),
           currentEmployee.departmentId != null
             ? or(
                 eq(activityLibraries.departmentId, currentEmployee.departmentId),
@@ -3245,6 +3255,7 @@ export async function getDailyActivityLibraryData(email?: string | null) {
         activityName: activityLibraries.activityName,
         category: activityLibraries.category,
         siteId: activityLibraries.siteId,
+        siteIds: activityLibraries.siteIds,
         siteName: sites.name,
         departmentId: activityLibraries.departmentId,
         sectionId: activityLibraries.sectionId,
@@ -3301,10 +3312,22 @@ export async function getDailyActivityLibraryData(email?: string | null) {
   const routeFolders = await getActiveRouteFolders()
   const routeGroupMappings = await getLibraryRouteGroupMappings()
   const groupChildrenByCode = await getActivityLibraryGroupChildrenByCode()
-  const libraryRows = rows.map((row) => ({
-    ...row,
-    children: groupChildrenByCode.get(row.activityCode) ?? [],
-  }))
+  const siteNameById = new Map(siteRows.map((site) => [site.id, site.name]))
+  const libraryRows = rows.map((row) => {
+    const rowSiteIds = row.siteIds ?? []
+    return {
+      ...row,
+      siteIds: rowSiteIds,
+      siteNames:
+        rowSiteIds.length > 0
+          ? rowSiteIds
+              .map((id) => siteNameById.get(id))
+              .filter((name): name is string => Boolean(name))
+              .join(', ') || null
+          : null,
+      children: groupChildrenByCode.get(row.activityCode) ?? [],
+    }
+  })
 
   return {
     currentEmployee,

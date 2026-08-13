@@ -153,7 +153,7 @@ export default async function DailyActivityLibraryPage({
                             <p>{row.departmentName ?? "Global"}</p>
                             <p className="text-xs text-muted-foreground">{row.sectionName ?? "-"}</p>
                             <p className="mt-1 text-xs font-semibold text-primary">
-                              {row.siteName ?? "Semua site"}
+                              {row.siteNames ?? "Semua site"}
                             </p>
                           </div>
                         </TableCell>

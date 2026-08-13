@@ -7,6 +7,7 @@ import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/action
 import { ActivityGroupMemberSelector, type MinimalActivityOption } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
 import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
+import { ActivitySiteMultiSelect } from "@/components/activity-site-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,17 +122,9 @@ export function ActivityLibraryCreateForm({
           </div>
         ) : null}
 
-        <Label className="grid gap-2 sm:col-span-2">
-          Lokasi kerja / Site
-          <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-            <option value="">Global - semua site</option>
-            {sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
-          </select>
-        </Label>
+        <div className="sm:col-span-2">
+          <ActivitySiteMultiSelect sites={sites} />
+        </div>
         <ActivityRouteDepartmentSectionFields
           departments={departments}
           sections={sections}

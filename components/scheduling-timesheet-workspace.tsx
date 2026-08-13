@@ -4757,8 +4757,46 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  async function buildEmployeeAllowanceRecordPdf(
+    employee: EmployeeOption,
+    view: 'msa' | 'meals' | 'lokasi'
+  ) {
+    const { generateEmployeeAllowanceRecordPdf } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    const dayData = await buildEmployeeAllowanceDayData(employee)
+    return generateEmployeeAllowanceRecordPdf({
+      view,
+      period,
+      employeeName: employee.name,
+      employeeSn: employee.employeeSn || '',
+      department: employee.department || '',
+      section: employee.section || '',
+      siteName: site?.name || '',
+      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      days: dayData,
+    })
+  }
+
   async function generateEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
+      // Sesuaikan record yang di-generate dengan view halaman yang sedang dibuka:
+      // Tunjangan Khusus -> TU, MSA -> MSA, Meals -> MLS, selain itu -> Overtime Record.
+      if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
+        const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
+        const label =
+          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
+        const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${label}_Record_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        toast.success(`PDF ${label} Record ${employee.name} berhasil di-generate.`)
+        return
+      }
       const pdf = await buildEmployeeOvertimePdf(employee)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -4772,7 +4810,210 @@ export function SchedulingTimesheetWorkspace({
       toast.success(`PDF Overtime Record ${employee.name} berhasil di-generate.`)
     } catch (error) {
       console.error('[PDF OT Error]', error)
-      toast.error('Generate PDF Overtime gagal', {
+      toast.error('Generate PDF Record gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  type SummaryView = 'ovt' | 'msa' | 'meals' | 'lokasi'
+
+  function currentSummaryView(): SummaryView {
+    return attendanceView === 'attendance' ? 'ovt' : attendanceView
+  }
+
+  function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
+    const idSet = employeeIds ? new Set(employeeIds) : null
+    const sourceRows = idSet ? rows.filter((row) => idSet.has(row.employee.id)) : rows
+    const grouped = new Map<string, Map<string, typeof rows>>()
+    for (const row of sourceRows) {
+      const dept = row.employee.department || 'Tanpa Departemen'
+      const section = row.employee.section || row.employee.role || 'Umum'
+      if (!grouped.has(dept)) grouped.set(dept, new Map())
+      const deptMap = grouped.get(dept)!
+      if (!deptMap.has(section)) deptMap.set(section, [])
+      deptMap.get(section)!.push(row)
+    }
+    const result: Array<{
+      no: number
+      name: string
+      sn: string
+      loc: string
+      department: string
+      section: string
+      dailyValues: Array<string | number | null>
+      total: string
+      remark: string
+    }> = []
+    let no = 1
+    for (const [dept, sections] of grouped) {
+      for (const [section, sectionRows] of sections) {
+        for (const row of sectionRows) {
+          const staff = isStaffRole(row.employee.role)
+          // Nilai tiap hari — samakan persis dengan tabel di layar
+          const dailyValues = days.map((day) => {
+            const code = row.schedule[day - 1] as string
+            const cell = getAttendanceCell(row.employee.id, day, code)
+            const allowance = getAllowanceAmounts(row, day)
+            const isFieldBreakDay =
+              code === 'FB' ||
+              cell.status === 'field_break' ||
+              (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+            const isRosterOff = code === 'OFF' || code === 'Libur'
+            const isHolidayDay = Boolean(holidaysByDay.get(day))
+            const isAbsent =
+              cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+            const isEmptyWorkDay =
+              !isRosterOff &&
+              !isHolidayDay &&
+              code !== 'ST' &&
+              cell.status === 'empty'
+            const noAllowance = isAbsent || isEmptyWorkDay || code === 'FB'
+            const absentLabel =
+              cell.status === 'leave'
+                ? 'Izin'
+                : cell.status === 'sick'
+                  ? 'Sakit'
+                  : cell.status === 'absent'
+                    ? 'Alpha'
+                    : '-'
+
+            if (view === 'ovt') {
+              if (staff) return '-'
+              if (cell.status !== 'present') {
+                return ['OFF', 'FB', 'Libur', 'Sakit'].includes(code) ? code : ''
+              }
+              const overtime = calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              )
+              if (overtime.totalHours > 0) return String(overtime.totalHours)
+              if (overtime.unauthorizedMinutes > 0) return 'SPL'
+              return ''
+            }
+            if (view === 'msa') {
+              if (!allowance.rule.msa || siteConfig.msaType === 'none') return '-'
+              if (isFieldBreakDay) return 'FB'
+              // Angka polos tanpa separator ribuan agar muat di cell hari yang sempit
+              return allowance.msaAmount > 0 ? String(allowance.msaAmount) : '-'
+            }
+            if (view === 'meals') {
+              if (!allowance.rule.meals || siteConfig.mealsType === 'none') return '-'
+              if (isFieldBreakDay) return 'FB'
+              return String(allowance.mealsAmount)
+            }
+            // lokasi (Tunjangan Khusus)
+            if (!allowance.rule.specialAllowance) return '-'
+            if (isFieldBreakDay && cell.status !== 'present') return 'FB'
+            if (noAllowance) return absentLabel
+            return allowance.specialAllowanceAmount
+              ? String(allowance.specialAllowanceAmount)
+              : '-'
+          })
+          // Total — samakan dengan kolom Total di layar
+          let total = 0
+          for (const day of days) {
+            const cell = getAttendanceCell(row.employee.id, day)
+            const code = row.schedule[day - 1] as string
+            const allowance = getAllowanceAmounts(row, day)
+            if (view === 'lokasi') {
+              total += allowance.specialAllowanceAmount
+              continue
+            }
+            const isFbPeriod = code === 'FB' || cell.status === 'field_break'
+            if (isFbPeriod && (view === 'msa' || view === 'meals')) continue
+            if (view === 'ovt' && cell.status !== 'present') continue
+            if (view === 'msa') total += allowance.msaAmount
+            else if (view === 'meals') total += allowance.mealsAmount
+            else if (!staff)
+              total += calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              ).totalHours
+          }
+          result.push({
+            no,
+            name: row.employee.name,
+            sn: row.employee.employeeSn || '',
+            loc:
+              row.employee.workLocation ||
+              row.employee.siteLocation ||
+              row.employee.locationName ||
+              extractSiteNameLocal(site?.name) ||
+              '',
+            department: dept,
+            section,
+            dailyValues,
+            total: view === 'ovt' ? String(roundOvertimeHours(total)) : String(total),
+            remark: 'NORMAL',
+          })
+          no++
+        }
+      }
+    }
+    return result
+  }
+
+  async function buildSummaryPdf(view: SummaryView, employeeIds?: number[]) {
+    const { generateSummaryTablePdf } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    return generateSummaryTablePdf({
+      view: view === 'ovt' ? 'ot' : view,
+      period,
+      siteName: site?.name || '',
+      project: rate.project,
+      dayCount,
+      rows: buildSummaryRows(view, employeeIds),
+      signatures: pdfSignatures,
+      holidays,
+    })
+  }
+
+  async function downloadSummaryPdf(view: SummaryView) {
+    try {
+      const pdf = await buildSummaryPdf(view)
+      const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const sitePart = (site?.name || 'Semua Site').replace(/\s+/g, '_')
+      const label =
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'msa'
+            ? 'MSA'
+            : view === 'meals'
+              ? 'MLS'
+              : 'TU'
+      a.download = `${label}_Summary_${sitePart}_${period}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`PDF ${label} Summary berhasil di-download.`)
+    } catch (error) {
+      console.error('[PDF Summary Error]', error)
+      toast.error('Download PDF Summary gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
+    try {
+      const pdf = await buildEmployeeOvertimePdf(employee, true)
+      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
+    } catch (error) {
+      console.error('[Preview PDF OT Error]', error)
+      toast.error('Preview PDF Overtime gagal', {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -4789,6 +5030,25 @@ export function SchedulingTimesheetWorkspace({
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
+      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
+      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
+        'ovt',
+        'msa',
+        'meals',
+        'lokasi',
+      ]
+      for (const summaryView of summaryViews) {
+        const summaryPdf = await buildSummaryPdf(
+          summaryView,
+          selected.map((employee) => employee.id)
+        )
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const summaryPages = await merged.copyPages(
+          summarySource,
+          summarySource.getPageIndices()
+        )
+        summaryPages.forEach((page) => merged.addPage(page))
+      }
       for (const employee of selected) {
         for (const pdf of [
           await buildEmployeeOvertimePdf(employee, showTotalOvertime),
@@ -4808,7 +5068,9 @@ export function SchedulingTimesheetWorkspace({
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      toast.success(`${selected.length} karyawan: OT dan Benefit digabung selang-seling.`)
+      toast.success(
+        `${selected.length} karyawan: 4 summary (OT/MSA/MLS/TU) di awal, lalu OT dan Benefit digabung.`
+      )
     } catch (error) {
       console.error('[Bulk PDF OT Error]', error)
       toast.error('Bulk download PDF Overtime gagal', {
@@ -4817,12 +5079,12 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
-    const { generateSiteAllowancePdf, buildAttendanceDayData } =
+  async function buildEmployeeAllowanceDayData(employee: EmployeeOption) {
+    const { buildAttendanceDayData } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
-    const dayData = buildAttendanceDayData({
+    return buildAttendanceDayData({
       period,
       dayCount,
       getCell: (day) => getAttendanceCell(employee.id, day),
@@ -4840,6 +5102,12 @@ export function SchedulingTimesheetWorkspace({
         showSpecialAllowance: allowance.rule.specialAllowance,
       }
     })
+  }
+
+  async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
+    const { generateSiteAllowancePdf } =
+      await import('@/lib/timesheet/generate-attendance-pdf')
+    const dayData = await buildEmployeeAllowanceDayData(employee)
     return generateSiteAllowancePdf({
       period,
       employeeName: employee.name,
@@ -4850,6 +5118,24 @@ export function SchedulingTimesheetWorkspace({
       signatures: { ...pdfSignatures, preparedBy: employee.name },
       days: dayData,
     })
+  }
+
+  async function previewEmployeeRecordPdf(employee: EmployeeOption) {
+    try {
+      if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
+        const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
+        const label =
+          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
+        openPdfPreview(pdf, `${label} Record • ${employee.name} • ${period}`)
+      } else {
+        await previewEmployeeOvertimePdf(employee)
+      }
+    } catch (error) {
+      console.error('[Preview PDF Record Error]', error)
+      toast.error('Preview PDF Record gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   async function generateEmployeeAllowancePdf(employee: EmployeeOption) {
@@ -4924,18 +5210,6 @@ export function SchedulingTimesheetWorkspace({
     setPdfPreview({ url, title })
   }
 
-  async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
-    try {
-      const pdf = await buildEmployeeOvertimePdf(employee, true)
-      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
-    } catch (error) {
-      console.error('[Preview PDF OT Error]', error)
-      toast.error('Preview PDF Overtime gagal', {
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
   async function previewAllSiteOvertimePdf() {
     const allEmployees = rows.map((row) => row.employee)
     if (allEmployees.length === 0) {
@@ -4945,6 +5219,25 @@ export function SchedulingTimesheetWorkspace({
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
+      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
+      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
+        'ovt',
+        'msa',
+        'meals',
+        'lokasi',
+      ]
+      for (const summaryView of summaryViews) {
+        const summaryPdf = await buildSummaryPdf(
+          summaryView,
+          allEmployees.map((employee) => employee.id)
+        )
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const summaryPages = await merged.copyPages(
+          summarySource,
+          summarySource.getPageIndices()
+        )
+        summaryPages.forEach((page) => merged.addPage(page))
+      }
       for (const employee of allEmployees) {
         for (const pdf of [
           await buildEmployeeOvertimePdf(employee, true),
@@ -4957,7 +5250,7 @@ export function SchedulingTimesheetWorkspace({
       }
       openPdfPreview(
         await merged.save(),
-        `Priview OT + Benefit • ${site?.name ?? 'Site'} • ${period} (${allEmployees.length} karyawan)`
+        `Priview 4 Summary + OT/Benefit • ${site?.name ?? 'Site'} • ${period} (${allEmployees.length} karyawan)`
       )
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
@@ -8065,7 +8358,7 @@ export function SchedulingTimesheetWorkspace({
                   ) : null}
                   {/* View title */}
                   {attendanceView !== 'attendance' ? (
-                    <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
+                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
                       <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
                         {attendanceView === 'msa' &&
                           `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
@@ -8075,6 +8368,20 @@ export function SchedulingTimesheetWorkspace({
                           `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
                         {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
                       </p>
+                      {attendanceView === 'ovt' ||
+                      attendanceView === 'msa' ||
+                      attendanceView === 'meals' ||
+                      attendanceView === 'lokasi' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={rows.length === 0 || siteId === 'all'}
+                          onClick={() => void downloadSummaryPdf(attendanceView)}
+                          title="Download PDF Summary sesuai tabel di halaman ini"
+                        >
+                          <Download className="mr-2 size-4" /> Download PDF
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
@@ -8196,21 +8503,33 @@ export function SchedulingTimesheetWorkspace({
                                           <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                              title="Priview Overtime Record PDF"
+                                              title="Priview record karyawan sesuai view ini"
                                               onClick={() =>
-                                                previewEmployeeOvertimePdf(row.employee)
+                                                previewEmployeeRecordPdf(row.employee)
                                               }
                                             >
                                               Priview
                                             </button>
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                              title="Generate Overtime Record PDF"
+                                              title={
+                                                attendanceView === 'msa' ||
+                                                attendanceView === 'meals' ||
+                                                attendanceView === 'lokasi'
+                                                  ? 'Generate record PDF sesuai view ini'
+                                                  : 'Generate Overtime Record PDF'
+                                              }
                                               onClick={() =>
                                                 generateEmployeeOvertimePdf(row.employee)
                                               }
                                             >
-                                              OT
+                                              {attendanceView === 'msa'
+                                                ? 'MSA'
+                                                : attendanceView === 'meals'
+                                                  ? 'MLS'
+                                                  : attendanceView === 'lokasi'
+                                                    ? 'TU'
+                                                    : 'OT'}
                                             </button>
                                             <button
                                               className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
@@ -9851,13 +10170,13 @@ export function SchedulingTimesheetWorkspace({
           }
         }}
       >
-        <DialogContent className="max-w-4xl gap-0 overflow-hidden bg-white p-0">
+        <DialogContent className="max-w-[96vw] gap-0 overflow-hidden bg-white p-0">
           <DialogHeader className="flex flex-row items-center justify-between border-b p-4">
             <DialogTitle className="truncate pr-4 text-sm font-black text-[#082033]">
               {pdfPreview?.title ?? 'Preview PDF'}
             </DialogTitle>
           </DialogHeader>
-          <div className="h-[80vh] bg-[#f5f7fb]">
+          <div className="h-[calc(100vh-140px)] min-h-[70vh] bg-[#f5f7fb]">
             {pdfPreview ? (
               <iframe
                 src={pdfPreview.url}
