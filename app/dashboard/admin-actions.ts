@@ -5502,6 +5502,7 @@ function revalidateAdminSurfaces() {
     '/dashboard/leaderboard',
     '/dashboard/security',
     '/dashboard/security/users',
+    '/dashboard/security/roles',
     '/dashboard/scheduling-timesheet/schedule-v2',
     '/dashboard/scheduling-timesheet/attendance',
     '/dashboard/scheduling-timesheet/payroll',
