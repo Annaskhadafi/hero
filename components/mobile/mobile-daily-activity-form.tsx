@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SpeechInputButton } from '@/components/ui/speech-input-button'
+import { GpsLocationPreviewCard } from '@/components/ui/gps-location-preview-card'
 import { validateSiteBoundary } from '@/lib/location'
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
@@ -60,6 +61,7 @@ export type LibraryOption = {
   requiresDuration: boolean
   requiresMaterialUsed: boolean
   requiresLocationGps: boolean
+  requiresTireCount: boolean
   maxDailyCount: number
   maxPointsPerDay: number
   departmentId: number | null
@@ -81,6 +83,8 @@ type ChecklistRenderItem = {
   requiresRemark: boolean
   requiresPhoto: boolean
   requiresChecklistEvidence: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
   pointOverride: number | null
   libraryCode: string | null
   libraryName: string | null
@@ -223,6 +227,8 @@ type RouteItemState = {
   startedAt: string
   endedAt: string
   actualPoints: string
+  tireCount?: number
+  materialUsed?: string
 
   photoFile?: File | null
   photoFiles?: File[]
@@ -235,6 +241,7 @@ type SelfInputEntryState = {
   startTime: string
   endTime: string
   materialUsed: string
+  tireCount?: number
   notes: string
 
   photoFile?: File | null
@@ -370,6 +377,7 @@ function buildDefaultSelfInputEntry(
     startTime: shiftDateTimeLocalValue(defaultStartTime, offsetMinutes),
     endTime: shiftDateTimeLocalValue(defaultEndTime, offsetMinutes),
     materialUsed: '',
+    tireCount: 1,
     notes: '',
   }
 }
@@ -478,6 +486,8 @@ export function MobileDailyActivityForm({
             ...item,
             routeItemId: item.id,
             overtimeCommandLetterItemId: null,
+            requiresTireCount: item.requiresTireCount,
+            requiresMaterialUsed: item.requiresMaterialUsed,
           })),
         })),
       }
@@ -510,6 +520,8 @@ export function MobileDailyActivityForm({
           requiresRemark: true,
           requiresPhoto: item.requiresPhoto,
           requiresChecklistEvidence: true,
+          requiresTireCount: item.requiresTireCount,
+          requiresMaterialUsed: item.requiresMaterialUsed,
           pointOverride: item.plannedPoints,
           libraryCode: null,
           libraryName: null,
@@ -615,6 +627,13 @@ export function MobileDailyActivityForm({
 
   const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto
 
+  const selfInputNeedsGps = selectedLibraries.some((item) => item.requiresLocationGps)
+  const assignmentNeedsGps = Boolean((selectedAssignment as any)?.requiresLocationGps)
+  const checkedChecklistNeedsGps = checklistContext?.groups.some((group) =>
+    group.items.some((item) => routeItemState[item.id]?.isChecked && Boolean(item.requiresLocationGps))
+  ) ?? false
+  const needsGps = selfInputNeedsGps || assignmentNeedsGps || checkedChecklistNeedsGps
+
   useEffect(() => {
     const draft = queuedDraftKey
       ? readDraft<ActivitySyncPayload>(queuedDraftKey)
@@ -715,6 +734,8 @@ export function MobileDailyActivityForm({
                     ? alignDateTimeToReference(item.endedAt, defaultEndTime)
                     : item.endedAt,
                   actualPoints: `${item.actualPoints}`,
+                  tireCount: item.tireCount ?? 1,
+                  materialUsed: item.materialUsed || '',
                 },
               ],
             ]
@@ -784,6 +805,29 @@ export function MobileDailyActivityForm({
 
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
+
+  function handleRefreshGps() {
+    if (!navigator.geolocation) return
+    setGeo((current) => ({ ...current, message: 'Mencari sinyal GPS...' }))
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeo({
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+          accuracy: `${Math.round(position.coords.accuracy)}m`,
+          locationName: '',
+          message: 'GPS lock aktif',
+        })
+      },
+      (error) => {
+        setGeo((current) => ({
+          ...current,
+          message: error.message || 'Akses GPS ditolak.',
+        }))
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    )
+  }
 
   const boundary = validateSiteBoundary(
     site,
@@ -892,9 +936,12 @@ export function MobileDailyActivityForm({
             requiresTime: item.requiresTime,
             requiresRemark: item.requiresRemark,
             requiresPhoto: item.requiresPhoto,
+            requiresTireCount: item.requiresTireCount,
+            requiresMaterialUsed: item.requiresMaterialUsed,
             requiresChecklistEvidence: item.requiresChecklistEvidence,
           },
           unitNumber: stateForItem?.unitNumber || '',
+          materialUsed: stateForItem?.materialUsed || '',
           remark: stateForItem?.remark || '',
           startedAt:
             stateForItem?.isChecked && item.requiresTime
@@ -908,6 +955,7 @@ export function MobileDailyActivityForm({
           actualPoints: stateForItem?.isChecked
             ? Number(stateForItem.actualPoints || basePoints || 0)
             : 0,
+          tireCount: stateForItem?.isChecked && item.requiresTireCount ? stateForItem.tireCount ?? 1 : 0,
           sortOrder: item.sortOrder,
         }
       })
@@ -1072,6 +1120,8 @@ export function MobileDailyActivityForm({
 
     if (checklistContext) {
       let missingChecklistPhoto = false
+      let missingChecklistTire = false
+      let missingChecklistMaterial = false
       checklistContext.groups.forEach((group) =>
         group.items.forEach((item) => {
           const state = routeItemState[item.id]
@@ -1082,10 +1132,28 @@ export function MobileDailyActivityForm({
             !state?.restoredPhotoPayload
           )
             missingChecklistPhoto = true
+
+          if (
+            state?.isChecked &&
+            item.requiresTireCount &&
+            (!state?.tireCount || state?.tireCount <= 0)
+          )
+            missingChecklistTire = true
+
+          if (
+            state?.isChecked &&
+            item.requiresMaterialUsed &&
+            !state?.materialUsed?.trim()
+          )
+            missingChecklistMaterial = true
         })
       )
       if (missingChecklistPhoto)
         return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
+      if (missingChecklistTire)
+        return 'Jumlah tire wajib diisi untuk item checklist yang dipilih.'
+      if (missingChecklistMaterial)
+        return 'Material / tools wajib diisi untuk item checklist yang dipilih.'
     }
 
     const ranges: Array<{ code: string; start: Date; end: Date }> = []
@@ -1102,6 +1170,10 @@ export function MobileDailyActivityForm({
 
       if (library.requiresMaterialUsed && !entry.materialUsed.trim()) {
         return `${library.activityCode} wajib isi material / tools.`
+      }
+
+      if (library.requiresTireCount && (!entry.tireCount || entry.tireCount <= 0)) {
+        return `${library.activityCode} wajib isi jumlah tire yang dikerjakan.`
       }
 
       if (!entry.startTime || !entry.endTime) {
@@ -1208,6 +1280,7 @@ export function MobileDailyActivityForm({
             startTime: entry.startTime,
             endTime: entry.endTime,
             materialUsed: entry.materialUsed,
+            tireCount: entry.tireCount ?? 1,
             notes: entry.notes,
             routeTemplateId: index === 0 ? draftPayload.routeTemplateId : '',
             overtimeCommandLetterId: index === 0 ? draftPayload.overtimeCommandLetterId : '',
@@ -1737,6 +1810,7 @@ export function MobileDailyActivityForm({
                     buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
                   const requirementBadges = [
                     library.requiresEquipmentNo ? 'Equipment wajib' : null,
+                    library.requiresTireCount ? 'Tire wajib' : null,
                     library.requiresDuration ? 'Waktu wajib' : null,
                     library.requiresMaterialUsed ? 'Material wajib' : null,
                     library.requiresPhoto ? 'Foto umum wajib' : null,
@@ -1837,6 +1911,26 @@ export function MobileDailyActivityForm({
                                 })
                               }
                               placeholder="Material / tools dipakai"
+                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                            />
+                          </Label>
+                        ) : null}
+
+                        {library.requiresTireCount ? (
+                          <Label className="block space-y-2">
+                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                              Jumlah tire
+                            </span>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={entry.tireCount ?? 1}
+                              onChange={(event) =>
+                                updateSelfInputEntry(libraryId, {
+                                  tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
+                                })
+                              }
+                              placeholder="Jumlah tire yang dikerjakan"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
@@ -1987,6 +2081,42 @@ export function MobileDailyActivityForm({
                                       updateRouteItem(item.id, { unitNumber: event.target.value })
                                     }
                                     placeholder="Unit number"
+                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                  />
+                                </Label>
+                              ) : null}
+
+                              {item.requiresMaterialUsed ? (
+                                <Label className="block space-y-2">
+                                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                    Material used
+                                  </span>
+                                  <Input
+                                    value={itemState.materialUsed ?? ''}
+                                    onChange={(event) =>
+                                      updateRouteItem(item.id, { materialUsed: event.target.value })
+                                    }
+                                    placeholder="Material / tools dipakai"
+                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                  />
+                                </Label>
+                              ) : null}
+
+                              {item.requiresTireCount ? (
+                                <Label className="block space-y-2">
+                                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                    Jumlah tire
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={itemState.tireCount ?? 1}
+                                    onChange={(event) =>
+                                      updateRouteItem(item.id, {
+                                        tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
+                                      })
+                                    }
+                                    placeholder="Jumlah tire yang dikerjakan"
                                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                                   />
                                 </Label>
@@ -2158,61 +2288,21 @@ export function MobileDailyActivityForm({
           </>
         ) : null}
 
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="flex items-center gap-2 text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                <Navigation className="size-3.5 text-[#003f78]" />
-                GPS Auto-Capture
-              </p>
-              <p className="mt-2 text-sm leading-6 font-semibold text-[#486275]">
-                {geo.latitude
-                  ? boundary.message
-                  : 'GPS dicoba otomatis. Anda tetap bisa submit tanpa lokasi.'}
-              </p>
-            </div>
-            <span
-              className={
-                boundary.gpsValid
-                  ? 'rounded-full bg-[#dff4e8] px-3 py-1 text-[10px] font-black text-[#14532d] uppercase'
-                  : 'rounded-full bg-[#fff1cf] px-3 py-1 text-[10px] font-black text-[#8a5a00] uppercase'
-              }
-            >
-              {boundary.status}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
-            <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-              <p className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
-                Coordinates
-              </p>
-              <p className="mt-1 text-sm text-[#082033]">
-                {geo.latitude && geo.longitude
-                  ? `${geo.latitude}, ${geo.longitude}`
-                  : 'Waiting GPS'}
-              </p>
-            </div>
-            <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-              <p className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
-                Accuracy
-              </p>
-              <p className="mt-1 text-sm text-[#082033]">{geo.accuracy || geo.message}</p>
-            </div>
-          </div>
-
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-medium tracking-wider text-gray-500 uppercase">
-              Lokasi Manual (Opsional)
-            </span>
-            <Input
-              value={manualLocation}
-              onChange={(event) => setManualLocation(event.target.value)}
-              placeholder="Enter location manually if GPS/location access fails"
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-            />
-          </Label>
-        </section>
+        <GpsLocationPreviewCard
+          needsGps={needsGps}
+          latitude={geo.latitude}
+          longitude={geo.longitude}
+          accuracy={geo.accuracy}
+          message={geo.message}
+          locationName={geo.locationName}
+          manualLocation={manualLocation}
+          onManualLocationChange={setManualLocation}
+          onRefreshGps={handleRefreshGps}
+          boundaryStatus={boundary.status}
+          boundaryMessage={boundary.message}
+          gpsValid={boundary.gpsValid}
+          siteName={site?.name}
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <Button

@@ -7,7 +7,7 @@ import { Loader2, Pencil, Trash2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityGroupMemberSelector } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
-import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
+import { ActivityDepartmentSectionMultiSelect } from "@/components/activity-department-section-multi-select";
 import { ActivitySiteMultiSelect } from "@/components/activity-site-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,9 @@ type ActivityLibraryRow = {
   siteName: string | null;
   siteNames?: string | null;
   departmentId: number | null;
+  departmentIds?: number[];
   sectionId: number | null;
+  sectionIds?: number[];
   departmentName: string | null;
   sectionName: string | null;
   basePoints: number;
@@ -44,6 +46,7 @@ type ActivityLibraryRow = {
   requiresDuration: boolean;
   requiresLocationGps: boolean;
   requiresMaterialUsed: boolean;
+  requiresTireCount: boolean;
   maxDailyCount: number;
   maxPointsPerDay: number;
   isAssignable: boolean;
@@ -82,6 +85,7 @@ const BOOLEAN_FIELDS = [
   "requiresDuration",
   "requiresLocationGps",
   "requiresMaterialUsed",
+  "requiresTireCount",
   "isAssignable",
   "isSelfInput",
   "approvalRequired",
@@ -95,6 +99,7 @@ const VALIDATION_FIELDS = [
   ["requiresDuration", "Wajib durasi"],
   ["requiresLocationGps", "Wajib GPS"],
   ["requiresMaterialUsed", "Wajib material"],
+  ["requiresTireCount", "Pilihan jumlah tire"],
 ] as const;
 
 const BEHAVIOR_FIELDS = [
@@ -290,15 +295,17 @@ export function ActivityLibraryRowActions({
                     defaultSelected={row.siteIds ?? []}
                   />
                 </div>
-                <ActivityRouteDepartmentSectionFields
-                  departments={departments}
-                  sections={sections}
-                  defaultDepartmentId={row.departmentId}
-                  defaultSectionId={row.sectionId}
-                  selectClassName="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                  departmentPlaceholder="Global"
-                  sectionPlaceholder="No section"
-                />
+                <div className="md:col-span-2">
+                  <ActivityDepartmentSectionMultiSelect
+                    key={`dept-sec-${row.id}-${open}`}
+                    departments={departments}
+                    sections={sections}
+                    defaultDepartmentIds={row.departmentIds ?? []}
+                    defaultSectionIds={row.sectionIds ?? []}
+                    defaultDepartmentId={row.departmentId}
+                    defaultSectionId={row.sectionId}
+                  />
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-4">

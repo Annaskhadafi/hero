@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityGroupMemberSelector, type MinimalActivityOption } from "@/components/activity-group-member-selector";
 import { ActivityLibraryRouteMappingField } from "@/components/activity-library-route-mapping-field";
-import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
+import { ActivityDepartmentSectionMultiSelect } from "@/components/activity-department-section-multi-select";
 import { ActivitySiteMultiSelect } from "@/components/activity-site-multi-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ const CREATE_TOGGLE_FIELDS = [
   ["requiresDuration", "Wajib durasi"],
   ["requiresLocationGps", "Wajib GPS"],
   ["requiresMaterialUsed", "Wajib material"],
+  ["requiresTireCount", "Pilihan jumlah tire"],
   ["isAssignable", "Bisa di-assign"],
   ["isSelfInput", "Bisa self-input"],
   ["approvalRequired", "Butuh approval"],
@@ -125,13 +126,9 @@ export function ActivityLibraryCreateForm({
         <div className="sm:col-span-2">
           <ActivitySiteMultiSelect sites={sites} />
         </div>
-        <ActivityRouteDepartmentSectionFields
-          departments={departments}
-          sections={sections}
-          selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-          departmentPlaceholder="No specific department"
-          sectionPlaceholder="No specific section"
-        />
+        <div className="sm:col-span-2">
+          <ActivityDepartmentSectionMultiSelect departments={departments} sections={sections} />
+        </div>
         <Label className="grid gap-2">
           Base points
           <Input name="basePoints" type="number" defaultValue={10} />

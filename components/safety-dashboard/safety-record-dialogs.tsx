@@ -1,10 +1,11 @@
-"use client"
+'use client'
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { ImageIcon, Loader2, Plus, Upload, X } from "lucide-react"
+import { Calendar, CheckCircle2, Clock, ImageIcon, Info, Loader2, Pencil, Plus, Upload, X } from "lucide-react"
 
 import {
+  getAttendanceManHoursAction,
   manageSafetyCertificationAction,
   manageSafetyIncidentReportAction,
   manageSafetyIncidentSummaryMonthlyAction,
@@ -13,8 +14,11 @@ import {
   manageSafetyMonthlyManHoursAction,
   manageSafetyPerformanceAction,
   manageSafetyWeeklyActivityAction,
+  saveBatchMonthlyManHoursAction,
+  saveGlobalInitialManHoursAction,
 } from "@/app/dashboard/safety/actions"
 import { uploadFile } from "@/app/actions/upload"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
@@ -22,6 +26,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 
 
 export type SafetyFormOptions = {
@@ -40,6 +45,9 @@ type SafetyActionResult = { ok: boolean; message: string }
 type NativeFormAction = (formData: FormData) => Promise<SafetyActionResult>
 type TimestampValue = Date | string | null
 
+const CURRENT_YEAR_NUM = new Date().getFullYear()
+const YEAR_OPTIONS = Array.from({ length: 11 }, (_, i) => `${CURRENT_YEAR_NUM - 5 + i}`)
+
 type YearlySummaryRow = { id: number; year: number; fatality: number; lostDayInjury: number; restrictedWorkDayInjury: number; medicalTreatmentCase: number; firstAid: number; propertyDamage: number; nearMissReport: number; environmental: number; fatigue: number; totalEvents: number }
 type MonthlySummaryRow = { id: number; month: TimestampValue; fatality: number; lostDayInjury: number; restrictedWorkDayInjury: number; medicalTreatmentCase: number; firstAid: number; propertyDamage: number; nearMissReport: number; environmental: number; totalEvents: number }
 type IncidentRow = { id: number; workerName: string; department: string; incidentDescription: string; propertyDamage: string; location: string; category: string; incidentDate: TimestampValue; notes: string; status: string }
@@ -51,6 +59,9 @@ type MonthlyManHoursRow = { id: number; workLocation: string; employeeCount: num
 
 function formatDateInput(value: TimestampValue) {
   if (!value) return ""
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10)
+  }
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ""
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -361,7 +372,638 @@ export function CreateYearlySummaryButton({ access, options }: { access: TableRb
 export function CreateMonthlySummaryButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah rekap bulanan" access={access} action={manageSafetyIncidentSummaryMonthlyAction as unknown as NativeFormAction}><SummaryFields monthly options={options} /></CreateDialog> }
 export function CreateCertificationButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah sertifikasi" access={access} action={manageSafetyCertificationAction as unknown as NativeFormAction}><CertificationFields options={options} /></CreateDialog> }
 export function CreatePerformanceButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah performance" access={access} action={manageSafetyPerformanceAction as unknown as NativeFormAction}><PerformanceFields options={options} /></CreateDialog> }
-export function CreateManHoursButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah safety manhours" access={access} action={manageSafetyManHoursAction as unknown as NativeFormAction}><ManHoursFields options={options} /></CreateDialog> }
+export function CreateManHoursButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) {
+  const [open, setOpen] = React.useState(false)
+  const [inputType, setInputType] = React.useState<"auto" | "manual">("auto")
+  const [workLocation, setWorkLocation] = React.useState("")
+  const [initialManHours, setInitialManHours] = React.useState("")
+  const [safeTarget, setSafeTarget] = React.useState("")
+  const [year, setYear] = React.useState(new Date().getFullYear().toString())
+  const [monthIndex, setMonthIndex] = React.useState(() => new Date().getMonth().toString())
+  const [monthlyValues, setMonthlyValues] = React.useState<Record<string, string>>({
+    jan: "", feb: "", mar: "", apr: "", may: "", jun: "", jul: "", aug: "", sep: "", okt: "", nov: "", des: ""
+  })
+  const [autoPreview, setAutoPreview] = React.useState<{ manHours: number; employeeCount: number; message: string } | null>(null)
+  const [loadingAuto, setLoadingAuto] = React.useState(false)
+  
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const mutation = useSafetyMutation(saveBatchMonthlyManHoursAction as unknown as NativeFormAction, () => setOpen(false))
+
+  const monthNames = [
+    { key: "jan", label: "Januari" },
+    { key: "feb", label: "Februari" },
+    { key: "mar", label: "Maret" },
+    { key: "apr", label: "April" },
+    { key: "may", label: "Mei" },
+    { key: "jun", label: "Juni" },
+    { key: "jul", label: "Juli" },
+    { key: "aug", label: "Agustus" },
+    { key: "sep", label: "September" },
+    { key: "okt", label: "Oktober" },
+    { key: "nov", label: "November" },
+    { key: "des", label: "Desember" },
+  ]
+
+  const handleFetchAttendance = React.useCallback(async (loc: string, yr: string, mIdx: string) => {
+    if (!loc) return
+    setLoadingAuto(true)
+    try {
+      const res = await getAttendanceManHoursAction(loc, Number(yr), Number(mIdx))
+      if (res.ok) {
+        setAutoPreview({ manHours: res.manHours, employeeCount: res.employeeCount, message: res.message })
+      } else {
+        setAutoPreview({ manHours: 0, employeeCount: 0, message: res.message })
+      }
+    } catch {
+      setAutoPreview({ manHours: 0, employeeCount: 0, message: "Gagal memuat presensi" })
+    } finally {
+      setLoadingAuto(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (inputType === "auto" && workLocation) {
+      handleFetchAttendance(workLocation, year, monthIndex)
+    }
+  }, [inputType, workLocation, year, monthIndex, handleFetchAttendance])
+
+  const calculatedManualTotal = React.useMemo(() => {
+    return Object.values(monthlyValues).reduce((acc, curr) => {
+      const num = parseFloat(curr.replace(/,/g, ""))
+      return acc + (Number.isFinite(num) ? num : 0)
+    }, 0)
+  }, [monthlyValues])
+
+  return (
+    <EnterpriseRecordDialog
+      trigger={<AddButton>Tambah Data Man Hours</AddButton>}
+      title="Input Data Safety Man Hours"
+      description="Pilih metode pengisian: Otomatis via Attendance presensi atau Input Manual per Bulan"
+      mode="form"
+      access={access}
+      open={open}
+      onOpenChange={setOpen}
+      footer={
+        <div className="flex w-full items-center justify-between">
+          {inputType === "manual" ? (
+            <div className="text-xs text-muted-foreground">
+              Total Man Hours Year {year}: <span className="font-bold text-foreground text-sm">{new Intl.NumberFormat('id-ID').format(calculatedManualTotal)} jam</span>
+            </div>
+          ) : (
+            <div />
+          )}
+          <DialogSubmitButton pending={mutation.pending} onClick={() => formRef.current?.requestSubmit()}>Simpan Data</DialogSubmitButton>
+        </div>
+      }
+    >
+      <form ref={formRef} action={mutation.run} className="grid gap-4">
+        <input type="hidden" name="inputType" value={inputType} />
+
+        <div className="flex rounded-xl bg-surface-container-low p-1 border border-border/60">
+          <button
+            type="button"
+            onClick={() => setInputType("auto")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+              inputType === "auto" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Clock className="size-4 text-emerald-600" />
+            Auto (By Attendance)
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputType("manual")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+              inputType === "manual" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Calendar className="size-4 text-blue-600" />
+            Input Manual Per Bulan
+          </button>
+        </div>
+
+        <Label className="grid gap-2 text-sm font-medium">
+          Lokasi Site Master
+          <input type="hidden" name="workLocation" value={workLocation} />
+          <Combobox
+            value={workLocation}
+            onChange={setWorkLocation}
+            options={options?.locations ?? []}
+            placeholder="Pilih lokasi site master..."
+            allowCustom
+          />
+        </Label>
+
+        {inputType === "auto" ? (
+          <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+                <Info className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Metode Auto Attendance</p>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  Man Hours dihitung otomatis berdasarkan akumulasi presensi (attendance) karyawan di lokasi ini. Nanti tersimpan dengan keterangan <Badge variant="outline" className="bg-emerald-100 text-emerald-800 text-[10px] ml-1">Otomatis update by attendance</Badge>.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Label className="grid gap-2 text-sm font-medium">
+                Tahun
+                <select
+                  name="year"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {YEAR_OPTIONS.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </Label>
+              <Label className="grid gap-2 text-sm font-medium">
+                Bulan
+                <input type="hidden" name="monthIndex" value={monthIndex} />
+                <select
+                  value={monthIndex}
+                  onChange={(e) => setMonthIndex(e.target.value)}
+                  className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm"
+                >
+                  {monthNames.map((m, idx) => (
+                    <option key={m.key} value={idx}>{m.label}</option>
+                  ))}
+                </select>
+              </Label>
+            </div>
+
+            <div className="rounded-lg border border-emerald-200 bg-white p-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground font-medium">Hasil kalkulasi presensi:</span>
+                {loadingAuto ? <Loader2 className="size-4 animate-spin text-emerald-600" /> : null}
+              </div>
+              <p className="font-display text-lg font-bold text-emerald-950 mt-1">
+                {autoPreview ? `${new Intl.NumberFormat('id-ID').format(autoPreview.manHours)} Safety Man Hours` : 'Pilih lokasi & bulan'}
+              </p>
+              {autoPreview?.message ? (
+                <p className="text-xs text-emerald-700 mt-0.5">{autoPreview.message}</p>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 rounded-xl border border-border/80 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between">
+              <Label className="grid gap-2 text-sm font-medium w-44">
+                Pilih Tahun
+                <select
+                  name="year"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {YEAR_OPTIONS.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </Label>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Total Jam Kerja Tahun {year}</p>
+                <p className="font-display text-lg font-bold text-primary">{new Intl.NumberFormat('id-ID').format(calculatedManualTotal)} Jam</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground font-medium">Input jam kerja per bulan (Januari - Desember):</p>
+
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {monthNames.map((m) => (
+                <div key={m.key} className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-700">{m.label}</Label>
+                  <Input
+                    name={m.key}
+                    type="number"
+                    placeholder="0"
+                    value={monthlyValues[m.key]}
+                    onChange={(e) => setMonthlyValues({ ...monthlyValues, [m.key]: e.target.value })}
+                    className="h-8 text-xs bg-white"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <FormError message={mutation.error} />
+      </form>
+    </EnterpriseRecordDialog>
+  )
+}
+
+export function EditBatchManHoursButton({
+  siteRow,
+  access,
+  options,
+}: {
+  siteRow: {
+    workLocation: string
+    employeeCount: number
+    initialManHours?: number
+    actualMonthlyManHours?: number
+    safetyManHours: number
+    safeTarget?: string
+    monthlyDetails?: Array<any>
+  }
+  access: TableRbacAccess
+  options?: SafetyFormOptions
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [inputType, setInputType] = React.useState<"auto" | "manual">("manual")
+  const [initialManHours, setInitialManHours] = React.useState(`${siteRow.initialManHours ?? 0}`)
+  const [safeTarget, setSafeTarget] = React.useState(`${siteRow.safeTarget ?? 0}`)
+  const [year, setYear] = React.useState(new Date().getFullYear().toString())
+  const [monthIndex, setMonthIndex] = React.useState(() => new Date().getMonth().toString())
+  const [monthlyValues, setMonthlyValues] = React.useState<Record<string, string>>({
+    jan: "", feb: "", mar: "", apr: "", may: "", jun: "", jul: "", aug: "", sep: "", okt: "", nov: "", des: ""
+  })
+  const [autoPreview, setAutoPreview] = React.useState<{ manHours: number; employeeCount: number; message: string } | null>(null)
+  const [loadingAuto, setLoadingAuto] = React.useState(false)
+
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const mutation = useSafetyMutation(saveBatchMonthlyManHoursAction as unknown as NativeFormAction, () => setOpen(false))
+
+  const monthNames = [
+    { key: "jan", label: "Januari" },
+    { key: "feb", label: "Februari" },
+    { key: "mar", label: "Maret" },
+    { key: "apr", label: "April" },
+    { key: "may", label: "Mei" },
+    { key: "jun", label: "Juni" },
+    { key: "jul", label: "Juli" },
+    { key: "aug", label: "Agustus" },
+    { key: "sep", label: "September" },
+    { key: "okt", label: "Oktober" },
+    { key: "nov", label: "November" },
+    { key: "des", label: "Desember" },
+  ]
+
+  React.useEffect(() => {
+    if (open) {
+      setInitialManHours(`${siteRow.initialManHours ?? 0}`)
+      setSafeTarget(`${siteRow.safeTarget ?? 0}`)
+      if (siteRow.monthlyDetails) {
+        const monthKeys = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "okt", "nov", "des"]
+        const initial: Record<string, string> = {
+          jan: "", feb: "", mar: "", apr: "", may: "", jun: "", jul: "", aug: "", sep: "", okt: "", nov: "", des: ""
+        }
+        siteRow.monthlyDetails.forEach((detail) => {
+          const d = new Date(detail.month)
+          if (!Number.isNaN(d.getTime())) {
+            const mIdx = d.getMonth()
+            if (monthKeys[mIdx]) {
+              initial[monthKeys[mIdx]] = detail.safetyManHours ? `${detail.safetyManHours}` : ""
+            }
+          }
+        })
+        setMonthlyValues(initial)
+      }
+    }
+  }, [open, siteRow])
+
+  const handleFetchAttendance = React.useCallback(async (loc: string, yr: string, mIdx: string) => {
+    if (!loc) return
+    setLoadingAuto(true)
+    try {
+      const res = await getAttendanceManHoursAction(loc, Number(yr), Number(mIdx))
+      if (res.ok) {
+        setAutoPreview({ manHours: res.manHours, employeeCount: res.employeeCount, message: res.message })
+      } else {
+        setAutoPreview({ manHours: 0, employeeCount: 0, message: res.message })
+      }
+    } catch {
+      setAutoPreview({ manHours: 0, employeeCount: 0, message: "Gagal memuat presensi" })
+    } finally {
+      setLoadingAuto(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (inputType === "auto" && siteRow.workLocation) {
+      handleFetchAttendance(siteRow.workLocation, year, monthIndex)
+    }
+  }, [inputType, siteRow.workLocation, year, monthIndex, handleFetchAttendance])
+
+  const calculatedManualTotal = React.useMemo(() => {
+    return Object.values(monthlyValues).reduce((acc, curr) => {
+      const num = parseFloat(curr.replace(/,/g, ""))
+      return acc + (Number.isFinite(num) ? num : 0)
+    }, 0)
+  }, [monthlyValues])
+
+  if (!access.canEdit) return null
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="denseIcon"
+        onClick={() => setOpen(true)}
+        title="Edit Data Man Hours 12 Bulan"
+        className="size-7 hover:bg-slate-100"
+      >
+        <Pencil className="size-3.5 text-muted-foreground hover:text-foreground" />
+      </Button>
+      <EnterpriseRecordDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`Edit Safety Man Hours - ${siteRow.workLocation}`}
+        description="Kelola data jam kerja (man hours) per bulan untuk lokasi ini"
+        mode="form"
+        access={access}
+        footer={
+          <div className="flex w-full items-center justify-between">
+            {inputType === "manual" ? (
+              <div className="text-xs text-muted-foreground">
+                Total Man Hours Year {year}: <span className="font-bold text-foreground text-sm">{new Intl.NumberFormat('id-ID').format(calculatedManualTotal)} jam</span>
+              </div>
+            ) : (
+              <div />
+            )}
+            <DialogSubmitButton pending={mutation.pending} onClick={() => formRef.current?.requestSubmit()}>Simpan Perubahan</DialogSubmitButton>
+          </div>
+        }
+      >
+        <form ref={formRef} action={mutation.run} className="grid gap-4">
+          <input type="hidden" name="inputType" value={inputType} />
+          <input type="hidden" name="workLocation" value={siteRow.workLocation} />
+
+          <div className="flex rounded-xl bg-surface-container-low p-1 border border-border/60">
+            <button
+              type="button"
+              onClick={() => setInputType("auto")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+                inputType === "auto" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Clock className="size-4 text-emerald-600" />
+              Auto (By Attendance)
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputType("manual")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer",
+                inputType === "manual" ? "bg-white text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Calendar className="size-4 text-blue-600" />
+              Input Manual Per Bulan
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-border bg-slate-50/70 p-3">
+            <p className="text-xs text-muted-foreground font-medium">Lokasi Site Master</p>
+            <p className="font-bold text-sm text-foreground">{siteRow.workLocation}</p>
+          </div>
+
+          {inputType === "auto" ? (
+            <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700">
+                  <Info className="size-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Metode Auto Attendance</p>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    Man Hours dihitung otomatis berdasarkan presensi karyawan di lokasi ini. Nanti tersimpan dengan keterangan <Badge variant="outline" className="bg-emerald-100 text-emerald-800 text-[10px] ml-1">Otomatis update by attendance</Badge>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Label className="grid gap-2 text-sm font-medium">
+                  Tahun
+                  <select
+                    name="year"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </Label>
+                <Label className="grid gap-2 text-sm font-medium">
+                  Bulan
+                  <input type="hidden" name="monthIndex" value={monthIndex} />
+                  <select
+                    value={monthIndex}
+                    onChange={(e) => setMonthIndex(e.target.value)}
+                    className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm"
+                  >
+                    {monthNames.map((m, idx) => (
+                      <option key={m.key} value={idx}>{m.label}</option>
+                    ))}
+                  </select>
+                </Label>
+              </div>
+
+              <div className="rounded-lg border border-emerald-200 bg-white p-3 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-medium">Hasil kalkulasi presensi:</span>
+                  {loadingAuto ? <Loader2 className="size-4 animate-spin text-emerald-600" /> : null}
+                </div>
+                <p className="font-display text-lg font-bold text-emerald-950 mt-1">
+                  {autoPreview ? `${new Intl.NumberFormat('id-ID').format(autoPreview.manHours)} Safety Man Hours` : 'Memuat data presensi...'}
+                </p>
+                {autoPreview?.message ? (
+                  <p className="text-xs text-emerald-700 mt-0.5">{autoPreview.message}</p>
+                ) : null}
+              </div>
+              {/* Pass safeTarget even in auto mode */}
+              <input type="hidden" name="safeTarget" value={safeTarget} />
+            </div>
+          ) : (
+            <div className="space-y-4 rounded-xl border border-border/80 bg-slate-50/50 p-4">
+              <div className="flex items-center justify-between">
+                <Label className="grid gap-2 text-sm font-medium w-44">
+                  Pilih Tahun
+                  <select
+                    name="year"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="border-input bg-white h-9 rounded-lg border px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </Label>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Total Jam Kerja Tahun {year}</p>
+                  <p className="font-display text-lg font-bold text-primary">{new Intl.NumberFormat('id-ID').format(calculatedManualTotal)} Jam</p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                <Label className="grid gap-1.5 text-xs font-semibold text-amber-900">
+                  🎯 Target Aman per Tahun (Jam)
+                  <Input
+                    name="safeTarget"
+                    type="number"
+                    step="0.01"
+                    placeholder="Contoh: 500000"
+                    value={safeTarget}
+                    onChange={(e) => setSafeTarget(e.target.value)}
+                    className="h-8 text-xs bg-white border-amber-200 focus-visible:ring-amber-400"
+                  />
+                  <span className="text-[10px] font-normal text-amber-700">
+                    Target total jam kerja aman yang ingin dicapai untuk lokasi ini dalam setahun.
+                    {safeTarget && parseFloat(safeTarget) > 0 && calculatedManualTotal > 0 ? (
+                      <> &nbsp;Pencapaian saat ini: <strong>{Math.round(calculatedManualTotal / parseFloat(safeTarget) * 100)}%</strong></>
+                    ) : null}
+                  </span>
+                </Label>
+              </div>
+
+              <p className="text-xs text-muted-foreground font-medium">Input / Edit jam kerja per bulan (Januari - Desember):</p>
+
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                {monthNames.map((m) => (
+                  <div key={m.key} className="space-y-1">
+                    <Label className="text-xs font-semibold text-slate-700">{m.label}</Label>
+                    <Input
+                      name={m.key}
+                      type="number"
+                      placeholder="0"
+                      value={monthlyValues[m.key]}
+                      onChange={(e) => setMonthlyValues({ ...monthlyValues, [m.key]: e.target.value })}
+                      className="h-8 text-xs bg-white"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <FormError message={mutation.error} />
+        </form>
+      </EnterpriseRecordDialog>
+    </>
+  )
+}
+
+export function EditGlobalStartDataButton({
+  globalStartData,
+  access,
+}: {
+  globalStartData?: {
+    initialManHours: number
+    safeTarget: number
+    totalActualMonthlyManHours: number
+    totalSystemSafeManHours: number
+    lastUpdate: Date | string | null
+  }
+  access: TableRbacAccess
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [initialManHours, setInitialManHours] = React.useState(`${globalStartData?.initialManHours ?? 0}`)
+  const [safeTarget, setSafeTarget] = React.useState(`${globalStartData?.safeTarget ?? 0}`)
+
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const mutation = useSafetyMutation(saveGlobalInitialManHoursAction as unknown as NativeFormAction, () => setOpen(false))
+
+  React.useEffect(() => {
+    if (open) {
+      setInitialManHours(`${globalStartData?.initialManHours ?? 0}`)
+      setSafeTarget(`${globalStartData?.safeTarget ?? 0}`)
+    }
+  }, [open, globalStartData])
+
+  if (!access.canEdit) return null
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="h-8 gap-1.5 text-xs font-semibold bg-white border-blue-200 text-blue-800 hover:bg-blue-50 hover:text-blue-900 shadow-xs"
+      >
+        <Pencil className="size-3.5 text-blue-600" />
+        Set Start Data Gabungan (s/d 2025)
+      </Button>
+
+      <EnterpriseRecordDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Start Data Safety Man Hours (Gabungan Semua Site s/d 2025)"
+        description="Kelola akumulasi saldo awal jam kerja aman gabungan seluruh site sebelum tahun 2026."
+        mode="form"
+        access={access}
+        footer={
+          <div className="flex w-full items-center justify-between">
+            <div className="text-xs text-muted-foreground">
+              Hasil Total System: <span className="font-bold text-foreground text-sm">{new Intl.NumberFormat('id-ID').format((parseFloat(initialManHours) || 0) + (globalStartData?.totalActualMonthlyManHours || 0))} jam</span>
+            </div>
+            <DialogSubmitButton pending={mutation.pending} onClick={() => formRef.current?.requestSubmit()}>Simpan Start Data</DialogSubmitButton>
+          </div>
+        }
+      >
+        <form ref={formRef} action={mutation.run} className="grid gap-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-100 text-blue-700">
+                <Info className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">Start Data Gabungan (Historis s/d 2025)</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  Nilai ini adalah akumulasi total jam kerja aman dari seluruh lokasi site sebelum tahun 2026. Nilai aktual bulanan (2026+) akan ditambahkan di atas saldo awal ini.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 pt-2">
+              <Label className="grid gap-1.5 text-xs font-semibold text-slate-800">
+                Jam Kerja Awal Gabungan (s/d 2025)
+                <Input
+                  name="globalInitialManHours"
+                  type="number"
+                  step="0.01"
+                  placeholder="0"
+                  value={initialManHours}
+                  onChange={(e) => setInitialManHours(e.target.value)}
+                  className="h-9 bg-white text-xs"
+                />
+              </Label>
+
+              <Label className="grid gap-1.5 text-xs font-semibold text-slate-800">
+                Target Safe Hours System
+                <Input
+                  name="globalSafeTarget"
+                  type="number"
+                  step="0.01"
+                  placeholder="0"
+                  value={safeTarget}
+                  onChange={(e) => setSafeTarget(e.target.value)}
+                  className="h-9 bg-white text-xs"
+                />
+              </Label>
+            </div>
+          </div>
+
+          <FormError message={mutation.error} />
+        </form>
+      </EnterpriseRecordDialog>
+    </>
+  )
+}
+
 export function CreateMonthlyManHoursButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah monthly manhours" access={access} action={manageSafetyMonthlyManHoursAction as unknown as NativeFormAction}><ManHoursFields monthly options={options} /></CreateDialog> }
 export function CreateWeeklyActivityButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah weekly activity" access={access} action={manageSafetyWeeklyActivityAction as unknown as NativeFormAction}><WeeklyActivityFields options={options} /></CreateDialog> }
 

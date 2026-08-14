@@ -40,11 +40,15 @@ type PerformanceLike = {
   propertyDamageActual: unknown
 }
 
+type SiteSummaryLike = { workLocation: string; safetyManHours: unknown; safeTarget?: unknown }
+
 export function buildSafetyKpis(input: {
   monthlySummaries: MonthlyIncidentLike[]
   certifications: CertificationLike[]
   weeklyActivities: WeeklyActivityLike[]
   manHours: ManHoursLike[]
+  siteManHoursSummary?: SiteSummaryLike[]
+  globalStartData?: { initialManHours: number; totalSystemSafeManHours: number }
 }) {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth()
@@ -59,6 +63,12 @@ export function buildSafetyKpis(input: {
     return !Number.isNaN(date.getTime()) && date.getFullYear() === currentYear && date.getMonth() === currentMonth
   }).length
 
+  const safeManHoursTotal = input.globalStartData
+    ? input.globalStartData.totalSystemSafeManHours
+    : input.siteManHoursSummary && input.siteManHoursSummary.length > 0
+    ? input.siteManHoursSummary.reduce((total, row) => total + asNumber(row.safetyManHours), 0)
+    : input.manHours.reduce((total, row) => total + asNumber(row.safetyManHours), 0)
+
   return {
     totalIncidentYtd: sum((row) => row.totalEvents),
     fatality: sum((row) => row.fatality),
@@ -67,7 +77,7 @@ export function buildSafetyKpis(input: {
     firstAid: sum((row) => row.firstAid),
     propertyDamage: sum((row) => row.propertyDamage),
     nearMiss: sum((row) => row.nearMissReport),
-    safeManHours: input.manHours.reduce((total, row) => total + asNumber(row.safetyManHours), 0),
+    safeManHours: safeManHoursTotal,
     certificationExpired: input.certifications.filter((row) => row.status.toUpperCase() === "EXPIRED").length,
     weeklyActivitiesThisMonth: weeklyThisMonth,
   }
@@ -79,6 +89,7 @@ export function buildSafetyCharts(input: {
   weeklyActivities: Array<WeeklyActivityLike & { category: string }>
   manHours: ManHoursLike[]
   monthlyManHours: Array<ManHoursLike & { month: Date | string }>
+  siteManHoursSummary?: SiteSummaryLike[]
   performanceMetrics: PerformanceLike[]
 }) {
   const certificationStatus = input.certifications.reduce<Record<string, number>>((acc, row) => {
@@ -91,6 +102,18 @@ export function buildSafetyCharts(input: {
     acc[key] = (acc[key] ?? 0) + 1
     return acc
   }, {})
+
+  const manHoursByLocation = input.siteManHoursSummary && input.siteManHoursSummary.length > 0
+    ? input.siteManHoursSummary.map((row) => ({
+        location: row.workLocation,
+        manHours: asNumber(row.safetyManHours),
+        target: asNumber(row.safeTarget),
+      }))
+    : input.manHours.map((row) => ({
+        location: row.workLocation,
+        manHours: asNumber(row.safetyManHours),
+        target: asNumber(row.safeTarget),
+      }))
 
   return {
     incidentTrend: input.monthlySummaries.map((row) => ({
@@ -105,11 +128,7 @@ export function buildSafetyCharts(input: {
     })),
     certificationStatus: Object.entries(certificationStatus).map(([name, value]) => ({ name, value })),
     weeklyActivitiesByCategory: Object.entries(weeklyCategory).map(([category, count]) => ({ category, count })),
-    manHoursByLocation: input.manHours.map((row) => ({
-      location: row.workLocation,
-      manHours: asNumber(row.safetyManHours),
-      target: asNumber(row.safeTarget),
-    })),
+    manHoursByLocation,
     monthlyManHoursTrend: Object.entries(
       input.monthlyManHours.reduce<Record<string, number>>((acc, row) => {
         const m = monthLabel(row.month)

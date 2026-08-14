@@ -52,6 +52,12 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
             <dt className="text-xs font-semibold text-[#60788a]">Total lembur</dt>
             <dd className="mt-0.5 font-bold tabular-nums">{item.overtimeLabel}</dd>
           </div>
+          {(item as any).tireCount ? (
+            <div>
+              <dt className="text-xs font-semibold text-[#60788a]">Jumlah Tire</dt>
+              <dd className="mt-0.5 font-bold tabular-nums">{(item as any).tireCount} unit</dd>
+            </div>
+          ) : null}
           <div className="col-span-2 border-t border-[#d5e5ef] pt-3">
             <dt className="text-xs font-semibold text-[#60788a]">Tanggal</dt>
             <dd className="mt-1 text-base font-black">{formatDate(item.startTime)}</dd>

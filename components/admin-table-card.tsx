@@ -1,3 +1,5 @@
+'use client'
+
 import { Card } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Rows3 } from "lucide-react";

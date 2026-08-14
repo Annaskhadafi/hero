@@ -21,14 +21,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   ACTIVITY_LIBRARY_EXAMPLE_CSV,
-  ACTIVITY_LIBRARY_IMPORT_FIELDS,
   buildActivityLibraryCsv,
   getActivityLibraryImportValue,
   INITIAL_ACTIVITY_LIBRARY_IMPORT_STATE,
   parseActivityLibraryCsv,
   type ActivityLibraryCsvRow,
 } from "@/lib/activity-library-import";
-import { parseCsvToRecords } from "@/lib/security-user-import";
 
 type ActivityLibraryRow = {
   id: number;
@@ -45,6 +43,7 @@ type ActivityLibraryRow = {
   requiresDuration: boolean;
   requiresLocationGps: boolean;
   requiresMaterialUsed: boolean;
+  requiresTireCount: boolean;
   maxDailyCount: number;
   maxPointsPerDay: number;
   isAssignable: boolean;
@@ -70,9 +69,9 @@ function toCsvRows(rows: ActivityLibraryRow[]): ActivityLibraryCsvRow[] {
     activityCode: row.activityCode,
     activityName: row.activityName,
     category: row.category,
-    site: row.siteName ?? "",
-    department: row.departmentName ?? "",
-    section: row.sectionName ?? "",
+    site: (row as any).siteNames ?? row.siteName ?? "",
+    department: (row as any).departmentNames ?? row.departmentName ?? "",
+    section: (row as any).sectionNames ?? row.sectionName ?? "",
     basePoints: row.basePoints,
     complexityLevel: row.complexityLevel,
     maxDailyCount: row.maxDailyCount,
@@ -83,6 +82,7 @@ function toCsvRows(rows: ActivityLibraryRow[]): ActivityLibraryCsvRow[] {
     requiresDuration: row.requiresDuration,
     requiresLocationGps: row.requiresLocationGps,
     requiresMaterialUsed: row.requiresMaterialUsed,
+    requiresTireCount: row.requiresTireCount,
     isAssignable: row.isAssignable,
     isSelfInput: row.isSelfInput,
     approvalRequired: row.approvalRequired,

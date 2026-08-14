@@ -17,6 +17,7 @@ export const ACTIVITY_LIBRARY_IMPORT_FIELDS = [
   { key: "requiresDuration", label: "requiresDuration", required: false, aliases: ["requires_duration", "wajib durasi", "duration"] },
   { key: "requiresLocationGps", label: "requiresLocationGps", required: false, aliases: ["requires_location_gps", "wajib gps", "gps"] },
   { key: "requiresMaterialUsed", label: "requiresMaterialUsed", required: false, aliases: ["requires_material_used", "wajib material", "material"] },
+  { key: "requiresTireCount", label: "requiresTireCount", required: false, aliases: ["requires_tire_count", "wajib tire", "pilihan tire", "jumlah tire", "tire"] },
   { key: "isAssignable", label: "isAssignable", required: false, aliases: ["is_assignable", "assignable", "bisa assign"] },
   { key: "isSelfInput", label: "isSelfInput", required: false, aliases: ["is_self_input", "self input", "bisa self input"] },
   { key: "approvalRequired", label: "approvalRequired", required: false, aliases: ["approval_required", "butuh approval", "approval"] },

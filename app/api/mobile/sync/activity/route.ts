@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     formData.append('startTime', payload.startTime)
     formData.append('endTime', payload.endTime)
     formData.append('materialUsed', payload.materialUsed)
+    formData.append('tireCount', String(payload.tireCount ?? 0))
 
     const locationBlock = [
       payload.locationName ? `Lokasi: ${payload.locationName}` : null,

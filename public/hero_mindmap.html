@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HERO Workspace - Mindmap Interactive</title>
+  <!-- Google Fonts & FontAwesome / Tabler Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/icons@2.47.0/icons-react.umd.min.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-card: rgba(15, 23, 42, 0.75);
+      --bg-glass: rgba(255, 255, 255, 0.03);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-cyan: #38bdf8;
+      --accent-purple: #c084fc;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f43f5e;
+      --accent-indigo: #818cf8;
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(192, 132, 252, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.05) 0%, transparent 60%);
+    }
+
+    /* Grid overlay pattern */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Header Bar */
+    header {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      height: 72px;
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 10;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #0284c7 0%, #7e22ce 100%);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-heading);
+      font-weight: 800;
+      font-size: 20px;
+      color: #fff;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.4);
+    }
+
+    .brand-text h1 {
+      font-family: var(--font-heading);
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-text p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .stats-pills {
+      display: flex;
+      gap: 12px;
+    }
+
+    .stat-pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-glass);
+      padding: 8px 16px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .stat-pill .num {
+      font-weight: 700;
+      font-family: var(--font-heading);
+      font-size: 15px;
+    }
+
+    .stat-pill.cyan .num { color: var(--accent-cyan); }
+    .stat-pill.purple .num { color: var(--accent-purple); }
+    .stat-pill.emerald .num { color: var(--accent-emerald); }
+
+    /* Search & Controls */
+    .controls-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .search-box {
+      position: relative;
+      width: 260px;
+    }
+
+    .search-box input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-glass);
+      border-radius: 12px;
+      padding: 10px 16px 10px 40px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    .search-box input:focus {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      stroke: var(--text-muted);
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-glass);
+      color: var(--text-main);
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      border: none;
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    /* Floating Zoom Toolbar */
+    .zoom-toolbar {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 10;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .zoom-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-main);
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .zoom-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+
+    /* Mindmap SVG Container */
+    #mindmap-svg {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      z-index: 2;
+    }
+
+    #mindmap-svg:active {
+      cursor: grabbing;
+    }
+
+    /* D3 SVG Node Styling */
+    .link {
+      fill: none;
+      stroke-width: 2px;
+      opacity: 0.6;
+      transition: all 0.4s ease;
+    }
+
+    .link.highlighted {
+      stroke-width: 3.5px;
+      opacity: 1;
+      filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.8));
+    }
+
+    .node {
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+
+    .node circle {
+      transition: all 0.3s ease;
+    }
+
+    .node:hover circle {
+      transform: scale(1.15);
+    }
+
+    .node text {
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      fill: #e2e8f0;
+      pointer-events: none;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .node-root circle {
+      fill: url(#root-gradient);
+      stroke: #38bdf8;
+      stroke-width: 3px;
+      filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.6));
+    }
+
+    .node-root text {
+      font-family: var(--font-heading);
+      font-size: 16px;
+      font-weight: 800;
+      fill: #ffffff;
+    }
+
+    .node-group rect {
+      rx: 10px;
+      ry: 10px;
+      stroke-width: 1.5px;
+      transition: all 0.3s ease;
+    }
+
+    .node-group:hover rect {
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.3));
+    }
+
+    .node-sub text {
+      font-size: 11px;
+    }
+
+    /* Slide-over Drawer / Modal Details */
+    .drawer {
+      position: absolute;
+      top: 110px;
+      right: -420px;
+      width: 380px;
+      bottom: 24px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--border-glass);
+      border-radius: 24px;
+      padding: 24px;
+      z-index: 20;
+      transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: -20px 0 50px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .drawer.active {
+      right: 24px;
+    }
+
+    .drawer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .drawer-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .drawer-title {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .drawer-close {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .drawer-close:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+
+    .subfeatures-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .subfeature-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+
+    .subfeature-item:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--accent-cyan);
+      transform: translateX(4px);
+    }
+
+    .subfeature-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    /* Legend Overlay */
+    .legend-overlay {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 12px 18px;
+      z-index: 10;
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-grid"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-logo">H</div>
+      <div class="brand-text">
+        <h1>HERO Mindmap Interactive</h1>
+        <p>Arsitektur & Pemetaan Modul Sistem Enterprise</p>
+      </div>
+    </div>
+
+    <div class="stats-pills">
+      <div class="stat-pill cyan">
+        <span class="num" id="total-groups">15</span>
+        <span class="label">Kelompok</span>
+      </div>
+      <div class="stat-pill purple">
+        <span class="num" id="total-features">100</span>
+        <span class="label">Fitur Utama</span>
+      </div>
+      <div class="stat-pill emerald">
+        <span class="num" id="total-subfeatures">272</span>
+        <span class="label">Sub-Fitur</span>
+      </div>
+    </div>
+
+    <div class="controls-wrapper">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="search-input" placeholder="Cari fitur atau kelompok...">
+      </div>
+
+      <button class="btn" id="btn-expand">Expand All</button>
+      <button class="btn" id="btn-collapse">Collapse All</button>
+      <button class="btn btn-primary" id="btn-reset">Reset View</button>
+    </div>
+  </header>
+
+  <!-- SVG Canvas -->
+  <svg id="mindmap-svg"></svg>
+
+  <!-- Zoom Controls -->
+  <div class="zoom-toolbar">
+    <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+    <button class="zoom-btn" id="zoom-reset" title="Reset Zoom">⟲</button>
+    <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend-overlay">
+    <div class="legend-item">
+      <div class="legend-color" style="background: #38bdf8; box-shadow: 0 0 8px #38bdf8;"></div>
+      <span>Core & Operations</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #c084fc; box-shadow: 0 0 8px #c084fc;"></div>
+      <span>Human Capital & LMS</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #34d399; box-shadow: 0 0 8px #34d399;"></div>
+      <span>HSE & K3 Safety</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-color" style="background: #fbbf24; box-shadow: 0 0 8px #fbbf24;"></div>
+      <span>Central Service & Warehouse</span>
+    </div>
+  </div>
+
+  <!-- Drawer Detail Panel -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <div>
+        <span class="drawer-badge" id="drawer-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Kelompok Modul</span>
+        <h2 class="drawer-title" id="drawer-title">Nama Modul</h2>
+      </div>
+      <button class="drawer-close" id="drawer-close">✕</button>
+    </div>
+    <p id="drawer-desc" style="font-size: 13px; color: var(--text-muted); line-height: 1.5;"></p>
+
+    <div style="border-top: 1px solid var(--border-glass); padding-top: 16px;">
+      <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+        <span>Daftar Sub-Fitur</span>
+        <span id="subfeature-count" style="font-size: 12px; color: var(--accent-cyan); background: rgba(56, 189, 248, 0.1); padding: 2px 8px; border-radius: 10px;">0 Items</span>
+      </h3>
+      <div class="subfeatures-list" id="subfeatures-container"></div>
+    </div>
+  </div>
+
+  <script>
+    // Complete HERO Tree Data
+    const mindmapData = {
+      name: "HERO WORKSPACE",
+      type: "root",
+      children: [
+        {
+          name: "Portal & Command Center",
+          color: "#38bdf8",
+          children: [
+            { name: "Portal Chitra", subs: ["Dashboard Utama & Quick Access", "Executive Summary Widget", "Pengumuman Perusahaan"] },
+            { name: "Command Center", subs: ["Live Broadcast Alerts", "Real-time System Status Monitoring"] }
+          ]
+        },
+        {
+          name: "Aktivitas Harian (Activity Hub)",
+          color: "#38bdf8",
+          children: [
+            { name: "Input Aktivitas Harian (My Day)", subs: ["Task Entry & Geo-tagging", "Upload Bukti Foto/Dokumen", "Real-time Poin Calculator"] },
+            { name: "Monitoring Tim & SPL (Team Board)", subs: ["Real-time Status Progress Anggota", "Approval Surat Perintah Lembur (SPL)"] },
+            { name: "Kamus Aktivitas (Activity Library)", subs: ["Master Kategori & Bobot Poin", "Import/Export Master Aktivitas"] },
+            { name: "Route Template Harian", subs: ["Matriks Rute Operasional & Shift"] },
+            { name: "Rule Aktivitas Global", subs: ["Konfigurasi Threshold Poin & Lampiran"] },
+            { name: "Pengajuan Lembur (Overtime)", subs: ["Form Request & Estimasi Jam Lembur"] },
+            { name: "Timesheet Realisasi", subs: ["Jam Kerja Aktual & Verifikasi Supervisor"] }
+          ]
+        },
+        {
+          name: "Roster & Timesheet",
+          color: "#818cf8",
+          children: [
+            { name: "Overview Roster", subs: ["Kalender Roster per Site/Department"] },
+            { name: "Konfigurasi Roster, OT & Meals", subs: ["Matriks Roster, Meal Allowance & Formula OT"] },
+            { name: "Schedule v2", subs: ["Drag-and-Drop Shift & Swap Shift"] },
+            { name: "Field Break Schedule", subs: ["Pengajuan Cuti Roster & Tiket Travel"] },
+            { name: "Payroll Timesheet", subs: ["Rekap Jam Kerja Payroll & Lock Periode"] },
+            { name: "Attendance Roster", subs: ["Presensi Machine Sync vs Shift Roster"] },
+            { name: "EWH Dashboard", subs: ["Effective Working Hours & Delay Breakdown"] },
+            { name: "Unit Utility", subs: ["Jam Operasional Equipment & Losses Ratio"] }
+          ]
+        },
+        {
+          name: "Approval & Workflow Studio",
+          color: "#c084fc",
+          children: [
+            { name: "Approval Inbox", subs: ["Unified Inbox PJO/Atasan", "Action Approve/Reject with Notes"] },
+            { name: "Request Center", subs: ["Tracking Status Pengajuan Dokumen"] },
+            { name: "Workflow Studio Builder", subs: ["Visual Canvas Dynamic Approval Routing"] },
+            { name: "Notification Center", subs: ["Push Notification, Email & Bell Header Logs"] }
+          ]
+        },
+        {
+          name: "Human Capital (HC)",
+          color: "#c084fc",
+          children: [
+            { name: "Pengaduan Karyawan (Curhat)", subs: ["Form Counseling User & Anonim Status"] },
+            { name: "Dashboard Pengaduan HR", subs: ["Ticketing System & Counselor Assignment"] },
+            { name: "HC Overview", subs: ["Demografi, Turnover & HR Metrics"] },
+            { name: "Employee Data Directory", subs: ["Single Source of Truth Profile Karyawan"] },
+            { name: "Surat Management", subs: ["Auto-generator Surat Keterangan & Digital Sign"] },
+            { name: "Izin Sakit & Terlambat", subs: ["Form Izin, Verifikasi Surat Dokter & Auto-deduct"] },
+            { name: "Contract Review", subs: ["Evaluasi Kontrak PKWT & Renewal Alert"] },
+            { name: "Disciplinary (SP)", subs: ["Penerbitan SP 1/2/3 & Violation Tracker"] },
+            { name: "Org Structure V2", subs: ["Interactive Org Chart & Hierarchy Mapping"] },
+            { name: "MCU Wellness", subs: ["OCR MCU Reader & AI Wellness Health Score"] },
+            { name: "Recruitment Management", subs: ["Applicant Tracking System (ATS) Pipeline"] },
+            { name: "Online Tests", subs: ["Bank Soal, Auto-Scoring & Timer Ujian"] },
+            { name: "Training Enhancement", subs: ["Training Need Assessment (TNA) & Catalog"] },
+            { name: "Training Records", subs: ["Sertifikasi Competency & Expired Reminder"] },
+            { name: "Performance Management", subs: ["KPI Tracking & Appraisal Calibration"] },
+            { name: "Leader Performance", subs: ["360 Feedback & Leadership Matrix"] },
+            { name: "Point Leaderboard", subs: ["Ranking Gamification & Reward Points History"] }
+          ]
+        },
+        {
+          name: "ChitraLearning LMS",
+          color: "#c084fc",
+          children: [
+            { name: "Learning Workspace", subs: ["Ruang Belajar Learner & Progress Course"] },
+            { name: "Course Builder", subs: ["Authoring Tool Video, Text & Quiz Builder"] },
+            { name: "Section Management", subs: ["Pengelompokan Pembelajaran per Seksi"] },
+            { name: "Campaigns", subs: ["Mandatory Training Campaign & Auto-Reminder"] }
+          ]
+        },
+        {
+          name: "Attendance (Presensi)",
+          color: "#34d399",
+          children: [
+            { name: "Live & Import Presensi", subs: ["Machine Fingerprint Sync & Live Check-in"] },
+            { name: "Live Map Attendance", subs: ["Geofencing Radius & Real-time GPS Tracker"] },
+            { name: "Attendance Records", subs: ["History Absensi & Log Keterlambatan"] },
+            { name: "Attendance Exceptions", subs: ["Form Dispensasi & Override Absensi"] }
+          ]
+        },
+        {
+          name: "HSE (K3 Safety)",
+          color: "#34d399",
+          children: [
+            { name: "HSE Overview", subs: ["Incident Statistics, FR & SR Rate"] },
+            { name: "Safety Dashboard", subs: ["Hazard Category Analysis & Near Miss Ratios"] },
+            { name: "Safety Data Management", subs: ["Central Repository Regulasi & Standard K3"] },
+            { name: "Safety Inspections", subs: ["Mobile Audit Logger & CAPA Finding Tracker"] },
+            { name: "HSE Checklists", subs: ["Dynamic Checklist Generator (P2H Alat/Unit)"] },
+            { name: "HIRADC Risk Assessment", subs: ["Matriks Risiko (Likelihood x Severity) & PDF"] },
+            { name: "SIA / SIO Certification", subs: ["Tracking Expired Izin Alat & Operator"] },
+            { name: "Inventaris K3 (APD)", subs: ["Stock Equipment K3 & Reorder Alert"] },
+            { name: "Izin Kerja PTW", subs: ["Approval Pekerjaan Risiko Tinggi & LOTO"] },
+            { name: "JSA (Job Safety)", subs: ["Langkah Kerja, Bahaya & APD Wajib"] },
+            { name: "Safety Induction", subs: ["Pre-test K3 & Digital Induction Badge"] },
+            { name: "Incident Report", subs: ["Pelaporan Kecelakaan & 5-Why Investigation"] }
+          ]
+        },
+        {
+          name: "Central Service",
+          color: "#fbbf24",
+          children: [
+            { name: "Request Barang (APD)", subs: ["Form Pengajuan & Pengeluaran APD"] },
+            { name: "CS Forecast", subs: ["Peramalan Stok & Buffer Alert Sparepart"] },
+            { name: "Tire Site Inspection", subs: ["Inspeksi Tekanan, Tread Depth & Scrap Ban"] },
+            { name: "Asset Management", subs: ["Barcode QR Tagging & Maintenance History"] },
+            { name: "WIP Repair", subs: ["Flow Status Repair (Queue > Repair > QA)"] },
+            { name: "WIP Dashboard V1 & V2", subs: ["Monitoring Real-time Bottleneck & Output"] },
+            { name: "Master Barang Repair", subs: ["Katalog Sparepart & Material Perbaikan"] },
+            { name: "Stock Material SAP", subs: ["Integration Sync Stok Material SAP"] },
+            { name: "Pattern Designer", subs: ["Canvas Tool Desain Ukir/Vulkanisir Ban"] },
+            { name: "Form Work Order (WO)", subs: ["Issuance Work Order & Log Mechanic"] },
+            { name: "Cargo Manifest", subs: ["Surat Jalan Logistik & Tracking Inter-site"] },
+            { name: "Site Condition Report", subs: ["Laporan Cuaca & Kondisi Jalur Tambang"] },
+            { name: "EWH Hours CS", subs: ["Operasional Efficiency Ratio"] },
+            { name: "Unit Utility CS", subs: ["Equipment Losses & Availability"] }
+          ]
+        },
+        {
+          name: "Warehouse Repair",
+          color: "#fbbf24",
+          children: [
+            { name: "Dashboard Warehouse", subs: ["Ringkasan Nilai Stok & Fast/Slow Moving"] },
+            { name: "Data Barang", subs: ["Master Stok, Min-Max Level & Kode Rak"] },
+            { name: "Jenis & Satuan Barang", subs: ["Pengelompokan Kategori & Multi Unit Conversion"] },
+            { name: "Barang Masuk & Keluar", subs: ["Receiving Goods Note & Order Issuance"] },
+            { name: "Laporan Stok", subs: ["Stock Card Real-time & Transaksi Audit"] }
+          ]
+        },
+        {
+          name: "360 Service",
+          color: "#f43f5e",
+          children: [
+            { name: "Master Customers & Items", subs: ["Database Pelanggan & Katalog Service"] },
+            { name: "Quotations", subs: ["Generator Penawaran Harga, Prorate & PDF Export"] },
+            { name: "Service Form", subs: ["Field Execution Form & Customer Sign-off"] }
+          ]
+        },
+        {
+          name: "Marketing",
+          color: "#f43f5e",
+          children: [
+            { name: "A2R Competition", subs: ["Competitor Benchmark & Market Intelligence"] },
+            { name: "Slow Moving Analysis", subs: ["Clearance Strategy Barang Slow Moving"] }
+          ]
+        },
+        {
+          name: "Laporan & Analitik",
+          color: "#38bdf8",
+          children: [
+            { name: "Analytics & Reports Hub", subs: ["Executive BI Dashboard & Scheduled Exporter"] },
+            { name: "Road Condition Analysis", subs: ["Assessment Rubrik Jalur Operasional"] },
+            { name: "Security & Audit Log", subs: ["Active User Session & Complete Activity Audit Trail"] }
+          ]
+        },
+        {
+          name: "Data Induk",
+          color: "#818cf8",
+          children: [
+            { name: "Master Data Terpusat", subs: ["Master Department, Site, Section, Shift"] },
+            { name: "Form Builder Studio", subs: ["Pembuat Dynamic Form & Field Renderer"] }
+          ]
+        },
+        {
+          name: "Pengaturan & Keamanan",
+          color: "#94a3b8",
+          children: [
+            { name: "Role Management (RBAC)", subs: ["Permission Matrix (view, create, edit, delete)"] },
+            { name: "User Management", subs: ["Single Source Account Provisioning (hero_employees)"] },
+            { name: "Navbar & Portal Settings", subs: ["Re-order Menu, Theme & Banner Editor"] },
+            { name: "Email Delivery Log", subs: ["SMTP Server Monitor & Email Presets"] }
+          ]
+        }
+      ]
+    };
+
+    // D3 Interactive Mindmap Setup
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    const svg = d3.select("#mindmap-svg")
+      .attr("width", width)
+      .attr("height", height);
+
+    // Defs gradients & glows
+    const defs = svg.append("defs");
+    
+    // Radial gradient for root
+    const rootGrad = defs.append("radialGradient")
+      .attr("id", "root-gradient")
+      .attr("cx", "50%").attr("cy", "50%").attr("r", "50%");
+    rootGrad.append("stop").attr("offset", "0%").attr("stop-color", "#38bdf8");
+    rootGrad.append("stop").attr("offset", "100%").attr("stop-color", "#1e3a8a");
+
+    const g = svg.append("g");
+
+    // Zoom setup
+    const zoom = d3.zoom()
+      .scaleExtent([0.2, 3])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Initial transform center
+    svg.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85));
+
+    // Tree layout calculation (Radial Mindmap)
+    const tree = d3.tree()
+      .size([2 * Math.PI, Math.min(width, height) * 0.45])
+      .separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+
+    const root = d3.hierarchy(mindmapData);
+    tree(root);
+
+    // Render Links
+    const linkGenerator = d3.linkRadial()
+      .angle(d => d.x)
+      .radius(d => d.y);
+
+    const links = g.selectAll(".link")
+      .data(root.links())
+      .enter()
+      .append("path")
+      .attr("class", "link")
+      .attr("d", linkGenerator)
+      .attr("stroke", d => d.target.data.color || d.source.data.color || "#38bdf8");
+
+    // Render Nodes
+    const nodes = g.selectAll(".node")
+      .data(root.descendants())
+      .enter()
+      .append("g")
+      .attr("class", d => `node ${d.depth === 0 ? 'node-root' : d.depth === 1 ? 'node-group' : 'node-sub'}`)
+      .attr("transform", d => `
+        rotate(${d.x * 180 / Math.PI - 90})
+        translate(${d.y},0)
+      `)
+      .on("click", (event, d) => {
+        showDrawer(d.data);
+      });
+
+    // Root Node Circle
+    nodes.filter(d => d.depth === 0)
+      .append("circle")
+      .attr("r", 40);
+
+    // Group Nodes (Depth 1) Rectangles
+    nodes.filter(d => d.depth === 1)
+      .append("rect")
+      .attr("x", -10)
+      .attr("y", -14)
+      .attr("width", d => d.data.name.length * 8 + 24)
+      .attr("height", 28)
+      .attr("fill", d => d.data.color || "#38bdf8")
+      .attr("opacity", 0.2)
+      .attr("stroke", d => d.data.color || "#38bdf8");
+
+    nodes.filter(d => d.depth === 1)
+      .append("circle")
+      .attr("r", 6)
+      .attr("fill", d => d.data.color || "#38bdf8");
+
+    // Sub Nodes (Depth 2) Circles
+    nodes.filter(d => d.depth === 2)
+      .append("circle")
+      .attr("r", 4)
+      .attr("fill", d => d.parent.data.color || "#94a3b8");
+
+    // Node Labels
+    nodes.append("text")
+      .attr("dy", "0.31em")
+      .attr("x", d => d.x < Math.PI === !d.children ? 12 : -12)
+      .attr("text-anchor", d => d.x < Math.PI === !d.children ? "start" : "end")
+      .attr("transform", d => d.x >= Math.PI ? "rotate(180)" : null)
+      .text(d => d.data.name);
+
+    // Drawer Interaction
+    function showDrawer(data) {
+      const drawer = document.getElementById("drawer");
+      const title = document.getElementById("drawer-title");
+      const badge = document.getElementById("drawer-badge");
+      const desc = document.getElementById("drawer-desc");
+      const container = document.getElementById("subfeatures-container");
+      const countLabel = document.getElementById("subfeature-count");
+
+      title.innerText = data.name;
+      badge.innerText = data.type === 'root' ? 'Workspace Core' : data.children ? 'Kelompok Modul' : 'Fitur Utama';
+      badge.style.background = (data.color || '#38bdf8') + '25';
+      badge.style.color = data.color || '#38bdf8';
+
+      desc.innerText = data.children 
+        ? `Modul utama ini menaungi ${data.children.length} fitur operasional dengan kontrol RBAC terintegrasi.`
+        : `Fitur operasional ini dilengkapi dengan alur workflow, approval engine, dan pencatatan log audit.`;
+
+      // Clear & Populate subfeatures
+      container.innerHTML = "";
+      const listItems = data.subs || (data.children ? data.children.map(c => c.name) : ["Workflow Approval", "Export & Import CSV/PDF", "Real-time Notification", "Audit Trail Logger"]);
+      
+      countLabel.innerText = `${listItems.length} Items`;
+
+      listItems.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "subfeature-item";
+        div.innerHTML = `
+          <div class="subfeature-dot" style="background: ${data.color || '#38bdf8'}; box-shadow: 0 0 8px ${data.color || '#38bdf8'};"></div>
+          <span>${item}</span>
+        `;
+        container.appendChild(div);
+      });
+
+      drawer.classList.add("active");
+    }
+
+    document.getElementById("drawer-close").addEventListener("click", () => {
+      document.getElementById("drawer").classList.remove("active");
+    });
+
+    // Zoom Controls logic
+    document.getElementById("zoom-in").addEventListener("click", () => {
+      svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+    });
+
+    document.getElementById("zoom-out").addEventListener("click", () => {
+      svg.transition().duration(300).call(zoom.scaleBy, 0.7);
+    });
+
+    document.getElementById("zoom-reset").addEventListener("click", () => {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85));
+    });
+
+    document.getElementById("btn-reset").addEventListener("click", () => {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85));
+      document.getElementById("search-input").value = "";
+      links.classed("highlighted", false);
+    });
+
+    // Real-time Search
+    document.getElementById("search-input").addEventListener("input", (e) => {
+      const term = e.target.value.toLowerCase().trim();
+      if (!term) {
+        links.classed("highlighted", false);
+        nodes.attr("opacity", 1);
+        return;
+      }
+
+      nodes.attr("opacity", d => {
+        const matches = d.data.name.toLowerCase().includes(term) || (d.data.subs && d.data.subs.some(s => s.toLowerCase().includes(term)));
+        return matches ? 1 : 0.25;
+      });
+
+      links.classed("highlighted", d => {
+        return d.target.data.name.toLowerCase().includes(term) || d.source.data.name.toLowerCase().includes(term);
+      });
+    });
+
+    // Resize handler
+    window.addEventListener("resize", () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      svg.attr("width", w).attr("height", h);
+    });
+  </script>
+</body>
+</html>

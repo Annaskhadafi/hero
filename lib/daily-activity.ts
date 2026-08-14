@@ -38,10 +38,61 @@ let dailyActivitySeedPromise: Promise<void> | null = null
 
 // Aktivitas library bersifat global (siteIds kosong) atau tersedia untuk site yang
 // terdaftar di kolom siteIds. Menggantikan filter lama yang hanya satu site.
-function librarySiteMatches(column: AnyPgColumn, siteId: number | null | undefined) {
+function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
+  if (employeeSiteId == null) {
+    return and(
+      isNull(siteIdCol),
+      sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+    )
+  }
   return or(
-    sql`jsonb_array_length(${column}) = 0`,
-    sql`${column} @> jsonb_build_array(${siteId}::integer)`
+    and(
+      isNull(siteIdCol),
+      sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+    ),
+    eq(siteIdCol, employeeSiteId),
+    sql`${siteIdsCol} @> jsonb_build_array(${employeeSiteId}::integer)`
+  )
+}
+
+// Cocokkan departement: jika departmentId DAN departmentIds sama-sama kosong/null → global (tampilkan).
+// Jika salah satu terisi, cek apakah dept karyawan termasuk di dalamnya.
+function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, employeeDeptId: number | null | undefined) {
+  if (employeeDeptId == null) {
+    // Karyawan tidak punya departemen → hanya tampilkan yang global (kedua kolom kosong/null)
+    return and(
+      isNull(deptIdCol),
+      sql`(${deptIdsCol} is null or jsonb_array_length(${deptIdsCol}) = 0)`
+    )
+  }
+  return or(
+    // Global: tidak ada filter departemen sama sekali
+    and(
+      isNull(deptIdCol),
+      sql`(${deptIdsCol} is null or jsonb_array_length(${deptIdsCol}) = 0)`
+    ),
+    // Cocok di kolom single lama
+    eq(deptIdCol, employeeDeptId),
+    // Cocok di kolom array baru
+    sql`${deptIdsCol} @> jsonb_build_array(${employeeDeptId}::integer)`
+  )
+}
+
+// Cocokkan section: sama dengan dept, mendukung legacy single col + JSONB array.
+function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, employeeSecId: number | null | undefined) {
+  if (employeeSecId == null) {
+    return and(
+      isNull(secIdCol),
+      sql`(${secIdsCol} is null or jsonb_array_length(${secIdsCol}) = 0)`
+    )
+  }
+  return or(
+    and(
+      isNull(secIdCol),
+      sql`(${secIdsCol} is null or jsonb_array_length(${secIdsCol}) = 0)`
+    ),
+    eq(secIdCol, employeeSecId),
+    sql`${secIdsCol} @> jsonb_build_array(${employeeSecId}::integer)`
   )
 }
 
@@ -96,6 +147,7 @@ const DEFAULT_LIBRARY_SEEDS = [
     requiresDuration: true,
     requiresLocationGps: true,
     requiresMaterialUsed: true,
+    requiresTireCount: true,
     maxDailyCount: 2,
     maxPointsPerDay: 36,
     isAssignable: true,
@@ -500,6 +552,11 @@ async function getActiveOvertimeCommandLetterForEmployee(
         routeItemId: overtimeCommandLetterItems.routeItemId,
         libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
         requiresPhoto: sql<boolean>`coalesce(${activityLibraries.requiresPhoto}, false)`,
+        requiresUnit: sql<boolean>`coalesce(${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresTime: sql<boolean>`coalesce(${activityLibraries.requiresDuration}, false)`,
+        requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
+        requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
+        requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
         lineLabel: overtimeCommandLetterItems.lineLabel,
         lineDescription: overtimeCommandLetterItems.lineDescription,
         targetUnit: overtimeCommandLetterItems.targetUnit,
@@ -763,10 +820,13 @@ async function getMatchedRouteChecklistForEmployee(
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
-        requiresUnit: activityRouteItems.requiresUnit,
-        requiresTime: activityRouteItems.requiresTime,
+        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
         requiresRemark: activityRouteItems.requiresRemark,
-        requiresPhoto: activityRouteItems.requiresPhoto,
+        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
+        requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
+        requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
         requiresChecklistEvidence: activityRouteItems.requiresChecklistEvidence,
         isOptional: activityRouteItems.isOptional,
         allowCustomUnit: activityRouteItems.allowCustomUnit,
@@ -1749,6 +1809,7 @@ async function seedDailyActivityReferenceData() {
         requiresDuration: item.requiresDuration,
         requiresLocationGps: item.requiresLocationGps,
         requiresMaterialUsed: item.requiresMaterialUsed,
+        requiresTireCount: (item as any).requiresTireCount ?? false,
         maxDailyCount: item.maxDailyCount,
         maxPointsPerDay: item.maxPointsPerDay,
         isAssignable: item.isAssignable,
@@ -2383,6 +2444,7 @@ export async function getDailyActivityEmployeeData(
           requiresPhoto: activityLibraries.requiresPhoto,
           requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
           requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+          requiresTireCount: activityLibraries.requiresTireCount,
           basePoints: activityLibraries.basePoints,
         })
         .from(jobAssignments)
@@ -2484,10 +2546,13 @@ export async function getDailyActivityEmployeeData(
           requiresDuration: activityLibraries.requiresDuration,
           requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
           requiresLocationGps: activityLibraries.requiresLocationGps,
+          requiresTireCount: activityLibraries.requiresTireCount,
           maxDailyCount: activityLibraries.maxDailyCount,
           maxPointsPerDay: activityLibraries.maxPointsPerDay,
           departmentId: activityLibraries.departmentId,
+          departmentIds: activityLibraries.departmentIds,
           sectionId: activityLibraries.sectionId,
+          sectionIds: activityLibraries.sectionIds,
           slaHours: activityLibraries.slaHours,
         })
         .from(activityLibraries)
@@ -2496,14 +2561,21 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(activityLibraries.isActive, true),
             eq(activityLibraries.isSelfInput, true),
-            librarySiteMatches(activityLibraries.siteIds, employee.siteId),
-            or(
-              eq(activityLibraries.departmentId, employee.departmentId ?? -1),
-              isNull(activityLibraries.departmentId)
+            librarySiteMatches(
+              activityLibraries.siteId,
+              activityLibraries.siteIds,
+              employee.siteId ?? null
             ),
-            or(
-              eq(activityLibraries.sectionId, employee.sectionId ?? -1),
-              isNull(activityLibraries.sectionId)
+            // ponytail: upgrade path → split dept & section to separate permission tables
+            libraryDeptMatches(
+              activityLibraries.departmentId,
+              activityLibraries.departmentIds,
+              employee.departmentId ?? null
+            ),
+            librarySectionMatches(
+              activityLibraries.sectionId,
+              activityLibraries.sectionIds,
+              employee.sectionId ?? null
             )
           )
         )
@@ -2589,6 +2661,7 @@ export async function getDailyActivityEmployeeData(
           requiresDuration: activityLibraries.requiresDuration,
           requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
           requiresLocationGps: activityLibraries.requiresLocationGps,
+          requiresTireCount: activityLibraries.requiresTireCount,
           maxDailyCount: activityLibraries.maxDailyCount,
           maxPointsPerDay: activityLibraries.maxPointsPerDay,
           departmentId: activityLibraries.departmentId,
@@ -2894,6 +2967,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         requiresDuration: activityLibraries.requiresDuration,
         requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
         requiresLocationGps: activityLibraries.requiresLocationGps,
+        requiresTireCount: activityLibraries.requiresTireCount,
         maxDailyCount: activityLibraries.maxDailyCount,
         maxPointsPerDay: activityLibraries.maxPointsPerDay,
         departmentId: activityLibraries.departmentId,
@@ -2904,19 +2978,22 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         and(
           eq(activityLibraries.isActive, true),
           eq(activityLibraries.isSelfInput, true),
-          librarySiteMatches(activityLibraries.siteIds, currentEmployee.siteId),
-          currentEmployee.departmentId != null
-            ? or(
-                eq(activityLibraries.departmentId, currentEmployee.departmentId),
-                isNull(activityLibraries.departmentId)
-              )
-            : undefined,
-          currentEmployee.sectionId != null
-            ? or(
-                eq(activityLibraries.sectionId, currentEmployee.sectionId),
-                isNull(activityLibraries.sectionId)
-              )
-            : undefined
+          librarySiteMatches(
+            activityLibraries.siteId,
+            activityLibraries.siteIds,
+            currentEmployee.siteId ?? null
+          ),
+          // ponytail: upgrade path → split dept & section to separate permission tables
+          libraryDeptMatches(
+            activityLibraries.departmentId,
+            activityLibraries.departmentIds,
+            currentEmployee.departmentId ?? null
+          ),
+          librarySectionMatches(
+            activityLibraries.sectionId,
+            activityLibraries.sectionIds,
+            currentEmployee.sectionId ?? null
+          )
         )
       )
       .orderBy(asc(activityLibraries.activityCode)),
@@ -3258,7 +3335,9 @@ export async function getDailyActivityLibraryData(email?: string | null) {
         siteIds: activityLibraries.siteIds,
         siteName: sites.name,
         departmentId: activityLibraries.departmentId,
+        departmentIds: activityLibraries.departmentIds,
         sectionId: activityLibraries.sectionId,
+        sectionIds: activityLibraries.sectionIds,
         departmentName: masterDepartments.name,
         sectionName: masterSections.name,
         basePoints: activityLibraries.basePoints,
@@ -3268,6 +3347,7 @@ export async function getDailyActivityLibraryData(email?: string | null) {
         requiresDuration: activityLibraries.requiresDuration,
         requiresLocationGps: activityLibraries.requiresLocationGps,
         requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+        requiresTireCount: activityLibraries.requiresTireCount,
         maxDailyCount: activityLibraries.maxDailyCount,
         maxPointsPerDay: activityLibraries.maxPointsPerDay,
         isAssignable: activityLibraries.isAssignable,
@@ -3313,8 +3393,12 @@ export async function getDailyActivityLibraryData(email?: string | null) {
   const routeGroupMappings = await getLibraryRouteGroupMappings()
   const groupChildrenByCode = await getActivityLibraryGroupChildrenByCode()
   const siteNameById = new Map(siteRows.map((site) => [site.id, site.name]))
+  const deptNameById = new Map(departmentsRows.map((dept) => [dept.id, dept.name]))
+  const secNameById = new Map(sectionsRows.map((sec) => [sec.id, sec.name]))
   const libraryRows = rows.map((row) => {
     const rowSiteIds = row.siteIds ?? []
+    const rowDeptIds = row.departmentIds ?? (row.departmentId ? [row.departmentId] : [])
+    const rowSecIds = row.sectionIds ?? (row.sectionId ? [row.sectionId] : [])
     return {
       ...row,
       siteIds: rowSiteIds,
@@ -3325,6 +3409,22 @@ export async function getDailyActivityLibraryData(email?: string | null) {
               .filter((name): name is string => Boolean(name))
               .join(', ') || null
           : null,
+      departmentIds: rowDeptIds,
+      departmentNames:
+        rowDeptIds.length > 0
+          ? rowDeptIds
+              .map((id) => deptNameById.get(id))
+              .filter((name): name is string => Boolean(name))
+              .join(', ') || null
+          : row.departmentName,
+      sectionIds: rowSecIds,
+      sectionNames:
+        rowSecIds.length > 0
+          ? rowSecIds
+              .map((id) => secNameById.get(id))
+              .filter((name): name is string => Boolean(name))
+              .join(', ') || null
+          : row.sectionName,
       children: groupChildrenByCode.get(row.activityCode) ?? [],
     }
   })
@@ -3420,10 +3520,13 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
-        requiresUnit: activityRouteItems.requiresUnit,
-        requiresTime: activityRouteItems.requiresTime,
+        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
         requiresRemark: activityRouteItems.requiresRemark,
-        requiresPhoto: activityRouteItems.requiresPhoto,
+        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
+        requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
+        requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
         requiresChecklistEvidence: activityRouteItems.requiresChecklistEvidence,
         isOptional: activityRouteItems.isOptional,
         allowCustomUnit: activityRouteItems.allowCustomUnit,

@@ -433,6 +433,7 @@ export default async function MyDayPage() {
                             <div className="flex flex-wrap gap-2">
                               {item.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
                               {item.requiresEquipmentNo ? <Badge variant="outline">Unit/alat</Badge> : null}
+                              {item.requiresTireCount ? <Badge variant="outline">Jumlah Tire</Badge> : null}
                               {item.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             </div>
                           </TableCell>

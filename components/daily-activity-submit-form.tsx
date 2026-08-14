@@ -29,6 +29,7 @@ type LibraryOption = {
   activityName: string;
   basePoints: number;
   requiresPhoto?: boolean;
+  requiresTireCount?: boolean;
 };
 
 type DailyActivitySubmitActionState = {
@@ -48,6 +49,7 @@ type RouteChecklistItem = {
   requiresRemark: boolean;
   requiresPhoto: boolean;
   requiresChecklistEvidence: boolean;
+  requiresTireCount?: boolean;
   isOptional: boolean;
   allowCustomUnit: boolean;
   pointOverride: number | null;
@@ -123,6 +125,7 @@ type RouteItemState = {
   startedAt: string;
   endedAt: string;
   actualPoints: string;
+  tireCount?: number;
 };
 
 const emptyRouteItemState: RouteItemState = {
@@ -285,6 +288,7 @@ export function DailyActivitySubmitForm({
               requiresRemark: item.requiresRemark,
               requiresPhoto: item.requiresPhoto,
               requiresChecklistEvidence: item.requiresChecklistEvidence,
+              requiresTireCount: item.requiresTireCount,
               isOptional: item.isOptional,
             },
             unitNumber:
@@ -304,6 +308,7 @@ export function DailyActivitySubmitForm({
               stateForItem?.isChecked
                 ? Number(stateForItem.actualPoints || fallbackPoints || 0)
                 : 0,
+            tireCount: stateForItem?.isChecked && item.requiresTireCount ? stateForItem.tireCount ?? 1 : 0,
             sortOrder: item.sortOrder,
           };
         }),
@@ -418,6 +423,24 @@ export function DailyActivitySubmitForm({
                                   updateRouteItemState(item.id, { unitNumber: event.target.value })
                                 }
                                 placeholder="Unit number"
+                                className={fieldClass}
+                              />
+                            </Label>
+                          ) : null}
+
+                          {item.requiresTireCount ? (
+                            <Label className={labelClass}>
+                              <span className={labelTextClass}>Jumlah Tire</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={itemState.tireCount ?? 1}
+                                onChange={(event) =>
+                                  updateRouteItemState(item.id, {
+                                    tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
+                                  })
+                                }
+                                placeholder="Jumlah tire"
                                 className={fieldClass}
                               />
                             </Label>
@@ -621,6 +644,21 @@ export function DailyActivitySubmitForm({
                 <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" className={fieldClass} />
               </Label>
 
+              {selectedLibrary?.requiresTireCount ? (
+                <Label className={labelClass}>
+                  <span className={labelTextClass}>Jumlah tire</span>
+                  <Input
+                    name="tireCount"
+                    type="number"
+                    min={1}
+                    defaultValue={1}
+                    placeholder="Contoh: 2 / 4"
+                    className={fieldClass}
+                    required
+                  />
+                </Label>
+              ) : null}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <Label className={labelClass}>
                   <span className={labelTextClass}>Start time</span>
@@ -727,6 +765,20 @@ export function DailyActivitySubmitForm({
               <span className={labelTextClass}>Equipment / unit no.</span>
               <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" className={fieldClass} />
             </Label>
+            {selectedLibrary?.requiresTireCount ? (
+              <Label className={labelClass}>
+                <span className={labelTextClass}>Jumlah tire</span>
+                <Input
+                  name="tireCount"
+                  type="number"
+                  min={1}
+                  defaultValue={1}
+                  placeholder="Contoh: 2 / 4"
+                  className={fieldClass}
+                  required
+                />
+              </Label>
+            ) : null}
             <Label className={labelClass}>
               <span className={labelTextClass}>Start time</span>
               <Input

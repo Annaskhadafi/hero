@@ -104,7 +104,27 @@ const manageLibrarySchema = z.object({
         .filter((part) => Number.isInteger(part) && part > 0)
     }),
   departmentId: optionalPositiveInt,
+  departmentIds: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value) return []
+      return value
+        .split(',')
+        .map((part) => parseInt(part.trim(), 10))
+        .filter((part) => Number.isInteger(part) && part > 0)
+    }),
   sectionId: optionalPositiveInt,
+  sectionIds: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value) return []
+      return value
+        .split(',')
+        .map((part) => parseInt(part.trim(), 10))
+        .filter((part) => Number.isInteger(part) && part > 0)
+    }),
   basePoints: z.coerce.number().int().min(0).max(500).optional().default(5),
   complexityLevel: z.coerce.number().int().min(1).max(5).optional().default(1),
   maxDailyCount: z.coerce.number().int().min(1).max(20).optional().default(3),
@@ -115,6 +135,7 @@ const manageLibrarySchema = z.object({
   requiresDuration: formBoolean(true),
   requiresLocationGps: formBoolean(false),
   requiresMaterialUsed: formBoolean(false),
+  requiresTireCount: formBoolean(false),
   isAssignable: formBoolean(true),
   isSelfInput: formBoolean(true),
   approvalRequired: formBoolean(true),
@@ -285,6 +306,7 @@ const submitActivitySchema = z.object({
   startTime: z.string().trim().min(1),
   endTime: z.string().trim().min(1),
   equipmentNo: z.string().trim().max(80).optional().default(''),
+  tireCount: z.coerce.number().int().min(0).max(100).optional().default(0),
   materialUsed: z.string().trim().max(500).optional().default(''),
   notes: z.string().trim().max(1200).optional().default(''),
   gpsLat: z.string().trim().max(80).optional().default(''),
@@ -971,8 +993,6 @@ export async function manageActivityLibraryAction(formData: FormData) {
     return
   }
 
-  // Multi-site: pakai siteIds dari form (kosong = global). Kolom siteId lama tetap
-  // diisi site pertama agar data lama & join legacy tetap bermakna.
   const siteIds =
     payload.siteIds.length > 0
       ? [...new Set(payload.siteIds)]
@@ -980,12 +1000,28 @@ export async function manageActivityLibraryAction(formData: FormData) {
         ? [payload.siteId]
         : []
 
+  const departmentIds =
+    payload.departmentIds.length > 0
+      ? [...new Set(payload.departmentIds)]
+      : payload.departmentId
+        ? [payload.departmentId]
+        : []
+
+  const sectionIds =
+    payload.sectionIds.length > 0
+      ? [...new Set(payload.sectionIds)]
+      : payload.sectionId
+        ? [payload.sectionId]
+        : []
+
   const values = {
     activityCode: payload.activityCode,
     activityName: payload.activityName,
     category: payload.category,
-    departmentId: payload.departmentId ?? null,
-    sectionId: payload.sectionId ?? null,
+    departmentId: departmentIds[0] ?? payload.departmentId ?? null,
+    departmentIds,
+    sectionId: sectionIds[0] ?? payload.sectionId ?? null,
+    sectionIds,
     siteId: siteIds[0] ?? null,
     siteIds,
     basePoints: payload.basePoints,
@@ -995,6 +1031,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
     requiresDuration: payload.requiresDuration,
     requiresLocationGps: payload.requiresLocationGps,
     requiresMaterialUsed: payload.requiresMaterialUsed,
+    requiresTireCount: payload.requiresTireCount,
     maxDailyCount: payload.maxDailyCount,
     maxPointsPerDay: payload.maxPointsPerDay,
     isAssignable: payload.isAssignable,
@@ -2810,6 +2847,7 @@ export async function submitDailyActivityAction(formData: FormData) {
           submissionCategory,
           equipmentNo: payload.equipmentNo,
           materialUsed: payload.materialUsed,
+          tireCount: payload.tireCount,
           gpsLat: payload.gpsLat,
           gpsLng: payload.gpsLng,
           gpsValid: payload.gpsValid,

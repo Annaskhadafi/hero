@@ -128,7 +128,7 @@ function KpiCard({
 }: {
   title: string
   value: string | number
-  subtext?: string
+  subtext?: string | React.ReactNode
   icon: any
   color: string
   isPercentage?: boolean
@@ -158,9 +158,9 @@ function KpiCard({
               )}
             </div>
             {subtext && (
-              <p className="text-muted-foreground/80 bg-muted/50 inline-block rounded-md px-2 py-1 text-xs font-medium">
+              <div className="text-muted-foreground/80 bg-muted/50 inline-block rounded-md px-2 py-1 text-xs font-medium">
                 {subtext}
-              </p>
+              </div>
             )}
           </div>
           <div
@@ -743,18 +743,25 @@ export function PerformanceDashboard({ data }: { data: SafetyData }) {
 
 // 6. Man Hours
 export function ManHoursDashboard({ data }: { data: SafetyData }) {
-  const chartData = data.charts.manHoursByLocation
+  const siteChartData = data.charts.manHoursByLocation
+
+  const globalInitial = data.globalStartData?.initialManHours ?? 0
+  const totalActual = data.globalStartData?.totalActualMonthlyManHours ?? siteChartData.reduce((acc, curr) => acc + curr.manHours, 0)
+  const hasStartData = globalInitial > 0
+
+  // Inject Saldo Awal as first entry in chart when available
+  const chartData = hasStartData
+    ? [{ location: 'Saldo Awal (s/d 2025)', manHours: globalInitial, target: 0, isStartData: true }, ...siteChartData]
+    : siteChartData
 
   const chartConfig = {
-    manHours: { label: 'Achieved Safe Hours', color: PREMIUM_COLORS.green },
+    manHours: { label: 'Safe Hours', color: PREMIUM_COLORS.green },
     target: { label: 'Target Safe Hours', color: PREMIUM_COLORS.orange },
   }
 
-  const totalManHours = chartData.reduce((acc, curr) => acc + curr.manHours, 0)
-  const formattedTotal =
-    totalManHours > 1000000
-      ? `${(totalManHours / 1000000).toFixed(1)}M`
-      : `${(totalManHours / 1000).toFixed(0)}K`
+  // Use kpis.safeManHours = globalStartData (s/d 2025) + sum of all site actuals (2026+)
+  const totalManHours = data.kpis.safeManHours
+  const formattedTotal = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(totalManHours)
 
   return (
     <div className="grid gap-6 xl:grid-cols-4">
@@ -762,7 +769,17 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
         <KpiCard
           title="Total Safe Man Hours"
           value={formattedTotal}
-          subtext="Cumulative Across Sites"
+          subtext={
+            hasStartData
+              ? (
+                <span>
+                  <span className="text-slate-600">Awal: {new Intl.NumberFormat('id-ID').format(globalInitial)}</span>
+                  {' + '}
+                  <span className="text-emerald-700">Aktual: {new Intl.NumberFormat('id-ID').format(totalActual)}</span>
+                </span>
+              )
+              : "Cumulative Across Sites"
+          }
           icon={Clock}
           color={PREMIUM_COLORS.green}
         />
@@ -773,7 +790,9 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
             Man Hours Achievement by Location
           </CardTitle>
           <CardDescription className="text-white/80">
-            Benchmarking achieved safe working hours against set targets per site.
+            {hasStartData
+              ? `Saldo awal s/d 2025 + aktual per lokasi. Total: ${new Intl.NumberFormat('id-ID').format(totalManHours)} jam.`
+              : 'Benchmarking achieved safe working hours against set targets per site.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -784,6 +803,10 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
                   <linearGradient id="colorManHours" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--color-manHours)" stopOpacity={1} />
                     <stop offset="100%" stopColor="var(--color-manHours)" stopOpacity={0.4} />
+                  </linearGradient>
+                  <linearGradient id="colorStartData" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.4} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -796,17 +819,18 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
                   dataKey="location"
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontWeight: 'bold' }}
+                  tick={{ fontWeight: 'bold', fontSize: 11 }}
                 />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
                   tick={{ fill: 'hsl(var(--muted-foreground))' }}
                   allowDecimals={false}
+                  tickFormatter={(v: number) => v >= 1000000 ? `${(v/1000000).toFixed(1)}jt` : v >= 1000 ? `${(v/1000).toFixed(0)}rb` : `${v}`}
                 />
                 <ChartTooltip
                   cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                  content={<ChartTooltipContent />}
+                  content={<ChartTooltipContent formatter={(val: unknown) => new Intl.NumberFormat('id-ID').format(Number(val))} />}
                 />
                 <ChartLegend
                   content={<ChartLegendContent />}
@@ -818,12 +842,19 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
                   radius={[6, 6, 0, 0]}
                   maxBarSize={90}
                   animationDuration={1500}
+                  // Color "Saldo Awal" bar differently; extract only valid SVG rect props to avoid React DOM attribute warnings
+                  shape={(props: any) => {
+                    const { x, y, width, height, radius, isStartData } = props
+                    const fill = isStartData ? 'url(#colorStartData)' : 'url(#colorManHours)'
+                    const r = Array.isArray(radius) ? radius[0] : (radius || 0)
+                    return <rect x={x} y={y} width={width} height={height} rx={r} ry={r} fill={fill} />
+                  }}
                 >
                   <LabelList
                     dataKey="manHours"
                     position="top"
-                    formatter={(val: number) => formatNumber(val)}
-                    style={{ fill: 'currentColor', fontSize: 13, fontWeight: 'bold' }}
+                    formatter={(val: number) => val > 0 ? new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(val) : ''}
+                    style={{ fill: 'currentColor', fontSize: 11, fontWeight: 'bold' }}
                   />
                 </Bar>
                 <Line

@@ -56,7 +56,7 @@ function SafetyMetricCards({
     {
       label: 'Safe Man Hours',
       value: formatNumber(kpis.safeManHours),
-      meta: 'Akumulasi jam kerja aman',
+      meta: 'Saldo awal + aktual 2026+',
       Icon: Clock,
       accent: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
     },

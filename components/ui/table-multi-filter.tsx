@@ -109,12 +109,12 @@ export function TableMultiFilter({
               {selected.length > 0 ? <X className="size-4 text-muted-foreground" /> : null}
             </button>
 
-            {filteredOptions.map((option) => {
+            {filteredOptions.map((option, index) => {
               const isSelected = selected.includes(option.value);
 
               return (
                 <button
-                  key={option.value}
+                  key={`${option.value}-${index}`}
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-foreground hover:bg-muted/50"
                   onClick={() =>

@@ -19,20 +19,12 @@ export function RouteFolderTree({
   librarySearch: string
 }) {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
 
   const toggleRoute = (id: number) => {
     const next = new Set(expandedRoutes)
     if (next.has(id)) next.delete(id)
     else next.add(id)
     setExpandedRoutes(next)
-  }
-
-  const toggleGroup = (id: number) => {
-    const next = new Set(expandedGroups)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setExpandedGroups(next)
   }
 
   const normalizedSearch = (librarySearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -67,9 +59,8 @@ export function RouteFolderTree({
             </button>
 
             {isRouteExpanded && (
-              <div className="space-y-1 p-2">
+              <div className="space-y-2.5 p-2">
                 {matchingGroups.map(group => {
-                  const isGroupExpanded = expandedGroups.has(group.id) || !!normalizedSearch
                   const groupLibraryIds = group.matchingItems.map(i => `${i.id}`)
                   const selectedInGroupCount = groupLibraryIds.filter(id => selectedLibraryIds.includes(id)).length
                   const isAllGroupSelected = groupLibraryIds.length > 0 && selectedInGroupCount === groupLibraryIds.length
@@ -90,21 +81,16 @@ export function RouteFolderTree({
                   }
 
                   return (
-                    <div key={group.id} className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50/50">
-                      <div className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-semibold text-gray-700">
-                        <button
-                          type="button"
-                          onClick={() => toggleGroup(group.id)}
-                          className="flex items-center gap-2 flex-1 min-w-0"
-                        >
-                          {isGroupExpanded ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
+                    <div key={group.id} className="space-y-1.5 rounded-xl border border-gray-100 bg-gray-50/60 p-2.5">
+                      <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-gray-700">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="truncate">{group.groupName}</span>
                           {group.matchingItems.length > 0 && (
                             <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
                               {selectedInGroupCount}/{group.matchingItems.length}
                             </span>
                           )}
-                        </button>
+                        </div>
                         {group.matchingItems.length > 0 && (
                           <button
                             type="button"
@@ -120,17 +106,17 @@ export function RouteFolderTree({
                         )}
                       </div>
 
-                      {isGroupExpanded && (
-                        <div className="space-y-1 p-2 pt-0">
-                          {group.matchingItems.length === 0 ? (
-                            <p className="px-3 py-2 text-xs italic text-gray-400">
-                              Belum ada activity di group ini
-                            </p>
-                          ) : (
+                      <div className="space-y-1 pt-1">
+                        {group.matchingItems.length === 0 ? (
+                          <p className="px-2 py-1.5 text-xs italic text-gray-400">
+                            Belum ada activity di group ini
+                          </p>
+                        ) : (
                           group.matchingItems.map((item) => {
                             const isSelected = selectedLibraryIds.includes(`${item.id}`)
                             const requirementBadges = [
                               item.requiresEquipmentNo ? 'Equipment' : null,
+                              item.requiresTireCount ? 'Tire' : null,
                               item.requiresLocationGps ? 'GPS' : null,
                             ].filter(Boolean)
 
@@ -209,9 +195,9 @@ export function RouteFolderTree({
                                 </span>
                               </button>
                             )
-                          }))}
-                        </div>
-                      )}
+                          })
+                        )}
+                      </div>
                     </div>
                   )
                 })}

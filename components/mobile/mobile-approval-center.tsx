@@ -250,7 +250,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData['historyGroups']
               >
                 <summary className="cursor-pointer list-none px-4 py-4">
                   <p className="text-sm font-black text-[#082033]">
-                    {item.title} • {item.unitNumber}
+                    {item.title} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''}
                   </p>
                   <p className="mt-1 text-xs font-semibold text-[#486275]">
                     {item.activityType} • {item.siteName} • {item.timeRange}

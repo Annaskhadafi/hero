@@ -1326,6 +1326,12 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceView, setAttendanceView] = useState<
     'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
   >('attendance')
+  const [attendanceSearch, setAttendanceSearch] = useState('')
+  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<
+    'all' | 'present' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
+  >('all')
+  const [importHistoryOpen, setImportHistoryOpen] = useState(false)
+  const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
@@ -4610,12 +4616,53 @@ export function SchedulingTimesheetWorkspace({
           attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
         )
       : new Set<string>()
-  const displayedAttendanceRows =
-    mode === 'attendance' && showConflictsOnly
-      ? rows.filter((row) =>
-          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
-        )
-      : rows
+  const displayedAttendanceRows = useMemo(() => {
+    let list =
+      mode === 'attendance' && showConflictsOnly
+        ? rows.filter((row) =>
+            days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
+          )
+        : rows
+
+    if (attendanceSearch.trim()) {
+      const q = attendanceSearch.trim().toLowerCase()
+      list = list.filter(
+        (r) =>
+          r.employee.name.toLowerCase().includes(q) ||
+          (r.employee.section || '').toLowerCase().includes(q) ||
+          (r.employee.department || '').toLowerCase().includes(q)
+      )
+    }
+
+    if (attendanceStatusFilter !== 'all') {
+      list = list.filter((r) => {
+        const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
+        if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
+        if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
+        if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
+        if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
+        if (attendanceStatusFilter === 'off')
+          return cells.some((c) => c.status === 'off')
+        if (attendanceStatusFilter === 'gb')
+          return (
+            cells.some((c) => c.status === 'field_break') ||
+            r.schedule.some((code) => String(code) === 'GB' || String(code) === 'FB')
+          )
+        return true
+      })
+    }
+
+    return list
+  }, [
+    mode,
+    showConflictsOnly,
+    rows,
+    conflictKeySet,
+    days,
+    attendanceSearch,
+    attendanceStatusFilter,
+    getAttendanceCell,
+  ])
 
   useEffect(() => {
     setSelectedOvertimeEmployeeIds([])
@@ -4939,16 +4986,20 @@ export function SchedulingTimesheetWorkspace({
                 row.employee.id
               ).totalHours
           }
+          const siteNameClean = extractSiteNameLocal(site?.name)
+          const rowLoc =
+            siteNameClean && siteNameClean !== 'Semua Site'
+              ? siteNameClean
+              : extractSiteNameLocal(row.employee.siteLocation) ||
+                extractSiteNameLocal(row.employee.workLocation) ||
+                extractSiteNameLocal(row.employee.locationName) ||
+                siteNameClean ||
+                ''
           result.push({
             no,
             name: row.employee.name,
             sn: row.employee.employeeSn || '',
-            loc:
-              row.employee.workLocation ||
-              row.employee.siteLocation ||
-              row.employee.locationName ||
-              extractSiteNameLocal(site?.name) ||
-              '',
+            loc: rowLoc,
             department: dept,
             section,
             dailyValues,
@@ -7874,171 +7925,281 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'attendance' ? (
         attendanceWorkspaceOpen ? (
-          <section className="space-y-3">
+          <section className="space-y-4">
             {selectedAttendancePlan || siteId !== 'all' ? (
-              <section className="space-y-3">
-                <Card className="surface-module-card border-border/60 overflow-hidden rounded-xl border bg-white p-0">
-                  <div className="bg-white">
-                    <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+              <section className="space-y-4">
+                {/* 1. Header & Actions Bar */}
+                <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-0 shadow-xs">
+                  <div className="flex flex-col gap-4 border-b border-border/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-white shadow-xs">
+                        <CalendarDays className="size-5" />
+                      </div>
                       <div>
-                        <p className="font-display text-foreground text-base font-semibold">
-                          Attendance · {site?.name ?? 'Site'} · {formatMonthPeriod(period)}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          Edit data attendance untuk site dan bulan yang dipilih dari tabel riwayat.
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="font-display text-lg font-bold tracking-tight text-foreground">
+                            Attendance · {site?.name ?? 'Site'}
+                          </h2>
+                          <Badge variant="outline" className="bg-slate-50 font-mono text-xs font-semibold text-slate-700">
+                            {formatMonthPeriod(period)}
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Kelola data kehadiran karyawan untuk site dan bulan yang dipilih.
                         </p>
                       </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => setAttendanceWorkspaceOpen(false)}
+                        className="h-9 px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
                       >
-                        <ChevronLeft className="size-4" /> Kembali ke list
+                        <ChevronLeft className="mr-1 size-4" /> Kembali ke list
+                      </Button>
+                      <div className="hidden h-4 w-px bg-border/60 sm:block" />
+                      <Button
+                        size="sm"
+                        disabled={!isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized}
+                        onClick={saveAttendanceReal}
+                        className={cn(
+                          'h-9 px-4 text-xs font-semibold shadow-xs transition-all',
+                          isAttendanceDirty
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse'
+                            : 'bg-slate-900 text-white hover:bg-slate-800'
+                        )}
+                      >
+                        <Save className="mr-1.5 size-4" />
+                        {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
                       </Button>
                     </div>
-                    <div className="border-border/60 flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Import button with loading + success state */}
-                        <Button
-                          size="sm"
-                          variant={lastImportSuccess ? 'default' : 'outline'}
-                          disabled={isFinalized || isImportingExcel}
-                          onClick={() => attendanceFileInputRef.current?.click()}
-                          className={
-                            lastImportSuccess
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : ''
-                          }
-                        >
-                          {isImportingExcel ? (
-                            <>
-                              <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
-                            </>
-                          ) : lastImportSuccess ? (
-                            <>
-                              <Check className="mr-2 size-4" /> Berhasil (
-                              {lastImportSuccess.matched} matched)
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="mr-2 size-4" /> Import Excel
-                            </>
-                          )}
-                        </Button>
-                        <Input
-                          ref={attendanceFileInputRef}
-                          disabled={isFinalized || isImportingExcel}
-                          className="sr-only"
-                          type="file"
-                          accept=".xlsx,.xls,.csv"
-                          onChange={(event) => {
-                            void importAttendanceExcel(event.target.files?.[0] ?? null)
-                            event.currentTarget.value = ''
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void downloadAttendanceTemplate()}
-                        >
-                          <Download className="mr-2 size-4" /> Template Excel
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
-                          disabled={isSavingAttendance || siteId === 'all' || isFinalized}
-                          onClick={() => setClearExcelImportDialogOpen(true)}
-                        >
-                          <Trash2 className="mr-2 size-4" /> Hapus import
-                        </Button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-foreground text-background hover:bg-foreground/90"
-                          disabled={
-                            !isAttendanceDirty ||
-                            isSavingAttendance ||
-                            siteId === 'all' ||
-                            isFinalized
-                          }
-                          onClick={saveAttendanceReal}
-                        >
-                          <Save className="mr-2 size-4" />{' '}
-                          {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
-                        </Button>
-                        <TabExportActions
-                          tabTitle="Attendance"
-                          columns={[
-                            'Nama',
-                            'Masuk',
-                            'Belum',
-                            'Sakit',
-                            'Izin',
-                            'Alpha',
-                            'Manual',
-                            'Excel',
-                            'FaceLoc',
-                          ]}
-                          exportRows={rows.map((row) => {
-                            const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
-                            const statuses = cells.map((cell) => cell.status)
-                            return [
-                              row.employee.name,
-                              statuses.filter((status) => status === 'present').length,
-                              statuses.filter((status) => status === 'empty').length,
-                              statuses.filter((status) => status === 'sick').length,
-                              statuses.filter((status) => status === 'leave').length,
-                              statuses.filter((status) => status === 'absent').length,
-                              cells.filter((cell) => cell.source === 'manual').length,
-                              cells.filter((cell) => cell.source === 'excel').length,
-                              cells.filter((cell) => cell.source === 'attendance').length,
-                            ]
-                          })}
-                        />
-                      </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-surface-container-low/60 px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={lastImportSuccess ? 'default' : 'outline'}
+                        disabled={isFinalized || isImportingExcel}
+                        onClick={() => attendanceFileInputRef.current?.click()}
+                        className={cn(
+                          'h-8.5 rounded-lg text-xs font-medium',
+                          lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white'
+                        )}
+                      >
+                        {isImportingExcel ? (
+                          <>
+                            <RefreshCw className="mr-1.5 size-3.5 animate-spin" /> Memproses...
+                          </>
+                        ) : lastImportSuccess ? (
+                          <>
+                            <Check className="mr-1.5 size-3.5" /> Berhasil ({lastImportSuccess.matched} matched)
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-1.5 size-3.5 text-slate-500" /> Import Excel
+                          </>
+                        )}
+                      </Button>
+                      <Input
+                        ref={attendanceFileInputRef}
+                        disabled={isFinalized || isImportingExcel}
+                        className="sr-only"
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        onChange={(event) => {
+                          void importAttendanceExcel(event.target.files?.[0] ?? null)
+                          event.currentTarget.value = ''
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void downloadAttendanceTemplate()}
+                        className="h-8.5 rounded-lg bg-white text-xs font-medium text-slate-700"
+                      >
+                        <Download className="mr-1.5 size-3.5 text-slate-500" /> Template Excel
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isSavingAttendance || siteId === 'all' || isFinalized}
+                        onClick={() => setClearExcelImportDialogOpen(true)}
+                        className="h-8.5 rounded-lg border-rose-200 bg-rose-50/60 text-xs font-medium text-rose-700 hover:bg-rose-100 hover:text-rose-800"
+                      >
+                        <Trash2 className="mr-1.5 size-3.5" /> Hapus Import
+                      </Button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setImportHistoryOpen((v) => !v)}
+                        className={cn(
+                          'h-8.5 rounded-lg text-xs font-medium bg-white',
+                          importHistoryOpen && 'border-primary bg-primary/5 text-primary'
+                        )}
+                      >
+                        <History className="mr-1.5 size-3.5" />
+                        Import History {attendanceImportHistory.length ? `(${attendanceImportHistory.length})` : ''}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setOvertimePdfOpen((v) => !v)}
+                        className={cn(
+                          'h-8.5 rounded-lg text-xs font-medium bg-white',
+                          overtimePdfOpen && 'border-primary bg-primary/5 text-primary'
+                        )}
+                      >
+                        <Eye className="mr-1.5 size-3.5 text-slate-500" />
+                        Preview & Export PDF {selectedOvertimeEmployeeIds.length ? `(${selectedOvertimeEmployeeIds.length})` : ''}
+                      </Button>
+                      <TabExportActions
+                        tabTitle="Attendance"
+                        columns={[
+                          'Nama',
+                          'Masuk',
+                          'Belum',
+                          'Sakit',
+                          'Izin',
+                          'Alpha',
+                          'Manual',
+                          'Excel',
+                          'FaceLoc',
+                        ]}
+                        exportRows={rows.map((row) => {
+                          const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                          const statuses = cells.map((cell) => cell.status)
+                          return [
+                            row.employee.name,
+                            statuses.filter((status) => status === 'present').length,
+                            statuses.filter((status) => status === 'empty').length,
+                            statuses.filter((status) => status === 'sick').length,
+                            statuses.filter((status) => status === 'leave').length,
+                            statuses.filter((status) => status === 'absent').length,
+                            cells.filter((cell) => cell.source === 'manual').length,
+                            cells.filter((cell) => cell.source === 'excel').length,
+                            cells.filter((cell) => cell.source === 'attendance').length,
+                          ]
+                        })}
+                      />
                     </div>
                   </div>
                 </Card>
-                <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-                  <div className="text-muted-foreground text-xs">
-                    <span className="text-foreground font-semibold">
-                      {selectedOvertimeEmployeeIds.length} karyawan dipilih
-                    </span>{' '}
-                    untuk bulk download OT PDF
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={rows.length === 0 || siteId === 'all'}
-                      onClick={() => void previewAllSiteOvertimePdf()}
-                      title={`Priview PDF OT + Benefit untuk semua karyawan site ${site?.name ?? ''}`}
-                    >
-                      <Eye className="mr-2 size-4" /> Priview Semua PDF
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={selectedOvertimeEmployeeIds.length === 0}
-                      onClick={() => void bulkDownloadOvertimePdf(true)}
-                    >
-                      <Download className="mr-2 size-4" /> OT + Benefit · Total Overtime
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={selectedOvertimeEmployeeIds.length === 0}
-                      onClick={() => void bulkDownloadOvertimePdf(false)}
-                    >
-                      <Download className="mr-2 size-4" /> OT + Benefit · tanpa Total Overtime
-                    </Button>
-                  </div>
-                </Card>
+
+                {/* 2. Overtime & Benefit PDF Download Panel (Collapsible) */}
+                {overtimePdfOpen ? (
+                  <Card className="surface-module-card rounded-xl border border-border/60 bg-white p-4 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="font-display text-sm font-semibold text-foreground">
+                          Bulk Download Overtime & Benefit PDF
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">{selectedOvertimeEmployeeIds.length} karyawan dipilih</span> untuk generate dokumen PDF.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={rows.length === 0 || siteId === 'all'}
+                          onClick={() => void previewAllSiteOvertimePdf()}
+                          className="h-8 rounded-lg text-xs"
+                          title={`Preview PDF OT + Benefit untuk semua karyawan site ${site?.name ?? ''}`}
+                        >
+                          <Eye className="mr-1.5 size-3.5" /> Preview Semua PDF
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={selectedOvertimeEmployeeIds.length === 0}
+                          onClick={() => void bulkDownloadOvertimePdf(true)}
+                          className="h-8 rounded-lg text-xs"
+                        >
+                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Total Overtime
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={selectedOvertimeEmployeeIds.length === 0}
+                          onClick={() => void bulkDownloadOvertimePdf(false)}
+                          className="h-8 rounded-lg text-xs"
+                        >
+                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Tanpa Total Overtime
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ) : null}
+
+                {/* 3. Import History Panel (Collapsible) */}
+                {importHistoryOpen ? (
+                  <Card className="surface-module-card overflow-hidden rounded-xl border border-border/60 bg-white p-0 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-surface-container-low px-4 py-3">
+                      <div>
+                        <p className="font-display text-xs font-bold uppercase tracking-wider text-foreground">
+                          <History className="mr-1.5 inline size-4" /> Import History
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan ini.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void refreshAttendanceImportHistory()}
+                        className="h-7.5 rounded-lg text-xs"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                    <div className="divide-y divide-border/30 p-2">
+                      {attendanceImportHistory.slice(0, 5).map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-2.5 hover:bg-slate-50"
+                        >
+                          <div>
+                            <p className="text-xs font-semibold text-foreground">{item.filename}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {item.templateKind} · {item.sheetName || 'auto'} ·{' '}
+                              {new Date(item.createdAt).toLocaleString('id-ID')}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">{item.status}</Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {item.matchedCount} matched · {item.unmatchedCount} fix · {item.conflictCount} conflict
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isSavingAttendance || isFinalized || item.status !== 'applied'}
+                              onClick={() => rollbackAttendanceImport(item.id)}
+                              className="h-7 rounded-lg text-xs"
+                            >
+                              <Undo2 className="mr-1.5 size-3.5" /> Rollback
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {!attendanceImportHistory.length ? (
+                        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                          Belum ada import history.
+                        </div>
+                      ) : null}
+                    </div>
+                  </Card>
+                ) : null}
+
+                {/* Import Status Banners */}
                 {lastImportSuccess ? (
-                  <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-                    <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+                  <Card className="surface-module-card overflow-hidden rounded-xl border border-emerald-200/80 bg-white p-0 shadow-xs">
+                    <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-xs">
                       <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
                         <Check className="size-3.5" />
                       </span>
@@ -8046,10 +8207,9 @@ export function SchedulingTimesheetWorkspace({
                         <p className="font-semibold text-emerald-900">
                           Import berhasil — {lastImportSuccess.matched} karyawan matched
                         </p>
-                        <p className="text-xs text-emerald-700">
+                        <p className="text-[11px] text-emerald-700">
                           {lastImportSuccess.filename}
-                          {lastImportSuccess.unmatchedNames &&
-                          lastImportSuccess.unmatchedNames.length > 0
+                          {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0
                             ? ` · ${lastImportSuccess.unmatchedNames.length} karyawan tidak cocok`
                             : ' · Semua karyawan teridentifikasi'}
                         </p>
@@ -8062,52 +8222,52 @@ export function SchedulingTimesheetWorkspace({
                         ✕
                       </button>
                     </div>
-                    {lastImportSuccess.unmatchedNames &&
-                    lastImportSuccess.unmatchedNames.length > 0 ? (
-                      <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
-                        <p className="mb-2 text-xs font-semibold text-amber-900">
-                          {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan
-                          di sistem:
+                    {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0 ? (
+                      <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-xs">
+                        <p className="mb-2 font-semibold text-amber-900">
+                          {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan di sistem:
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {lastImportSuccess.unmatchedNames.map((name) => (
                             <span
                               key={name}
-                              className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+                              className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200 ring-inset"
                             >
                               {name}
                             </span>
                           ))}
                         </div>
-                        <p className="mt-2 text-[11px] text-amber-700">
-                          Pastikan nama di Excel sama persis dengan nama di Data Induk Karyawan,
-                          atau tambahkan alias di menu Setup.
-                        </p>
                       </div>
                     ) : null}
                   </Card>
                 ) : null}
+
+                {/* Holiday Badges */}
                 {holidays.length ? (
-                  <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-200/80 bg-amber-50/50 p-2.5 text-xs">
+                    <span className="font-semibold text-amber-900 mr-1">Hari Libur Nasional:</span>
                     {holidays.map((holiday) => (
                       <Badge
                         key={`attendance-${holiday.date}`}
                         variant="secondary"
+                        className="bg-amber-100/80 text-amber-900 border-amber-300/60"
                         title={holiday.localName || holiday.name}
                       >
                         {holiday.day}: {holiday.localName || holiday.name}
                       </Badge>
                     ))}
-                  </Card>
+                  </div>
                 ) : null}
+
+                {/* Unsaved & Save status strip */}
                 {attendanceImportPreview || attendanceSavedAt || isAttendanceDirty ? (
-                  <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-[0.8rem] px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-white px-3.5 py-2 text-xs">
                     {isAttendanceDirty ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-200">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 ring-inset">
                         Belum tersimpan
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-700 ring-1 ring-emerald-200 ring-inset">
                         Tersimpan
                       </span>
                     )}
@@ -8125,68 +8285,10 @@ export function SchedulingTimesheetWorkspace({
                     ) : null}
                   </div>
                 ) : null}
-                <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-                  <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-                    <div>
-                      <p className="font-display text-foreground text-sm font-semibold">
-                        <History className="mr-1.5 inline size-4" />
-                        Import History
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan
-                        ini.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void refreshAttendanceImportHistory()}
-                    >
-                      Refresh
-                    </Button>
-                  </div>
-                  <div className="divide-border/30 divide-y">
-                    {attendanceImportHistory.slice(0, 5).map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
-                      >
-                        <div>
-                          <p className="font-medium">{item.filename}</p>
-                          <p className="text-muted-foreground text-xs">
-                            {item.templateKind} · {item.sheetName || 'auto'} ·{' '}
-                            {new Date(item.createdAt).toLocaleString('id-ID')}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">{item.status}</Badge>
-                          <span className="text-muted-foreground">
-                            {item.matchedCount} matched · {item.unmatchedCount} fix ·{' '}
-                            {item.conflictCount} conflict
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              isSavingAttendance || isFinalized || item.status !== 'applied'
-                            }
-                            onClick={() => rollbackAttendanceImport(item.id)}
-                          >
-                            <Undo2 className="mr-2 size-4" />
-                            Rollback
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    {!attendanceImportHistory.length ? (
-                      <div className="text-muted-foreground px-4 py-6 text-center text-sm">
-                        Belum ada import history.
-                      </div>
-                    ) : null}
-                  </div>
-                </Card>
+
+                {/* Conflict Resolutions */}
                 {attendanceConflicts.length && !conflictsDismissed ? (
-                  <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+                  <Card className="surface-module-card overflow-hidden rounded-xl border border-amber-300 bg-white p-0 shadow-xs">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
                       <div>
                         <p className="font-semibold text-amber-900">
@@ -8201,6 +8303,7 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           variant="outline"
                           onClick={() => setShowConflictsOnly((value) => !value)}
+                          className="h-8 rounded-lg text-xs"
                         >
                           {showConflictsOnly ? 'Tampilkan semua' : 'Hanya konflik'}
                         </Button>
@@ -8209,6 +8312,7 @@ export function SchedulingTimesheetWorkspace({
                           variant="outline"
                           disabled={isFinalized}
                           onClick={clearAllAttendanceConflicts}
+                          className="h-8 rounded-lg text-xs"
                         >
                           Clear semua attendance
                         </Button>
@@ -8216,6 +8320,7 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           disabled={isFinalized}
                           onClick={markAllConflictSchedulesWorking}
+                          className="h-8 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-700"
                         >
                           Pakai attendance (mark working)
                         </Button>
@@ -8223,48 +8328,171 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           variant="ghost"
                           onClick={() => setConflictsDismissed(true)}
+                          className="h-8 text-xs text-amber-800"
                         >
                           Tutup
                         </Button>
                       </div>
                     </div>
-                    <div className="mt-3 grid gap-2 md:grid-cols-2">
-                      {attendanceConflicts.slice(0, 12).map((conflict) => (
-                        <div
-                          key={`${conflict.employeeId}-${conflict.day}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-50 p-2 text-sm"
-                        >
-                          <span>
-                            {conflict.employeeName} · day {conflict.day} · {conflict.scheduleCode} ·{' '}
-                            {attendanceStatusLabel(conflict.currentCell.status)}
-                          </span>
-                          <span className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isFinalized}
-                              onClick={() =>
-                                clearAttendanceConflict(conflict.employeeId, conflict.day)
-                              }
-                            >
-                              Clear attendance
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isFinalized}
-                              onClick={() =>
-                                markConflictScheduleWorking(conflict.employeeId, conflict.day)
-                              }
-                            >
-                              Mark schedule working
-                            </Button>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
                   </Card>
                 ) : null}
+
+                {/* 4. KPI Stat Summary Cards Row */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {[
+                    {
+                      label: 'Karyawan',
+                      val: rows.length,
+                      sub: 'Total Karyawan',
+                      icon: Users,
+                      tone: 'text-slate-700 bg-slate-100 border-slate-200',
+                    },
+                    {
+                      label: 'Hadir',
+                      val: attendanceStats.present,
+                      sub: `${((attendanceStats.present / (attendanceSourceStats.totalFilledDays || 1)) * 100).toFixed(1)}% dari total`,
+                      icon: CheckCircle2,
+                      tone: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                    },
+                    {
+                      label: 'Sakit',
+                      val: attendanceStats.sick,
+                      sub: `${((attendanceStats.sick / (attendanceSourceStats.totalFilledDays || 1)) * 100).toFixed(1)}% dari total`,
+                      icon: Pencil,
+                      tone: 'text-amber-700 bg-amber-50 border-amber-200',
+                    },
+                    {
+                      label: 'Izin',
+                      val: attendanceStats.leave,
+                      sub: `${((attendanceStats.leave / (attendanceSourceStats.totalFilledDays || 1)) * 100).toFixed(1)}% dari total`,
+                      icon: CalendarDays,
+                      tone: 'text-sky-700 bg-sky-50 border-sky-200',
+                    },
+                    {
+                      label: 'Alpha',
+                      val: attendanceStats.absent,
+                      sub: `${((attendanceStats.absent / (attendanceSourceStats.totalFilledDays || 1)) * 100).toFixed(1)}% dari total`,
+                      icon: AlertTriangle,
+                      tone: 'text-rose-700 bg-rose-50 border-rose-200',
+                    },
+                    {
+                      label: 'Total Terisi',
+                      val: attendanceSourceStats.totalFilledDays,
+                      sub: 'Data terisi',
+                      icon: FileSpreadsheet,
+                      tone: 'text-purple-700 bg-purple-50 border-purple-200',
+                    },
+                  ].map((item) => (
+                    <Card
+                      key={item.label}
+                      className="surface-module-card border-border/60 flex flex-col justify-between rounded-xl border bg-white p-3.5 shadow-xs transition-all hover:border-border"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+                          {item.label}
+                        </span>
+                        <span className={`grid size-7 place-items-center rounded-lg border ${item.tone}`}>
+                          <item.icon className="size-3.5" />
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <p className="font-display text-2xl font-bold tracking-tight text-foreground tabular-nums">
+                          {item.val}
+                        </p>
+                        <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{item.sub}</p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* 5. Face Attendance Summary Bar */}
+                <AttendanceSummaryBar
+                  faceDays={attendanceSourceStats.faceDays}
+                  excelDays={attendanceSourceStats.excelDays}
+                  manualDays={attendanceSourceStats.manualDays}
+                  totalFilledDays={attendanceSourceStats.totalFilledDays}
+                  facePercentage={attendanceSourceStats.facePercentage}
+                />
+
+                {/* 6. Command Bar: View Tabs + Search + Filter Status Pills */}
+                <Card className="surface-module-card border-border/60 overflow-hidden rounded-xl border bg-white p-3 shadow-xs">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    {/* View Switcher Tabs */}
+                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                      {[
+                        { key: 'attendance', label: 'Attendance' },
+                        { key: 'lokasi', label: 'Tunjangan Khusus' },
+                        { key: 'msa', label: 'MSA' },
+                        { key: 'meals', label: 'Meals' },
+                        { key: 'ovt', label: 'Overtime' },
+                      ].map((tab) => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setAttendanceView(tab.key as any)}
+                          className={cn(
+                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                            attendanceView === tab.key
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Search & Status Filter Pills */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative min-w-[180px] flex-1 sm:w-[220px]">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="Cari nama karyawan..."
+                          value={attendanceSearch}
+                          onChange={(e) => setAttendanceSearch(e.target.value)}
+                          className="h-8.5 rounded-lg border-border/60 bg-white pl-8.5 text-xs"
+                        />
+                        {attendanceSearch ? (
+                          <button
+                            onClick={() => setAttendanceSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                        <span className="mr-1 hidden text-[11px] font-semibold text-muted-foreground sm:inline">
+                          Status:
+                        </span>
+                        {[
+                          { key: 'all', label: 'Semua' },
+                          { key: 'present', label: 'Masuk' },
+                          { key: 'sick', label: 'Sakit' },
+                          { key: 'leave', label: 'Izin' },
+                          { key: 'absent', label: 'Alpha' },
+                          { key: 'off', label: 'OFF' },
+                          { key: 'gb', label: 'GB (Field Break)' },
+                        ].map((f) => (
+                          <button
+                            key={f.key}
+                            onClick={() => setAttendanceStatusFilter(f.key as any)}
+                            className={cn(
+                              'h-7.5 whitespace-nowrap rounded-lg border px-2.5 text-[11px] font-semibold transition-all',
+                              attendanceStatusFilter === f.key
+                                ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
+                                : 'border-border/60 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            )}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 7. Bulk Action Toolbar */}
                 <AttendanceRealBulkToolbar
                   enabled={multiSelectAttendance}
                   selectedCount={selectedAttendanceKeys.length}
@@ -8287,79 +8515,22 @@ export function SchedulingTimesheetWorkspace({
                   }
                   onClear={clearAttendanceSelection}
                 />
-                {/* Switch View: Attendance / MSA / Meals / OVT */}
-                <div className="bg-surface-container-low flex items-center gap-1.5 rounded-[0.8rem] p-1">
-                  {(
-                    [
-                      { key: 'attendance', label: 'Attendance' },
-                      { key: 'lokasi', label: 'Tunjangan Khusus' },
-                      { key: 'msa', label: 'MSA' },
-                      { key: 'meals', label: 'Meals' },
-                      { key: 'ovt', label: 'Overtime' },
-                    ] as const
-                  ).map((tab) => (
-                    <button
-                      key={tab.key}
-                      onClick={() => setAttendanceView(tab.key)}
-                      className={`rounded-[0.6rem] px-3.5 py-1.5 text-xs font-semibold transition ${
-                        attendanceView === tab.key
-                          ? 'bg-foreground text-background shadow-sm'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-surface-container-lowest'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  {[
-                    [
-                      'Masuk',
-                      attendanceStats.present,
-                      'border-emerald-200 bg-emerald-50 text-emerald-800',
-                    ],
-                    ['-', attendanceStats.empty, 'border-slate-200 bg-slate-50 text-slate-600'],
-                    ['Sakit', attendanceStats.sick, 'border-amber-200 bg-amber-50 text-amber-800'],
-                    ['Izin', attendanceStats.leave, 'border-sky-200 bg-sky-50 text-sky-800'],
-                    ['Alpha', attendanceStats.absent, 'border-rose-200 bg-rose-50 text-rose-800'],
-                  ].map(([label, value, className]) => (
-                    <div
-                      key={String(label)}
-                      className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${className}`}
-                    >
-                      <p className="text-xs font-semibold tracking-[0.14em] uppercase opacity-75">
-                        {label}
-                      </p>
-                      <p className="font-display text-xl font-semibold tabular-nums">
-                        {String(value)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                {/* Face Attendance Source Summary Bar (Req 7.1, 7.2, 7.5) */}
-                <AttendanceSummaryBar
-                  faceDays={attendanceSourceStats.faceDays}
-                  excelDays={attendanceSourceStats.excelDays}
-                  manualDays={attendanceSourceStats.manualDays}
-                  totalFilledDays={attendanceSourceStats.totalFilledDays}
-                  facePercentage={attendanceSourceStats.facePercentage}
-                />
-                <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0">
+                <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0 shadow-xs">
                   {isImportingExcel ? (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white">
                       <RefreshCw className="text-primary size-8 animate-spin" />
-                      <p className="text-foreground text-sm font-semibold">
+                      <p className="text-sm font-semibold text-foreground">
                         Memproses file Excel...
                       </p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-xs text-muted-foreground">
                         Mencocokkan nama karyawan dengan Fuse.js
                       </p>
                     </div>
                   ) : null}
                   {/* View title */}
                   {attendanceView !== 'attendance' ? (
-                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-surface-container-low px-4 py-2.5">
+                      <p className="text-xs font-bold tracking-[0.14em] uppercase text-foreground">
                         {attendanceView === 'msa' &&
                           `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
                         {attendanceView === 'lokasi' &&
@@ -8387,9 +8558,9 @@ export function SchedulingTimesheetWorkspace({
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
                     <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
                       <thead>
-                        <tr className="bg-surface-container-low text-muted-foreground text-left tracking-[0.12em] uppercase">
-                          <th className="bg-surface-container-low sticky left-0 z-30 w-[220px] min-w-[220px] px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
-                            <label className="flex items-center gap-2">
+                        <tr className="bg-surface-container-low text-left tracking-[0.12em] uppercase text-muted-foreground">
+                          <th className="sticky left-0 z-30 w-[260px] min-w-[260px] bg-surface-container-low px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
+                            <label className="flex items-center gap-2 font-semibold">
                               <input
                                 type="checkbox"
                                 aria-label="Pilih semua karyawan untuk bulk OT PDF"
@@ -8402,7 +8573,7 @@ export function SchedulingTimesheetWorkspace({
                                 onChange={toggleAllOvertimeEmployees}
                                 className="accent-primary size-3.5"
                               />
-                              Nama
+                              Nama Karyawan
                             </label>
                           </th>
                           {days.map((day) => {
@@ -8456,7 +8627,7 @@ export function SchedulingTimesheetWorkspace({
                               <tr className="bg-slate-100">
                                 <td
                                   colSpan={days.length + 1}
-                                  className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
+                                  className="sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase text-foreground"
                                 >
                                   {dept}
                                 </td>
@@ -8466,7 +8637,7 @@ export function SchedulingTimesheetWorkspace({
                                   <tr className="bg-surface-container-low">
                                     <td
                                       colSpan={days.length + 1}
-                                      className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
+                                      className="sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase text-muted-foreground"
                                     >
                                       {section}{' '}
                                       <span className="font-normal">({sectionRows.length})</span>
@@ -8478,40 +8649,43 @@ export function SchedulingTimesheetWorkspace({
                                       className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                     >
                                       <td
-                                        className={`text-foreground sticky left-0 z-20 min-w-[220px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                        className={`sticky left-0 z-20 w-[260px] min-w-[260px] max-w-[260px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                       >
-                                        <div className="flex items-center justify-between gap-1">
-                                          <div className="flex items-start gap-2">
-                                            <input
-                                              type="checkbox"
-                                              aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
-                                              checked={selectedOvertimeEmployeeIds.includes(
-                                                row.employee.id
-                                              )}
-                                              onChange={() =>
-                                                toggleOvertimeEmployee(row.employee.id)
-                                              }
-                                              className="accent-primary mt-0.5 size-3.5 shrink-0"
-                                            />
-                                            <div>
-                                              {row.employee.name}
-                                              <p className="text-muted-foreground text-[10px] font-normal">
-                                                {row.employee.section || row.employee.role}
-                                              </p>
+                                        <div className="flex flex-col gap-1.5">
+                                          <div className="flex items-center justify-between gap-1.5">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <input
+                                                type="checkbox"
+                                                aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
+                                                checked={selectedOvertimeEmployeeIds.includes(
+                                                  row.employee.id
+                                                )}
+                                                onChange={() =>
+                                                  toggleOvertimeEmployee(row.employee.id)
+                                                }
+                                                className="accent-primary size-3.5 shrink-0"
+                                              />
+                                              <div className="min-w-0 flex-1">
+                                                <p className="truncate text-xs font-semibold text-slate-900" title={row.employee.name}>
+                                                  {row.employee.name}
+                                                </p>
+                                                <p className="truncate text-[10px] font-normal text-muted-foreground">
+                                                  {row.employee.section || row.employee.role}
+                                                </p>
+                                              </div>
                                             </div>
                                           </div>
-                                          <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                          {/* PDF Action Buttons (Visible and easy to click) */}
+                                          <div className="flex items-center gap-1 pt-0.5 border-t border-slate-100 text-[10px]">
                                             <button
-                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
-                                              title="Priview record karyawan sesuai view ini"
-                                              onClick={() =>
-                                                previewEmployeeRecordPdf(row.employee)
-                                              }
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                                              title="Preview record PDF karyawan sesuai view ini"
+                                              onClick={() => previewEmployeeRecordPdf(row.employee)}
                                             >
-                                              Priview
+                                              Preview
                                             </button>
                                             <button
-                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
                                               title={
                                                 attendanceView === 'msa' ||
                                                 attendanceView === 'meals' ||
@@ -8519,9 +8693,7 @@ export function SchedulingTimesheetWorkspace({
                                                   ? 'Generate record PDF sesuai view ini'
                                                   : 'Generate Overtime Record PDF'
                                               }
-                                              onClick={() =>
-                                                generateEmployeeOvertimePdf(row.employee)
-                                              }
+                                              onClick={() => generateEmployeeOvertimePdf(row.employee)}
                                             >
                                               {attendanceView === 'msa'
                                                 ? 'MSA'
@@ -8532,20 +8704,16 @@ export function SchedulingTimesheetWorkspace({
                                                     : 'OT'}
                                             </button>
                                             <button
-                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
                                               title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
-                                              onClick={() =>
-                                                generateEmployeeAllowancePdf(row.employee)
-                                              }
+                                              onClick={() => generateEmployeeAllowancePdf(row.employee)}
                                             >
                                               Benefit
                                             </button>
                                             <button
-                                              className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
                                               title="Generate Daily Activity PDF"
-                                              onClick={() =>
-                                                generateEmployeeDailyActivityPdf(row.employee)
-                                              }
+                                              onClick={() => generateEmployeeDailyActivityPdf(row.employee)}
                                             >
                                               DA
                                             </button>
@@ -8919,26 +9087,16 @@ export function SchedulingTimesheetWorkspace({
                     </table>
                   </div>
                 </Card>
-                <div className="bg-surface-container-low text-muted-foreground rounded-[0.8rem] px-4 py-3 text-xs">
-                  <span className="text-foreground font-semibold">Input manual cepat:</span> Klik
-                  cell untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin → Alpha
-                  → -. Excel mendukung kolom{' '}
-                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-                    Nama
-                  </code>
-                  ,{' '}
-                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-                    D1..D31
-                  </code>
-                  ,{' '}
-                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-                    Masuk 1
-                  </code>
-                  ,{' '}
-                  <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
-                    Pulang 1
-                  </code>
-                  .
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900">Tips Penggunaan:</span>
+                    <span>Klik sel untuk edit jam/status · Double-click untuk rotasi cepat (Masuk → Sakit → Izin → Alpha → -).</span>
+                  </div>
+                  <div className="flex items-center gap-1 font-mono text-[11px] text-slate-500">
+                    <span>Format Import Excel:</span>
+                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">Nama</code>
+                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">D1..D31</code>
+                  </div>
                 </div>
               </section>
             ) : (

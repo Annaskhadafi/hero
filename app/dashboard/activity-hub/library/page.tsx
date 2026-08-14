@@ -120,6 +120,7 @@ export default async function DailyActivityLibraryPage({
                         data-filter-department={row.departmentName ?? ""}
                         data-filter-section={row.sectionName ?? ""}
                         data-filter-category={row.category}
+                        data-filter-group={row.children && row.children.length > 0 ? "Group" : "Non-Group"}
                         data-filter-status={row.isActive ? "Aktif" : "Nonaktif"}
                       >
                         <TableCell className="align-top">
@@ -150,8 +151,8 @@ export default async function DailyActivityLibraryPage({
                         </TableCell>
                         <TableCell className="align-top">
                           <div className="text-sm">
-                            <p>{row.departmentName ?? "Global"}</p>
-                            <p className="text-xs text-muted-foreground">{row.sectionName ?? "-"}</p>
+                            <p>{(row as any).departmentNames ?? row.departmentName ?? "Global"}</p>
+                            <p className="text-xs text-muted-foreground">{(row as any).sectionNames ?? row.sectionName ?? "-"}</p>
                             <p className="mt-1 text-xs font-semibold text-primary">
                               {row.siteNames ?? "Semua site"}
                             </p>
@@ -169,6 +170,7 @@ export default async function DailyActivityLibraryPage({
                           <div className="flex flex-wrap gap-2">
                             {row.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
                             {row.requiresEquipmentNo ? <Badge variant="outline">Equipment</Badge> : null}
+                            {row.requiresTireCount ? <Badge variant="outline">Jumlah Tire</Badge> : null}
                             {row.requiresLocationGps ? <Badge variant="outline">GPS</Badge> : null}
                             {row.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             {row.autoApproveIfGpsValid ? <Badge variant="outline">Auto approve</Badge> : null}

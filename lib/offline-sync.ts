@@ -46,6 +46,8 @@ export type RouteSessionSyncItem = {
   endedAt: string
   isChecked: boolean
   actualPoints: number
+  tireCount?: number
+  materialUsed?: string
   sortOrder: number
   photo?: QueuedFilePayload | null
 }
@@ -62,6 +64,7 @@ export type ActivitySyncPayload = {
     startTime: string
     endTime: string
     materialUsed: string
+    tireCount?: number
     notes: string
   }>
   routeTemplateId: string
@@ -72,6 +75,7 @@ export type ActivitySyncPayload = {
   customActivityName: string
   customActivityDescription: string
   equipmentNo: string
+  tireCount?: number
   startTime: string
   endTime: string
   materialUsed: string
@@ -191,6 +195,7 @@ export const activitySyncPayloadSchema = z.object({
         startTime: z.string().trim().min(1).max(80),
         endTime: z.string().trim().min(1).max(80),
         materialUsed: trimmedOptionalText(500),
+        tireCount: z.number().int().min(0).max(100).optional().default(0),
         notes: trimmedOptionalText(1200),
       })
     )
@@ -213,12 +218,15 @@ export const activitySyncPayloadSchema = z.object({
       endedAt: z.string().trim().min(1).max(80),
       isChecked: z.boolean(),
       actualPoints: z.number().int().min(0).max(5000),
+      tireCount: z.number().int().min(0).max(100).optional().default(0),
+      materialUsed: trimmedOptionalText(500),
       sortOrder: z.number().int().min(0).max(9999),
     })
   ),
   customActivityName: trimmedOptionalText(160),
   customActivityDescription: trimmedOptionalText(1200),
   equipmentNo: trimmedOptionalText(80),
+  tireCount: z.number().int().min(0).max(100).optional().default(0),
   startTime: z.string().trim().min(1).max(80),
   endTime: z.string().trim().min(1).max(80),
   materialUsed: trimmedOptionalText(500),

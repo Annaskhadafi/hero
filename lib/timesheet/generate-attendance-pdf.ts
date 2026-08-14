@@ -79,6 +79,12 @@ function getDayName(period: string, day: number) {
 
 
 
+function extractSiteName(loc: string | null | undefined): string {
+  if (!loc) return ''
+  const parts = loc.split(' - ')
+  return parts.length > 1 ? parts[parts.length - 1].trim() : loc.trim()
+}
+
 function formatMoney(value: number): string {
   return value.toLocaleString('id-ID')
 }
@@ -1356,7 +1362,7 @@ export async function generateSummaryTablePdf(
       align: 'center',
     })
     drawCell(page, colX[3], y - rowH, widths[3], rowH, {
-      text: row.loc,
+      text: extractSiteName(row.loc),
       font,
       fontSize: 6,
       align: 'center',

@@ -169,7 +169,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                       <div className="space-y-1">
                         <p className="text-foreground font-medium">{item.title}</p>
                         <p className="text-muted-foreground text-xs">
-                          {item.activityType} • {item.unitNumber} • {item.timeRange}
+                          {item.activityType} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''} • {item.timeRange}
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <AdminStatusBadge value={item.priority} />
@@ -359,7 +359,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                       <div className="space-y-1">
                         <p className="text-foreground font-semibold">{item.title}</p>
                         <p className="text-muted-foreground text-xs">
-                          {item.activityType} • {item.unitNumber} • {group.workDateLabel}
+                          {item.activityType} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''} • {group.workDateLabel}
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <AdminStatusBadge value={item.priority} />

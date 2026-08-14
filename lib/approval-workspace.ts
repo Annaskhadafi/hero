@@ -47,6 +47,8 @@ type ApprovalRecordRow = {
   activityType: string
   activityTitle: string
   unitNumber: string
+  equipmentNo?: string
+  tireCount?: number
   activityStatus: string
   priority: string
   remarks: string
@@ -98,6 +100,8 @@ type RawApprovalRecordRow = {
   activityType: string | null
   activityTitle: string | null
   unitNumber: string | null
+  equipmentNo?: string | null
+  tireCount?: number | null
   activityStatus: string | null
   priority: string | null
   remarks: string | null
@@ -578,6 +582,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             new Set(workItems.map((item) => item.unitNumber).filter((value) => value !== '-'))
           ).join(', ')) ||
         '-',
+      tireCount: (row as any).tireCount ?? (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
       activityStatus: requestStatus,
       priority: row.priority ?? priorityFromSnapshot ?? 'Normal',
       remarks: spl?.requestNotes || row.remarks || summaryFromSnapshot || '',
@@ -842,6 +847,8 @@ async function fetchApprovalRows() {
       activityType: activities.activityType,
       activityTitle: activities.title,
       unitNumber: activities.unitNumber,
+      equipmentNo: activities.equipmentNo,
+      tireCount: activities.tireCount,
       activityStatus: activities.status,
       priority: activities.priority,
       remarks: activities.remarks,
@@ -1205,6 +1212,8 @@ export async function getApprovalCenterData(email: string) {
         title: string
         activityType: string
         unitNumber: string
+        equipmentNo?: string
+        tireCount?: number
         priority: string
         currentStepLabel: string
         remarks: string
@@ -1265,6 +1274,8 @@ export async function getApprovalCenterData(email: string) {
       title: item.activityTitle,
       activityType: item.activityType,
       unitNumber: item.unitNumber,
+      equipmentNo: (item as any).equipmentNo ?? item.unitNumber,
+      tireCount: (item as any).tireCount ?? 0,
       priority: item.priority,
       currentStepLabel: item.currentStepLabel,
       remarks: item.remarks,
