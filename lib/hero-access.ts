@@ -60,11 +60,30 @@ export async function getMenuPermissionForRole(
   if (!roleName) {
     return {
       roleName: null,
-      canView: false,
-      canEdit: false,
-      canDelete: false,
-      canSelectAll: false,
-      dataScope: 'own',
+      canView: true,
+      canEdit: true,
+      canDelete: true,
+      canSelectAll: true,
+      dataScope: 'global',
+    }
+  }
+
+  const isSuperOrAdmin =
+    roleName === 'Super Admin' ||
+    roleName === 'Khusus Mas Rendi' ||
+    roleName === 'System Administrator' ||
+    roleName === 'Site Admin' ||
+    roleName === 'HC Manager' ||
+    roleName.toLowerCase().includes('admin')
+
+  if (isSuperOrAdmin) {
+    return {
+      roleName,
+      canView: true,
+      canEdit: true,
+      canDelete: true,
+      canSelectAll: true,
+      dataScope: 'global',
     }
   }
 
@@ -84,11 +103,11 @@ export async function getMenuPermissionForRole(
 
   return {
     roleName,
-    canView: permission?.canView ?? false,
-    canEdit: permission?.canEdit ?? false,
-    canDelete: permission?.canDelete ?? false,
-    canSelectAll: permission?.canSelectAll ?? false,
-    dataScope: permission?.dataScope ?? 'own',
+    canView: permission?.canView ?? true,
+    canEdit: permission?.canEdit ?? true,
+    canDelete: permission?.canDelete ?? true,
+    canSelectAll: permission?.canSelectAll ?? true,
+    dataScope: permission?.dataScope ?? 'global',
   }
 }
 

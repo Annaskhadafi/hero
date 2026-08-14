@@ -49,6 +49,7 @@ import {
   getManagedEmployeeIdsForLead,
 } from '@/lib/daily-activity'
 import { auth } from '@/lib/auth'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { resolveApprovalRouteForActivity, serializeApprovalRoute } from '@/lib/approval-engine'
 import { logAuditEvent } from '@/lib/audit-logger'
 import {
@@ -317,10 +318,33 @@ const submitActivitySchema = z.object({
   teamMemberEmployeeIdsJson: z.string().trim().max(10000).optional().default('[]'),
 })
 
+const createConfigSchema = z.object({
+  configKey: z
+    .string()
+    .trim()
+    .min(2)
+    .max(60)
+    .regex(/^[a-z0-9_]+$/i, 'Config Key hanya boleh berisi huruf, angka, dan underscore (_)'),
+  configLabel: z.string().trim().min(2).max(160),
+  configValue: z.string().trim().max(10000).optional().default(''),
+  valueType: z.enum(['boolean', 'number', 'text', 'json']).default('text'),
+  description: z.string().trim().max(600).optional().default(''),
+  siteId: optionalPositiveInt,
+  isActive: z.boolean().default(true),
+})
+
 const updateConfigSchema = z.object({
   id: z.coerce.number().int().positive(),
-  configValue: z.string().trim().min(1).max(160),
-  isActive: formBoolean(true),
+  configLabel: z.string().trim().min(2).max(160),
+  configValue: z.string().trim().max(10000).optional().default(''),
+  valueType: z.enum(['boolean', 'number', 'text', 'json']).default('text'),
+  description: z.string().trim().max(600).optional().default(''),
+  siteId: optionalPositiveInt,
+  isActive: z.boolean().default(true),
+})
+
+const deleteConfigSchema = z.object({
+  id: z.coerce.number().int().positive(),
 })
 
 const manageModifierSchema = z.object({
@@ -3270,21 +3294,165 @@ export async function updateDailyActivitySessionDocumentSignoffWithStateAction(
   }
 }
 
-export async function updateDailyActivityConfigAction(formData: FormData) {
+export async function createDailyActivityConfigAction(input: FormData | {
+  configKey: string
+  configLabel: string
+  configValue: string
+  valueType: 'boolean' | 'number' | 'text' | 'json'
+  description?: string
+  siteId?: number | null
+  isActive?: boolean
+}) {
   await ensureDailyActivitySeedData()
 
-  const payload = updateConfigSchema.parse(Object.fromEntries(formData))
+  const perm = await getCurrentMenuPermission('activity_configuration')
+  if (!perm.canEdit) {
+    throw new Error('Permission denied: Anda tidak memiliki hak akses untuk menambah rule global.')
+  }
+
+  const currentEmployee = await getAuthenticatedEmployeeContext()
+
+  let rawData: any
+  if (input instanceof FormData) {
+    rawData = {
+      configKey: input.get('configKey'),
+      configLabel: input.get('configLabel'),
+      configValue: input.get('configValue'),
+      valueType: input.get('valueType') || 'text',
+      description: input.get('description'),
+      siteId: input.get('siteId') || undefined,
+      isActive: input.get('isActive') === 'true' || input.get('isActive') === 'on' || input.get('isActive') === '1',
+    }
+  } else {
+    rawData = input
+  }
+
+  const payload = createConfigSchema.parse(rawData)
+
+  const [existing] = await db
+    .select({ id: dailyActivityConfigs.id })
+    .from(dailyActivityConfigs)
+    .where(eq(dailyActivityConfigs.configKey, payload.configKey))
+    .limit(1)
+
+  if (existing) {
+    throw new Error(`Config key "${payload.configKey}" sudah digunakan. Gunakan key lain.`)
+  }
+
+  await db.insert(dailyActivityConfigs).values({
+    siteId: payload.siteId ?? null,
+    configKey: payload.configKey,
+    configLabel: payload.configLabel,
+    configValue: payload.configValue,
+    valueType: payload.valueType,
+    description: payload.description,
+    isEditableBySectionHead: false,
+    isActive: payload.isActive,
+    updatedByEmployeeId: currentEmployee?.id ?? null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+
+  revalidateDailyActivitySurfaces()
+  return { success: true, message: 'Rule global berhasil ditambahkan.' }
+}
+
+export async function updateDailyActivityConfigAction(input: FormData | {
+  id: number
+  configLabel?: string
+  configValue?: string
+  valueType?: 'boolean' | 'number' | 'text' | 'json'
+  description?: string
+  siteId?: number | null
+  isActive?: boolean
+}) {
+  await ensureDailyActivitySeedData()
+
+  const perm = await getCurrentMenuPermission('activity_configuration')
+  if (!perm.canEdit) {
+    throw new Error('Permission denied: Anda tidak memiliki hak akses untuk mengubah rule global.')
+  }
+
+  const currentEmployee = await getAuthenticatedEmployeeContext()
+
+  let rawData: any
+  if (input instanceof FormData) {
+    rawData = {
+      id: input.get('id'),
+      configLabel: input.get('configLabel') || undefined,
+      configValue: input.get('configValue'),
+      valueType: input.get('valueType') || undefined,
+      description: input.get('description') || undefined,
+      siteId: input.get('siteId') || undefined,
+      isActive: input.has('isActive')
+        ? input.get('isActive') === 'true' || input.get('isActive') === 'on' || input.get('isActive') === '1'
+        : false,
+    }
+  } else {
+    rawData = input
+  }
+
+  const configId = Number(rawData.id)
+  if (!configId || isNaN(configId)) {
+    throw new Error('ID konfigurasi tidak valid.')
+  }
+
+  const [existingConfig] = await db
+    .select()
+    .from(dailyActivityConfigs)
+    .where(eq(dailyActivityConfigs.id, configId))
+    .limit(1)
+
+  if (!existingConfig) {
+    throw new Error('Rule konfigurasi tidak ditemukan.')
+  }
+
+  const configLabel = rawData.configLabel ? String(rawData.configLabel).trim() : existingConfig.configLabel
+  const configValue = rawData.configValue !== undefined && rawData.configValue !== null ? String(rawData.configValue).trim() : existingConfig.configValue
+  const valueType = rawData.valueType ? String(rawData.valueType) : existingConfig.valueType
+  const description = rawData.description !== undefined && rawData.description !== null ? String(rawData.description).trim() : existingConfig.description
+  const siteId = rawData.siteId !== undefined && rawData.siteId !== null && rawData.siteId !== '' ? Number(rawData.siteId) : existingConfig.siteId
+  const isActive = rawData.isActive !== undefined ? Boolean(rawData.isActive) : existingConfig.isActive
 
   await db
     .update(dailyActivityConfigs)
     .set({
-      configValue: payload.configValue,
-      isActive: payload.isActive,
+      configLabel,
+      configValue,
+      valueType,
+      description,
+      siteId,
+      isActive,
+      updatedByEmployeeId: currentEmployee?.id ?? null,
       updatedAt: new Date(),
     })
-    .where(eq(dailyActivityConfigs.id, payload.id))
+    .where(eq(dailyActivityConfigs.id, configId))
 
   revalidateDailyActivitySurfaces()
+  return { success: true, message: 'Rule global berhasil diperbarui.' }
+}
+
+export async function deleteDailyActivityConfigAction(input: FormData | { id: number }) {
+  await ensureDailyActivitySeedData()
+
+  const perm = await getCurrentMenuPermission('activity_configuration')
+  if (!perm.canDelete) {
+    throw new Error('Permission denied: Anda tidak memiliki hak akses untuk menghapus rule global.')
+  }
+
+  let id: number
+  if (input instanceof FormData) {
+    id = Number(input.get('id'))
+  } else {
+    id = input.id
+  }
+
+  const payload = deleteConfigSchema.parse({ id })
+
+  await db.delete(dailyActivityConfigs).where(eq(dailyActivityConfigs.id, payload.id))
+
+  revalidateDailyActivitySurfaces()
+  return { success: true, message: 'Rule global berhasil dihapus.' }
 }
 
 export async function manageActivityModifierAction(formData: FormData) {

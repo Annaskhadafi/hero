@@ -3,8 +3,8 @@ import { Gauge, ShieldCheck, Sparkles, Edit2, Trash2 } from "lucide-react";
 import {
   manageActivityModifierAction,
   resolvePointDisputeAction,
-  updateDailyActivityConfigAction,
 } from "@/app/dashboard/activity-hub/actions";
+import { ActivityConfigurationManagement } from "@/components/activity-configuration-management";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import {
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityConfigurationData } from "@/lib/daily-activity";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 function dateTimeLocalValue(reference: Date) {
   const local = new Date(reference.getTime() - reference.getTimezoneOffset() * 60000);
@@ -46,8 +47,19 @@ export default async function DailyActivityConfigurationPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityConfigurationData(session.user.email);
+  const [data, menuPermission] = await Promise.all([
+    getDailyActivityConfigurationData(session.user.email),
+    getCurrentMenuPermission("activity_configuration"),
+  ]);
+
   const pagePurpose = getActivityPagePurpose("configuration");
+
+  const permissions = {
+    canView: menuPermission.canView,
+    canEdit: menuPermission.canEdit,
+    canDelete: menuPermission.canDelete,
+    roleName: menuPermission.roleName,
+  };
 
   return (
     <div className="space-y-6">
@@ -67,91 +79,15 @@ export default async function DailyActivityConfigurationPage() {
         </TabsList>
 
         <TabsContent value="settings">
-        <Card className="rounded-[1.6rem]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="size-5 text-primary" />
-              {pagePurpose.title}
-            </CardTitle>
-            <CardDescription>
-              {pagePurpose.description}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Nilai</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Keterangan</TableHead>
-                  <TableHead className="w-[100px] text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.settings.map((setting) => (
-                  <TableRow key={setting.id}>
-                    <TableCell className="align-top">
-                      <div>
-                        <p className="font-medium">{setting.configLabel}</p>
-                        <p className="text-xs text-muted-foreground">{setting.configKey}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex flex-col gap-1 items-start">
-                        <Badge variant="secondary">{setting.configValue}</Badge>
-                        <Badge variant={setting.isActive ? "outline" : "secondary"}>
-                          {setting.isActive ? "Aktif" : "Nonaktif"}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-1 text-sm">
-                        <p>{setting.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {setting.siteName ?? "Global"} • update {setting.updatedByName ?? "-"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top text-right">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button size="sm" variant="outline" className="rounded-full">
-                            <Edit2 className="mr-1.5 size-3.5" /> Edit
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
-                          <DialogHeader>
-                            <DialogTitle>Edit Rule Global</DialogTitle>
-                            <DialogDescription>
-                              Sesuaikan konfigurasi rule harian {setting.configLabel}.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <form action={updateDailyActivityConfigAction} className="grid gap-4 py-2">
-                            <input type="hidden" name="id" value={setting.id} />
-                            <div className="grid gap-2 text-left">
-                              <Label htmlFor="configValue">Nilai Konfigurasi</Label>
-                              <Input id="configValue" name="configValue" defaultValue={setting.configValue} required />
-                            </div>
-                            <Label className="flex items-center gap-2 text-sm font-medium text-left">
-                              <input type="checkbox" name="isActive" defaultChecked={setting.isActive} className="size-4 rounded border-gray-300" />
-                              Rule Aktif
-                            </Label>
-                            <div className="flex justify-end gap-2 pt-2">
-                              <Button size="sm" type="submit">
-                                Simpan Perubahan
-                              </Button>
-                            </div>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+          <ActivityConfigurationManagement
+            initialSettings={data.settings}
+            sites={data.sites}
+            permissions={permissions}
+            purpose={{
+              title: pagePurpose.title,
+              description: pagePurpose.description,
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="modifiers">
