@@ -198,7 +198,9 @@ export function FaceAttendanceV2Client({
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
   useEffect(() => {
-    setLogs(todayLogs)
+    if (todayLogs && todayLogs.length > 0) {
+      setLogs(todayLogs)
+    }
   }, [todayLogs])
 
   // ─── REVERSE GEOCODING FOR REAL LOCATION NAME ───

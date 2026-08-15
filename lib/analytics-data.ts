@@ -63,7 +63,7 @@ export const analyticsSections = [
     title: "Payroll support",
     value: timesheetSummary.overtimeCost,
     detail: `${timesheetSummary.approvedEmployees} karyawan sudah ready payroll.`,
-    route: "/dashboard/timesheet",
+    route: "/dashboard/scheduling-timesheet/attendance",
   },
   {
     title: "Daily report",

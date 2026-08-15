@@ -15,6 +15,8 @@ import { authClient, signIn, useSession } from "@/lib/auth-client";
 import { isMobileUserAgent } from "@/lib/device";
 import { FaceLoginModal } from "@/components/auth/face-login-modal";
 
+import { resolveSnAction } from "@/app/actions/resolve-sn-action";
+
 function getClientPostLoginPath() {
     if (typeof window === "undefined") {
         return "/dashboard";
@@ -83,29 +85,35 @@ function SignInContent() {
             // Resolve SN to email if input is not an email
             let loginEmail = email.trim();
             if (!loginEmail.includes("@")) {
-                const res = await fetch("/api/resolve-sn", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sn: loginEmail }),
-                });
-
-                let data: { email?: string; name?: string; error?: string } = {};
-                try {
-                    data = await res.json();
-                } catch {
-                    setError("Layanan autentikasi tidak merespons (404/500). Mohon refresh halaman atau periksa server.");
-                    setIsLoading(false);
-                    return;
+                const snRes = await resolveSnAction(loginEmail);
+                if (snRes.success && snRes.email) {
+                    loginEmail = snRes.email;
+                    setResolvedEmail(snRes.email);
+                    setResolvedName(snRes.name || "");
+                } else {
+                    // Fallback to HTTP endpoint if needed
+                    try {
+                        const res = await fetch("/api/resolve-sn", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ sn: loginEmail }),
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.email) {
+                            loginEmail = data.email;
+                            setResolvedEmail(data.email);
+                            setResolvedName(data.name || "");
+                        } else {
+                            setError(data.error || snRes.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
+                            setIsLoading(false);
+                            return;
+                        }
+                    } catch {
+                        setError(snRes.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
+                        setIsLoading(false);
+                        return;
+                    }
                 }
-
-                if (!res.ok || !data.email) {
-                    setError(data.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
-                    setIsLoading(false);
-                    return;
-                }
-                loginEmail = data.email;
-                setResolvedEmail(data.email);
-                setResolvedName(data.name || "");
             }
 
             const result = await signIn.email({

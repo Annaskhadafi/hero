@@ -239,7 +239,7 @@ function ApprovalCard({
         </Button>
         </div>
         <Button asChild variant="ghost" className="mt-2 h-10 w-full rounded-full text-slate-600">
-          <Link href="/dashboard/timesheet">Lihat impact ke timesheet</Link>
+          <Link href="/dashboard/scheduling-timesheet/attendance">Lihat impact ke timesheet</Link>
         </Button>
       </Card>
     );

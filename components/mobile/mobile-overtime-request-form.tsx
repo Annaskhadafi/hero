@@ -58,6 +58,16 @@ function plannedDateTime(date: string, time: string, nextDay = false) {
   return `${dateInputValue(value)}T${time}`;
 }
 
+const DEFAULT_LIBRARY_ACTIVITIES: LibraryActivity[] = [
+  { id: 101, activityCode: "ACT-01", activityName: "Perbaikan & Maintenance Unit Operasional", basePoints: 15 },
+  { id: 102, activityCode: "ACT-02", activityName: "Pemeriksaan / Inspeksi Ban (Tire Inspection)", basePoints: 15 },
+  { id: 103, activityCode: "ACT-03", activityName: "Pengawalan Heavy Equipment / Moving Unit", basePoints: 20 },
+  { id: 104, activityCode: "ACT-04", activityName: "Support Team Shift / Standby Breakdown Unit", basePoints: 15 },
+  { id: 105, activityCode: "ACT-05", activityName: "Pekerjaan Emergency / Handling Trouble Unit", basePoints: 25 },
+  { id: 106, activityCode: "ACT-06", activityName: "Stock Opname / Inventory Check Workshop", basePoints: 10 },
+  { id: 107, activityCode: "ACT-99", activityName: "Pekerjaan Custom / Aktivitas Khusus", basePoints: 10 },
+];
+
 export function MobileOvertimeRequestForm({
   action,
   libraryActivities,
@@ -71,6 +81,11 @@ export function MobileOvertimeRequestForm({
   currentEmployeeId: number;
   parentSplId?: number;
 }) {
+  const activeLibraryActivities = useMemo(
+    () => (libraryActivities && libraryActivities.length > 0 ? libraryActivities : DEFAULT_LIBRARY_ACTIVITIES),
+    [libraryActivities],
+  );
+
   const draftKey = `hero-spl-self-${currentEmployeeId}-${parentSplId ?? "base"}`;
   const formRef = useRef<HTMLFormElement>(null);
   const [submitState, formAction, isPending] = useActionState(action, { status: "idle", message: "" } satisfies SubmitState);
@@ -81,8 +96,8 @@ export function MobileOvertimeRequestForm({
   const [description, setDescription] = useState("");
   const [selectedActivityId, setSelectedActivityId] = useState("");
   const selectedActivity = useMemo(
-    () => libraryActivities.find((activity) => String(activity.id) === selectedActivityId),
-    [libraryActivities, selectedActivityId],
+    () => activeLibraryActivities.find((activity) => String(activity.id) === selectedActivityId),
+    [activeLibraryActivities, selectedActivityId],
   );
 
   useEffect(() => {
@@ -233,7 +248,7 @@ export function MobileOvertimeRequestForm({
           <select
             value={selectedActivityId}
             onChange={(event) => {
-              const activity = libraryActivities.find((item) => String(item.id) === event.target.value);
+              const activity = activeLibraryActivities.find((item) => String(item.id) === event.target.value);
               setSelectedActivityId(event.target.value);
               if (activity) setDescription(activity.activityName);
             }}
@@ -241,7 +256,7 @@ export function MobileOvertimeRequestForm({
             aria-label="Pilih dari Daily Activity"
           >
             <option value="">Pilih dari Daily Activity (opsional)</option>
-            {libraryActivities.map((activity) => (
+            {activeLibraryActivities.map((activity) => (
               <option key={activity.id} value={activity.id}>{activity.activityCode} · {activity.activityName}</option>
             ))}
           </select>
