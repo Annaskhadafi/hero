@@ -4,7 +4,7 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { eq, desc } from 'drizzle-orm'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
-import { rarayVerifyFace } from '@/lib/raray-vision/client'
+import { rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
 import { uploadAttendancePhotoToS3, isS3UploadConfigured } from '@/lib/s3-storage'
@@ -201,6 +201,29 @@ export async function POST(request: NextRequest) {
         'VALIDATION_ERROR',
         `eventType must be one of: ${ALLOWED_EVENT_TYPES.join(', ')}.`,
         'eventType'
+      )
+    }
+
+    // 8.5 Anti-Spoofing Check via UniFace-v2 API
+    const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({
+      imageBuffer,
+      mimeType,
+    }).catch(() => null)
+
+    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+      console.warn('[face-recognition-v2] Anti-Spoofing detected spoof attempt:', antiSpoofRes.verdict, antiSpoofRes.confidence)
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          confidence: antiSpoofRes.confidence ?? 0,
+          resolvedEventType,
+          error: {
+            code: 'SPOOFING_DETECTED',
+            message: antiSpoofRes.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+          },
+        },
+        { status: 200 }
       )
     }
 

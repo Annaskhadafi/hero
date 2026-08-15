@@ -3,7 +3,7 @@
 import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
-import { rarayVerifyFace, rarayRecognizeFace } from '@/lib/raray-vision/client'
+import { rarayVerifyFace, rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { revalidatePath } from 'next/cache'
 
 export interface FaceAttendanceParams {
@@ -43,7 +43,21 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const base64Data = matches[2]
     const imageBuffer = Buffer.from(base64Data, 'base64')
 
-    // 2. Call vision.chitraparatama.com API v1 verify endpoint directly
+    // 2. Anti-Spoofing Check via UniFace-v2 API
+    const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({
+      imageBuffer,
+      mimeType,
+    }).catch(() => null)
+
+    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+      console.warn('[face-attendance-action] Spoof detected:', antiSpoofRes.verdict, antiSpoofRes.confidence)
+      return {
+        success: false,
+        error: antiSpoofRes.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+      }
+    }
+
+    // 3. Call vision.chitraparatama.com API v1 verify endpoint directly
     let verified = false
     let confidence = 0.95
 
@@ -61,7 +75,7 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
       } else if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
         return {
           success: false,
-          error: 'Terdeteksi foto/layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+          error: rvResult.message || '🚨 Terdeteksi foto/layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
         }
       }
     }

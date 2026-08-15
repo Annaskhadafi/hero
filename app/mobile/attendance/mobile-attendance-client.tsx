@@ -483,7 +483,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       }
 
       // Verification failed
-      handleFaceVerificationFailure('Wajah tidak cocok dengan data biometrik')
+      handleFaceVerificationFailure(result?.error?.message || 'Wajah tidak cocok dengan data biometrik')
     } catch (error) {
       handleFaceVerificationFailure(
         error instanceof DOMException && error.name === 'AbortError'

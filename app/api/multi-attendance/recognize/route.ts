@@ -17,7 +17,7 @@ import {
 } from '@/db/schema/hero'
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
-import { rarayRecognizeFace } from '@/lib/raray-vision/client'
+import { rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { revalidatePath } from 'next/cache'
 
 // ponytail: upgrade to per-terminal secret if needed
@@ -36,7 +36,7 @@ export interface MultiAttendanceRecognizeResponse {
   timestamp?: string
   record_id?: number
   error?: string
-  reason?: 'cooldown' | 'no_face' | 'not_registered' | 'recognition_failed' | 'db_error'
+  reason?: 'cooldown' | 'no_face' | 'not_registered' | 'recognition_failed' | 'db_error' | 'spoof_detected'
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -93,6 +93,18 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const imageBuffer = Buffer.from(arrayBuffer)
     const mimeType = file.type || 'image/jpeg'
+
+    // ── 0. UniFace-v2 Anti-Spoofing Check ─────────────────────────────────────
+    const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({ imageBuffer, mimeType }).catch(() => null)
+    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+      console.warn('[multi-attendance/recognize] Spoof attempt detected:', antiSpoofRes.verdict, antiSpoofRes.confidence)
+      return NextResponse.json<MultiAttendanceRecognizeResponse>({
+        recognized: false,
+        confidence: antiSpoofRes.confidence,
+        reason: 'spoof_detected',
+        error: antiSpoofRes.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+      })
+    }
 
     // ── 1. Raray Vision: 1:N Recognition ──────────────────────────────────────
     const rarayResult = await rarayRecognizeFace({ imageBuffer, mimeType })

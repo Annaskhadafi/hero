@@ -23,7 +23,7 @@ import {
   IconHierarchy2,
   IconPrinter,
   IconDotsVertical,
-  IconSettings
+  IconSettings,
 } from "@tabler/icons-react";
 import {
   Radar,
@@ -40,7 +40,7 @@ import {
   CartesianGrid,
   Legend,
   LineChart,
-  Line
+  Line,
 } from "recharts";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -58,6 +58,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { cn } from "@/lib/utils";
 
 interface EmployeeProfileClientPageProps {
@@ -1099,7 +1100,7 @@ export function EmployeeProfileClientPage({
                         )}
                         {mcu.resultFileUrl && (
                           <a
-                            href={mcu.resultFileUrl}
+                            href={resolveUploadUrl(mcu.resultFileUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[#003461] font-semibold underline"

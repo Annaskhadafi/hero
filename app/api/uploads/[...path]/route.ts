@@ -12,6 +12,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   'curhat',
   'profile-photos',
   'upload',
+  'mcu-wellness-results',
 ])
 
 function getContentType(fileName: string) {

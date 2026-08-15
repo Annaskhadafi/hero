@@ -40,6 +40,24 @@ interface RarayVerifyResult {
   message?: string
 }
 
+export interface RarayAntiSpoofResult {
+  status: 'success' | 'spoof_detected' | 'error'
+  is_real: boolean
+  confidence: number
+  verdict?: string
+  latency_ms?: number
+  message?: string
+}
+
+export interface RarayPdfInspectorResult {
+  status: 'success' | 'error'
+  markdown: string
+  pageCount?: number
+  latency_ms?: number
+  rawResponse?: any
+  message?: string
+}
+
 interface RarayStatusResult {
   status: 'success' | 'error'
   registered: boolean
@@ -471,3 +489,213 @@ export async function rarayHealthCheck(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Verify if a face photo is authentic (Real) or a spoof attempt (Photo screen, printout, paper mask)
+ * using UniFace-v2 Anti-Spoofing API.
+ * 
+ * Endpoint: POST https://vision.chitraparatama.com/api/v1/anti-spoof/uniface-v2
+ */
+export async function rarayCheckAntiSpoofUniFaceV2(params: {
+  imageBuffer: Buffer
+  mimeType?: string
+}): Promise<RarayAntiSpoofResult> {
+  const { imageBuffer, mimeType = 'image/jpeg' } = params
+  const baseUrl = getBaseUrl()
+  const authHeader = await getAuthHeader()
+
+  try {
+    const formData = new FormData()
+    formData.append('file', new Blob([imageBuffer], { type: mimeType }), 'face.jpg')
+
+    const res = await fetch(`${baseUrl}/api/v1/anti-spoof/uniface-v2`, {
+      method: 'POST',
+      headers: { Authorization: authHeader },
+      body: formData,
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      console.warn(`[AntiSpoof] UniFace-v2 API returned error (${res.status}): ${errText}`)
+      return {
+        status: 'error',
+        is_real: false,
+        confidence: 0,
+        message: `Anti-spoof API error (${res.status}): ${errText}`,
+      }
+    }
+
+    const data = await res.json()
+    const rawConf = typeof data.confidence === 'number' ? data.confidence : 0
+    const confidence = rawConf > 1 ? rawConf : rawConf * 100
+    const isReal = Boolean(data.is_real) && confidence >= 90
+
+    if (data.status === 'success' || data.is_real !== undefined) {
+      if (isReal) {
+        console.log(`[AntiSpoof] ✅ Terverifikasi Wajah Asli: ${confidence.toFixed(1)}% (Latency: ${data.latency_ms ?? 0}ms)`)
+        return {
+          status: 'success',
+          is_real: true,
+          confidence,
+          verdict: data.verdict || 'real',
+          latency_ms: data.latency_ms,
+        }
+      } else {
+        const verdictDetail = data.verdict ? ` (${data.verdict})` : ''
+        console.warn(`[AntiSpoof] 🚨 Spoofing / Foto Layar Terdeteksi: ${data.verdict || 'spoof'} | Confidence: ${confidence.toFixed(1)}%`)
+        return {
+          status: 'spoof_detected',
+          is_real: false,
+          confidence,
+          verdict: data.verdict || 'spoof',
+          latency_ms: data.latency_ms,
+          message: `🚨 Spoofing / Foto Layar Terdeteksi${verdictDetail}. Harap gunakan wajah asli secara langsung.`,
+        }
+      }
+    }
+
+    return {
+      status: 'error',
+      is_real: false,
+      confidence,
+      message: data.message || 'Gagal memvalidasi anti-spoofing.',
+    }
+  } catch (err: any) {
+    console.error('[AntiSpoof] Error checking anti-spoof:', err)
+    return {
+      status: 'error',
+      is_real: false,
+      confidence: 0,
+      message: err instanceof Error ? err.message : 'Gagal menghubungi server anti-spoof',
+    }
+  }
+}
+
+/**
+ * Helper to extract Markdown or text from various response structures returned by PDF Inspector Microservice.
+ */
+function extractMarkdownFromPdfInspectorResponse(data: any): string {
+  if (!data) return ''
+  if (typeof data === 'string') return data
+
+  // 1. Direct top-level fields
+  for (const key of ['markdown', 'md', 'text', 'extracted_text', 'content', 'ocr_text', 'result_text']) {
+    if (typeof data[key] === 'string' && data[key].trim()) {
+      return data[key]
+    }
+  }
+
+  // 2. Nested in data or result object
+  const nested = data.data || data.result
+  if (nested && typeof nested === 'object') {
+    for (const key of ['markdown', 'md', 'text', 'extracted_text', 'content', 'ocr_text', 'result_text']) {
+      if (typeof nested[key] === 'string' && nested[key].trim()) {
+        return nested[key]
+      }
+    }
+    if (Array.isArray(nested.pages)) {
+      const pageTexts = nested.pages
+        .map((p: any) => (typeof p === 'string' ? p : p.markdown || p.text || p.content || ''))
+        .filter(Boolean)
+      if (pageTexts.length > 0) return pageTexts.join('\n\n')
+    }
+  }
+
+  // 3. Top-level pages array
+  if (Array.isArray(data.pages)) {
+    const pageTexts = data.pages
+      .map((p: any) => (typeof p === 'string' ? p : p.markdown || p.text || p.content || ''))
+      .filter(Boolean)
+    if (pageTexts.length > 0) return pageTexts.join('\n\n')
+  }
+
+  return ''
+}
+
+/**
+ * Process document (PDF or Image) using PDF Inspector Microservice to extract clean Markdown text.
+ * Endpoint: POST https://vision.chitraparatama.com/api/v1/pdf-inspector/process
+ */
+export async function rarayPdfInspectorProcess(params: {
+  fileBuffer: Buffer
+  fileName?: string
+  mimeType?: string
+  autoOcr?: boolean
+}): Promise<RarayPdfInspectorResult> {
+  const {
+    fileBuffer,
+    fileName = 'document.pdf',
+    mimeType = 'application/pdf',
+    autoOcr = true,
+  } = params
+
+  const baseUrl = getBaseUrl()
+  const authHeader = await getAuthHeader()
+
+  try {
+    const formData = new FormData()
+    formData.append('file', new Blob([fileBuffer], { type: mimeType }), fileName)
+    formData.append('auto_ocr', autoOcr ? 'true' : 'false')
+
+    console.log(`[PDF-Inspector] Sending ${fileName} (${fileBuffer.length} bytes, ${mimeType}) to ${baseUrl}/api/v1/pdf-inspector/process...`)
+
+    const res = await fetch(`${baseUrl}/api/v1/pdf-inspector/process`, {
+      method: 'POST',
+      headers: { Authorization: authHeader },
+      body: formData,
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      console.warn(`[PDF-Inspector] Microservice returned ${res.status}: ${errText}`)
+      return {
+        status: 'error',
+        markdown: '',
+        message: `PDF Inspector Microservice error (${res.status}): ${errText.slice(0, 200)}`,
+      }
+    }
+
+    const data = await res.json()
+    const extractedMarkdown = extractMarkdownFromPdfInspectorResponse(data)
+
+    if (!extractedMarkdown || !extractedMarkdown.trim()) {
+      return {
+        status: 'error',
+        markdown: '',
+        rawResponse: data,
+        message: 'PDF Inspector Microservice tidak menghasilkan teks markdown.',
+      }
+    }
+
+    const pageCount = Array.isArray(data.pages)
+      ? data.pages.length
+      : Array.isArray(data.data?.pages)
+      ? data.data.pages.length
+      : typeof data.page_count === 'number'
+      ? data.page_count
+      : typeof data.total_pages === 'number'
+      ? data.total_pages
+      : extractedMarkdown.split(/\n\s*---\s*\n|\n\s*#+\s*Page|\n\n/).length
+
+    console.log(`[PDF-Inspector] ✅ Extracted ${extractedMarkdown.length} chars (${pageCount} pages, Latency: ${data.latency_ms ?? 0}ms)`)
+
+    return {
+      status: 'success',
+      markdown: extractedMarkdown.trim(),
+      pageCount,
+      latency_ms: data.latency_ms,
+      rawResponse: data,
+    }
+  } catch (err: any) {
+    console.error('[PDF-Inspector] Request failed:', err)
+    return {
+      status: 'error',
+      markdown: '',
+      message: err instanceof Error ? err.message : 'Gagal menghubungi PDF Inspector Microservice',
+    }
+  }
+}
+
+

@@ -3,6 +3,7 @@ import { desc, eq, inArray, and, or, sql } from "drizzle-orm";
 import {
   BriefcaseBusiness, Calendar, HeartPulse, MapPin, ShieldCheck,
   Stethoscope, Trophy, UserRound, GraduationCap, Award, Clock,
+  FileText, Download, ExternalLink,
 } from "lucide-react";
 
 import { ExpandableList } from "@/components/expandable-list";
@@ -19,6 +20,7 @@ import { attendancePermissionRequests } from "@/db/schema/timesheet";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { cn } from "@/lib/utils";
 
 function getDateInputValue(value: string | null | undefined) {
@@ -420,6 +422,25 @@ export default async function MobileProfilePage() {
                     {mcu.resultDate ? <span>Hasil: {fd(mcu.resultDate)}</span> : null}
                     {mcu.aiKategori ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{mcu.aiKategori}</span> : null}
                   </div>
+                  {mcu.resultFileUrl ? (
+                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-3 text-xs">
+                      <a
+                        href={resolveUploadUrl(mcu.resultFileUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800"
+                      >
+                        <ExternalLink className="size-3" /> Lihat PDF
+                      </a>
+                      <a
+                        href={resolveUploadUrl(mcu.resultFileUrl)}
+                        download={mcu.resultFileName || true}
+                        className="inline-flex items-center gap-1 font-semibold text-gray-600 hover:text-gray-900"
+                      >
+                        <Download className="size-3" /> Download
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </ExpandableList>

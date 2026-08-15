@@ -1,22 +1,31 @@
 "use client";
 
-import { Fragment, useMemo, useState, useEffect } from "react";
+import { Fragment, useMemo, useState, useEffect, useRef } from "react";
 import {
   Activity,
   AlertTriangle,
   Bell,
+  Calendar,
   CalendarClock,
+  CalendarDays,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Download,
   Eye,
+  FileCheck,
   FileText,
   HeartPulse,
+  History,
   Loader2,
   Plus,
+  RefreshCw,
+  Sparkles,
+  Stethoscope,
+  Trash2,
   TrendingUp,
   Upload,
-  Stethoscope,
 } from "lucide-react";
 import {
   Bar,
@@ -33,9 +42,12 @@ import {
 import {
   getMcuWellnessList,
   getMcuDetail,
+  getEmployeeMcuHistory,
+  deleteEmployeeMcuRecord,
   setMcuStatus,
   scheduleEmployeeMcu,
   uploadMcuResultFile,
+  uploadMcuFileForEmployee,
   createManualMcu,
   saveAiResultForEmployee,
   getHealthDashboardData,
@@ -44,6 +56,8 @@ import {
   type McuListRow,
   type McuReminderRow,
 } from "@/app/actions/mcu-wellness";
+import { uploadFile } from "@/app/actions/upload";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -211,10 +225,38 @@ function McuKaryawanTab({
     status: "done",
   });
 
-  // Upload dialog
+  // Upload dialog with progressive states
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<McuListRow | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadMcuDate, setUploadMcuDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [isUploading, setIsUploading] = useState(false);
+  const [autoProcessAi, setAutoProcessAi] = useState(true);
+  const [uploadStage, setUploadStage] = useState<"idle" | "uploading" | "ocr" | "ai_mapping" | "saving" | "done" | "error">("idle");
+  const [uploadStatusMessage, setUploadStatusMessage] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadElapsed, setUploadElapsed] = useState(0);
+  const uploadTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // History & Delete state for nested rows
+  const [employeeHistory, setEmployeeHistory] = useState<
+    Record<
+      number,
+      Array<{
+        mcu: Record<string, unknown>;
+        metrics: Array<Record<string, unknown>>;
+      }>
+    >
+  >({});
+  const [selectedHistoryMcuId, setSelectedHistoryMcuId] = useState<number | null>(null);
+  const [deleteConfirmMcu, setDeleteConfirmMcu] = useState<{
+    id: number;
+    date: string;
+    fileName: string;
+    employeeId: number;
+    employeeName: string;
+  } | null>(null);
+  const [isDeletingMcuId, setIsDeletingMcuId] = useState<number | null>(null);
 
   // Status dialog
   const [statusOpen, setStatusOpen] = useState(false);
@@ -224,27 +266,113 @@ function McuKaryawanTab({
   const access = { canView: true, canEdit: true, canDelete: false };
 
   const handleExpand = async (row: McuListRow) => {
-    if (!row.id) return;
-    if (expandedId === row.id) {
+    if (expandedId === row.employeeId) {
       setExpandedId(null);
       return;
     }
     setLoading(true);
     try {
-      const res = await getMcuDetail(row.id);
-      if (res) {
+      const history = await getEmployeeMcuHistory(row.employeeId);
+      setEmployeeHistory((prev) => ({
+        ...prev,
+        [row.employeeId]: (history as any) || [],
+      }));
+
+      if (history && history.length > 0) {
+        const activeItem = history[0];
         setDetail({
-          mcuId: row.id,
-          metrics: res.metrics as Array<{ category: string; metricKey: string; metricValue: string; metricUnit: string; flag: string }>,
-          employee: res.employee as unknown as { name: string; employeeSn: string; departmentName: string; sectionName: string; jobTitle: string; fitStatus: string },
-          mcu: res.mcu as Record<string, unknown>,
+          mcuId: Number(activeItem.mcu.id),
+          metrics: activeItem.metrics as any,
+          employee: {
+            name: row.employeeName,
+            employeeSn: row.employeeSn,
+            departmentName: row.departmentName,
+            sectionName: row.sectionName,
+            jobTitle: row.jobTitle,
+            fitStatus: String(activeItem.mcu.status || ""),
+          },
+          mcu: activeItem.mcu as any,
         });
-        setExpandedId(row.id);
+        setSelectedHistoryMcuId(Number(activeItem.mcu.id));
+      } else if (row.id) {
+        const res = await getMcuDetail(row.id);
+        if (res) {
+          setDetail({
+            mcuId: row.id,
+            metrics: res.metrics as any,
+            employee: res.employee as any,
+            mcu: res.mcu as any,
+          });
+          setSelectedHistoryMcuId(row.id);
+        }
+      } else {
+        setDetail(null);
+        setSelectedHistoryMcuId(null);
       }
+      setExpandedId(row.employeeId);
     } catch (e) {
-      toast.error("Gagal memuat detail MCU");
+      toast.error("Gagal memuat riwayat & detail MCU");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelectHistoryItem = (
+    row: McuListRow,
+    item: { mcu: Record<string, unknown>; metrics: Array<Record<string, unknown>> }
+  ) => {
+    setSelectedHistoryMcuId(Number(item.mcu.id));
+    setDetail({
+      mcuId: Number(item.mcu.id),
+      metrics: item.metrics as any,
+      employee: {
+        name: row.employeeName,
+        employeeSn: row.employeeSn,
+        departmentName: row.departmentName,
+        sectionName: row.sectionName,
+        jobTitle: row.jobTitle,
+        fitStatus: String(item.mcu.status || ""),
+      },
+      mcu: item.mcu as any,
+    });
+  };
+
+  const confirmDeleteMcu = async () => {
+    if (!deleteConfirmMcu) return;
+    setIsDeletingMcuId(deleteConfirmMcu.id);
+    try {
+      await deleteEmployeeMcuRecord(deleteConfirmMcu.id);
+      toast.success("Record & dokumen MCU berhasil dihapus");
+
+      const empId = deleteConfirmMcu.employeeId;
+      const history = await getEmployeeMcuHistory(empId);
+      setEmployeeHistory((prev) => ({
+        ...prev,
+        [empId]: (history as any) || [],
+      }));
+
+      if (history && history.length > 0) {
+        const nextItem = history[0];
+        setDetail({
+          mcuId: Number(nextItem.mcu.id),
+          metrics: nextItem.metrics as any,
+          employee: {
+            ...detail?.employee!,
+            fitStatus: String(nextItem.mcu.status || ""),
+          },
+          mcu: nextItem.mcu as any,
+        });
+        setSelectedHistoryMcuId(Number(nextItem.mcu.id));
+      } else {
+        setDetail(null);
+        setSelectedHistoryMcuId(null);
+      }
+      setDeleteConfirmMcu(null);
+      window.location.reload();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus record MCU");
+    } finally {
+      setIsDeletingMcuId(null);
     }
   };
 
@@ -309,38 +437,97 @@ function McuKaryawanTab({
     }
   };
 
-  const openUpload = (row: McuListRow) => {
+  const openUpload = (row: McuListRow, prefillDate?: string) => {
     setUploadTarget(row);
     setUploadFile(null);
+    setUploadMcuDate(prefillDate || row.mcuDate || format(new Date(), "yyyy-MM-dd"));
+    setIsUploading(false);
+    setUploadStage("idle");
+    setUploadProgress(0);
+    setUploadElapsed(0);
+    setUploadStatusMessage("");
+    if (uploadTimerRef.current) clearInterval(uploadTimerRef.current);
     setUploadOpen(true);
   };
 
   const submitUpload = async () => {
     if (!uploadTarget || !uploadFile) {
-      toast.error("Pilih file hasil MCU");
+      toast.error("Pilih file hasil MCU terlebih dahulu");
       return;
     }
-    if (!uploadTarget.id) {
-      toast.error("Karyawan belum punya record MCU. Buat record manual dulu.");
-      return;
-    }
+
+    setIsUploading(true);
+    setUploadElapsed(0);
+    setUploadStage("uploading");
+    setUploadProgress(25);
+    setUploadStatusMessage("1/4 Mengunggah file dokumen...");
+
+    const startTime = Date.now();
+    if (uploadTimerRef.current) clearInterval(uploadTimerRef.current);
+    uploadTimerRef.current = setInterval(() => {
+      setUploadElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 500);
+
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = reader.result as string;
-        await uploadMcuResultFile(
-          uploadTarget.id,
-          base64,
-          uploadFile.name,
-          uploadFile.type || "application/pdf",
-        );
-        toast.success("File hasil MCU diunggah");
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("employeeId", String(uploadTarget.employeeId));
+      formData.append("mcuDate", uploadMcuDate);
+      formData.append("autoSave", autoProcessAi ? "true" : "false");
+
+      if (autoProcessAi) {
+        setUploadStage("ocr");
+        setUploadProgress(50);
+        setUploadStatusMessage("2/4 Menjalankan OCR Dokumen via PDF Inspector Microservice (vision.chitraparatama.com)...");
+
+        const analyzeRes = await fetch("/api/mcu-wellness/analyze", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!analyzeRes.ok) {
+          const errData = await analyzeRes.json().catch(() => ({}));
+          throw new Error(errData.error || `Proses gagal (HTTP ${analyzeRes.status})`);
+        }
+
+        setUploadStage("ai_mapping");
+        setUploadProgress(80);
+        setUploadStatusMessage("3/4 AI Medical Assistant memetakan diagnosa & metrik laboratorium...");
+
+        await analyzeRes.json();
+
+        setUploadStage("saving");
+        setUploadProgress(95);
+        setUploadStatusMessage("4/4 Sinkronisasi hasil pemeriksaan & profil karyawan...");
+      } else {
+        const uploadRes = await fetch("/api/mcu-wellness/analyze", {
+          method: "POST",
+          body: formData,
+        });
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json().catch(() => ({}));
+          throw new Error(errData.error || "Gagal mengunggah file");
+        }
+      }
+
+      setUploadStage("done");
+      setUploadProgress(100);
+      setUploadStatusMessage("✅ Selesai! Hasil MCU berhasil diproses dan disimpan.");
+      toast.success("Hasil MCU berhasil diupload" + (autoProcessAi ? " & diekstrak oleh AI" : ""));
+
+      if (uploadTimerRef.current) clearInterval(uploadTimerRef.current);
+      setTimeout(() => {
         setUploadOpen(false);
         window.location.reload();
-      };
-      reader.readAsDataURL(uploadFile);
+      }, 1200);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Gagal unggah file");
+      if (uploadTimerRef.current) clearInterval(uploadTimerRef.current);
+      const msg = e instanceof Error ? e.message : "Gagal memproses upload MCU";
+      setUploadStage("error");
+      setUploadStatusMessage(`Error: ${msg}`);
+      toast.error(msg);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -408,7 +595,7 @@ function McuKaryawanTab({
             </TableRow>
           )}
           {rows.map((row) => {
-            const isExpanded = expandedId === row.id;
+            const isExpanded = expandedId === row.employeeId;
             return (
               <Fragment key={row.employeeId}>
                 <TableRow data-date-value={row.mcuDate ?? ""}>
@@ -484,61 +671,218 @@ function McuKaryawanTab({
                     </div>
                   </TableCell>
                 </TableRow>
-                {isExpanded && detail && detail.mcuId === row.id && (
+                {isExpanded && (
                   <TableRow key={`detail-${row.employeeId}`} data-table-detail-row="true">
-                    <TableCell colSpan={9} className="bg-slate-50/60 p-4">
+                    <TableCell colSpan={9} className="bg-slate-50/70 p-4 dark:bg-slate-950/40">
                       <div className="space-y-4">
-                        {/* AI Summary */}
-                        {(row.aiKesimpulan || row.aiSaran) && (
-                          <div className="grid gap-3 lg:grid-cols-3">
-                            <div className="rounded-xl bg-white p-3 shadow-sm lg:col-span-2">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Kesimpulan AI</p>
-                              <p className="mt-1 text-sm text-foreground">{row.aiKesimpulan || "-"}</p>
-                            </div>
-                            <div className="rounded-xl bg-white p-3 shadow-sm">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saran AI</p>
-                              <p className="mt-1 text-sm text-foreground">{row.aiSaran || "-"}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Metrics per category */}
-                        <div className="space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Hasil Pemeriksaan per Kategori
-                          </p>
-                          {MCU_METRIC_CATEGORIES.map((cat) => {
-                            const catMetrics = detail.metrics.filter((m) => m.category === cat);
-                            return (
-                              <div key={cat} className="rounded-xl bg-white p-3 shadow-sm">
-                                <p className="text-sm font-semibold text-foreground">{MCU_CATEGORY_LABELS[cat]}</p>
-                                <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                                  {MCU_METRIC_KEYS[cat].map((key) => {
-                                    const m = catMetrics.find((x) => x.metricKey === key);
-                                    return (
-                                      <div key={key} className="rounded-lg border border-slate-100 p-2">
-                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                          {MCU_METRIC_LABELS[key] ?? key}
-                                        </p>
-                                        <p className="mt-0.5 text-sm font-medium text-foreground">
-                                          {m?.metricValue ? `${m.metricValue}${m.metricUnit ? ` ${m.metricUnit}` : ""}` : "-"}
-                                        </p>
-                                        {m?.flag && m.flag !== "normal" && (
-                                          <Badge className="mt-1 bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
-                                            {m.flag}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                        {/* 1. Riwayat Dokumen MCU */}
+                        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/90">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex size-9 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-400">
+                                <History className="size-4" />
                               </div>
-                            );
-                          })}
-                          {detail.metrics.length === 0 && (
-                            <p className="text-sm text-muted-foreground">Belum ada metrics. Jalankan AI Analisa untuk ekstrak otomatis.</p>
+                              <div>
+                                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                  Riwayat Dokumen & Hasil MCU ({row.employeeName})
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  Daftar dokumen MCU yang pernah diupload. Klik salah satu periode untuk melihat metrik lab dan diagnosa.
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => openUpload(row)}
+                              className="bg-[#0f172a] text-white hover:bg-[#1e293b] text-xs h-8"
+                            >
+                              <Upload className="mr-1.5 size-3.5" /> + Upload Hasil MCU Baru
+                            </Button>
+                          </div>
+
+                          {/* History Cards List */}
+                          {employeeHistory[row.employeeId] && employeeHistory[row.employeeId].length > 0 ? (
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {employeeHistory[row.employeeId].map((histItem) => {
+                                const mcuData = histItem.mcu as any;
+                                const isSelected = selectedHistoryMcuId === mcuData.id;
+                                const badgeInfo = STATUS_BADGE[mcuData.status] ?? STATUS_BADGE.done;
+                                return (
+                                  <div
+                                    key={mcuData.id}
+                                    onClick={() => handleSelectHistoryItem(row, histItem)}
+                                    className={`group relative cursor-pointer rounded-xl border p-3.5 transition-all duration-200 ${
+                                      isSelected
+                                        ? "border-sky-500 bg-sky-50/50 shadow-sm ring-1 ring-sky-500/50 dark:border-sky-500 dark:bg-sky-950/30"
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-850"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <div className="flex size-7 items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                          <CalendarDays className="size-3.5" />
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                            {mcuData.mcuDate ? formatDate(mcuData.mcuDate) : "Tanpa Tanggal"}
+                                          </p>
+                                          <p className="text-[11px] text-muted-foreground">
+                                            {mcuData.examinedBy || mcuData.clinicName || "Pemeriksaan MCU"}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <Badge variant="outline" className={`text-[10px] ${badgeInfo.className}`}>
+                                        {badgeInfo.label}
+                                      </Badge>
+                                    </div>
+
+                                    {/* File name & status */}
+                                    <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-slate-100/70 px-2.5 py-1.5 text-xs text-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                                      <FileText className="size-3.5 text-sky-600 shrink-0" />
+                                      <span className="truncate font-mono text-[11px]" title={mcuData.resultFileName || "Dokumen MCU"}>
+                                        {mcuData.resultFileName || (mcuData.resultFileUrl ? "Dokumen_MCU.pdf" : "Belum ada file dokumen")}
+                                      </span>
+                                    </div>
+
+                                    {/* Action Toolbar */}
+                                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs dark:border-slate-800">
+                                      <span className={`text-[11px] font-medium ${isSelected ? "text-sky-600 dark:text-sky-400 font-semibold" : "text-muted-foreground"}`}>
+                                        {isSelected ? "● Periode Aktif" : "Klik untuk Pilih"}
+                                      </span>
+                                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                        {mcuData.resultFileUrl && (
+                                          <>
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="size-7 text-slate-600 hover:text-sky-600 dark:text-slate-400"
+                                              onClick={() => {
+                                                setDocUrl(mcuData.resultFileUrl);
+                                                setDocName(mcuData.resultFileName || "Dokumen MCU");
+                                              }}
+                                              title="Lihat PDF Dokumen"
+                                            >
+                                              <Eye className="size-3.5" />
+                                            </Button>
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              className="size-7 text-slate-600 hover:text-sky-600 dark:text-slate-400"
+                                              asChild
+                                              title="Download Dokumen"
+                                            >
+                                              <a href={mcuData.resultFileUrl} download={mcuData.resultFileName || true}>
+                                                <Download className="size-3.5" />
+                                              </a>
+                                            </Button>
+                                          </>
+                                        )}
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 text-slate-600 hover:text-sky-600 dark:text-slate-400"
+                                          onClick={() => openUpload(row, mcuData.mcuDate || "")}
+                                          title="Upload Ulang / Ganti File"
+                                        >
+                                          <Upload className="size-3.5" />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                                          onClick={() =>
+                                            setDeleteConfirmMcu({
+                                              id: Number(mcuData.id),
+                                              date: String(mcuData.mcuDate || "-"),
+                                              fileName: String(mcuData.resultFileName || "Dokumen MCU"),
+                                              employeeId: row.employeeId,
+                                              employeeName: row.employeeName,
+                                            })
+                                          }
+                                          title="Hapus Record & Dokumen"
+                                        >
+                                          <Trash2 className="size-3.5" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 text-center text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-900/40">
+                              <p>Belum ada riwayat dokumen MCU untuk karyawan ini.</p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openUpload(row)}
+                                className="mt-2 text-xs"
+                              >
+                                <Upload className="mr-1.5 size-3.5" /> Upload Hasil MCU Sekarang
+                              </Button>
+                            </div>
                           )}
                         </div>
+
+                        {/* 2. AI Summary & Metrics */}
+                        {detail && (
+                          <>
+                            {(detail.mcu?.aiKesimpulan || detail.mcu?.aiSaran) && (
+                              <div className="grid gap-3 lg:grid-cols-3">
+                                <div className="rounded-xl bg-white p-3.5 shadow-sm border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800 lg:col-span-2">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    Kesimpulan AI {detail.mcu?.mcuDate ? `(${formatDate(String(detail.mcu.mcuDate))})` : ""}
+                                  </p>
+                                  <p className="mt-1 text-sm text-foreground leading-relaxed">{String(detail.mcu?.aiKesimpulan || "-")}</p>
+                                </div>
+                                <div className="rounded-xl bg-white p-3.5 shadow-sm border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saran AI</p>
+                                  <p className="mt-1 text-sm text-foreground leading-relaxed">{String(detail.mcu?.aiSaran || "-")}</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Metrics per category */}
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Hasil Pemeriksaan per Kategori {detail.mcu?.mcuDate ? `• Periode: ${formatDate(String(detail.mcu.mcuDate))}` : ""}
+                              </p>
+                              {MCU_METRIC_CATEGORIES.map((cat) => {
+                                const catMetrics = detail.metrics.filter((m) => m.category === cat);
+                                return (
+                                  <div key={cat} className="rounded-xl bg-white p-3.5 shadow-sm border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800">
+                                    <p className="text-sm font-semibold text-foreground">{MCU_CATEGORY_LABELS[cat]}</p>
+                                    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                      {MCU_METRIC_KEYS[cat].map((key) => {
+                                        const m = catMetrics.find((x) => x.metricKey === key);
+                                        return (
+                                          <div key={key} className="rounded-lg border border-slate-100 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-900/50">
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                              {MCU_METRIC_LABELS[key] ?? key}
+                                            </p>
+                                            <p className="mt-0.5 text-sm font-medium text-foreground">
+                                              {m?.metricValue ? `${m.metricValue}${m.metricUnit ? ` ${m.metricUnit}` : ""}` : "-"}
+                                            </p>
+                                            {m?.flag && m.flag !== "normal" && (
+                                              <Badge className="mt-1 bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
+                                                {m.flag}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {detail.metrics.length === 0 && (
+                                <div className="rounded-xl bg-white p-4 text-center text-xs text-muted-foreground border border-slate-200/80 dark:bg-slate-900 dark:border-slate-800">
+                                  Belum ada rincian metrik untuk periode ini. Jalankan AI Analisa untuk mengekstrak data dari dokumen.
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -546,7 +890,7 @@ function McuKaryawanTab({
                 {isExpanded && loading && (
                   <TableRow data-table-detail-row="true">
                     <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-4">
-                      Memuat detail...
+                      <Loader2 className="mr-1.5 inline size-4 animate-spin" /> Memuat riwayat & detail MCU...
                     </TableCell>
                   </TableRow>
                 )}
@@ -559,14 +903,33 @@ function McuKaryawanTab({
       {/* Doc Viewer Popup */}
       <Dialog open={!!docUrl} onOpenChange={(o) => { if (!o) { setDocUrl(null); setDocName(""); } }}>
         <DialogContent className="max-h-[92vh] max-w-5xl overflow-hidden p-0">
-          <DialogHeader className="px-5 pt-4">
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="size-5" /> {docName}
+          <DialogHeader className="px-5 pt-4 pb-3 border-b flex flex-row items-center justify-between">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold truncate pr-4">
+              <FileText className="size-5 text-sky-600 shrink-0" />
+              <span className="truncate">{docName || "Dokumen MCU"}</span>
             </DialogTitle>
-          </DialogHeader>
-          <div className="h-[72vh] w-full bg-slate-100">
             {docUrl && (
-              <iframe src={docUrl} className="h-full w-full" title={docName} />
+              <div className="flex items-center gap-2 pr-6 shrink-0">
+                <Button size="sm" variant="outline" asChild className="h-8 text-xs">
+                  <a
+                    href={resolveUploadUrl(docUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={docName || true}
+                  >
+                    <Download className="mr-1.5 size-3.5" /> Download PDF
+                  </a>
+                </Button>
+              </div>
+            )}
+          </DialogHeader>
+          <div className="h-[72vh] w-full bg-slate-100 dark:bg-slate-900">
+            {docUrl && (
+              <iframe
+                src={resolveUploadUrl(docUrl)}
+                className="h-full w-full border-0"
+                title={docName || "Dokumen MCU"}
+              />
             )}
           </div>
         </DialogContent>
@@ -684,33 +1047,251 @@ function McuKaryawanTab({
         </DialogContent>
       </Dialog>
 
-      {/* Upload Dialog */}
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+      {/* Upload Dialog with real-time progressive states */}
+      <Dialog open={uploadOpen} onOpenChange={(open) => { if (!isUploading) setUploadOpen(open); }}>
+        <DialogContent className="max-w-lg border-slate-200 dark:border-slate-800">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                <Upload className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">Upload & Ekstraksi Hasil MCU</DialogTitle>
+                <DialogDescription className="text-xs">
+                  {uploadTarget ? `${uploadTarget.employeeName} (${uploadTarget.employeeSn || "-"}) • ${uploadTarget.departmentName || "Dept"}` : ""}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {isUploading || uploadStage !== "idle" ? (
+            <div className="space-y-4 py-2">
+              {/* Progress Card */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
+                    {uploadStage === "done" ? (
+                      <CheckCircle2 className="size-4 text-emerald-600" />
+                    ) : uploadStage === "error" ? (
+                      <AlertTriangle className="size-4 text-rose-600" />
+                    ) : (
+                      <Loader2 className="size-4 animate-spin text-sky-600" />
+                    )}
+                    {uploadStage === "done"
+                      ? "Proses Selesai"
+                      : uploadStage === "error"
+                      ? "Terjadi Kesalahan"
+                      : "Sedang Memproses Dokumen..."}
+                  </span>
+                  <span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+                    <Clock className="size-3.5" /> {uploadElapsed}s • {uploadProgress}%
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      uploadStage === "error"
+                        ? "bg-rose-500"
+                        : uploadStage === "done"
+                        ? "bg-emerald-500"
+                        : "bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500"
+                    }`}
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+
+                <p className={`mt-2.5 text-xs ${uploadStage === "error" ? "text-rose-600 font-medium" : "text-slate-600 dark:text-slate-300"}`}>
+                  {uploadStatusMessage}
+                </p>
+              </div>
+
+              {/* Multi-step list */}
+              <div className="space-y-2.5 rounded-xl border border-slate-100 bg-white p-3.5 text-xs dark:border-slate-800/80 dark:bg-slate-900/30">
+                <div className="flex items-center gap-2.5">
+                  {uploadProgress >= 35 ? (
+                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Loader2 className="size-4 animate-spin text-sky-600 shrink-0" />
+                  )}
+                  <span className={uploadProgress >= 35 ? "text-slate-800 dark:text-slate-200 font-medium" : "text-muted-foreground"}>
+                    1. Upload File Dokumen ke Cloud Storage
+                  </span>
+                </div>
+
+                {autoProcessAi && (
+                  <>
+                    <div className="flex items-center gap-2.5">
+                      {uploadProgress >= 65 ? (
+                        <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      ) : uploadStage === "ocr" ? (
+                        <Loader2 className="size-4 animate-spin text-sky-600 shrink-0" />
+                      ) : (
+                        <div className="size-4 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0" />
+                      )}
+                      <span className={uploadProgress >= 65 ? "text-slate-800 dark:text-slate-200 font-medium" : uploadStage === "ocr" ? "text-sky-600 font-medium" : "text-muted-foreground"}>
+                        2. OCR Ekstraksi Markdown (PDF Inspector Microservice)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      {uploadProgress >= 85 ? (
+                        <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      ) : uploadStage === "ai_mapping" ? (
+                        <Loader2 className="size-4 animate-spin text-sky-600 shrink-0" />
+                      ) : (
+                        <div className="size-4 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0" />
+                      )}
+                      <span className={uploadProgress >= 85 ? "text-slate-800 dark:text-slate-200 font-medium" : uploadStage === "ai_mapping" ? "text-sky-600 font-medium" : "text-muted-foreground"}>
+                        3. AI Medical Assistant (Mapping Diagnosa & Metrik Lab)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      {uploadProgress >= 100 ? (
+                        <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      ) : uploadStage === "saving" ? (
+                        <Loader2 className="size-4 animate-spin text-sky-600 shrink-0" />
+                      ) : (
+                        <div className="size-4 rounded-full border-2 border-slate-300 dark:border-slate-700 shrink-0" />
+                      )}
+                      <span className={uploadProgress >= 100 ? "text-slate-800 dark:text-slate-200 font-medium" : uploadStage === "saving" ? "text-sky-600 font-medium" : "text-muted-foreground"}>
+                        4. Simpan Record & Update Profil Karyawan
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Tanggal / Periode Pemeriksaan MCU
+                </Label>
+                <Input
+                  type="date"
+                  value={uploadMcuDate}
+                  onChange={(e) => setUploadMcuDate(e.target.value)}
+                  className="bg-white dark:bg-slate-900 text-xs"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Tentukan tanggal pemeriksaan MCU (mis. untuk MCU bulan/tahun tertentu).
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-5 text-center dark:border-slate-700 dark:bg-slate-900/40">
+                <Input
+                  type="file"
+                  id="mcu-file-upload-modal"
+                  className="hidden"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                />
+                <label htmlFor="mcu-file-upload-modal" className="cursor-pointer block">
+                  <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+                    {uploadFile ? <FileCheck className="size-6 text-emerald-600" /> : <Upload className="size-6 text-slate-500" />}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    {uploadFile ? uploadFile.name : "Klik untuk memilih file hasil MCU"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {uploadFile ? `${(uploadFile.size / 1024).toFixed(1)} KB • Siap diproses` : "Mendukung format PDF, JPG, PNG, atau WEBP"}
+                  </p>
+                </label>
+              </div>
+
+              <div className="flex items-start gap-2.5 rounded-xl bg-sky-50/80 p-3.5 text-xs text-sky-900 border border-sky-200/80 dark:bg-sky-950/40 dark:text-sky-200 dark:border-sky-900">
+                <input
+                  type="checkbox"
+                  id="auto-ai-modal"
+                  checked={autoProcessAi}
+                  onChange={(e) => setAutoProcessAi(e.target.checked)}
+                  className="mt-0.5 size-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500"
+                />
+                <label htmlFor="auto-ai-modal" className="cursor-pointer select-none font-medium leading-relaxed">
+                  ⚡ Ekstrak & Mapping Otomatis (PDF Inspector Microservice + AI)
+                  <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300 mt-0.5">
+                    Otomatis membaca hasil lab (Tensi, Kolesterol, Asam Urat, EKG, Diabetes, Liver), membuat diagnosa kesimpulan, dan saran tindak lanjut.
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            {uploadStage === "error" ? (
+              <>
+                <Button variant="outline" onClick={() => setUploadStage("idle")}>
+                  Coba Lagi
+                </Button>
+                <Button variant="destructive" onClick={() => setUploadOpen(false)}>
+                  Tutup
+                </Button>
+              </>
+            ) : isUploading ? (
+              <Button disabled className="w-full bg-slate-900 text-white">
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Memproses ({uploadElapsed}s)...
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setUploadOpen(false)}>
+                  Batal
+                </Button>
+                <Button
+                  onClick={submitUpload}
+                  disabled={!uploadFile}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  <Sparkles className="mr-1.5 size-4" />
+                  {autoProcessAi ? "Upload & Proses AI" : "Upload Saja"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete MCU Confirmation Dialog */}
+      <Dialog open={!!deleteConfirmMcu} onOpenChange={(o) => { if (!o && !isDeletingMcuId) setDeleteConfirmMcu(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload Hasil MCU</DialogTitle>
-            <DialogDescription>
-              {uploadTarget ? `Untuk ${uploadTarget.employeeName}` : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {!uploadTarget?.id && (
-              <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-700">
-                Karyawan belum punya record MCU. Buat record manual dulu sebelum upload.
-              </p>
-            )}
-            <div>
-              <Label className="text-xs">File Hasil MCU (PDF / JPG / PNG)</Label>
-              <Input
-                type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp"
-                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-              />
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">Hapus Record Hasil MCU?</DialogTitle>
+                <DialogDescription className="text-xs mt-0.5">
+                  {deleteConfirmMcu?.employeeName} • Periode: {deleteConfirmMcu?.date}
+                </DialogDescription>
+              </div>
             </div>
+          </DialogHeader>
+          <div className="space-y-2 py-2 text-xs text-slate-600 dark:text-slate-300">
+            <p>
+              Apakah Anda yakin ingin menghapus record pemeriksaan MCU ini beserta file dokumen{" "}
+              <span className="font-mono font-semibold text-foreground">{deleteConfirmMcu?.fileName}</span> dan seluruh data metrik lab yang terhubung?
+            </p>
+            <p className="font-medium text-rose-600 dark:text-rose-400">
+              Tindakan ini permanen dan tidak dapat dibatalkan.
+            </p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadOpen(false)}>Batal</Button>
-            <Button onClick={submitUpload} disabled={!uploadFile || !uploadTarget?.id}>Upload</Button>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmMcu(null)} disabled={!!isDeletingMcuId}>
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteMcu}
+              disabled={!!isDeletingMcuId}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {isDeletingMcuId ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Trash2 className="mr-1.5 size-3.5" />}
+              {isDeletingMcuId ? "Menghapus..." : "Hapus Record"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1042,6 +1623,10 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingStage, setAnalyzingStage] = useState<"idle" | "reading" | "ocr" | "ai_mapping" | "done" | "error">("idle");
+  const [analyzingProgress, setAnalyzingProgress] = useState(0);
+  const [analyzingElapsed, setAnalyzingElapsed] = useState(0);
+  const analyzingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [saving, setSaving] = useState(false);
   const [aiStatus, setAiStatus] = useState<{ type: "idle" | "loading" | "success" | "error"; message: string }>({ type: "idle", message: "" });
   const [extraction, setExtraction] = useState<McuAiExtraction | null>(null);
@@ -1074,26 +1659,51 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
       setAiStatus({ type: "error", message: "Pilih karyawan terlebih dahulu." });
       return;
     }
+
     setAnalyzing(true);
     setExtraction(null);
-    setAiStatus({ type: "loading", message: "Langkah 1/2: OCR — mengekstrak teks dari dokumen via Mistral OCR... (PDF diupload ke S3 dulu)" });
+    setAnalyzingElapsed(0);
+    setAnalyzingStage("reading");
+    setAnalyzingProgress(20);
+    setAiStatus({ type: "loading", message: "1/3 Mempersiapkan dokumen..." });
+
+    const startTime = Date.now();
+    if (analyzingTimerRef.current) clearInterval(analyzingTimerRef.current);
+    analyzingTimerRef.current = setInterval(() => {
+      setAnalyzingElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 500);
+
     try {
-      const base64 = filePreview.split(",")[1] ?? filePreview;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("employeeId", String(employeeId));
+
+      setAnalyzingStage("ocr");
+      setAnalyzingProgress(50);
+      setAiStatus({
+        type: "loading",
+        message: "2/3 Menjalankan OCR Dokumen via PDF Inspector Microservice (vision.chitraparatama.com)...",
+      });
+
       const res = await fetch("/api/mcu-wellness/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileBase64: base64,
-          mimeType: file.type || "application/pdf",
-          fileName: file.name,
-        }),
+        body: formData,
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         const errMsg = err.error || `HTTP ${res.status}`;
         const hint = err.hint ? `\n${err.hint}` : "";
         throw new Error(errMsg + hint);
       }
+
+      setAnalyzingStage("ai_mapping");
+      setAnalyzingProgress(85);
+      setAiStatus({
+        type: "loading",
+        message: "3/3 AI Medical Assistant memetakan diagnosa & metrik laboratorium...",
+      });
+
       const data = await res.json();
       const ext = data.extraction as McuAiExtraction;
       setExtraction(ext);
@@ -1117,16 +1727,21 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
         }
       }
       setEditMetrics(m);
+
+      setAnalyzingStage("done");
+      setAnalyzingProgress(100);
       setAiStatus({
         type: "success",
-        message: `AI selesai! Model: ${data.model}. Kategori: ${ext.kategori}. OCR: ${data.ocrPages || "?"} halaman. Review & edit hasil di bawah, lalu Simpan.`,
+        message: `✅ Ekstraksi Berhasil! Model: ${data.model}. Kategori: ${ext.kategori}. Halaman: ${data.ocrPages || "?"}. Review & edit hasil di bawah, lalu Simpan.`,
       });
-      toast.success("AI extraction selesai. Review hasil sebelum simpan.");
+      toast.success("AI mapping selesai. Silakan review hasil sebelum simpan.");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Gagal menjalankan AI analisa";
+      setAnalyzingStage("error");
       setAiStatus({ type: "error", message: msg });
       toast.error(msg);
     } finally {
+      if (analyzingTimerRef.current) clearInterval(analyzingTimerRef.current);
       setAnalyzing(false);
     }
   };
@@ -1142,25 +1757,21 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
     }
     setSaving(true);
     try {
-      // Upload file dulu kalau ada
+      // Upload file via FormData if present
       let fileUrl = "";
       let fileName = "";
-      const emp = rows.find((r) => r.employeeId === Number(employeeId));
-      const existingMcuId = emp?.id;
-      if (file && filePreview) {
-        const base64 = filePreview.split(",")[1] ?? filePreview;
-        if (existingMcuId) {
-          try {
-            fileUrl = await uploadMcuResultFile(
-              existingMcuId,
-              base64,
-              file.name,
-              file.type || "application/pdf",
-            );
+      if (file) {
+        try {
+          const uploadFd = new FormData();
+          uploadFd.append("file", file);
+          uploadFd.append("uploadTarget", "mcu-wellness");
+          const uploadRes = await uploadFile(uploadFd);
+          if (uploadRes.success && uploadRes.url) {
+            fileUrl = uploadRes.url;
             fileName = file.name;
-          } catch {
-            // ignore upload error, still save AI result
           }
+        } catch {
+          // ignore upload error, still save AI result
         }
       }
 
@@ -1285,23 +1896,48 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
               disabled={!file || analyzing || !employeeId}
               className="w-full bg-[#0f172a] text-white hover:bg-[#1e293b]"
             >
-              {analyzing ? <Loader2 className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
-              {analyzing ? "Menjalankan AI... (mohon tunggu)" : "Jalankan AI Analisa"}
+              {analyzing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {analyzing ? `Memproses Dokumen (${analyzingElapsed}s)...` : "Jalankan OCR & AI Mapping"}
             </Button>
-            {aiStatus.type !== "idle" && (
+
+            {analyzing && (
+              <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3.5 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+                <div className="flex items-center justify-between font-semibold">
+                  <span className="flex items-center gap-1.5 text-sky-900 dark:text-sky-100">
+                    <Loader2 className="size-3.5 animate-spin text-sky-600" />
+                    {analyzingStage === "reading"
+                      ? "1/3 Mempersiapkan File"
+                      : analyzingStage === "ocr"
+                      ? "2/3 Ekstraksi Markdown (PDF Inspector)"
+                      : "3/3 AI Medical Assistant Mapping"}
+                  </span>
+                  <span className="font-mono text-sky-700 dark:text-sky-300">
+                    {analyzingElapsed}s • {analyzingProgress}%
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-sky-200 dark:bg-sky-900">
+                  <div
+                    className="h-full bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500 transition-all duration-300"
+                    style={{ width: `${analyzingProgress}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-sky-800 dark:text-sky-300">
+                  {aiStatus.message}
+                </p>
+              </div>
+            )}
+
+            {!analyzing && aiStatus.type !== "idle" && (
               <div
                 className={
                   "rounded-lg p-3 text-xs font-medium " +
-                  (aiStatus.type === "loading"
-                    ? "bg-sky-50 text-sky-700 border border-sky-200"
-                    : aiStatus.type === "success"
+                  (aiStatus.type === "success"
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                     : aiStatus.type === "error"
                     ? "bg-rose-50 text-rose-700 border border-rose-200"
-                    : "")
+                    : "bg-sky-50 text-sky-700 border border-sky-200")
                 }
               >
-                {aiStatus.type === "loading" && <Loader2 className="mr-1.5 inline size-3.5 animate-spin" />}
                 {aiStatus.message}
               </div>
             )}

@@ -502,6 +502,14 @@ export function FaceAttendanceV2Client({
         return
       }
 
+      // Check if Anti-Spoofing failed (photo / screen detected on live camera)
+      if (data.error?.code === 'SPOOFING_DETECTED') {
+        stopCamera()
+        setFlowState('failed')
+        setErrorMessage(data.error.message || '🚨 Terdeteksi Foto / Layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.')
+        return
+      }
+
       const newCount = retryCountRef.current + 1
       retryCountRef.current = newCount
       setRetryCount(newCount)

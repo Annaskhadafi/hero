@@ -45,7 +45,8 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("attendance-photos/") ||
       cleanPath.startsWith("activity-photos/") ||
       cleanPath.startsWith("profile-photos/") ||
-      cleanPath.startsWith("curhat/")
+      cleanPath.startsWith("curhat/") ||
+      cleanPath.startsWith("mcu-wellness-results/")
     ) {
       return cleanPath;
     }
@@ -91,7 +92,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|curhat)\/.+)$/,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|curhat|mcu-wellness-results)\/.+)$/,
     );
 
     if (knownPrefixMatch) {
@@ -358,42 +359,4 @@ export function isS3UploadConfigured() {
   );
 }
 
-export function resolveUploadUrl(url: string | null | undefined): string {
-  if (!url) return "";
-  const trimmed = url.trim();
-
-  // 1. Already relative /api/uploads/
-  if (trimmed.startsWith("/api/uploads/")) {
-    return trimmed;
-  }
-
-  // 2. Relative /uploads/
-  if (trimmed.startsWith("/uploads/")) {
-    return `/api${trimmed}`;
-  }
-
-  // 3. Extract key using getObjectKeyFromUrl
-  const key = getObjectKeyFromUrl(trimmed);
-  if (key) {
-    return `/api/uploads/${key}`;
-  }
-
-  // 4. Fallback matching any known prefix pattern inside S3 direct URL
-  const fallbackMatch = trimmed.match(/(?:upload|curhat|attendance-photos|activity-photos|profile-photos)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i);
-  if (fallbackMatch) {
-    return `/api/uploads/${fallbackMatch[0]}`;
-  }
-
-  return trimmed;
-}
-
-export function replaceS3UrlsInHtml(html: string | null | undefined): string {
-  if (!html) return "";
-
-  // Match any S3 upload/attendance-photos/profile-photos/curhat URLs inside HTML text
-  const s3UrlPattern = /https?:\/\/[^\s"'<>]+?\/(upload|activity-photos|attendance-photos|profile-photos|curhat)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)(?:\?[^\s"'<>]+)?/g;
-
-  return html.replace(s3UrlPattern, (match, prefix, fileName) => {
-    return `/api/uploads/${prefix}/${fileName}`;
-  });
-}
+export { resolveUploadUrl, replaceS3UrlsInHtml, extractS3ObjectKeyFromUrl } from "@/lib/resolve-upload-url";

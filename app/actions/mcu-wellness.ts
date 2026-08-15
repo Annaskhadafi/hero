@@ -152,7 +152,14 @@ export async function getMcuWellnessList(filters?: {
     .where(and(eq(employees.isActive, true), ...conditions))
     .orderBy(asc(employees.name))
 
-  let result = rows as McuListRow[]
+  let result = rows.map((r) => ({
+    ...r,
+    mcuDate: r.mcuDate ? String(r.mcuDate) : null,
+    scheduledDate: r.scheduledDate ? String(r.scheduledDate) : null,
+    nextMcuDue: r.nextMcuDue ? String(r.nextMcuDue) : null,
+    reminderSentAt: r.reminderSentAt ? String(r.reminderSentAt) : null,
+  })) as unknown as McuListRow[]
+
   if (filters?.status) {
     result = result.filter((r) => r.status === filters.status)
   }
@@ -203,21 +210,91 @@ export async function getEmployeeMcuHistory(employeeId: number) {
   const access = await requireMcuWellnessAccess('view')
   assertMcuWellnessEmployeeScope(access, employeeId)
   const records = await db
-    .select()
+    .select({
+      id: employeeMcu.id,
+      employeeId: employeeMcu.employeeId,
+      mcuDate: employeeMcu.mcuDate,
+      scheduledDate: employeeMcu.scheduledDate,
+      status: employeeMcu.status,
+      resultFileUrl: employeeMcu.resultFileUrl,
+      resultFileName: employeeMcu.resultFileName,
+      aiKategori: employeeMcu.aiKategori,
+      aiKesimpulan: employeeMcu.aiKesimpulan,
+      aiSaran: employeeMcu.aiSaran,
+      aiModel: employeeMcu.aiModel,
+      clinicName: employeeMcu.clinicName,
+      examinedBy: employeeMcu.examinedBy,
+      notes: employeeMcu.notes,
+      uploadedBy: employeeMcu.uploadedBy,
+      uploadedAt: employeeMcu.uploadedAt,
+      createdAt: employeeMcu.createdAt,
+    })
     .from(employeeMcu)
     .where(eq(employeeMcu.employeeId, employeeId))
-    .orderBy(desc(employeeMcu.mcuDate))
+    .orderBy(desc(employeeMcu.mcuDate), desc(employeeMcu.createdAt))
 
   const result = []
   for (const r of records) {
     const metrics = await db
-      .select()
+      .select({
+        id: employeeMcuMetrics.id,
+        mcuId: employeeMcuMetrics.mcuId,
+        category: employeeMcuMetrics.category,
+        metricKey: employeeMcuMetrics.metricKey,
+        metricValue: employeeMcuMetrics.metricValue,
+        metricUnit: employeeMcuMetrics.metricUnit,
+        flag: employeeMcuMetrics.flag,
+        notes: employeeMcuMetrics.notes,
+      })
       .from(employeeMcuMetrics)
       .where(eq(employeeMcuMetrics.mcuId, r.id))
       .orderBy(asc(employeeMcuMetrics.category), asc(employeeMcuMetrics.metricKey))
-    result.push({ mcu: r, metrics })
+
+    result.push({
+      mcu: {
+        ...r,
+        mcuDate: r.mcuDate ? String(r.mcuDate) : null,
+        scheduledDate: r.scheduledDate ? String(r.scheduledDate) : null,
+        uploadedAt: r.uploadedAt ? String(r.uploadedAt) : null,
+        createdAt: r.createdAt ? String(r.createdAt) : null,
+      },
+      metrics: metrics.map((m) => ({
+        id: m.id,
+        mcuId: m.mcuId,
+        category: String(m.category),
+        metricKey: String(m.metricKey),
+        metricValue: String(m.metricValue || ''),
+        metricUnit: String(m.metricUnit || ''),
+        flag: String(m.flag || 'normal'),
+        notes: String(m.notes || ''),
+      })),
+    })
   }
   return result
+}
+
+export async function deleteEmployeeMcuRecord(mcuId: number) {
+  const access = await requireMcuWellnessAccess('edit')
+  const [mcu] = await db
+    .select({ id: employeeMcu.id, employeeId: employeeMcu.employeeId })
+    .from(employeeMcu)
+    .where(eq(employeeMcu.id, mcuId))
+    .limit(1)
+
+  if (!mcu) throw new Error('Record MCU tidak ditemukan')
+  assertMcuWellnessEmployeeScope(access, mcu.employeeId)
+
+  // 1. Delete associated metrics
+  await db.delete(employeeMcuMetrics).where(eq(employeeMcuMetrics.mcuId, mcuId))
+
+  // 2. Delete MCU record
+  await db.delete(employeeMcu).where(eq(employeeMcu.id, mcuId))
+
+  revalidatePath('/dashboard/hc/mcu-wellness')
+  revalidatePath('/mobile/wellness')
+  revalidatePath('/mobile/profile')
+
+  return { success: true, message: 'Record hasil MCU berhasil dihapus' }
 }
 
 // ─── Reminder System ─────────────────────────────────────────────────────
@@ -288,8 +365,8 @@ export async function getMcuReminders(filters?: {
       departmentName: r.departmentName || '',
       sectionName: r.sectionName || '',
       jobTitle: r.jobTitle,
-      lastMcuDate: r.lastMcuDate ? format(r.lastMcuDate, 'yyyy-MM-dd') : null,
-      nextMcuDue: r.nextMcuDue ? format(r.nextMcuDue, 'yyyy-MM-dd') : null,
+      lastMcuDate: r.lastMcuDate ? String(r.lastMcuDate) : null,
+      nextMcuDue: r.nextMcuDue ? String(r.nextMcuDue) : null,
       reminderStatus,
       daysUntilDue,
       lastMcuStatus: r.lastMcuStatus,
@@ -378,12 +455,11 @@ export async function uploadMcuResultFile(
 
   const buffer = Buffer.from(base64File.split(',')[1] ?? base64File, 'base64')
   const key = `mcu-wellness-results/${mcuId}-${Date.now()}-${fileName}`
-  const result = await uploadBufferToS3(buffer, key, mimeType)
-
+  const proxyUrl = `/api/uploads/${result.key}`
   await db
     .update(employeeMcu)
     .set({
-      resultFileUrl: result.url,
+      resultFileUrl: proxyUrl,
       resultFileName: fileName,
       uploadedBy: uploadedBy ?? '',
       uploadedAt: new Date(),
@@ -394,7 +470,46 @@ export async function uploadMcuResultFile(
   revalidatePath('/dashboard/hc/mcu-wellness')
   revalidatePath('/mobile/wellness')
   revalidatePath('/mobile/profile')
-  return result.url
+  return proxyUrl
+}
+
+export async function uploadMcuFileForEmployee(
+  employeeId: number,
+  base64File: string,
+  fileName: string,
+  mimeType: string,
+  uploadedBy?: string
+) {
+  const access = await requireMcuWellnessAccess('edit')
+  assertMcuWellnessEmployeeScope(access, employeeId)
+
+  // Find latest MCU record for employee or create a new one
+  const existing = await db
+    .select()
+    .from(employeeMcu)
+    .where(eq(employeeMcu.employeeId, employeeId))
+    .orderBy(desc(employeeMcu.createdAt))
+    .limit(1)
+
+  let mcuId: number
+  if (existing.length > 0) {
+    mcuId = existing[0].id
+  } else {
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+    const nextDue = addYears(new Date(), 1)
+    const [created] = await db
+      .insert(employeeMcu)
+      .values({
+        employeeId,
+        mcuDate: todayStr,
+        status: 'pending_review',
+        nextMcuDue: format(nextDue, 'yyyy-MM-dd'),
+      })
+      .returning()
+    mcuId = created.id
+  }
+
+  return uploadMcuResultFile(mcuId, base64File, fileName, mimeType, uploadedBy)
 }
 
 // ─── Save AI Analysis Result ─────────────────────────────────────────────
@@ -765,15 +880,23 @@ export async function getHealthDashboardData(filters?: {
     .groupBy(employeeMcuMetrics.category)
 
   return {
-    trends,
+    trends: (trends || []).map((t) => ({
+      ...t,
+      mcuDate: t.mcuDate ? String(t.mcuDate) : null,
+      recordedAt: t.recordedAt ? String(t.recordedAt) : null,
+    })),
     kpi: {
-      fit: fitCount,
-      unfit: unfitCount,
-      pending: pendingCount,
-      scheduled: scheduledCount,
-      done: doneCount,
+      fit: Number(fitCount) || 0,
+      unfit: Number(unfitCount) || 0,
+      pending: Number(pendingCount) || 0,
+      scheduled: Number(scheduledCount) || 0,
+      done: Number(doneCount) || 0,
     },
-    abnormalByCategory,
+    abnormalByCategory: (abnormalByCategory || []).map((a) => ({
+      category: a.category,
+      abnormalCount: Number(a.abnormalCount) || 0,
+      totalCount: Number(a.totalCount) || 0,
+    })),
   }
 }
 
@@ -793,18 +916,48 @@ export async function getMcuFilterOptions() {
 
     const [departments, sections] = await Promise.all([
       employee?.departmentId
-        ? db.select().from(masterDepartments).where(eq(masterDepartments.id, employee.departmentId))
+        ? db
+            .select({
+              id: masterDepartments.id,
+              name: masterDepartments.name,
+              code: masterDepartments.code,
+            })
+            .from(masterDepartments)
+            .where(eq(masterDepartments.id, employee.departmentId))
         : [],
       employee?.sectionId
-        ? db.select().from(masterSections).where(eq(masterSections.id, employee.sectionId))
+        ? db
+            .select({
+              id: masterSections.id,
+              name: masterSections.name,
+              code: masterSections.code,
+              departmentId: masterSections.departmentId,
+            })
+            .from(masterSections)
+            .where(eq(masterSections.id, employee.sectionId))
         : [],
     ])
     return { departments, sections }
   }
 
   const [departments, sections] = await Promise.all([
-    db.select().from(masterDepartments).orderBy(asc(masterDepartments.name)),
-    db.select().from(masterSections).orderBy(asc(masterSections.name)),
+    db
+      .select({
+        id: masterDepartments.id,
+        name: masterDepartments.name,
+        code: masterDepartments.code,
+      })
+      .from(masterDepartments)
+      .orderBy(asc(masterDepartments.name)),
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        code: masterSections.code,
+        departmentId: masterSections.departmentId,
+      })
+      .from(masterSections)
+      .orderBy(asc(masterSections.name)),
   ])
   return { departments, sections }
 }

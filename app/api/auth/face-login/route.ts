@@ -5,7 +5,7 @@ import { employees } from "@/db/schema/hero";
 import { user, verification } from "@/db/schema/auth";
 import { eq, isNotNull, and, or } from "drizzle-orm";
 import crypto from "crypto";
-import { rarayRecognizeFace, rarayVerifyFace } from "@/lib/raray-vision/client";
+import { rarayRecognizeFace, rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from "@/lib/raray-vision/client";
 import { extractServerFaceEmbedding } from "@/lib/face-recognition/server-face-api";
 import { cosineSimilarity } from "@/lib/face-recognition/cosine-similarity";
 
@@ -52,6 +52,23 @@ export async function POST(request: NextRequest) {
       "buffer size:",
       imageBuffer.length
     );
+
+    // 0. Anti-Spoofing Check via UniFace-v2 API
+    const antiSpoof = await rarayCheckAntiSpoofUniFaceV2({
+      imageBuffer,
+      mimeType,
+    });
+
+    if (antiSpoof.status === "spoof_detected" || (antiSpoof.status === "success" && !antiSpoof.is_real)) {
+      console.warn("[face-login] Spoof attack detected:", antiSpoof.verdict, antiSpoof.confidence);
+      return NextResponse.json(
+        {
+          success: false,
+          error: antiSpoof.message || "🚨 Spoofing / Foto Layar Terdeteksi. Harap gunakan wajah asli secara langsung.",
+        },
+        { status: 401 }
+      );
+    }
 
     // 1. Primary: 1:1 Verification Mode — resolves employee by SN/email first, then verifies face
     // When identifier is provided, this is the ONLY path that can succeed.

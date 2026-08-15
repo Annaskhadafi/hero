@@ -41,16 +41,47 @@ export type McuClinicData = {
 
 export async function getMcuClinics() {
   await ensureMcuClinicsTable();
-  return await db.select().from(hcMcuClinics).orderBy(asc(hcMcuClinics.name));
+  const rows = await db
+    .select({
+      id: hcMcuClinics.id,
+      name: hcMcuClinics.name,
+      email: hcMcuClinics.email,
+      phone: hcMcuClinics.phone,
+      address: hcMcuClinics.address,
+      city: hcMcuClinics.city,
+      contactPerson: hcMcuClinics.contactPerson,
+      paketOptions: hcMcuClinics.paketOptions,
+      isActive: hcMcuClinics.isActive,
+    })
+    .from(hcMcuClinics)
+    .orderBy(asc(hcMcuClinics.name));
+  return rows.map((r) => ({
+    ...r,
+    paketOptions: Array.isArray(r.paketOptions) ? (r.paketOptions as string[]) : [],
+  }));
 }
 
 export async function getActiveMcuClinics() {
   await ensureMcuClinicsTable();
-  return await db
-    .select()
+  const rows = await db
+    .select({
+      id: hcMcuClinics.id,
+      name: hcMcuClinics.name,
+      email: hcMcuClinics.email,
+      phone: hcMcuClinics.phone,
+      address: hcMcuClinics.address,
+      city: hcMcuClinics.city,
+      contactPerson: hcMcuClinics.contactPerson,
+      paketOptions: hcMcuClinics.paketOptions,
+      isActive: hcMcuClinics.isActive,
+    })
     .from(hcMcuClinics)
     .where(eq(hcMcuClinics.isActive, true))
     .orderBy(asc(hcMcuClinics.name));
+  return rows.map((r) => ({
+    ...r,
+    paketOptions: Array.isArray(r.paketOptions) ? (r.paketOptions as string[]) : [],
+  }));
 }
 
 export async function getMcuClinicById(id: number) {

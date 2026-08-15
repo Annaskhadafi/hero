@@ -8,6 +8,7 @@ import { extractServerFaceEmbedding } from '@/lib/face-recognition/server-face-a
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
+import { rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 
 // --- Constants ---
 const SIMILARITY_THRESHOLD = 0.85
@@ -212,6 +213,21 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(base64, 'base64')
       if (buffer.length > MAX_PHOTO_SIZE) {
         return errorResponse(400, 'INVALID_PHOTO', 'Photo must not exceed 5MB.', 'photo')
+      }
+
+      // Anti-spoofing check via UniFace-v2
+      const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({ imageBuffer: buffer, mimeType }).catch(() => null)
+      if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+        return NextResponse.json(
+          {
+            verified: false,
+            error: {
+              code: 'SPOOFING_DETECTED',
+              message: antiSpoofRes.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+            },
+          },
+          { status: 200 }
+        )
       }
 
       const extraction = await extractServerFaceEmbedding(buffer)

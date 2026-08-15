@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ChevronDown,
   Download,
+  ExternalLink,
   Eye,
   HeartPulse,
   Stethoscope,
@@ -24,6 +25,7 @@ import {
   MCU_METRIC_KEYS,
   MCU_METRIC_LABELS,
 } from "@/lib/mcu-wellness-ai";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { cn } from "@/lib/utils";
 
 type MobileHcData = {
@@ -40,12 +42,14 @@ type MobileHcData = {
     metricValue: string;
     status: string;
     notes: string | null;
-    recordedAt: Date;
+    recordedAt: Date | string;
   }>;
   mcuHistory: Array<{
     id: number;
     clinicName: string | null;
+    paketMcu: string | null;
     mcuDate: Date | string | null;
+    resultDate: Date | string | null;
     status: string;
     aiKategori: string | null;
     aiKesimpulan: string | null;
@@ -55,46 +59,69 @@ type MobileHcData = {
     nextMcuDue: Date | string | null;
     metrics: Array<{
       id: number;
-      category: string;
       metricKey: string;
-      metricValue: string;
-      metricUnit: string;
+      metricValue: string | null;
+      metricUnit: string | null;
+      category: string;
+      flag: string | null;
     }>;
   }>;
-  reliability: number;
 };
 
-function formatDate(value: Date | string | null | undefined) {
-  if (!value) return "-";
-  const d = typeof value === "string" ? new Date(value) : value;
-  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+function formatDate(val: Date | string | null | undefined): string {
+  if (!val) return "-";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function McuProgress({ nextDue }: { nextDue: Date | string }) {
-  const due = typeof nextDue === "string" ? new Date(nextDue) : nextDue;
+  const d = typeof nextDue === "string" ? new Date(nextDue) : nextDue;
   const now = new Date();
-  const daysUntil = Math.ceil((due.getTime() - now.getTime()) / 86400000);
-  const totalWindow = 365;
-  const progress = Math.max(0, Math.min(100, ((totalWindow - daysUntil) / totalWindow) * 100));
-  const isOverdue = daysUntil < 0;
+  const diffDays = Math.ceil(
+    (d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  let progress = 100;
+  let statusText = "Jadwal Aman";
+  let statusColor = "bg-emerald-500";
+
+  if (diffDays < 0) {
+    progress = 100;
+    statusText = `Terlewat ${Math.abs(diffDays)} hari`;
+    statusColor = "bg-rose-500";
+  } else if (diffDays <= 30) {
+    progress = Math.max(10, Math.round(((30 - diffDays) / 30) * 100));
+    statusText = `Jatuh tempo dalam ${diffDays} hari`;
+    statusColor = "bg-amber-500";
+  } else {
+    progress = Math.min(100, Math.max(5, Math.round((diffDays / 365) * 100)));
+    statusText = `${diffDays} hari lagi`;
+    statusColor = "bg-sky-500";
+  }
 
   return (
-    <div>
-      <div className="h-2 w-full rounded-full bg-[#f5f7fb] overflow-hidden">
+    <div className="space-y-1.5">
+      <div className="flex justify-between text-xs font-semibold text-[#486275]">
+        <span>Status Jatuh Tempo</span>
+        <span className="font-bold text-[#082033]">{statusText}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[#eaf4fb]">
         <div
-          className={cn(
-            "h-full rounded-full transition-all duration-500",
-            isOverdue ? "bg-rose-500" : daysUntil < 30 ? "bg-amber-500" : "bg-emerald-500"
-          )}
+          className={cn("h-full transition-all duration-300", statusColor)}
           style={{ width: `${progress}%` }}
         />
       </div>
-      <p className={cn("mt-2 text-xs font-semibold", isOverdue ? "text-rose-600" : "text-[#486275]")}>
-        {isOverdue
-          ? `Terlambat ${Math.abs(daysUntil)} hari`
-          : daysUntil === 0
+      <p className="text-[10px] text-[#486275]">
+        {diffDays < 0
+          ? "Jadwal MCU sudah terlewat. Segera lakukan pemeriksaan."
+          : diffDays === 0
           ? "MCU jatuh tempo hari ini"
-          : `${daysUntil} hari lagi`}
+          : "Disarankan untuk melakukan MCU tahunan tepat waktu"}
       </p>
     </div>
   );
@@ -112,24 +139,32 @@ function McuPdfViewer({
   onOpenChange: (open: boolean) => void;
 }) {
   const displayName = fileName || "Dokumen MCU";
+  const resolvedUrl = resolveUploadUrl(url);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden bg-white">
-        <DialogHeader className="p-4 border-b">
-          <DialogTitle className="text-sm font-black text-[#082033]">
+        <DialogHeader className="p-4 border-b flex flex-row items-center justify-between">
+          <DialogTitle className="text-sm font-black text-[#082033] truncate pr-2">
             {displayName}
           </DialogTitle>
+          <div className="flex items-center gap-1.5 pr-6">
+            <Button size="sm" variant="ghost" asChild className="h-7 px-2 text-xs">
+              <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-3.5 mr-1" /> Tab Baru
+              </a>
+            </Button>
+          </div>
         </DialogHeader>
         <div className="relative h-[70vh] bg-[#f5f7fb]">
-          <iframe src={url} title={displayName} className="w-full h-full" />
+          <iframe src={resolvedUrl} title={displayName} className="w-full h-full border-0" />
         </div>
         <div className="flex items-center justify-end gap-2 p-3 border-t">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             <X className="size-3.5 mr-1.5" /> Tutup
           </Button>
           <Button size="sm" asChild>
-            <a href={url} download={fileName || true}>
+            <a href={resolvedUrl} download={fileName || true}>
               <Download className="size-3.5 mr-1.5" /> Download PDF
             </a>
           </Button>
@@ -149,7 +184,8 @@ function McuCard({
   onViewPdf: (url: string, fileName: string | null) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const pdfUrl = mcu.resultFileUrl?.trim();
+  const rawUrl = mcu.resultFileUrl?.trim();
+  const pdfUrl = rawUrl ? resolveUploadUrl(rawUrl) : "";
 
   return (
     <article className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">

@@ -1,7 +1,8 @@
-// OCR extraction using Mistral OCR API, then cheap text AI analysis.
-// Flow: document → Mistral OCR → extracted text → cheap LLM → structured JSON
+// OCR extraction using PDF Inspector Microservice (vision.chitraparatama.com), then cheap text AI analysis.
+// Flow: document → PDF Inspector Microservice (Extract to Markdown) → AI Mapping → structured JSON
 
 import { uploadBufferToS3, getS3ObjectReadUrl } from "@/lib/s3-storage";
+import { rarayPdfInspectorProcess } from "@/lib/raray-vision/client";
 
 interface MistralOcrResponse {
   pages: Array<{
@@ -19,10 +20,37 @@ export async function extractTextViaOcr(
   mimeType: string,
   fileName: string,
 ): Promise<string> {
+  // 1. Primary: Use PDF Inspector Microservice (https://vision.chitraparatama.com/api/v1/pdf-inspector/process)
+  try {
+    console.log("[mcu-wellness-ocr] Attempting OCR via PDF Inspector Microservice...", { fileName, mimeType, size: fileBuffer.length });
+    const inspectorResult = await rarayPdfInspectorProcess({
+      fileBuffer,
+      fileName,
+      mimeType,
+      autoOcr: true,
+    });
+
+    if (inspectorResult.status === "success" && inspectorResult.markdown && inspectorResult.markdown.trim().length > 0) {
+      console.log("[mcu-wellness-ocr] ✅ PDF Inspector Microservice success! Extracted markdown length:", inspectorResult.markdown.length);
+      return inspectorResult.markdown;
+    }
+
+    if (inspectorResult.message) {
+      console.warn("[mcu-wellness-ocr] PDF Inspector returned:", inspectorResult.message);
+    }
+  } catch (inspectorErr) {
+    console.warn("[mcu-wellness-ocr] PDF Inspector failed, attempting fallback:", inspectorErr);
+  }
+
+  // 2. Fallback: Mistral OCR (if MISTRAL_API_KEY is configured)
   const apiKey = process.env.MISTRAL_API_KEY;
   const apiUrl = process.env.MISTRAL_OCR_ENDPOINT || "https://api.mistral.ai/v1/ocr";
-  if (!apiKey) throw new Error("MISTRAL_API_KEY belum dikonfigurasi");
+  
+  if (!apiKey) {
+    throw new Error("Gagal mengekstrak teks dokumen via PDF Inspector Microservice dan MISTRAL_API_KEY tidak dikonfigurasi.");
+  }
 
+  console.log("[mcu-wellness-ocr] Falling back to Mistral OCR...");
   const isPdf = mimeType === "application/pdf";
 
   let documentPayload: Record<string, unknown>;

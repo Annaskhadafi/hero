@@ -2,12 +2,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, FileSignature,
-  ListChecks, Plus, Sparkles, Target,
+  FileText, HeartPulse, ListChecks, Plus, Sparkles, Stethoscope, Target,
 } from "lucide-react";
+import { desc, eq } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import { MobileActivityLog } from "@/components/mobile/mobile-activity-log";
 import { getServerSession } from "@/lib/auth-session";
+import { db } from "@/db";
+import { employeeMcu } from "@/db/schema/hero";
 
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -45,6 +48,22 @@ export default async function MobileActivityPage({
       </div>
     );
   }
+
+  // Fetch latest MCU record for employee wellness integration
+  const [latestMcu] = await db
+    .select({
+      id: employeeMcu.id,
+      mcuDate: employeeMcu.mcuDate,
+      status: employeeMcu.status,
+      aiKategori: employeeMcu.aiKategori,
+      aiKesimpulan: employeeMcu.aiKesimpulan,
+      resultFileUrl: employeeMcu.resultFileUrl,
+      resultFileName: employeeMcu.resultFileName,
+    })
+    .from(employeeMcu)
+    .where(eq(employeeMcu.employeeId, data.employee.id))
+    .orderBy(desc(employeeMcu.mcuDate), desc(employeeMcu.createdAt))
+    .limit(1);
 
   const productivityPercent =
     data.summary.jobsAssigned > 0
@@ -125,6 +144,58 @@ export default async function MobileActivityPage({
           </div>
         </div>
       </section>
+
+      {/* MCU Wellness & Health Shortcut Card */}
+      {latestMcu && (
+        <section className="rounded-xl border border-sky-100 bg-gradient-to-r from-sky-50 to-blue-50/60 p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-sky-700 shadow-sm ring-1 ring-sky-200">
+                <Stethoscope className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-sky-800">
+                    Medical Check Up
+                  </p>
+                  <Badge
+                    className={cn(
+                      "text-[10px] px-1.5 py-0 border-0",
+                      latestMcu.status === "fit"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : latestMcu.status === "unfit"
+                        ? "bg-rose-100 text-rose-800"
+                        : "bg-amber-100 text-amber-800"
+                    )}
+                  >
+                    {latestMcu.aiKategori || latestMcu.status?.toUpperCase() || "SELESAI"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs font-bold text-slate-800">
+                  {latestMcu.mcuDate ? `Hasil MCU: ${new Date(latestMcu.mcuDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}` : "Pemeriksaan MCU"}
+                </p>
+                {latestMcu.aiKesimpulan && (
+                  <p className="mt-1 text-xs text-slate-600 line-clamp-1">
+                    {latestMcu.aiKesimpulan}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-sky-200/60 pt-2.5">
+            <span className="text-[11px] text-sky-800 font-medium flex items-center gap-1">
+              <HeartPulse className="size-3.5 text-rose-500" /> Fit to Work
+            </span>
+            <Link
+              href="/mobile/wellness"
+              prefetch={false}
+              className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900"
+            >
+              Lihat History MCU & PDF <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+        </section>
+      )}
 
       {splToUpdate ? (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
