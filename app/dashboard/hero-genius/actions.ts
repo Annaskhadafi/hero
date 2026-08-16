@@ -14,6 +14,7 @@ import {
 } from "@/lib/hero-genius/client";
 import { getServerSession } from "@/lib/auth-session";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
+import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
 
 export async function getHeroGeniusOverviewAction() {
   try {
@@ -105,10 +106,37 @@ export async function searchHeroGeniusKnowledgeAction(query: string, topK = 4) {
 async function isSuperAdminUser(): Promise<boolean> {
   try {
     const session = await getServerSession();
-    if (!session?.user?.email) return false;
-    const emp = await getEmployeeDisplayDataByEmail(session.user.email);
-    const role = emp?.accessRole || (session.user as any)?.role;
-    return role === "Super Admin" || role === "super_admin";
+    if (!session?.user) return false;
+
+    const directRole = String((session.user as any)?.role || "").toLowerCase();
+    if (directRole.includes("admin") || directRole.includes("super")) {
+      return true;
+    }
+
+    if (session.user.email) {
+      const emp = await getEmployeeDisplayDataByEmail(session.user.email);
+      const role = String(emp?.accessRole || emp?.role || "").toLowerCase();
+      if (
+        role.includes("super") ||
+        role.includes("admin") ||
+        role === "hc manager" ||
+        role === "super admin" ||
+        role === "super_admin"
+      ) {
+        return true;
+      }
+    }
+
+    const empAccessRole = String((await getCurrentEmployeeAccessRole()) || "").toLowerCase();
+    if (
+      empAccessRole.includes("super") ||
+      empAccessRole.includes("admin") ||
+      empAccessRole === "hc manager"
+    ) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

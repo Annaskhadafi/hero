@@ -8,6 +8,8 @@ import { GeniusKnowledgeWorkspace } from "@/components/hero-genius/genius-knowle
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sparkles, Database, Bot, BookOpen } from "lucide-react";
 
+import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
+
 export const metadata: Metadata = {
   title: "Hero Genius | HERO",
   description: "Knowledge Base Assistant powered by pgvector.",
@@ -22,10 +24,39 @@ export default async function HeroGeniusPage() {
   ]);
 
   let isSuperAdmin = false;
-  if (session?.user?.email) {
-    const employee = await getEmployeeDisplayDataByEmail(session.user.email);
-    const accessRole = employee?.accessRole || (session.user as any)?.role;
-    isSuperAdmin = accessRole === "Super Admin" || accessRole === "super_admin";
+  if (session?.user) {
+    const directRole = String((session.user as any)?.role || "").toLowerCase();
+    if (directRole.includes("admin") || directRole.includes("super")) {
+      isSuperAdmin = true;
+    } else {
+      if (session.user.email) {
+        const employee = await getEmployeeDisplayDataByEmail(session.user.email);
+        const accessRole = String(employee?.accessRole || employee?.role || "").toLowerCase();
+        if (
+          accessRole.includes("super") ||
+          accessRole.includes("admin") ||
+          accessRole === "hc manager" ||
+          accessRole === "super admin" ||
+          accessRole === "super_admin"
+        ) {
+          isSuperAdmin = true;
+        }
+      }
+      if (!isSuperAdmin) {
+        try {
+          const empAccessRole = String((await getCurrentEmployeeAccessRole()) || "").toLowerCase();
+          if (
+            empAccessRole.includes("super") ||
+            empAccessRole.includes("admin") ||
+            empAccessRole === "hc manager"
+          ) {
+            isSuperAdmin = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
   }
 
   return (

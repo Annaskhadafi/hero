@@ -7433,6 +7433,8 @@ export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDis
       siteId: employees.siteId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
+      accessRole: employees.accessRole,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       faceRegisteredAt: employees.faceRegisteredAt,
