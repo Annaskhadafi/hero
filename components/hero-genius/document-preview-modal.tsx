@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   FileText,
   X,
   ShieldCheck,
-  RefreshCw,
   Eye,
-  AlertCircle,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PdfCanvasViewer } from "./pdf-canvas-viewer";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -31,31 +32,25 @@ export function DocumentPreviewModal({
   filename,
   url,
 }: DocumentPreviewModalProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
-      setHasError(false);
-    }
-  }, [isOpen, url]);
+  const [totalPages, setTotalPages] = useState<number>(0);
 
   if (!isOpen || !url) return null;
 
-  // Route through our dedicated proxy to ensure Content-Type: application/pdf
+  const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(filename || url);
+
+  // Route through our dedicated proxy to ensure streaming and bypass cors
   const streamUrl = `/api/hero-genius/document-stream?url=${encodeURIComponent(
     url
-  )}&filename=${encodeURIComponent(filename)}#toolbar=0&navpanes=0&scrollbar=1`;
+  )}&filename=${encodeURIComponent(filename)}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         onContextMenu={(e) => e.preventDefault()}
-        className="w-full max-w-[95vw] sm:max-w-4xl lg:max-w-5xl h-[94dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 select-none z-[9999]"
+        className="w-full max-w-[96vw] sm:max-w-4xl lg:max-w-5xl h-[94dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 select-none z-[9999] bg-slate-950"
       >
         {/* Top Header Bar */}
-        <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-100 bg-[#003461] px-4 py-3 text-white sm:px-6 shrink-0 dark:border-slate-800">
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-800 bg-[#003461] px-3 sm:px-6 py-2.5 sm:py-3 text-white shrink-0">
           <div className="flex items-center gap-2.5 min-w-0 pr-2">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white">
               <FileText className="size-4 text-sky-300" />
@@ -67,16 +62,18 @@ export function DocumentPreviewModal({
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="flex items-center gap-1 text-[10px] sm:text-xs text-blue-200 font-medium">
                   <ShieldCheck className="size-3 text-emerald-400" />
-                  Pratinjau Dokumen HERO
+                  Pratinjau HERO Read-Only
                 </span>
-                <Badge className="bg-amber-400/20 text-amber-200 border-none text-[9px] px-1.5 py-0 font-bold">
-                  Read-Only (Preview)
-                </Badge>
+                {totalPages > 0 && !isImage && (
+                  <Badge className="bg-sky-500/20 text-sky-200 border-none text-[9px] px-1.5 py-0 font-mono">
+                    {totalPages} Halaman
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <Button
               type="button"
               variant="ghost"
@@ -85,63 +82,42 @@ export function DocumentPreviewModal({
               className="size-8 p-0 rounded-lg text-white/80 hover:bg-white/20 hover:text-white"
               title="Tutup Pratinjau"
             >
-              <X className="size-4 sm:size-5" />
+              <X className="size-5" />
             </Button>
           </div>
         </DialogHeader>
 
-        {/* Preview Container */}
+        {/* Preview Content Area */}
         <div
-          className="relative flex-1 w-full h-full bg-slate-100 dark:bg-slate-950 overflow-hidden select-none"
+          className="relative flex-1 w-full h-full bg-slate-900 overflow-hidden select-none"
           onContextMenu={(e) => e.preventDefault()}
         >
-          {isLoading && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/90 dark:bg-slate-900/90 gap-2">
-              <RefreshCw className="size-6 text-indigo-600 animate-spin" />
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                Memuat dokumen aman...
-              </p>
-            </div>
-          )}
-
-          {hasError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <AlertCircle className="size-10 text-rose-500" />
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Gagal memuat pratinjau dokumen
-              </p>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Format dokumen mungkin tidak didukung oleh browser Anda.
-              </p>
+          {isImage ? (
+            <div className="flex h-full w-full items-center justify-center p-4 overflow-auto">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={streamUrl}
+                alt={filename}
+                className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+              />
             </div>
           ) : (
-            <object
-              data={streamUrl}
-              type="application/pdf"
-              onLoad={() => setIsLoading(false)}
-              onError={() => {
-                setIsLoading(false);
-                setHasError(true);
-              }}
-              className="w-full h-full border-0 select-none"
-            >
-              <iframe
-                src={streamUrl}
-                title={`Pratinjau ${filename}`}
-                onLoad={() => setIsLoading(false)}
-                className="w-full h-full border-0"
-              />
-            </object>
+            <PdfCanvasViewer
+              url={streamUrl}
+              filename={filename}
+              onLoaded={(pages) => setTotalPages(pages)}
+              className="h-full w-full"
+            />
           )}
         </div>
 
         {/* Security Footer */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-[10px] sm:text-xs text-slate-500 flex items-center justify-between shrink-0 dark:border-slate-800 dark:bg-slate-900">
-          <span className="flex items-center gap-1">
-            <Eye className="size-3 text-slate-400" />
-            Dokumen dilindungi dalam mode pratinjau internal HERO (Read-Only)
+        <div className="border-t border-slate-800 bg-slate-950 px-4 py-2 text-[10px] sm:text-xs text-slate-400 flex items-center justify-between shrink-0">
+          <span className="flex items-center gap-1 text-slate-400">
+            <Eye className="size-3 text-emerald-400" />
+            PDF Canvas Inline Viewer (Mobile & Desktop)
           </span>
-          <span className="font-semibold text-slate-400">HERO Genius AI</span>
+          <span className="font-semibold text-slate-500">HERO Systems</span>
         </div>
       </DialogContent>
     </Dialog>
