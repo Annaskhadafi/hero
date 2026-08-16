@@ -33,10 +33,10 @@ interface Message {
 }
 
 const MOBILE_PROMPTS = [
-  "Spesifikasi teknis ban Michelin Earthmover?",
-  "Alur pengajuan Izin Kerja PTW?",
-  "Standar SOP insiden HSE?",
-  "Tekanan ban loader & dump truck?",
+  "Tabel spesifikasi ban Michelin Earthmover",
+  "Tabel alur pengajuan Izin Kerja PTW",
+  "Tabel standar SOP insiden HSE",
+  "Tekanan ban loader & dump truck",
 ];
 
 export function MobileGeniusChat({

@@ -35,10 +35,10 @@ interface Message {
 }
 
 const STARTER_PROMPTS = [
-  "Apa spesifikasi teknis ban Michelin Earthmover?",
-  "Bagaimana alur kerja pengajuan Izin Kerja PTW di HERO?",
+  "Buat tabel spesifikasi & rekomendasi ban Michelin Earthmover",
+  "Tabel alur pengajuan Izin Kerja PTW beserta PIC & dokumen syarat",
   "Berapa batas tekanan standar untuk ban loader & dump truck?",
-  "Jelaskan langkah-langkah investigasi insiden HSE sesuai SOP",
+  "Tabel langkah-langkah investigasi insiden HSE sesuai SOP",
 ];
 
 interface GeniusChatWorkspaceProps {
