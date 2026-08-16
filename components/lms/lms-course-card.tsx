@@ -49,32 +49,50 @@ export function LmsCourseCard({ course, enrollment, href }: LmsCourseCardProps) 
     }
   }
 
+  const [imageLoaded, setImageLoaded] = useState(false)
+
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl bg-white shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 hover:shadow-[0_8px_30px_-4px_rgba(6,81,237,0.15)] border border-slate-100 h-full">
       {/* Thumbnail */}
       <Link href={href} className="relative block h-40 w-full overflow-hidden bg-slate-100">
         {hasCover ? (
-          <img
-            src={resolveClientUploadUrl(course.coverImageUrl)}
-            alt={course.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={() => setCoverFailed(true)}
-          />
+          <>
+            {!imageLoaded && (
+              <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200" />
+            )}
+            <img
+              src={resolveClientUploadUrl(course.coverImageUrl)}
+              alt={course.title}
+              loading="lazy"
+              decoding="async"
+              className={cn(
+                "h-full w-full object-cover transition-all duration-500 group-hover:scale-105",
+                imageLoaded ? "opacity-100" : "opacity-0"
+              )}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setCoverFailed(true)}
+            />
+          </>
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-100 flex items-center justify-center">
-            <BookOpen className="h-10 w-10 text-slate-300" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-teal-950 flex flex-col items-center justify-center p-4 text-center select-none">
+            <div className="h-11 w-11 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center mb-2 text-white/80 shadow-inner">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <span className="text-[10px] font-semibold tracking-wider text-slate-300 uppercase px-2 py-0.5 rounded bg-black/20 line-clamp-1 max-w-[90%]">
+              {course.category || 'Materi LMS'}
+            </span>
           </div>
         )}
         
         {/* Badges */}
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+        <div className="absolute left-3 top-3 flex flex-wrap gap-2 pointer-events-none">
           {course.category && (
-            <Badge variant="secondary" className="bg-white/90 text-slate-700 backdrop-blur-sm border-0 font-medium">
+            <Badge variant="secondary" className="bg-white/90 text-slate-700 backdrop-blur-sm border-0 font-medium shadow-xs">
               {course.category}
             </Badge>
           )}
           {isDraft && (
-            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 shadow-xs">
               Draft
             </Badge>
           )}

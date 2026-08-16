@@ -112,6 +112,7 @@ export function LmsCourseHero({
           <img
             src={resolveClientUploadUrl(coverImageUrl)}
             alt={title}
+            decoding="async"
             className="h-full w-full object-cover opacity-40 mix-blend-overlay"
             onError={() => setCoverFailed(true)}
           />

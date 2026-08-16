@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
 import { LmsCourseGrid } from '@/components/lms/lms-course-grid'
 import { type LmsCourseCardProps } from '@/components/lms/lms-course-card'
+import { resolveClientUploadUrl } from '@/lib/client-url'
 
 interface CatalogItem {
   course: LmsCourseCardProps['course']
@@ -20,6 +21,17 @@ interface LmsCatalogClientProps {
 export function LmsCatalogClient({ items, categories }: LmsCatalogClientProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua')
   const [searchQuery, setSearchQuery] = useState<string>('')
+
+  // Eagerly preload top catalog images into browser memory cache for instantaneous view
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    items.slice(0, 16).forEach((item) => {
+      if (item.course.coverImageUrl) {
+        const img = new window.Image()
+        img.src = resolveClientUploadUrl(item.course.coverImageUrl)
+      }
+    })
+  }, [items])
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
