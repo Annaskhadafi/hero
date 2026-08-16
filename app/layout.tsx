@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Suspense } from "react";
+import { NavigationProgressBar } from "@/components/navigation-progress-bar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,6 +46,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem={false}
           disableTransitionOnChange
         >
+          <Suspense fallback={null}>
+            <NavigationProgressBar />
+          </Suspense>
           <PwaRegistration />
           {children}
         </ThemeProvider>

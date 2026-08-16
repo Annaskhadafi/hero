@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
@@ -7267,7 +7268,7 @@ export async function getPwaPushSettingsData() {
   return settings
 }
 
-export async function getNavbarSettingsData() {
+export const getNavbarSettingsData = cache(async function getNavbarSettingsData() {
   await ensureHeroGovernanceSeedData()
 
   const [theme] = await db
@@ -7281,9 +7282,9 @@ export async function getNavbarSettingsData() {
     .orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder)
 
   return { theme, menuItems: dedupeMenuItemsByPage(menuItems) }
-}
+})
 
-export async function getGroupLabelStyles() {
+export const getGroupLabelStyles = cache(async function getGroupLabelStyles() {
   await ensureHeroGovernanceSeedData()
   const [style] = await db
     .select()
@@ -7291,7 +7292,7 @@ export async function getGroupLabelStyles() {
     .where(eq(navbarGroupLabelStyles.section, '__global__'))
     .limit(1)
   return style?.textColor ?? '#6B7280'
-}
+})
 
 export async function getSecurityRoleOptions() {
   await ensureHeroGovernanceSeedData()
@@ -7299,7 +7300,7 @@ export async function getSecurityRoleOptions() {
   return db.select().from(securityRoles).orderBy(securityRoles.name)
 }
 
-export async function getSidebarDataForUser(email: string) {
+export const getSidebarDataForUser = cache(async function getSidebarDataForUser(email: string) {
   await ensureHeroGovernanceSeedData()
 
   const [employee] = await db
@@ -7398,9 +7399,9 @@ export async function getSidebarDataForUser(email: string) {
     navSecondary: visibleItems.filter((item) => item.menuArea === 'secondary'),
     documents: visibleItems.filter((item) => item.menuArea === 'document'),
   }
-}
+})
 
-export async function getEmployeeDisplayDataByEmail(email: string) {
+export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDisplayDataByEmail(email: string) {
   await ensureHeroGovernanceSeedData()
 
   const [employee] = await db
@@ -7420,7 +7421,7 @@ export async function getEmployeeDisplayDataByEmail(email: string) {
     .limit(1)
 
   return employee ?? null
-}
+})
 
 export async function getExecutiveHighlights() {
   await ensureHeroSeedData()
