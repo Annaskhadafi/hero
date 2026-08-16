@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityLibraryData } from "@/lib/daily-activity";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 function SummaryChip({ label, value }: { label: string; value: string | number }) {
   return (
@@ -34,7 +35,10 @@ export default async function DailyActivityLibraryPage({
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityLibraryData(session.user.email);
+  const [data, permission] = await Promise.all([
+    getDailyActivityLibraryData(session.user.email),
+    getCurrentMenuPermission("activity_library"),
+  ]);
   await searchParams;
   const filteredRows = data.rows;
   const pagePurpose = getActivityPagePurpose("library");
@@ -82,22 +86,24 @@ export default async function DailyActivityLibraryPage({
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
                 dateFilter={false}
                 filters={<ActivityLibraryFilters departments={data.departments} sections={data.sections} />}
-                importAction={<ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} mode="import" />}
+                importAction={permission.canEdit ? <ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} mode="import" /> : null}
                 primaryAction={
-                  <AdminCrudDialog
-                    title="Tambah Kamus Aktivitas"
-                    description="Tambah pekerjaan resmi beserta base point dan requirement validasinya."
-                    size="lg"
-                  >
-                    <ActivityLibraryCreateForm
-                      currentEmployeeId={data.currentEmployee?.id ?? null}
-                      routeFolders={data.routeFolders}
-                      existingActivities={filteredRows}
-                      sites={data.sites}
-                      departments={data.departments}
-                      sections={data.sections}
-                    />
-                  </AdminCrudDialog>
+                  permission.canEdit ? (
+                    <AdminCrudDialog
+                      title="Tambah Kamus Aktivitas"
+                      description="Tambah pekerjaan resmi beserta base point dan requirement validasinya."
+                      size="lg"
+                    >
+                      <ActivityLibraryCreateForm
+                        currentEmployeeId={data.currentEmployee?.id ?? null}
+                        routeFolders={data.routeFolders}
+                        existingActivities={filteredRows}
+                        sites={data.sites}
+                        departments={data.departments}
+                        sections={data.sections}
+                      />
+                    </AdminCrudDialog>
+                  ) : null
                 }
               >
                 <Table>
@@ -194,6 +200,8 @@ export default async function DailyActivityLibraryPage({
                             routeFolders={data.routeFolders}
                             routeGroupMappings={data.routeGroupMappings}
                             existingActivities={filteredRows}
+                            canEdit={permission.canEdit}
+                            canDelete={permission.canDelete}
                           />
                         </TableCell>
                       </TableRow>

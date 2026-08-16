@@ -48,6 +48,8 @@ type Props = {
     positionId?: number | null;
     orgNodeId?: number | null;
   }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 type EditableStep = {
@@ -177,6 +179,8 @@ export function ApprovalMatrixManager({
   positions,
   sites,
   employees,
+  canEdit = true,
+  canDelete = true,
 }: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -384,10 +388,12 @@ export function ApprovalMatrixManager({
             Resolver approver berdasarkan org/site/role/overtime. Template lifecycle, notification, reminder, dan condition dikelola di Approval Workflow Builder.
           </CardDescription>
         </div>
-        <Button onClick={handleNewMatrix} className="bg-[#0f766e] hover:bg-[#115e59]">
-          <Plus className="mr-2 size-4" />
-          Jalur Baru
-        </Button>
+        {canEdit && (
+          <Button onClick={handleNewMatrix} className="bg-[#0f766e] hover:bg-[#115e59]">
+            <Plus className="mr-2 size-4" />
+            Jalur Baru
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <Alert className="mb-4 border-[#d1fae5] bg-[#ecfdf5]">
@@ -465,14 +471,16 @@ export function ApprovalMatrixManager({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {draftMatrix.id ? (
+                  {draftMatrix.id && canDelete ? (
                     <Button type="button" variant="ghost" size="icon" onClick={handleDelete} disabled={isSubmitting} aria-label="Delete" className="text-red-600">
                       <Trash2 className="size-4" />
                     </Button>
                   ) : null}
-                  <Button type="button" onClick={handleSave} disabled={isSubmitting} className="bg-[#0f766e] hover:bg-[#115e59]">
-                    {isSubmitting ? "Menyimpan..." : "Simpan Jalur"}
-                  </Button>
+                  {canEdit && (
+                    <Button type="button" onClick={handleSave} disabled={isSubmitting} className="bg-[#0f766e] hover:bg-[#115e59]">
+                      {isSubmitting ? "Menyimpan..." : "Simpan Jalur"}
+                    </Button>
+                  )}
                 </div>
               </div>
 

@@ -73,6 +73,8 @@ interface MasterDataManagementProps {
   employees: any[];
   levelStaff: MasterLevelStaff[];
   defaultTab?: string;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 const INITIAL_ACTION_STATE: MasterDataActionState = {
@@ -184,6 +186,8 @@ export function MasterDataManagement({
   employees,
   levelStaff,
   defaultTab,
+  canEdit = true,
+  canDelete = true,
 }: MasterDataManagementProps) {
   const [activeTab, setActiveTab] = useState(defaultTab || "sections");
 
@@ -280,34 +284,34 @@ export function MasterDataManagement({
         </TabsList>
 
         <TabsContent value="sections" className="space-y-4">
-          <SectionManagement sections={sections} departments={departments} employees={employees} />
+          <SectionManagement sections={sections} departments={departments} employees={employees} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="job-titles" className="space-y-4">
-          <JobTitleManagement jobTitles={jobTitles} />
+          <JobTitleManagement jobTitles={jobTitles} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
         <TabsContent value="level-staff" className="space-y-4">
-          <LevelStaffManagement levelStaff={levelStaff} />
+          <LevelStaffManagement levelStaff={levelStaff} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
-          <DepartmentManagement departments={departments} sections={sections} employees={employees} />
+          <DepartmentManagement departments={departments} sections={sections} employees={employees} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="positions" className="space-y-4">
-          <PositionManagement positions={positions} departments={departments} sections={sections} sites={sites} />
+          <PositionManagement positions={positions} departments={departments} sections={sections} sites={sites} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="sites" className="space-y-4">
-          <SiteManagement sites={sites} employees={employees} />
+          <SiteManagement sites={sites} employees={employees} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="attendance-shifts" className="space-y-4">
-          <AttendanceShiftManagement attendanceShifts={attendanceShifts} />
+          <AttendanceShiftManagement attendanceShifts={attendanceShifts} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
-          <CategoryManagement categoryOptions={categoryOptions} />
+          <CategoryManagement categoryOptions={categoryOptions} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="org-structures" className="space-y-4">
@@ -318,6 +322,8 @@ export function MasterDataManagement({
             sections={sections}
             sites={sites}
             employees={employees}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         </TabsContent>
 
@@ -330,6 +336,8 @@ export function MasterDataManagement({
             positions={positions}
             sites={sites}
             employees={employees}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         </TabsContent>
 
@@ -340,6 +348,7 @@ export function MasterDataManagement({
     </div>
   );
 }
+
 
 function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "startTime" | "endTime" | "windowLabel">) {
   if (shift.windowLabel.trim()) {
@@ -353,7 +362,15 @@ function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "start
   return "As per assignment";
 }
 
-function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCategoryOption[] }) {
+function CategoryManagement({
+  categoryOptions,
+  canEdit = true,
+  canDelete = true,
+}: {
+  categoryOptions: MasterCategoryOption[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const router = useRouter();
   const [activeType, setActiveType] = useState<CategoryTypeKey>(
     CATEGORY_TYPE_TABS[0].type,
@@ -467,10 +484,12 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
             Satu pusat opsi untuk dropdown HSE, HC, timesheet, report, activity, dan point event.
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Kategori
-        </Button>
+        {canEdit && (
+          <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+            <Plus className="mr-2 size-4" />
+            Tambah Kategori
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <Tabs value={activeType} onValueChange={(value) => setActiveType(value as typeof activeType)}>
@@ -531,12 +550,16 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(option)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
-                                <Pencil className="size-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(option)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
-                                <Trash2 className="size-4" />
-                              </Button>
+                              {canEdit && (
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(option)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                                  <Pencil className="size-4" />
+                                </Button>
+                              )}
+                              {canDelete && (
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(option)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -557,83 +580,73 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
       </CardContent>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>{editingOption ? "Edit Kategori" : "Tambah Kategori"}</DialogTitle>
-            <DialogDescription>
-              Opsi aktif langsung muncul di dropdown halaman terkait.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-md">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="category-type">Jenis Kategori</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value) => setFormData({ ...formData, type: value as typeof formData.type })}
-              >
-                <SelectTrigger id="category-type">
-                  <SelectValue placeholder="Pilih jenis kategori" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORY_TYPE_TABS.map((item) => (
-                    <SelectItem key={item.type} value={item.type}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="category-code">Kode / Value</Label>
+            <DialogHeader>
+              <DialogTitle>{editingOption ? "Edit Kategori" : "Tambah Kategori"}</DialogTitle>
+              <DialogDescription>
+                Atur opsi dropdown untuk {activeTypeMeta.label}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="category-type">Tipe Kategori</Label>
+                <Input id="category-type" value={activeTypeMeta.label} disabled className="bg-[#f8fafc]" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="category-code">Kode *</Label>
                 <Input
                   id="category-code"
                   value={formData.code}
-                  onChange={(event) => setFormData({ ...formData, code: event.target.value })}
-                  placeholder="Manual Adjustment"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value.toLowerCase().trim() }))}
+                  placeholder="contoh: safety_talk"
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="category-label">Label Tampilan</Label>
+              <div className="space-y-1">
+                <Label htmlFor="category-label">Label *</Label>
                 <Input
                   id="category-label"
                   value={formData.label}
-                  onChange={(event) => setFormData({ ...formData, label: event.target.value })}
-                  placeholder="Manual Adjustment"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, label: e.target.value }))}
+                  placeholder="contoh: Safety Talk"
                   required
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category-description">Description</Label>
-              <Textarea
-                id="category-description"
-                value={formData.description}
-                onChange={(event) => setFormData({ ...formData, description: event.target.value })}
-                rows={3}
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="category-sort">Urutan</Label>
-                <Input
-                  id="category-sort"
-                  type="number"
-                  min={0}
-                  value={formData.sortOrder}
-                  onChange={(event) => setFormData({ ...formData, sortOrder: Number(event.target.value) || 0 })}
+              <div className="space-y-1">
+                <Label htmlFor="category-desc">Description</Label>
+                <Textarea
+                  id="category-desc"
+                  value={formData.description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Keterangan singkat opsi ini"
+                  rows={2}
                 />
               </div>
-              <div className="flex items-center gap-2 pt-7">
-                <Switch
-                  id="category-active"
-                  checked={formData.isActive}
-                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-                />
-                <Label htmlFor="category-active">Aktif</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="category-order">Urutan Tampil</Label>
+                  <Input
+                    id="category-order"
+                    type="number"
+                    value={formData.sortOrder}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, sortOrder: parseInt(e.target.value) || 0 }))}
+                  />
+                </div>
+                <div className="flex flex-col justify-end space-y-1">
+                  <Label htmlFor="category-active">Status Aktif</Label>
+                  <div className="flex h-10 items-center">
+                    <Switch
+                      id="category-active"
+                      checked={formData.isActive}
+                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, isActive: checked }))}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
+
             <DialogFooter>
               <DialogClose asChild>
                 <Button type="button" variant="outline">
@@ -641,7 +654,7 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-                {isSubmitting ? "Menyimpan..." : "Simpan Kategori"}
+                {isSubmitting ? "Menyimpan..." : "Simpan"}
               </Button>
             </DialogFooter>
           </form>
@@ -651,7 +664,15 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
   );
 }
 
-function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: MasterAttendanceShift[] }) {
+function AttendanceShiftManagement({
+  attendanceShifts,
+  canEdit = true,
+  canDelete = true,
+}: {
+  attendanceShifts: MasterAttendanceShift[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -760,10 +781,12 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
             Master pilihan shift / roster yang muncul di form clock in dan clock out.
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Shift
-        </Button>
+        {canEdit && (
+          <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+            <Plus className="mr-2 size-4" />
+            Tambah Shift
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -810,12 +833,16 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(shift)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(shift)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(shift)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(shift)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1375,11 +1402,16 @@ function EmployeeListDialog({
 function SiteManagement({
   sites,
   employees,
+  canEdit = true,
+  canDelete = true,
 }: {
   sites: MasterSite[];
   employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<MasterSite | null>(null);
@@ -1670,10 +1702,12 @@ function SiteManagement({
             Master lokasi kerja / site yang dipakai lintas modul
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Site
-        </Button>
+        {canEdit && (
+          <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+            <Plus className="mr-2 size-4" />
+            Tambah Site
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -1744,12 +1778,16 @@ function SiteManagement({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(site)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(site)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(site)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(site)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2063,10 +2101,14 @@ function SectionManagement({
   sections,
   departments,
   employees,
+  canEdit = true,
+  canDelete = true,
 }: {
   sections: MasterSection[];
   departments: MasterDepartment[];
   employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -2192,13 +2234,15 @@ function SectionManagement({
             Kelompok kerja atau bagian dalam organisasi
           </CardDescription>
         </div>
-        <Button
-          onClick={() => handleOpenDialog()}
-          className="bg-[#3b82f6] hover:bg-[#2563eb]"
-        >
-          <Plus className="mr-2 size-4" />
-          Tambah Section
-        </Button>
+        {canEdit && (
+          <Button
+            onClick={() => handleOpenDialog()}
+            className="bg-[#3b82f6] hover:bg-[#2563eb]"
+          >
+            <Plus className="mr-2 size-4" />
+            Tambah Section
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -2319,16 +2363,21 @@ function SectionManagement({
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(section)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(section)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {canEdit && (
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(section)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                              <Pencil className="size-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(section)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>,
                   ];
+
                   if (isExpanded && hasSubSections) {
                     section.subSections.forEach((sub) => {
                       rows.push(
@@ -2521,8 +2570,12 @@ function SectionManagement({
 // JOB TITLE MANAGEMENT COMPONENT
 function JobTitleManagement({
   jobTitles,
+  canEdit = true,
+  canDelete = true,
 }: {
   jobTitles: MasterJobTitle[];
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -2611,10 +2664,12 @@ function JobTitleManagement({
             Daftar jabatan/posisi pekerjaan dalam organisasi
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Job Title
-        </Button>
+        {canEdit && (
+          <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+            <Plus className="mr-2 size-4" />
+            Tambah Job Title
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -2657,22 +2712,26 @@ function JobTitleManagement({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(jt)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(jt)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenDialog(jt)}
+                            className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(jt)}
+                            className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2699,9 +2758,9 @@ function JobTitleManagement({
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="code">Kode Job Title</Label>
+              <Label htmlFor="jt-code">Kode Job Title</Label>
               <Input
-                id="code"
+                id="jt-code"
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 5) })}
                 placeholder="e.g., ACC01, HRD01"
@@ -2711,9 +2770,9 @@ function JobTitleManagement({
               <p className="text-xs text-[#64748b]">Maksimal 5 karakter.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Nama Job Title</Label>
+              <Label htmlFor="jt-name">Nama Job Title</Label>
               <Input
-                id="name"
+                id="jt-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Accounting & Asset SPV"
@@ -2721,9 +2780,9 @@ function JobTitleManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="jt-desc">Description</Label>
               <Textarea
-                id="description"
+                id="jt-desc"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Short description of this job title"
@@ -2732,11 +2791,11 @@ function JobTitleManagement({
             </div>
             <div className="flex items-center space-x-2">
               <Switch
-                id="isActive"
+                id="jt-active"
                 checked={formData.isActive}
                 onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
               />
-              <Label htmlFor="isActive">Aktif</Label>
+              <Label htmlFor="jt-active">Aktif</Label>
             </div>
             <DialogFooter>
               <DialogClose asChild>
@@ -2756,8 +2815,12 @@ function JobTitleManagement({
 // LEVEL STAFF MANAGEMENT COMPONENT
 function LevelStaffManagement({
   levelStaff,
+  canEdit = true,
+  canDelete = true,
 }: {
   levelStaff: MasterLevelStaff[];
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -2846,10 +2909,12 @@ function LevelStaffManagement({
             Tingkatan level staff dalam organisasi
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Level Staff
-        </Button>
+        {canEdit && (
+          <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+            <Plus className="mr-2 size-4" />
+            Tambah Level Staff
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -2892,22 +2957,26 @@ function LevelStaffManagement({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(lvl)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(lvl)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenDialog(lvl)}
+                            className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(lvl)}
+                            className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2992,10 +3061,14 @@ function DepartmentManagement({
   departments,
   sections,
   employees,
+  canEdit = true,
+  canDelete = true,
 }: {
   departments: MasterDepartment[];
   sections: MasterSection[];
   employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -3102,25 +3175,29 @@ function DepartmentManagement({
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <form action={syncFormAction}>
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={isSyncing}
-              className="gap-1.5 text-xs"
-            >
-              <Clock3 className={`size-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync Department dari Section'}
-            </Button>
-          </form>
-          <Button
-            onClick={() => handleOpenDialog()}
-            className="bg-[#3b82f6] hover:bg-[#2563eb]"
-          >
-            <Plus className="mr-2 size-4" />
-            Tambah Department
-          </Button>
+          {canEdit && (
+            <>
+              <form action={syncFormAction}>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncing}
+                  className="gap-1.5 text-xs"
+                >
+                  <Clock3 className={`size-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync Department dari Section'}
+                </Button>
+              </form>
+              <Button
+                onClick={() => handleOpenDialog()}
+                className="bg-[#3b82f6] hover:bg-[#2563eb]"
+              >
+                <Plus className="mr-2 size-4" />
+                Tambah Department
+              </Button>
+            </>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -3190,22 +3267,26 @@ function DepartmentManagement({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(dept)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(dept)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenDialog(dept)}
+                            className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(dept)}
+                            className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -3229,7 +3310,7 @@ function DepartmentManagement({
             <DialogDescription>
               {editingDepartment
                 ? "Ubah informasi department yang sudah ada"
-                : "Tambahkan department baru ke dalam sistem"}
+                : "Tambahkan department baru ke dalam organisasi"}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -3237,82 +3318,68 @@ function DepartmentManagement({
               <Label htmlFor="dept-code">Kode Department</Label>
               <Input
                 id="dept-code"
+                placeholder="misal: IT"
                 value={formData.code}
-                onChange={(e) =>
-                  setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 3) })
-                }
-                placeholder="e.g., FIN, HRD, OPR"
-                maxLength={3}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                 required
               />
-              <p className="text-xs text-[#64748b]">Maksimal 3 huruf.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="dept-name">Nama Department</Label>
               <Input
                 id="dept-name"
+                placeholder="misal: Information Technology"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Accounting, General Affairs"
                 required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="dept-head">Head Department</Label>
               <SearchableEmployeeSelect
-                employees={employees.map((emp) => ({
-                  id: emp.id,
-                  name: emp.name,
-                  role: emp.jobTitle || "Staff",
-                }))}
+                employees={employees}
                 value={formData.headEmployeeId}
                 onValueChange={(val) => setFormData({ ...formData, headEmployeeId: val })}
-                placeholder="Pilih Head Department..."
-                showLabel={false}
+                placeholder="Pilih Kepala Department..."
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dept-description">Description</Label>
+              <Label htmlFor="dept-desc">Description</Label>
               <Textarea
-                id="dept-description"
+                id="dept-desc"
+                placeholder="Deskripsi tugas atau ruang lingkup department..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Short description of this department"
                 rows={3}
               />
             </div>
             <div className="flex items-center space-x-2">
               <Switch
-                id="dept-isActive"
+                id="dept-active"
                 checked={formData.isActive}
                 onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
               />
-              <Label htmlFor="dept-isActive">Aktif</Label>
+              <Label htmlFor="dept-active">Status Aktif</Label>
             </div>
             <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Batal
-                </Button>
-              </DialogClose>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Batal
+              </Button>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingDepartment ? "Simpan Perubahan" : "Tambah Department"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
-        </Dialog>
-        <EmployeeListDialog
-          employees={employees}
-          entityId={employeeDialogDept?.id ?? null}
-          entityLabel={employeeDialogDept?.name ?? ""}
-          filterKey="departmentId"
-          sections={sections}
-          departments={departments}
-          open={employeeDialogDept !== null}
-          onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
-        />
-      </Card>
+      </Dialog>
+      <DepartmentEmployeeDialog
+        department={employeeDialogDept}
+        sections={sections}
+        departments={departments}
+        open={employeeDialogDept !== null}
+        onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
+      />
+    </Card>
   );
 }
 
@@ -3322,11 +3389,15 @@ function PositionManagement({
   departments,
   sections,
   sites,
+  canEdit = true,
+  canDelete = true,
 }: {
   positions: MasterPosition[];
   departments: MasterDepartment[];
   sections: MasterSection[];
   sites: MasterSite[];
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -3456,13 +3527,15 @@ function PositionManagement({
             Posisi/jabatan dalam organisasi
           </CardDescription>
         </div>
-        <Button
-          onClick={() => handleOpenDialog()}
-          className="bg-[#3b82f6] hover:bg-[#2563eb]"
-        >
-          <Plus className="mr-2 size-4" />
-          Tambah Jabatan
-        </Button>
+        {canEdit && (
+          <Button
+            onClick={() => handleOpenDialog()}
+            className="bg-[#3b82f6] hover:bg-[#2563eb]"
+          >
+            <Plus className="mr-2 size-4" />
+            Tambah Jabatan
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -3537,22 +3610,26 @@ function PositionManagement({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(pos)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(pos)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenDialog(pos)}
+                            className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(pos)}
+                            className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

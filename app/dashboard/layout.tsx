@@ -14,6 +14,7 @@ import {
 } from '@/lib/hero-admin'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
 import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
+import { FloatingGeniusChat } from '@/components/hero-genius/floating-genius-chat'
 
 import '@/app/dashboard/theme.css'
 
@@ -77,6 +78,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           navSecondary={JSON.parse(JSON.stringify(sidebarData.navSecondary))}
         />
         <div className="flex flex-1 flex-col">{children}</div>
+        <FloatingGeniusChat />
       </SidebarInset>
       <FaceRegistrationReminderPopup
         isRegistered={!!(employeeDisplay?.faceRegisteredAt || employeeDisplay?.faceRarayRegisteredAt)}

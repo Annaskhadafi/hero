@@ -2,7 +2,7 @@ import { asc, desc, eq } from "drizzle-orm"
 
 import { db } from "@/db"
 import { hiradcEntries, hiradcRegisters } from "@/db/schema/hero"
-import { getCurrentEmployeeAccessRole } from "@/lib/hero-access"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
 
 export type HiradcAccess = {
   canView: boolean
@@ -18,11 +18,13 @@ export type HiradcEntryReportData = HiradcEntryRow & {
 }
 
 async function getHiradcAccess(): Promise<HiradcAccess> {
-  const role = (await getCurrentEmployeeAccessRole())?.toLowerCase() ?? ""
-  const canEdit = ["super admin", "safety officer", "hse", "site admin", "admin"].some((allowed) =>
-    role.includes(allowed),
-  )
-  return { canView: true, canEdit, canDelete: canEdit, canSelectAll: canEdit }
+  const perm = await getCurrentMenuPermission("hse_hiradc")
+  return {
+    canView: perm.canView,
+    canEdit: perm.canEdit,
+    canDelete: perm.canDelete,
+    canSelectAll: perm.canSelectAll,
+  }
 }
 
 export type HiradcDashboardData = {

@@ -71,3 +71,9 @@ scripts/sync-new-karyawan.ts
 *.xls
 tmp_*.txt
 test.ts
+*.log
+*.db
+.playwright-cli/
+.freebuff/
+test-results/
+

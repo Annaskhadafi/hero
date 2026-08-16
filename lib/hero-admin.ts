@@ -395,6 +395,29 @@ const GOVERNANCE_ROLE_SEEDS = [
 ]
 
 const RAW_SIDEBAR_MENU_SEEDS = [
+  // Hero Genius AI
+  {
+    menuArea: 'main',
+    section: 'Genius AI',
+    title: 'Hero Genius',
+    url: '/dashboard/hero-genius',
+    iconName: 'sparkles',
+    resource: 'hero-genius',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Genius AI',
+    title: 'SOP/WIN',
+    url: '/dashboard/sop-win',
+    iconName: 'files',
+    resource: 'sop-win',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Marketing
   {
     menuArea: 'main',

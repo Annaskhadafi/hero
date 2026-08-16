@@ -21,15 +21,11 @@ import type { SafetyDashboardAccess } from "@/lib/safety-dashboard/types"
 
 async function getSafetyAccess(): Promise<SafetyDashboardAccess> {
   const perm = await getCurrentMenuPermission("safety")
-  const role = (await getCurrentEmployeeAccessRole())?.toLowerCase() ?? ""
-  const roleCanEdit = !role || ["super admin", "safety officer", "site admin", "admin", "hse", "safety", "user", "manager", "staff"].some((allowed) => role.includes(allowed))
-  const canEdit = perm.canEdit || roleCanEdit
-
   return {
-    canView: true,
-    canEdit,
-    canDelete: perm.canDelete || canEdit,
-    canSelectAll: perm.canSelectAll || canEdit,
+    canView: perm.canView,
+    canEdit: perm.canEdit,
+    canDelete: perm.canDelete,
+    canSelectAll: perm.canSelectAll,
   }
 }
 

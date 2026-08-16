@@ -22,6 +22,7 @@ import {
   BookOpen,
   TrendingUp,
   Package,
+  Files,
 } from "lucide-react";
 import {
   IconBook,
@@ -103,6 +104,20 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "attendance",
       icon: MapPin,
       bg: "bg-sky-500/10 text-sky-600",
+    },
+    {
+      title: "Hero Genius",
+      href: "/mobile/hero-genius",
+      resource: "hero_genius",
+      icon: Sparkles,
+      bg: "bg-gradient-to-tr from-indigo-500/20 to-blue-500/20 text-indigo-600",
+    },
+    {
+      title: "SOP & WIN",
+      href: "/mobile/sop-win",
+      resource: "sop-win",
+      icon: Files,
+      bg: "bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 text-indigo-600",
     },
     {
       title: "HSE Report",

@@ -3954,3 +3954,52 @@ export const employeeAssets = pgTable('hero_employee_assets', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+// SOP / WIN Document Management System (DMS)
+export const sopWinDocuments = pgTable('hero_sop_win_documents', {
+  id: serial('id').primaryKey(),
+  documentNumber: text('document_number').notNull(),
+  title: text('title').notNull(),
+  documentType: text('document_type').notNull(), // 'POL', 'WIN', 'SOP'
+  departmentCode: text('department_code').notNull(), // 'TC', 'FAM', 'PA', 'ERM', 'GA', 'HR', 'RETREAD', 'FINANCE', 'SERVICE', 'LEGAL', 'OSM', 'MRI', 'CORCOM', 'BIMA', 'CWS'
+  ownerEmployeeId: integer('owner_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  currentRevision: text('current_revision').notNull().default('00'),
+  status: text('status').notNull().default('active'), // 'active', 'draft', 'archived'
+  pdfFileUrl: text('pdf_file_url').notNull(),
+  docxFileUrl: text('docx_file_url'),
+  ragDocumentId: text('rag_document_id'),
+  summary: text('summary').notNull().default(''),
+  effectiveDate: timestamp('effective_date'),
+  createdById: integer('created_by_id').references(() => employees.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const sopWinRevisions = pgTable('hero_sop_win_revisions', {
+  id: serial('id').primaryKey(),
+  documentId: integer('document_id')
+    .notNull()
+    .references(() => sopWinDocuments.id, { onDelete: 'cascade' }),
+  revisionNumber: text('revision_number').notNull(), // '00', '01', '02', etc.
+  effectiveDate: timestamp('effective_date').notNull().defaultNow(),
+  changeDescription: text('change_description').notNull().default(''),
+  pdfFileUrl: text('pdf_file_url').notNull(),
+  docxFileUrl: text('docx_file_url'),
+  ragDocumentId: text('rag_document_id'),
+  revisedByEmployeeId: integer('revised_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const sopWinDepartments = pgTable('hero_sop_win_departments', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  headEmployeeId: integer('head_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+

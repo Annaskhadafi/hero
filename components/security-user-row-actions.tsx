@@ -84,6 +84,8 @@ export function SecurityUserRowActions({
   departments,
   positions,
   sites,
+  canEdit = true,
+  canDelete = true,
 }: {
   user: SecurityUserRecord
   managerOptions: Array<{ id: number; name: string }>
@@ -99,6 +101,8 @@ export function SecurityUserRowActions({
     departmentId: number | null
   }>
   sites: Array<{ id: number; name: string; location: string }>
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const router = useRouter()
   const [, startRefreshTransition] = useTransition()
@@ -303,301 +307,307 @@ export function SecurityUserRowActions({
               </Table>
             </div>
             {state.status !== 'idle' ? (
-                  <Alert
-                    className={
-                      state.status === 'error'
-                        ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    }
-                  >
-                    <AlertDescription>{state.message}</AlertDescription>
-                  </Alert>
-                ) : null}
+              <Alert
+                className={
+                  state.status === 'error'
+                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                }
+              >
+                <AlertDescription>{state.message}</AlertDescription>
+              </Alert>
+            ) : null}
 
+            {canEdit && (
+              <form
+                action={formAction}
+                className="bg-surface-container-low min-w-0 space-y-4 rounded-[1.2rem] p-4"
+              >
+                <div className="flex items-center gap-2">
+                  <Pencil className="text-muted-foreground size-4" />
+                  <p className="font-medium">Edit Profil Pengguna</p>
+                </div>
+                <input type="hidden" name="intent" value="update-profile" />
+                <input type="hidden" name="employeeId" value={user.id} />
+                <input type="hidden" name="phoneNumber" value={user.phoneNumber} />
+                <input type="hidden" name="directManagerId" value={user.directManagerId ?? 'none'} />
+                <input type="hidden" name="domicile" value={user.domicile} />
+                <input type="hidden" name="joinYear" value={`${user.joinYear}`} />
+                <input type="hidden" name="employmentStatus" value={user.status} />
+
+                <ProfilePhotoField
+                  fallbackName={user.name}
+                  initialValue={user.profileImage ?? ''}
+                />
+
+                <div className="grid min-w-0 gap-4 md:grid-cols-2">
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Name</span>
+                    <Input name="fullName" defaultValue={user.name} />
+                  </label>
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">SN</span>
+                    <Input name="employeeSn" defaultValue={user.employeeSn} />
+                  </label>
+                  <label className="grid min-w-0 gap-2 md:col-span-2">
+                    <span className="text-muted-foreground text-xs font-medium">Email</span>
+                    <Input
+                      name="email"
+                      type="email"
+                      defaultValue={user.email}
+                      placeholder="name@company.com"
+                      required
+                    />
+                  </label>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Department</span>
+                    <Select
+                      value={selectedDepartmentId}
+                      onValueChange={(value) => {
+                        setSelectedDepartmentId(value)
+                        setSelectedSectionId('')
+                      }}
+                    >
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder="Pilih department" />
+                      </SelectTrigger>
+                      <SelectContent className={compactSelectContentClass}>
+                        {departments.map((department) => (
+                          <SelectItem key={department.id} value={`${department.id}`}>
+                            {department.name} ({department.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" name="department" value={selectedDepartmentName} />
+                  </div>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Section</span>
+                    <Select
+                      value={selectedSectionId}
+                      onValueChange={setSelectedSectionId}
+                      disabled={!selectedDepartmentId}
+                    >
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue
+                          placeholder={selectedDepartmentId ? 'Pilih section' : 'Pilih department dulu'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent className={compactSelectContentClass}>
+                        {filteredSections.map((section) => (
+                          <SelectItem key={section.id} value={`${section.id}`}>
+                            {section.name} ({section.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" name="section" value={selectedSectionName} />
+                  </div>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Job Title</span>
+                    <Input name="jobTitle" defaultValue={user.jobTitle || ''} placeholder="e.g. Accounting & Asset SPV" />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Level Staff</span>
+                    <Input name="levelName" defaultValue={user.levelName || ''} placeholder="e.g. Staff, Supervisor" />
+                  </label>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Peran</span>
+                    <Select name="accessRole" defaultValue={user.accessRole}>
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder="Pilih peran" />
+                      </SelectTrigger>
+                      <SelectContent className={compactSelectContentClass}>
+                        {roleOptions.map((role) => (
+                          <SelectItem key={role.id} value={role.name}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Lokasi Site</span>
+                    <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder={sites.length > 0 ? 'Pilih lokasi site' : 'Belum ada site aktif'} />
+                      </SelectTrigger>
+                      <SelectContent className={compactSelectContentClass}>
+                        {sites.map((site) => (
+                          <SelectItem key={site.id} value={`${site.id}`}>
+                            {site.name} {site.location ? `- ${site.location}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" name="siteId" value={selectedSiteId} />
+                    <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
+                  </div>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Tipe Status</span>
+                    <Select name="employeeStatusType" defaultValue={user.employeeStatusType || 'Permanen | Staff'}>
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder="Pilih tipe status" />
+                      </SelectTrigger>
+                      <SelectContent className={compactSelectContentClass}>
+                        <SelectItem value="Permanent">Permanent</SelectItem>
+                        <SelectItem value="Contract">Contract</SelectItem>
+                        <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
+                        <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
+                        <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
+                        <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Gender</span>
+                    <Select name="gender" defaultValue={user.gender || 'none'}>
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder="Pilih gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">—</SelectItem>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Agama</span>
+                    <Input name="religion" defaultValue={user.religion || ''} placeholder="e.g. Islam" />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Pendidikan</span>
+                    <Input name="education" defaultValue={user.education || ''} placeholder="e.g. S1" />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Marital Status</span>
+                    <Select name="maritalStatus" defaultValue={user.maritalStatus || 'none'}>
+                      <SelectTrigger className={compactSelectTriggerClass}>
+                        <SelectValue placeholder="Pilih status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">—</SelectItem>
+                        <SelectItem value="Single">Single</SelectItem>
+                        <SelectItem value="Married">Married</SelectItem>
+                        <SelectItem value="Divorced">Divorced</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">POH</span>
+                    <Input name="pointOfHire" defaultValue={user.pointOfHire || ''} placeholder="e.g. Jakarta" />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Join Date</span>
+                    <Input name="joinDate" type="date" defaultValue={user.joinDate || ''} />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Contract Start</span>
+                    <Input name="contractDurationStart" type="date" defaultValue={user.contractDurationStart || ''} />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Contract End</span>
+                    <Input name="contractDurationEnd" type="date" defaultValue={user.contractDurationEnd || ''} />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Permanent Date</span>
+                    <Input name="permanentDate" type="date" defaultValue={user.permanentDate || ''} />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Tgl Lahir</span>
+                    <Input name="birthDate" type="date" defaultValue={user.birthDate || ''} />
+                  </label>
+                </div>
+
+                <div className="flex justify-end">
+                  <SubmitButton>
+                    <Save className="mr-2 size-4" />
+                    Simpan Profil
+                  </SubmitButton>
+                </div>
+              </form>
+            )}
+
+            {canEdit && (
+              <div className="grid gap-4 lg:grid-cols-2">
                 <form
                   action={formAction}
-                  className="bg-surface-container-low min-w-0 space-y-4 rounded-[1.2rem] p-4"
+                  className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
                 >
+                  <input type="hidden" name="intent" value="change-role" />
+                  <input type="hidden" name="employeeId" value={user.id} />
                   <div className="flex items-center gap-2">
                     <Pencil className="text-muted-foreground size-4" />
-                    <p className="font-medium">Edit Profil Pengguna</p>
+                    <p className="font-medium">Ganti Peran</p>
                   </div>
-                  <input type="hidden" name="intent" value="update-profile" />
-                  <input type="hidden" name="employeeId" value={user.id} />
-                  <input type="hidden" name="phoneNumber" value={user.phoneNumber} />
-                  <input type="hidden" name="directManagerId" value={user.directManagerId ?? 'none'} />
-                  <input type="hidden" name="domicile" value={user.domicile} />
-                  <input type="hidden" name="joinYear" value={`${user.joinYear}`} />
-                  <input type="hidden" name="employmentStatus" value={user.status} />
-
-                  <ProfilePhotoField
-                    fallbackName={user.name}
-                    initialValue={user.profileImage ?? ''}
-                  />
-
-                  <div className="grid min-w-0 gap-4 md:grid-cols-2">
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Name</span>
-                      <Input name="fullName" defaultValue={user.name} />
-                    </label>
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">SN</span>
-                      <Input name="employeeSn" defaultValue={user.employeeSn} />
-                    </label>
-                    <label className="grid min-w-0 gap-2 md:col-span-2">
-                      <span className="text-muted-foreground text-xs font-medium">Email</span>
-                      <Input
-                        name="email"
-                        type="email"
-                        defaultValue={user.email}
-                        placeholder="name@company.com"
-                        required
-                      />
-                    </label>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Department</span>
-                      <Select
-                        value={selectedDepartmentId}
-                        onValueChange={(value) => {
-                          setSelectedDepartmentId(value)
-                          setSelectedSectionId('')
-                        }}
-                      >
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih department" />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          {departments.map((department) => (
-                            <SelectItem key={department.id} value={`${department.id}`}>
-                              {department.name} ({department.code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <input type="hidden" name="department" value={selectedDepartmentName} />
-                    </div>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Section</span>
-                      <Select
-                        value={selectedSectionId}
-                        onValueChange={setSelectedSectionId}
-                        disabled={!selectedDepartmentId}
-                      >
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue
-                            placeholder={selectedDepartmentId ? 'Pilih section' : 'Pilih department dulu'}
-                          />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          {filteredSections.map((section) => (
-                            <SelectItem key={section.id} value={`${section.id}`}>
-                              {section.name} ({section.code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <input type="hidden" name="section" value={selectedSectionName} />
-                    </div>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Job Title</span>
-                      <Input name="jobTitle" defaultValue={user.jobTitle || ''} placeholder="e.g. Accounting & Asset SPV" />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Level Staff</span>
-                      <Input name="levelName" defaultValue={user.levelName || ''} placeholder="e.g. Staff, Supervisor" />
-                    </label>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Peran</span>
-                      <Select name="accessRole" defaultValue={user.accessRole}>
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih peran" />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          {roleOptions.map((role) => (
-                            <SelectItem key={role.id} value={role.name}>
-                              {role.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Lokasi Site</span>
-                      <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder={sites.length > 0 ? 'Pilih lokasi site' : 'Belum ada site aktif'} />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          {sites.map((site) => (
-                            <SelectItem key={site.id} value={`${site.id}`}>
-                              {site.name} {site.location ? `- ${site.location}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <input type="hidden" name="siteId" value={selectedSiteId} />
-                      <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
-                    </div>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Tipe Status</span>
-                      <Select name="employeeStatusType" defaultValue={user.employeeStatusType || 'Permanen | Staff'}>
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih tipe status" />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          <SelectItem value="Permanent">Permanent</SelectItem>
-                          <SelectItem value="Contract">Contract</SelectItem>
-                          <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
-                          <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
-                          <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
-                          <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Gender</span>
-                      <Select name="gender" defaultValue={user.gender || 'none'}>
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">—</SelectItem>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Agama</span>
-                      <Input name="religion" defaultValue={user.religion || ''} placeholder="e.g. Islam" />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Pendidikan</span>
-                      <Input name="education" defaultValue={user.education || ''} placeholder="e.g. S1" />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Marital Status</span>
-                      <Select name="maritalStatus" defaultValue={user.maritalStatus || 'none'}>
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">—</SelectItem>
-                          <SelectItem value="Single">Single</SelectItem>
-                          <SelectItem value="Married">Married</SelectItem>
-                          <SelectItem value="Divorced">Divorced</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">POH</span>
-                      <Input name="pointOfHire" defaultValue={user.pointOfHire || ''} placeholder="e.g. Jakarta" />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Join Date</span>
-                      <Input name="joinDate" type="date" defaultValue={user.joinDate || ''} />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Contract Start</span>
-                      <Input name="contractDurationStart" type="date" defaultValue={user.contractDurationStart || ''} />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Contract End</span>
-                      <Input name="contractDurationEnd" type="date" defaultValue={user.contractDurationEnd || ''} />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Permanent Date</span>
-                      <Input name="permanentDate" type="date" defaultValue={user.permanentDate || ''} />
-                    </label>
-
-                    <label className="grid min-w-0 gap-2">
-                      <span className="text-muted-foreground text-xs font-medium">Tgl Lahir</span>
-                      <Input name="birthDate" type="date" defaultValue={user.birthDate || ''} />
-                    </label>
+                  <div className="grid gap-2">
+                    <Label>Peran Akses</Label>
+                    <Select name="accessRole" defaultValue={user.accessRole}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Pilih peran" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roleOptions.map((role) => (
+                          <SelectItem key={role.id} value={role.name}>
+                            {role.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-
                   <div className="flex justify-end">
                     <SubmitButton>
-                      <Save className="mr-2 size-4" />
-                      Simpan Profil
+                      <UserCog className="mr-2 size-4" />
+                      Ganti Peran
                     </SubmitButton>
                   </div>
                 </form>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <form
-                    action={formAction}
-                    className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
-                  >
-                    <input type="hidden" name="intent" value="change-role" />
-                    <input type="hidden" name="employeeId" value={user.id} />
-                    <div className="flex items-center gap-2">
-                      <Pencil className="text-muted-foreground size-4" />
-                      <p className="font-medium">Ganti Peran</p>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Peran Akses</Label>
-                      <Select name="accessRole" defaultValue={user.accessRole}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Pilih peran" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {roleOptions.map((role) => (
-                            <SelectItem key={role.id} value={role.name}>
-                              {role.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex justify-end">
-                      <SubmitButton>
-                        <UserCog className="mr-2 size-4" />
-                        Ganti Peran
-                      </SubmitButton>
-                    </div>
-                  </form>
+                <form
+                  action={formAction}
+                  className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
+                >
+                  <input type="hidden" name="intent" value="change-password" />
+                  <input type="hidden" name="employeeId" value={user.id} />
+                  <div className="flex items-center gap-2">
+                    <ShieldBan className="text-muted-foreground size-4" />
+                    <p className="font-medium">Ganti Password</p>
+                  </div>
+                  <label className="grid gap-2">
+                    <Label>Password Baru</Label>
+                    <Input name="newPassword" type="password" placeholder="Minimal 8 karakter" />
+                  </label>
+                  <div className="flex justify-end">
+                    <SubmitButton>
+                      <Key className="mr-2 size-4" />
+                      Reset Password
+                    </SubmitButton>
+                  </div>
+                </form>
+              </div>
+            )}
 
-                  <form
-                    action={formAction}
-                    className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
-                  >
-                    <input type="hidden" name="intent" value="change-password" />
-                    <input type="hidden" name="employeeId" value={user.id} />
-                    <div className="flex items-center gap-2">
-                      <ShieldBan className="text-muted-foreground size-4" />
-                      <p className="font-medium">Ganti Password</p>
-                    </div>
-                    <label className="grid gap-2">
-                      <Label>Password Baru</Label>
-                      <Input name="newPassword" type="password" placeholder="Minimal 8 karakter" />
-                    </label>
-                    <div className="flex justify-end">
-                      <SubmitButton>
-                        <Key className="mr-2 size-4" />
-                        Reset Password
-                      </SubmitButton>
-                    </div>
-                  </form>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-2">
+            {(canEdit || canDelete) && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {canEdit && (
                   <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fffbeb] p-4">
                     <input type="hidden" name="intent" value="ban-user" />
                     <input type="hidden" name="employeeId" value={user.id} />
@@ -615,7 +625,9 @@ export function SecurityUserRowActions({
                       </SubmitButton>
                     </div>
                   </form>
+                )}
 
+                {canDelete && (
                   <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fef2f2] p-4">
                     <input type="hidden" name="intent" value="delete-user" />
                     <input type="hidden" name="employeeId" value={user.id} />
@@ -633,7 +645,9 @@ export function SecurityUserRowActions({
                       </SubmitButton>
                     </div>
                   </form>
-                </div>
+                )}
+              </div>
+            )}
           </TabsContent>
           <TabsContent
             value="access"
@@ -657,23 +671,25 @@ export function SecurityUserRowActions({
               </Alert>
             ) : null}
 
-            <form action={formAction} className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4">
-              <input type="hidden" name="intent" value="resend-invitation" />
-              <input type="hidden" name="employeeId" value={user.id} />
-              <div className="flex items-center gap-2">
-                <Mail className="text-muted-foreground size-4" />
-                <p className="font-medium">Kirim Ulang Invitation</p>
-              </div>
-              <p className="text-muted-foreground text-sm">
-                Kirim ulang email aktivasi akun untuk pengguna ini ke <span className="font-medium">{user.email}</span>.
-              </p>
-              <div className="flex justify-end">
-                <SubmitButton variant="outline">
-                  <Mail className="mr-2 size-4" />
-                  Kirim Ulang Invitation
-                </SubmitButton>
-              </div>
-            </form>
+            {canEdit && (
+              <form action={formAction} className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4">
+                <input type="hidden" name="intent" value="resend-invitation" />
+                <input type="hidden" name="employeeId" value={user.id} />
+                <div className="flex items-center gap-2">
+                  <Mail className="text-muted-foreground size-4" />
+                  <p className="font-medium">Kirim Ulang Invitation</p>
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  Kirim ulang email aktivasi akun untuk pengguna ini ke <span className="font-medium">{user.email}</span>.
+                </p>
+                <div className="flex justify-end">
+                  <SubmitButton variant="outline">
+                    <Mail className="mr-2 size-4" />
+                    Kirim Ulang Invitation
+                  </SubmitButton>
+                </div>
+              </form>
+            )}
 
             <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm">
               Reset password tersedia di bagian profil pengguna.

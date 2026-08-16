@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getServerSession } from '@/lib/auth-session'
 import { getOvertimeRequestWorkspaceData } from '@/lib/overtime-request-data'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase()
@@ -46,7 +47,10 @@ export default async function OvertimeRequestsPage() {
     redirect('/sign-in')
   }
 
-  const data = await getOvertimeRequestWorkspaceData(session.user.email)
+  const [data, permission] = await Promise.all([
+    getOvertimeRequestWorkspaceData(session.user.email),
+    getCurrentMenuPermission('overtime_requests'),
+  ])
   if (!data) {
     return null
   }
@@ -109,7 +113,7 @@ export default async function OvertimeRequestsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {data.canCreateCommands && data.team.length > 0 ? (
+              {data.canCreateCommands && data.team.length > 0 && permission.canEdit ? (
                 <OvertimeCommandLetterComposer
                   action={manageOvertimeCommandLetterAction}
                   intent="create"
@@ -126,6 +130,8 @@ export default async function OvertimeRequestsPage() {
                 <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-6 text-sm font-medium">
                   {data.team.length === 0
                     ? 'Belum ada bawahan aktif. Pengajuan lembur baru bisa dibuat setelah struktur bawahan tersedia.'
+                    : !permission.canEdit
+                    ? 'Anda tidak memiliki hak akses untuk menambah pengajuan lembur.'
                     : 'Leader ini belum diaktifkan pada setting pengajuan lembur.'}
                 </div>
               )}
@@ -150,7 +156,7 @@ export default async function OvertimeRequestsPage() {
                       <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
                     </div>
 
-                    {['draft', 'returned'].includes(document.status.toLowerCase()) ? (
+                    {['draft', 'returned'].includes(document.status.toLowerCase()) && permission.canEdit ? (
                       <form action={transitionOvertimeCommandLetterStatusAction}>
                         <input type="hidden" name="id" value={document.id} />
                         <input type="hidden" name="targetStatus" value="submitted" />
@@ -234,37 +240,41 @@ export default async function OvertimeRequestsPage() {
                         </div>
                       </div>
 
-                      {['draft', 'returned'].includes(document.status.toLowerCase()) ? (
+                      {['draft', 'returned'].includes(document.status.toLowerCase()) && (permission.canEdit || permission.canDelete) ? (
                         <details className="bg-surface-container-low rounded-[1rem] px-4 py-4">
                           <summary className="text-foreground cursor-pointer list-none text-sm font-semibold">
-                            Edit Pengajuan
+                            Edit / Hapus Pengajuan
                           </summary>
-                          <div className="mt-4">
-                            <OvertimeCommandLetterComposer
-                              action={manageOvertimeCommandLetterAction}
-                              intent="update"
-                              submitLabel="Update Request"
-                              routeTemplates={data.splOptions.routeTemplates}
-                              libraryActivities={data.splOptions.libraryActivities}
-                              teamMembers={data.team.map((member) => ({
-                                id: member.id,
-                                name: member.name,
-                                role: member.jobTitle || member.role,
-                              }))}
-                              defaults={document}
-                            />
+                          <div className="mt-4 space-y-3">
+                            {permission.canEdit && (
+                              <OvertimeCommandLetterComposer
+                                action={manageOvertimeCommandLetterAction}
+                                intent="update"
+                                submitLabel="Update Request"
+                                routeTemplates={data.splOptions.routeTemplates}
+                                libraryActivities={data.splOptions.libraryActivities}
+                                teamMembers={data.team.map((member) => ({
+                                  id: member.id,
+                                  name: member.name,
+                                  role: member.jobTitle || member.role,
+                                }))}
+                                defaults={document}
+                              />
+                            )}
 
-                            <form action={manageOvertimeCommandLetterAction} className="mt-3">
-                              <input type="hidden" name="intent" value="delete" />
-                              <input type="hidden" name="id" value={document.id} />
-                              <Button
-                                type="submit"
-                                variant="outline"
-                                className="w-full rounded-xl text-rose-700"
-                              >
-                                Hapus Pengajuan
-                              </Button>
-                            </form>
+                            {permission.canDelete && (
+                              <form action={manageOvertimeCommandLetterAction} className="mt-3">
+                                <input type="hidden" name="intent" value="delete" />
+                                <input type="hidden" name="id" value={document.id} />
+                                <Button
+                                  type="submit"
+                                  variant="outline"
+                                  className="w-full rounded-xl text-rose-700"
+                                >
+                                  Hapus Pengajuan
+                                </Button>
+                              </form>
+                            )}
                           </div>
                         </details>
                       ) : null}
@@ -305,7 +315,7 @@ export default async function OvertimeRequestsPage() {
                   </p>
                 </div>
 
-                {data.headLocation?.headEmployeeId && data.leaderOptions.length > 0 ? (
+                {data.headLocation?.headEmployeeId && data.leaderOptions.length > 0 && permission.canEdit ? (
                   <form
                     action={manageOvertimeRequestLeaderPermissionAction}
                     className="grid gap-3 rounded-[1rem] border border-border bg-background p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
@@ -366,22 +376,24 @@ export default async function OvertimeRequestsPage() {
                         >
                           {leader.isActive ? 'Aktif' : 'Nonaktif'}
                         </Badge>
-                        <form action={manageOvertimeRequestLeaderPermissionAction}>
-                          <input type="hidden" name="leaderEmployeeId" value={leader.id} />
-                          <input
-                            type="hidden"
-                            name="isActive"
-                            value={leader.isActive ? 'false' : 'true'}
-                          />
-                          <Button
-                            type="submit"
-                            variant={leader.isActive ? 'outline' : 'default'}
-                            className="rounded-full"
-                          >
-                            <Users2 className="size-4" />
-                            {leader.isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                          </Button>
-                        </form>
+                        {permission.canEdit && (
+                          <form action={manageOvertimeRequestLeaderPermissionAction}>
+                            <input type="hidden" name="leaderEmployeeId" value={leader.id} />
+                            <input
+                              type="hidden"
+                              name="isActive"
+                              value={leader.isActive ? 'false' : 'true'}
+                            />
+                            <Button
+                              type="submit"
+                              variant={leader.isActive ? 'outline' : 'default'}
+                              className="rounded-full"
+                            >
+                              <Users2 className="size-4" />
+                              {leader.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                            </Button>
+                          </form>
+                        )}
                       </div>
                     </div>
                   ))

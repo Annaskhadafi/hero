@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityRouteBuilderData } from "@/lib/daily-activity";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 type RouteBuilderData = Awaited<ReturnType<typeof getDailyActivityRouteBuilderData>>;
 type RouteTemplate = RouteBuilderData["templates"][number];
@@ -340,10 +341,14 @@ function GroupBuilder({
   template,
   group,
   data,
+  canEdit = true,
+  canDelete = true,
 }: {
   template: RouteTemplate;
   group: RouteGroup;
   data: RouteBuilderData;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   return (
     <details className="group rounded-[1.1rem] bg-white ring-1 ring-border/60">
@@ -393,14 +398,16 @@ function GroupBuilder({
                       </Badge>
                     ))}
                   </div>
-                  <ActivityRouteItemForm
-                    groupId={group.id}
-                    item={item}
-                    defaultSortOrder={item.sortOrder}
-                    library={data.library}
-                    selectClassName={selectClass}
-                  />
-                  <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Delete item" />
+                  {canEdit && (
+                    <ActivityRouteItemForm
+                      groupId={group.id}
+                      item={item}
+                      defaultSortOrder={item.sortOrder}
+                      library={data.library}
+                      selectClassName={selectClass}
+                    />
+                  )}
+                  {canDelete && <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Delete item" />}
                 </div>
               </details>
             ))
@@ -411,35 +418,49 @@ function GroupBuilder({
           )}
         </div>
 
-        <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
-            + Tambah item ke group ini
-          </summary>
-          <div className="mt-4">
-            <ActivityRouteItemForm
-              groupId={group.id}
-              defaultSortOrder={group.items.length + 1}
-              library={data.library}
-              selectClassName={selectClass}
-            />
-          </div>
-        </details>
+        {canEdit && (
+          <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
+              + Tambah item ke group ini
+            </summary>
+            <div className="mt-4">
+              <ActivityRouteItemForm
+                groupId={group.id}
+                defaultSortOrder={group.items.length + 1}
+                library={data.library}
+                selectClassName={selectClass}
+              />
+            </div>
+          </details>
+        )}
 
-        <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
-          <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
-            Edit / hapus group
-          </summary>
-          <div className="mt-4 space-y-3">
-            <RouteGroupForm templateId={template.id} group={group} defaultSortOrder={group.sortOrder} />
-            <DeleteForm action={manageActivityRouteGroupAction} id={group.id} label="Delete group" />
-          </div>
-        </details>
+        {(canEdit || canDelete) && (
+          <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
+              Edit / hapus group
+            </summary>
+            <div className="mt-4 space-y-3">
+              {canEdit && <RouteGroupForm templateId={template.id} group={group} defaultSortOrder={group.sortOrder} />}
+              {canDelete && <DeleteForm action={manageActivityRouteGroupAction} id={group.id} label="Delete group" />}
+            </div>
+          </details>
+        )}
       </div>
     </details>
   );
 }
 
-function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: RouteBuilderData }) {
+function RouteBuilderRow({
+  template,
+  data,
+  canEdit = true,
+  canDelete = true,
+}: {
+  template: RouteTemplate;
+  data: RouteBuilderData;
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const itemCount = template.groups.reduce((total, group) => total + group.items.length, 0);
 
   return (
@@ -482,7 +503,14 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
                 </div>
                 {template.groups.length > 0 ? (
                   template.groups.map((group) => (
-                    <GroupBuilder key={group.id} template={template} group={group} data={data} />
+                    <GroupBuilder
+                      key={group.id}
+                      template={template}
+                      group={group}
+                      data={data}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
+                    />
                   ))
                 ) : (
                   <div className="rounded-xl bg-white px-4 py-6 text-sm text-muted-foreground">
@@ -492,17 +520,19 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
               </div>
 
               <div className="space-y-3">
-                <Card className="border-0 bg-white ring-1 ring-border/60">
-                  <CardContent className="space-y-3 p-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">
-                      Route actions
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <AddGroupDialog templateId={template.id} defaultSortOrder={template.groups.length + 1} />
-                      <EditRouteDialog data={data} template={template} />
-                    </div>
-                  </CardContent>
-                </Card>
+                {(canEdit || canDelete) && (
+                  <Card className="border-0 bg-white ring-1 ring-border/60">
+                    <CardContent className="space-y-3 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">
+                        Route actions
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {canEdit && <AddGroupDialog templateId={template.id} defaultSortOrder={template.groups.length + 1} />}
+                        {canEdit && <EditRouteDialog data={data} template={template} />}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card className="border-0 bg-white ring-1 ring-border/60">
                   <CardContent className="space-y-3 p-4">
@@ -516,7 +546,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
                         <span className="font-semibold">{template.approvalRequired ? "Required" : "No"}</span>
                       </div>
                     </div>
-                    <DeleteForm action={manageActivityRouteTemplateAction} id={template.id} label="Delete route" />
+                    {canDelete && <DeleteForm action={manageActivityRouteTemplateAction} id={template.id} label="Delete route" />}
                   </CardContent>
                 </Card>
               </div>
@@ -592,7 +622,10 @@ export default async function DailyActivityRoutesPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityRouteBuilderData(session.user.email);
+  const [data, permission] = await Promise.all([
+    getDailyActivityRouteBuilderData(session.user.email),
+    getCurrentMenuPermission("activity_routes"),
+  ]);
   const pagePurpose = getActivityPagePurpose("routes");
 
   return (
@@ -626,7 +659,7 @@ export default async function DailyActivityRoutesPage() {
                     {pagePurpose.description} Klik route untuk membuka group, lalu klik group untuk membuka item.
                   </CardDescription>
                 </div>
-                <AddRouteDialog data={data} />
+                {permission.canEdit && <AddRouteDialog data={data} />}
               </div>
             </CardHeader>
             <CardContent>
@@ -653,7 +686,13 @@ export default async function DailyActivityRoutesPage() {
                   <TableBody>
                     {data.templates.length > 0 ? (
                       data.templates.map((template) => (
-                        <RouteBuilderRow key={template.id} template={template} data={data} />
+                        <RouteBuilderRow
+                          key={template.id}
+                          template={template}
+                          data={data}
+                          canEdit={permission.canEdit}
+                          canDelete={permission.canDelete}
+                        />
                       ))
                     ) : (
                       <TableRow>
@@ -682,15 +721,17 @@ export default async function DailyActivityRoutesPage() {
                     Section Head can override label and default points without breaking global library.
                   </CardDescription>
                 </div>
-                <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
-                    <Plus className="size-4" />
-                    Tambah override
-                  </summary>
-                  <div className="mt-4">
-                    <OverrideForm data={data} />
-                  </div>
-                </details>
+                {permission.canEdit && (
+                  <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
+                      <Plus className="size-4" />
+                      Tambah override
+                    </summary>
+                    <div className="mt-4">
+                      <OverrideForm data={data} />
+                    </div>
+                  </details>
+                )}
               </div>
             </CardHeader>
             <CardContent>

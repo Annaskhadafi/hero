@@ -34,9 +34,10 @@ interface HiradcClientTableProps {
   data: HiradcEntryWithRegister[]
   registers: HiradcRegisterRow[]
   canEdit: boolean
+  canDelete?: boolean
 }
 
-export function HiradcClientTable({ data, registers, canEdit }: HiradcClientTableProps) {
+export function HiradcClientTable({ data, registers, canEdit, canDelete = true }: HiradcClientTableProps) {
   const [filter, setFilter] = React.useState<"ALL" | "EXTREME" | "HIGH" | "MODERATE" | "LOW">("ALL")
   const [search, setSearch] = React.useState("")
   const [pageSize, setPageSize] = React.useState("10")
@@ -305,14 +306,14 @@ export function HiradcClientTable({ data, registers, canEdit }: HiradcClientTabl
                         </Button>
                       </HiradcDetailDialog>
                       {canEdit && (
-                        <>
-                          <Button size="icon" variant="outline" title="Edit Hazard" onClick={() => handleEdit(row)} className="h-8 w-8 bg-lime-50 text-lime-600 border-lime-200 hover:bg-lime-100">
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button size="icon" variant="outline" title="Hapus Hazard" onClick={() => handleDelete(row.id)} className="h-8 w-8 bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
+                        <Button size="icon" variant="outline" title="Edit Hazard" onClick={() => handleEdit(row)} className="h-8 w-8 bg-lime-50 text-lime-600 border-lime-200 hover:bg-lime-100">
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button size="icon" variant="outline" title="Hapus Hazard" onClick={() => handleDelete(row.id)} className="h-8 w-8 bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
                     </div>
                   </TableCell>

@@ -1,8 +1,12 @@
 import { SchedulingTimesheetWorkspace } from '@/components/scheduling-timesheet-workspace'
 import { getSchedulingTimesheetAttendanceOptions } from '@/lib/hero-admin'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
 export default async function SchedulingTimesheetAttendancePage() {
-  const options = await getSchedulingTimesheetAttendanceOptions()
+  const [options, permission] = await Promise.all([
+    getSchedulingTimesheetAttendanceOptions(),
+    getCurrentMenuPermission('scheduling_timesheet_attendance'),
+  ])
 
   return (
     <SchedulingTimesheetWorkspace
@@ -19,6 +23,8 @@ export default async function SchedulingTimesheetAttendancePage() {
       activities={options.activities}
       currentEmployeeSiteId={options.currentEmployeeSiteId}
       currentEmployeeName={options.currentEmployeeName}
+      canEdit={permission.canEdit}
+      canDelete={permission.canDelete}
     />
   )
 }

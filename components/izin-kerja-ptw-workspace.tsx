@@ -466,7 +466,17 @@ function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?
   );
 }
 
-export function IzinKerjaPtwWorkspace({ users, hiradcSources }: { users: SecurityUserRecord[]; hiradcSources: HiradcPtwSource[] }) {
+export function IzinKerjaPtwWorkspace({
+  users,
+  hiradcSources,
+  canEdit = true,
+  canDelete = true,
+}: {
+  users: SecurityUserRecord[];
+  hiradcSources: HiradcPtwSource[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const userOptions = useMemo(() => {
     const options = users.filter((user) => user.isActive).map((user) => `${user.name}${user.jobTitle ? ` — ${user.jobTitle}` : ""}${user.email ? ` (${user.email})` : ""}`).filter(Boolean);
     const uniqueOptions = Array.from(new Set(options));
@@ -489,10 +499,87 @@ export function IzinKerjaPtwWorkspace({ users, hiradcSources }: { users: Securit
     <div className="space-y-5 text-slate-900">
       <div className="grid gap-3 md:grid-cols-4"><Metric icon={FileText} label="Total PTW" value={kpis.total} /><Metric icon={CalendarClock} label="Pending" value={kpis.pending} tone="amber" /><Metric icon={CheckCircle2} label="Approved / Active" value={kpis.approved} tone="emerald" /><Metric icon={Flame} label="Critical Risk" value={kpis.critical} tone="rose" /></div>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black uppercase italic text-slate-900">Permit to Work Register</h2><p className="text-sm font-medium text-slate-500">Izin kerja aman untuk hot work, confined space, lifting, isolation, dan pekerjaan critical workshop.</p></div><PtwFormDialog userOptions={userOptions} hiradcSources={hiradcSources} onSave={saveRecord} /></div>
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="font-display text-lg font-black uppercase italic text-slate-900">Permit to Work Register</h2>
+            <p className="text-sm font-medium text-slate-500">Izin kerja aman untuk hot work, confined space, lifting, isolation, dan pekerjaan critical workshop.</p>
+          </div>
+          {canEdit && <PtwFormDialog userOptions={userOptions} hiradcSources={hiradcSources} onSave={saveRecord} />}
+        </div>
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center"><div className="relative lg:w-[260px]"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="h-9 pl-9" /></div><Select value={status} onValueChange={setStatus}><SelectTrigger className="h-9 lg:w-[220px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem>{statusOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
         <div className="px-4 py-3 text-sm font-semibold text-slate-500">Showing {filteredRecords.length} of {records.length} permits</div>
-        <div className="overflow-x-auto"><Table><TableHeader className="bg-slate-50"><TableRow><TableHead>Permit Info</TableHead><TableHead>Type & Location</TableHead><TableHead>Duration</TableHead><TableHead>Applicant</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredRecords.map((record) => <TableRow key={record.id} className="hover:bg-slate-50/70"><TableCell className="min-w-[280px]"><div className="font-bold text-slate-900">{record.projectName}</div><div className="mt-1 text-xs font-medium text-blue-700">{record.id}</div></TableCell><TableCell className="min-w-[260px]"><div className="flex items-center gap-2 font-bold text-slate-900"><MapPin className="size-4 text-blue-600" /> {record.permitType}</div><div className="text-xs font-medium text-slate-500">{record.location} • {record.area}</div><Pill className={cn("mt-2", riskTone[record.risk])}>{record.risk}</Pill></TableCell><TableCell className="min-w-[150px] font-semibold text-slate-800">{formatDate(record.startDate)}<div className="text-xs text-slate-500">{record.startTime} - {record.endTime}</div></TableCell><TableCell className="min-w-[220px]"><div className="flex items-center gap-2"><div className="grid size-8 place-items-center rounded-full bg-slate-100 text-xs font-bold">{record.applicant.slice(0, 2).toUpperCase()}</div><div><p className="font-semibold text-slate-900">{record.applicant}</p><p className="text-xs text-slate-500">Auth: {record.authorizedBy}</p></div></div></TableCell><TableCell><Pill className={statusTone[record.status]}>{record.status}</Pill></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><PtwDocumentDialog record={record} /><PtwFormDialog record={record} userOptions={userOptions} hiradcSources={hiradcSources} onSave={saveRecord} /><Button variant="outline" size="sm" className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => deleteRecord(record)}><Trash2 className="size-4" /> Delete</Button></div></TableCell></TableRow>)}</TableBody></Table></div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-slate-50">
+              <TableRow>
+                <TableHead>Permit Info</TableHead>
+                <TableHead>Type & Location</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Applicant</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredRecords.map((record) => (
+                <TableRow key={record.id} className="hover:bg-slate-50/70">
+                  <TableCell className="min-w-[280px]">
+                    <div className="font-bold text-slate-900">{record.projectName}</div>
+                    <div className="mt-1 text-xs font-medium text-blue-700">{record.id}</div>
+                  </TableCell>
+                  <TableCell className="min-w-[260px]">
+                    <div className="flex items-center gap-2 font-bold text-slate-900">
+                      <MapPin className="size-4 text-blue-600" /> {record.permitType}
+                    </div>
+                    <div className="text-xs font-medium text-slate-500">{record.location} • {record.area}</div>
+                    <Pill className={cn("mt-2", riskTone[record.risk])}>{record.risk}</Pill>
+                  </TableCell>
+                  <TableCell className="min-w-[150px] font-semibold text-slate-800">
+                    {formatDate(record.startDate)}
+                    <div className="text-xs text-slate-500">{record.startTime} - {record.endTime}</div>
+                  </TableCell>
+                  <TableCell className="min-w-[220px]">
+                    <div className="flex items-center gap-2">
+                      <div className="grid size-8 place-items-center rounded-full bg-slate-100 text-xs font-bold">
+                        {record.applicant.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-900">{record.applicant}</p>
+                        <p className="text-xs text-slate-500">Auth: {record.authorizedBy}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Pill className={statusTone[record.status]}>{record.status}</Pill>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <PtwDocumentDialog record={record} />
+                      {canEdit && (
+                        <PtwFormDialog
+                          record={record}
+                          userOptions={userOptions}
+                          hiradcSources={hiradcSources}
+                          onSave={saveRecord}
+                        />
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"
+                          onClick={() => deleteRecord(record)}
+                        >
+                          <Trash2 className="size-4" /> Delete
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );

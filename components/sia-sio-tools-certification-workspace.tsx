@@ -513,7 +513,15 @@ function EditCertificationDialog({
   );
 }
 
-export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUserRecord[] }) {
+export function SiaSioToolsCertificationWorkspace({
+  users,
+  canEdit = true,
+  canDelete = true,
+}: {
+  users: SecurityUserRecord[];
+  canEdit?: boolean;
+  canDelete?: boolean;
+}) {
   const userOptions = useMemo(() => {
     const options = users
       .filter((user) => user.isActive)
@@ -589,7 +597,20 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
         <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm"><BellRing className="mb-3 size-5 text-blue-600" /><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Critical Reminder</p><p className="text-2xl font-black text-blue-700">{kpis.criticalReminder}</p></div>
       </div>
       <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b bg-slate-50 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black text-slate-900">Workshop Tire Certification Register</h2><p className="text-sm font-medium text-slate-500">Forklift, hydrant, pressure tools, hydraulic tools, lifting equipment, dan personnel license.</p></div><AddCertificationDialog categories={categories} onAddCategory={handleAddCategory} onSave={handleSaveRecord} userOptions={userOptions} /></div>
+        <div className="flex flex-col gap-3 border-b bg-slate-50 p-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="font-display text-lg font-black text-slate-900">Workshop Tire Certification Register</h2>
+            <p className="text-sm font-medium text-slate-500">Forklift, hydrant, pressure tools, hydraulic tools, lifting equipment, dan personnel license.</p>
+          </div>
+          {canEdit && (
+            <AddCertificationDialog
+              categories={categories}
+              onAddCategory={handleAddCategory}
+              onSave={handleSaveRecord}
+              userOptions={userOptions}
+            />
+          )}
+        </div>
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
           <div className="relative lg:w-[260px]"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="h-9 pl-9" /></div>
           <Select value={category} onValueChange={setCategory}><SelectTrigger className="h-9 lg:w-[240px]"><SelectValue placeholder="Category" /></SelectTrigger><SelectContent><SelectItem value="all">All Category</SelectItem>{categories.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
@@ -612,8 +633,25 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <CertificationDialog record={record} />
-                      <EditCertificationDialog record={record} categories={categories} onAddCategory={handleAddCategory} onSave={handleSaveRecord} userOptions={userOptions} />
-                      <Button variant="outline" size="sm" className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => handleDeleteRecord(record)}><Trash2 className="size-4" /> Delete</Button>
+                      {canEdit && (
+                        <EditCertificationDialog
+                          record={record}
+                          categories={categories}
+                          onAddCategory={handleAddCategory}
+                          onSave={handleSaveRecord}
+                          userOptions={userOptions}
+                        />
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"
+                          onClick={() => handleDeleteRecord(record)}
+                        >
+                          <Trash2 className="size-4" /> Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -622,7 +660,6 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
           </Table>
         </div>
       </div>
-
     </div>
   );
 }

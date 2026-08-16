@@ -12,6 +12,7 @@ import {
   IconDashboard,
   IconDatabase,
   IconFileWord,
+  IconFileText,
   IconFolder,
   IconHelp,
   IconListDetails,
@@ -20,6 +21,7 @@ import {
   IconReport,
   IconSettings,
   IconShieldHalfFilled,
+  IconSparkles,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -45,6 +47,7 @@ const iconMap = {
   dashboard: IconDashboard,
   database: IconDatabase,
   "file-word": IconFileWord,
+  files: IconFileText,
   folder: IconFolder,
   help: IconHelp,
   "list-details": IconListDetails,
@@ -53,6 +56,7 @@ const iconMap = {
   report: IconReport,
   settings: IconSettings,
   shield: IconShieldHalfFilled,
+  sparkles: IconSparkles,
   users: IconUsers,
 } as const
 

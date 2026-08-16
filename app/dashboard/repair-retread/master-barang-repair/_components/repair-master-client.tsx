@@ -44,6 +44,8 @@ type RepairMasterSite = InferSelectModel<typeof repairMasterSites>
 type RepairMasterClientProps = {
   initialItems: RepairMasterItem[]
   initialSites: RepairMasterSite[]
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
 type ItemFormState = {
@@ -283,7 +285,12 @@ function SiteDialog({
   )
 }
 
-export function RepairMasterClient({ initialItems, initialSites }: RepairMasterClientProps) {
+export function RepairMasterClient({
+  initialItems,
+  initialSites,
+  canEdit = true,
+  canDelete = true,
+}: RepairMasterClientProps) {
   const [items, setItems] = useState(initialItems)
   const [sites, setSites] = useState(initialSites)
   const [itemQuery, setItemQuery] = useState("")
@@ -359,7 +366,7 @@ export function RepairMasterClient({ initialItems, initialSites }: RepairMasterC
     startTransition(async () => {
       const result = await bulkDeleteRepairMasterItems(selectedItemIds)
       if (result.success) {
-        toast.success("Barang repair terpilih dihapus")
+        toast.success(result.message)
         setSelectedItemIds([])
         await refreshData()
       } else {
@@ -444,11 +451,13 @@ export function RepairMasterClient({ initialItems, initialSites }: RepairMasterC
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            <Button type="button" variant="destructive" disabled={selectedItemIds.length === 0 || isPending} onClick={handleBulkDeleteItems}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Hapus Terpilih
-            </Button>
-            <ItemDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} />
+            {canDelete && (
+              <Button type="button" variant="destructive" disabled={selectedItemIds.length === 0 || isPending} onClick={handleBulkDeleteItems}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Hapus Terpilih
+              </Button>
+            )}
+            {canEdit && <ItemDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} />}
           </div>
         </div>
 
@@ -495,14 +504,18 @@ export function RepairMasterClient({ initialItems, initialSites }: RepairMasterC
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <ItemDialog
-                            item={item}
-                            onSaved={refreshData}
-                            trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
-                          />
-                          <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteItem(item.id)} disabled={isPending}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canEdit && (
+                            <ItemDialog
+                              item={item}
+                              onSaved={refreshData}
+                              trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
+                            />
+                          )}
+                          {canDelete && (
+                            <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteItem(item.id)} disabled={isPending}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -541,7 +554,7 @@ export function RepairMasterClient({ initialItems, initialSites }: RepairMasterC
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            <SiteDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Site</Button>} />
+            {canEdit && <SiteDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Site</Button>} />}
           </div>
         </div>
 
@@ -568,14 +581,18 @@ export function RepairMasterClient({ initialItems, initialSites }: RepairMasterC
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">
-                      <SiteDialog
-                        site={site}
-                        onSaved={refreshData}
-                        trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
-                      />
-                      <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteSite(site.id)} disabled={isPending}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEdit && (
+                        <SiteDialog
+                          site={site}
+                          onSaved={refreshData}
+                          trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
+                        />
+                      )}
+                      {canDelete && (
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteSite(site.id)} disabled={isPending}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

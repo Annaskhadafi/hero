@@ -1,10 +1,14 @@
 import { ClipboardList, MapPin, Wrench } from "lucide-react"
 
 import { getRepairMasterData } from "@/app/actions/repair-master"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { RepairMasterClient } from "./_components/repair-master-client"
 
 export default async function MasterBarangRepairPage() {
-  const data = await getRepairMasterData()
+  const [data, permission] = await Promise.all([
+    getRepairMasterData(),
+    getCurrentMenuPermission("master_barang_repair"),
+  ])
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 lg:p-10">
@@ -30,7 +34,12 @@ export default async function MasterBarangRepairPage() {
         </div>
       </div>
 
-      <RepairMasterClient initialItems={data.items} initialSites={data.sites} />
+      <RepairMasterClient
+        initialItems={data.items}
+        initialSites={data.sites}
+        canEdit={permission.canEdit}
+        canDelete={permission.canDelete}
+      />
     </div>
   )
 }

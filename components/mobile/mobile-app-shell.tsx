@@ -18,6 +18,7 @@ import {
   ScanFace,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Timer,
   Trophy,
   UserRound,
@@ -65,6 +66,7 @@ const bottomNavItems = [
 const drawerItems: DrawerItem[] = [
   { type: 'section', label: 'HOME' },
   { type: 'link', label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
+  { type: 'link', label: 'Hero Genius AI', href: '/mobile/hero-genius', icon: Sparkles },
   { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
   { type: 'section', label: 'AKTIVITAS' },
   { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },

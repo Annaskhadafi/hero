@@ -54,6 +54,8 @@ type Props = {
   sections: any[];
   sites: MasterSite[];
   employees: any[];
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 function DraggableEmployee({ employee }: { employee: any }) {
@@ -101,7 +103,16 @@ function DroppableNode({ node, children }: { node: any; children: React.ReactNod
   );
 }
 
-export function OrgStructureBuilder({ orgStructures, positions, departments, sections, sites, employees }: Props) {
+export function OrgStructureBuilder({
+  orgStructures,
+  positions,
+  departments,
+  sections,
+  sites,
+  employees,
+  canEdit = true,
+  canDelete = true,
+}: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
@@ -791,14 +802,20 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
                   </div>
                 </div>
 
-                <div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 group-hover/card:opacity-100 bg-white/90 p-1 shadow-sm border rounded-md transition-opacity duration-200 backdrop-blur-sm">
-                  <Button type="button" size="icon" variant="ghost" className="size-6 h-6 w-6 text-blue-600 hover:bg-blue-50" onClick={() => setEditingNodeId(node.id)}>
-                    <Pencil className="size-3" />
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" className="size-6 h-6 w-6 text-red-600 hover:bg-red-50" onClick={() => removeNode(node.id)}>
-                    <Trash2 className="size-3" />
-                  </Button>
-                </div>
+                {(canEdit || canDelete) && (
+                  <div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 group-hover/card:opacity-100 bg-white/90 p-1 shadow-sm border rounded-md transition-opacity duration-200 backdrop-blur-sm">
+                    {canEdit && (
+                      <Button type="button" size="icon" variant="ghost" className="size-6 h-6 w-6 text-blue-600 hover:bg-blue-50" onClick={() => setEditingNodeId(node.id)}>
+                        <Pencil className="size-3" />
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button type="button" size="icon" variant="ghost" className="size-6 h-6 w-6 text-red-600 hover:bg-red-50" onClick={() => removeNode(node.id)}>
+                        <Trash2 className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -905,10 +922,12 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
             Susun struktur organisasi untuk site, departemen, atau kebutuhan operasional lain.
           </CardDescription>
         </div>
-      <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-        <Plus className="mr-2 size-4" />
-        Tambah Struktur
-      </Button>
+      {canEdit && (
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+          <Plus className="mr-2 size-4" />
+          Tambah Struktur
+        </Button>
+      )}
       <Button
         variant="outline"
         size="sm"
@@ -1032,27 +1051,45 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
                 {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
                   <div
                     key={org.id}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") selectStructure(org.id.toString()); }}
-                    onClick={() => selectStructure(org.id.toString())}
-                    className={`w-full rounded-[1.05rem] px-4 py-4 text-left cursor-pointer transition ${selectedStructureId === org.id.toString() ? "bg-[#eff6ff]" : "bg-surface-container-lowest hover:bg-surface-container-highest"}`}
+                    onClick={() => {
+                      setSelectedOrgId(org.id);
+                      setSelectedOrgState(org);
+                    }}
+                    className={`cursor-pointer rounded-[1.05rem] border p-4 transition-all duration-200 ${
+                      org.id === selectedOrgId
+                        ? "border-[#2563eb] bg-[#eff6ff] shadow-sm"
+                        : "border-[#e2e8f0] bg-white hover:border-[#cbd5e1]"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-[#1e293b]">{org.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-[#1e293b]">{org.name}</p>
+                          {org.isDefault ? (
+                            <Badge className="bg-[#2563eb] text-white">Default</Badge>
+                          ) : null}
+                          {org.isActive ? (
+                            <Badge variant="outline" className="bg-[#ecfdf5] text-[#059669]">Aktif</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-[#f1f5f9] text-[#64748b]">Nonaktif</Badge>
+                          )}
+                        </div>
                         <p className="mt-1 text-xs text-[#64748b]">
                           Versi {org.version} • {formatScopeType(org.scopeType)} {org.scopeValue ? `• ${org.scopeValue}` : ""}
                         </p>
                         <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} posisi</p>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenDialog(org); }} className="size-8 text-[#3b82f6] hover:bg-[#dbeafe]">
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(org); }} className="size-8 text-[#ef4444] hover:bg-[#fee2e2]">
-                          <Trash2 className="size-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenDialog(org); }} className="size-8 text-[#3b82f6] hover:bg-[#dbeafe]">
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(org); }} className="size-8 text-[#ef4444] hover:bg-[#fee2e2]">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>

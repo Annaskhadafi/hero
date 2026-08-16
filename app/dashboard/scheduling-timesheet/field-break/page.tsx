@@ -1,8 +1,12 @@
 import { SchedulingTimesheetWorkspace } from '@/components/scheduling-timesheet-workspace'
 import { getSchedulingTimesheetFieldBreakOptions } from '@/lib/hero-admin'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
 export default async function SchedulingTimesheetFieldBreakPage() {
-  const options = await getSchedulingTimesheetFieldBreakOptions()
+  const [options, permission] = await Promise.all([
+    getSchedulingTimesheetFieldBreakOptions(),
+    getCurrentMenuPermission('scheduling_timesheet_field_break'),
+  ])
 
   return (
     <SchedulingTimesheetWorkspace
@@ -14,6 +18,8 @@ export default async function SchedulingTimesheetFieldBreakPage() {
       schedulingConfigs={options.schedulingConfigs}
       schedulingStatuses={options.schedulingStatuses}
       currentEmployeeName={options.currentEmployeeName}
+      canEdit={permission.canEdit}
+      canDelete={permission.canDelete}
     />
   )
 }

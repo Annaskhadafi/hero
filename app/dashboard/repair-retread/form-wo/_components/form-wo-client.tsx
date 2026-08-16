@@ -182,6 +182,8 @@ type FormWoClientProps = {
   masterCaiList?: MasterCaiRow[]
   customerList?: CustomerRecord[]
   masterPriceList?: RepairMasterPriceRecord[]
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
 type MultiSelectOption = { value: string; label: string }
@@ -1504,11 +1506,13 @@ function ViewDetailDialog({
   onOpenChange,
   item,
   onEdit,
+  canEdit = true,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   item: FormWoRow | null
   onEdit: () => void
+  canEdit?: boolean
 }) {
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -1717,10 +1721,12 @@ function ViewDetailDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Tutup
             </Button>
-            <Button onClick={onEdit} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-              <Pencil className="h-4 w-4" />
-              Edit Form WO
-            </Button>
+            {canEdit && (
+              <Button onClick={onEdit} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                <Pencil className="h-4 w-4" />
+                Edit Form WO
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
@@ -1925,12 +1931,14 @@ function WaitingWoTab({
   onCreateBulkWo,
   caiList = [],
   customerList = [],
+  canEdit = true,
 }: {
   data: WipRepairRecord[]
   onCreateWo: (item: WipRepairRecord) => void
   onCreateBulkWo: (items: WipRepairRecord[]) => void
   caiList?: MasterCaiRow[]
   customerList?: CustomerRecord[]
+  canEdit?: boolean
 }) {
   const [query, setQuery] = useState("")
   const [poMap, setPoMap] = useState<Record<string, { noPo: string; poDate: string }>>({})
@@ -2087,15 +2095,17 @@ function WaitingWoTab({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onCreateBulkWo(selectedRecords)}
-                className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-lg h-9 text-xs font-bold shadow-sm"
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                BUAT WO TERGABUNG ({selectedWipIds.length} Unit)
-              </Button>
+              {canEdit && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onCreateBulkWo(selectedRecords)}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-lg h-9 text-xs font-bold shadow-sm"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  BUAT WO TERGABUNG ({selectedWipIds.length} Unit)
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -2175,15 +2185,17 @@ function WaitingWoTab({
                         />
                       </TableCell>
                       <TableCell className="px-4 py-3">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => onCreateWo(item)}
-                          className="bg-violet-600 hover:bg-violet-700 text-white rounded-lg h-8 text-xs font-semibold"
-                        >
-                          <Plus className="mr-1 h-3.5 w-3.5" />
-                          Buat WO
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => onCreateWo(item)}
+                            className="bg-violet-600 hover:bg-violet-700 text-white rounded-lg h-8 text-xs font-semibold"
+                          >
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            Buat WO
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell className="px-4 py-3 font-mono text-xs font-bold text-violet-700">
                         {nv(item.id_wo)}
@@ -2251,12 +2263,16 @@ function DaftarPengajuanTab({
   onView,
   onEdit,
   onDelete,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: FormWoRow[]
   initialJenisFilter?: string
   onView: (item: FormWoRow) => void
   onEdit: (item: FormWoRow) => void
   onDelete: (item: FormWoRow) => void
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState(ALL_FILTER)
@@ -2597,26 +2613,30 @@ function DaftarPengajuanTab({
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 rounded-lg p-0 text-slate-600 hover:text-blue-600"
-                              title="Edit"
-                              onClick={() => onEdit(item)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 rounded-lg p-0 text-red-500 hover:text-red-700"
-                              title="Hapus"
-                              onClick={() => onDelete(item)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {canEdit && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 rounded-lg p-0 text-slate-600 hover:text-blue-600"
+                                title="Edit"
+                                onClick={() => onEdit(item)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 rounded-lg p-0 text-red-500 hover:text-red-700"
+                                title="Hapus"
+                                onClick={() => onDelete(item)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-3 font-mono text-xs font-semibold">
@@ -2937,9 +2957,13 @@ function DaftarPengajuanTab({
 function MasterDataCaiTab({
   data,
   onRefresh,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: MasterCaiRow[]
   onRefresh: () => void
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const [query, setQuery] = useState("")
   const [customerFilter, setCustomerFilter] = useState("all")
@@ -3063,10 +3087,12 @@ function MasterDataCaiTab({
                 <Download className="mr-1.5 h-4 w-4" />
                 Export Excel
               </Button>
-              <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Tambah CAI
-              </Button>
+              {canEdit && (
+                <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Tambah CAI
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -3108,26 +3134,30 @@ function MasterDataCaiTab({
                         >
                           {copiedCode === item.cai ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 rounded-lg p-0 text-slate-600 hover:text-blue-600"
-                          title="Edit CAI"
-                          onClick={() => handleOpenEdit(item)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 rounded-lg p-0 text-red-500 hover:text-red-700"
-                          title="Hapus CAI"
-                          onClick={() => handleOpenDelete(item)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 rounded-lg p-0 text-slate-600 hover:text-blue-600"
+                            title="Edit CAI"
+                            onClick={() => handleOpenEdit(item)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {canDelete && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 rounded-lg p-0 text-red-500 hover:text-red-700"
+                            title="Hapus CAI"
+                            onClick={() => handleOpenDelete(item)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs font-semibold text-slate-900">
@@ -4524,10 +4554,14 @@ function MasterPriceRepairRetreadTab({
   data = [],
   customerList = [],
   onRefresh,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: RepairMasterPriceRecord[]
   customerList?: CustomerRecord[]
   onRefresh: () => void
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const [query, setQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
@@ -4653,18 +4687,22 @@ function MasterPriceRepairRetreadTab({
 
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => setImportOpen(true)} className="h-10 rounded-xl shrink-0 text-xs">
-                <Upload className="mr-1.5 h-4 w-4" />
-                Import CSV
-              </Button>
+              {canEdit && (
+                <Button type="button" variant="outline" onClick={() => setImportOpen(true)} className="h-10 rounded-xl shrink-0 text-xs">
+                  <Upload className="mr-1.5 h-4 w-4" />
+                  Import CSV
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={() => void handleExport()} className="h-10 rounded-xl shrink-0 text-xs">
                 <Download className="mr-1.5 h-4 w-4" />
                 Export Excel
               </Button>
-              <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
-                <Plus className="mr-1.5 h-4 w-4" />
-                Tambah Master Price
-              </Button>
+              {canEdit && (
+                <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Tambah Master Price
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
@@ -4744,26 +4782,30 @@ function MasterPriceRepairRetreadTab({
                         </TableCell>
                         <TableCell className="text-center text-xs">
                           <div className="flex items-center justify-center gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenEdit(item)}
-                              className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground"
-                              title="Edit Master Price"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenDelete(item)}
-                              className="h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
-                              title="Hapus Master Price"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {canEdit && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenEdit(item)}
+                                className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground"
+                                title="Edit Master Price"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenDelete(item)}
+                                className="h-7 w-7 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
+                                title="Hapus Master Price"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -4862,6 +4904,8 @@ export function FormWoClient({
   masterCaiList = [],
   customerList = [],
   masterPriceList = [],
+  canEdit = true,
+  canDelete = true,
 }: FormWoClientProps) {
   const [activeTab, setActiveTab] = useState("waiting")
 
@@ -4963,32 +5007,34 @@ export function FormWoClient({
           </TabsList>
 
           {/* Quick Create Action Buttons for Service, Repair & Retread WO */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              onClick={() => handleOpenNewWo("service")}
-              className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm text-xs"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Buat WO Service
-            </Button>
-            <Button
-              type="button"
-              onClick={() => handleOpenNewWo("repair")}
-              className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-sm text-xs"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Buat WO Repair
-            </Button>
-            <Button
-              type="button"
-              onClick={() => handleOpenNewWo("retread")}
-              className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm text-xs"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Buat WO Retread
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => handleOpenNewWo("service")}
+                className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm text-xs"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Buat WO Service
+              </Button>
+              <Button
+                type="button"
+                onClick={() => handleOpenNewWo("repair")}
+                className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-sm text-xs"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Buat WO Repair
+              </Button>
+              <Button
+                type="button"
+                onClick={() => handleOpenNewWo("retread")}
+                className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm text-xs"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Buat WO Retread
+              </Button>
+            </div>
+          )}
         </div>
 
         <TabsContent value="waiting">
@@ -4998,15 +5044,29 @@ export function FormWoClient({
             onCreateBulkWo={handleCreateBulkWoFromWip}
             caiList={masterCaiList}
             customerList={customerList}
+            canEdit={canEdit}
           />
         </TabsContent>
 
         <TabsContent value="pengajuan">
-          <DaftarPengajuanTab data={initial} initialJenisFilter="__all__" onView={handleView} onEdit={handleEdit} onDelete={handleDelete} />
+          <DaftarPengajuanTab
+            data={initial}
+            initialJenisFilter="__all__"
+            onView={handleView}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
         </TabsContent>
 
         <TabsContent value="master_cai">
-          <MasterDataCaiTab data={masterCaiList} onRefresh={refreshList} />
+          <MasterDataCaiTab
+            data={masterCaiList}
+            onRefresh={refreshList}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
         </TabsContent>
 
         <TabsContent value="master_price">
@@ -5014,6 +5074,8 @@ export function FormWoClient({
             data={masterPriceList}
             customerList={customerList}
             onRefresh={refreshList}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         </TabsContent>
       </Tabs>
@@ -5046,6 +5108,7 @@ export function FormWoClient({
         onOpenChange={setViewDialogOpen}
         item={selectedFormWo}
         onEdit={() => handleEdit(selectedFormWo!)}
+        canEdit={canEdit}
       />
 
       {/* Delete Dialog */}

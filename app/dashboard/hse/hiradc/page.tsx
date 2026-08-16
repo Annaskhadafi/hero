@@ -24,6 +24,7 @@ export default async function HiradcPage() {
           data={entriesWithRegister} 
           registers={data.registers} 
           canEdit={data.access.canEdit} 
+          canDelete={data.access.canDelete}
         />
       </div>
     </AdminPageShell>

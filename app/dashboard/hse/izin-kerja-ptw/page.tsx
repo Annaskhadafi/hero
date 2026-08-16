@@ -2,6 +2,7 @@ import { AdminPageShell } from "@/components/admin-page-shell";
 import { IzinKerjaPtwWorkspace, type HiradcPtwSource } from "@/components/izin-kerja-ptw-workspace";
 import { getSecurityUsersData } from "@/lib/hero-admin";
 import { getHiradcData } from "@/lib/hiradc/queries";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 function cleanLabel(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -27,7 +28,11 @@ function getHighestRisk(values: string[]) {
 }
 
 export default async function IzinKerjaPtwPage() {
-  const [users, hiradcData] = await Promise.all([getSecurityUsersData(), getHiradcData()]);
+  const [users, hiradcData, permission] = await Promise.all([
+    getSecurityUsersData(),
+    getHiradcData(),
+    getCurrentMenuPermission("hse_izin_kerja_ptw"),
+  ]);
 
   const groupedSources = new Map<string, typeof hiradcData.entries>();
   for (const entry of hiradcData.entries) {
@@ -65,7 +70,12 @@ export default async function IzinKerjaPtwPage() {
       description="Kontrol Permit to Work untuk pekerjaan berisiko, approval lapangan, verifikasi HSE, dan dokumen siap cetak PDF."
       badge="Permit to Work"
     >
-      <IzinKerjaPtwWorkspace users={users} hiradcSources={hiradcSources} />
+      <IzinKerjaPtwWorkspace
+        users={users}
+        hiradcSources={hiradcSources}
+        canEdit={permission.canEdit}
+        canDelete={permission.canDelete}
+      />
     </AdminPageShell>
   );
 }

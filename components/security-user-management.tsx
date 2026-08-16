@@ -268,6 +268,8 @@ export function SecurityUserManagement({
   departments,
   positions,
   sites,
+  canEdit = true,
+  canDelete = true,
 }: {
   users: SecurityUserRecord[]
   roleOptions: Array<{ id: number; name: string }>
@@ -282,6 +284,8 @@ export function SecurityUserManagement({
     departmentId: number | null
   }>
   sites: Array<{ id: number; name: string; location: string }>
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
@@ -553,238 +557,228 @@ export function SecurityUserManagement({
       badge={`${filteredUsers.length}/${users.length} visible`}
       actions={
         <>
-          <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-              >
-                <Upload className="size-4" />
-                Import Pengguna
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Import Daftar Pengguna</DialogTitle>
-                <DialogDescription>
-                  Upload atau tempel CSV/Excel, cocokkan kolom, lalu simpan ke master user.
-                </DialogDescription>
-              </DialogHeader>
+          {canEdit && (
+            <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                >
+                  <Upload className="size-4" />
+                  Import Pengguna
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Import Daftar Pengguna</DialogTitle>
+                  <DialogDescription>
+                    Upload atau tempel CSV/Excel, cocokkan kolom, lalu simpan ke master user.
+                  </DialogDescription>
+                </DialogHeader>
 
-              <form action={formAction} className="space-y-5">
-                <input type="hidden" name="rawCsv" value={rawCsv} />
-                <input type="hidden" name="mappingJson" value={JSON.stringify(mapping)} />
+                <form action={formAction} className="space-y-5">
+                  <input type="hidden" name="rawCsv" value={rawCsv} />
+                  <input type="hidden" name="mappingJson" value={JSON.stringify(mapping)} />
 
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-                  <div className="space-y-4">
-                    <div className="surface-muted-card rounded-[1rem] p-4">
-                      <div className="space-y-3">
-                        <div className="space-y-2">
-                          <p className="text-foreground text-sm font-semibold">
-                            File daftar pengguna
-                          </p>
-                          <Input
-                            type="file"
-                            accept=".csv,.xls,.xlsx,text/csv"
-                            onChange={async (event) => {
-                              const file = event.target.files?.[0]
-                              if (!file) return
-                              const lowerName = file.name.toLowerCase()
-                              if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
-                                const buffer = await file.arrayBuffer()
-                                const XLSX = await import('xlsx')
-                                const workbook = XLSX.read(buffer, { type: 'array' })
-                                const firstSheet = workbook.SheetNames[0]
-                                const worksheet = workbook.Sheets[firstSheet]
-                                const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(worksheet, { header: 1, raw: false, defval: '', blankrows: false })
-                                const normalized = rows.map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim())).filter((r: string[]) => r.some((c: string) => c.length > 0))
-                                const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
-                                setRawCsv(csv)
-                              } else {
-                                setRawCsv(await file.text())
-                              }
-                            }}
-                          />
-                        </div>
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                    <div className="space-y-4">
+                      <div className="surface-muted-card rounded-[1rem] p-4">
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <p className="text-foreground text-sm font-semibold">
+                              File daftar pengguna
+                            </p>
+                            <Input
+                              type="file"
+                              accept=".csv,.xls,.xlsx,text/csv"
+                              onChange={async (event) => {
+                                const file = event.target.files?.[0]
+                                if (!file) return
+                                if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                                  const XLSX = await import('xlsx')
+                                  const buffer = await file.arrayBuffer()
+                                  const workbook = XLSX.read(buffer, { type: 'array' })
+                                  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+                                  const rows = XLSX.utils.sheet_to_json<string[]>(firstSheet, { header: 1 })
+                                  const normalized = rows.map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim())).filter((r: string[]) => r.some((c: string) => c.length > 0))
+                                  const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
+                                  setRawCsv(csv)
+                                } else {
+                                  setRawCsv(await file.text())
+                                }
+                              }}
+                            />
+                          </div>
 
-                        <div className="space-y-2">
-                          <p className="text-foreground text-sm font-semibold">
-                            Tempel daftar manual
-                          </p>
-                          <Textarea
-                            value={rawCsv}
-                            onChange={(event) => setRawCsv(event.target.value)}
-                            className="min-h-56 text-xs"
-                            placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
-                          />
+                          <div className="space-y-2">
+                            <p className="text-foreground text-sm font-semibold">
+                              Tempel daftar manual
+                            </p>
+                            <Textarea
+                              value={rawCsv}
+                              onChange={(event) => setRawCsv(event.target.value)}
+                              className="min-h-56 text-xs"
+                              placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="surface-module-card rounded-[1rem] p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-foreground text-sm font-semibold">Pratinjau data</p>
-                          <p className="text-muted-foreground text-xs">
-                            {parsedImport.records.length} baris, {parsedImport.headers.length} kolom
-                            terdeteksi.
-                          </p>
+                      <div className="surface-module-card rounded-[1rem] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-foreground text-sm font-semibold">Pratinjau data</p>
+                            <p className="text-muted-foreground text-xs">
+                              {parsedImport.records.length} baris, {parsedImport.headers.length} kolom
+                              terdeteksi.
+                            </p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="bg-surface-container-low rounded-full border-0 px-3 py-1"
+                          >
+                            {missingRequiredMappings.length === 0
+                              ? 'Siap import'
+                              : `${missingRequiredMappings.length} kolom wajib`}
+                          </Badge>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="bg-surface-container-low rounded-full border-0 px-3 py-1"
-                        >
-                          {missingRequiredMappings.length === 0
-                            ? 'Siap import'
-                            : `${missingRequiredMappings.length} kolom wajib`}
-                        </Badge>
-                      </div>
 
-                      <div className="bg-surface-container-low mt-4 overflow-x-auto rounded-[0.95rem] p-2">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="hover:bg-transparent">
-                              {parsedImport.headers.length > 0 ? (
-                                parsedImport.headers.map((header) => (
-                                  <TableHead key={header}>{header}</TableHead>
-                                ))
-                              ) : (
-                                <TableHead>Belum ada kolom</TableHead>
-                              )}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {parsedImport.records.slice(0, 4).length > 0 ? (
-                              parsedImport.records.slice(0, 4).map((record, index) => (
-                                <TableRow
-                                  key={`${index}-${record[parsedImport.headers[0]] ?? 'row'}`}
-                                >
+                        <div className="bg-surface-container-low mt-4 overflow-x-auto rounded-[0.95rem] p-2">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="hover:bg-transparent">
+                                {parsedImport.headers.length > 0 ? (
+                                  parsedImport.headers.map((header) => (
+                                    <TableHead key={header}>{header}</TableHead>
+                                  ))
+                                ) : (
+                                  <TableHead>Tidak ada header</TableHead>
+                                )}
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {parsedImport.records.slice(0, 5).map((record, index) => (
+                                <TableRow key={`preview-${index}`} className="hover:bg-transparent">
                                   {parsedImport.headers.map((header) => (
-                                    <TableCell key={`${index}-${header}`} className="text-xs">
+                                    <TableCell key={`${header}-${index}`}>
                                       {record[header] || '-'}
                                     </TableCell>
                                   ))}
                                 </TableRow>
-                              ))
-                            ) : (
-                              <TableRow>
-                                <TableCell className="text-muted-foreground text-sm">
-                                  Unggah atau tempel daftar pengguna untuk melihat pratinjau.
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </TableBody>
-                        </Table>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <div className="surface-module-card rounded-[1rem] p-4">
-                      <p className="text-foreground text-sm font-semibold">Cocokkan Kolom</p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        Semua kolom wajib harus diisi sebelum import dijalankan.
-                      </p>
-                      <div className="mt-4 grid gap-3">
-                        {USER_IMPORT_FIELDS.map((field) => (
-                          <div key={field.key} className="grid gap-2">
-                            <div className="flex items-center gap-2">
-                              <p className="text-foreground text-sm font-medium">{field.label}</p>
-                              {field.required ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-surface-container-low rounded-full"
-                                >
-                                  Wajib
-                                </Badge>
-                              ) : null}
+                    <div className="space-y-4">
+                      <div className="surface-module-card rounded-[1rem] p-4">
+                        <p className="text-foreground text-sm font-semibold">Cocokkan Kolom</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Semua kolom wajib harus diisi sebelum import dijalankan.
+                        </p>
+                        <div className="mt-4 grid gap-3">
+                          {USER_IMPORT_FIELDS.map((field) => (
+                            <div key={field.key} className="grid gap-2">
+                              <div className="flex items-center gap-2">
+                                <p className="text-foreground text-sm font-medium">{field.label}</p>
+                                {field.required ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-surface-container-low rounded-full"
+                                  >
+                                    Wajib
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <Command className="bg-surface-container-lowest rounded-xl border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                                <CommandInput
+                                  placeholder="Pilih kolom sumber"
+                                  value={mapping[field.key] || ''}
+                                  onValueChange={(value) =>
+                                    setMapping((current) => ({
+                                      ...current,
+                                      [field.key]: value,
+                                    }))
+                                  }
+                                />
+                                <CommandList className="max-h-[120px]">
+                                  <CommandEmpty>Tidak ada kolom yang cocok</CommandEmpty>
+                                  <CommandGroup>
+                                    {parsedImport.headers.map((header) => (
+                                      <CommandItem
+                                        key={`${field.key}-${header}`}
+                                        onSelect={() =>
+                                          setMapping((current) => ({
+                                            ...current,
+                                            [field.key]: header,
+                                          }))
+                                        }
+                                      >
+                                        {header}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
                             </div>
-                            <Command className="bg-surface-container-lowest rounded-xl border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
-                              <CommandInput
-                                placeholder="Pilih kolom sumber"
-                                value={mapping[field.key] || ''}
-                                onValueChange={(value) =>
-                                  setMapping((current) => ({
-                                    ...current,
-                                    [field.key]: value,
-                                  }))
-                                }
-                              />
-                              <CommandList className="max-h-[120px]">
-                                <CommandEmpty>Tidak ada kolom yang cocok</CommandEmpty>
-                                <CommandGroup>
-                                  {parsedImport.headers.map((header) => (
-                                    <CommandItem
-                                      key={`${field.key}-${header}`}
-                                      onSelect={() =>
-                                        setMapping((current) => ({
-                                          ...current,
-                                          [field.key]: header,
-                                        }))
-                                      }
-                                    >
-                                      {header}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="surface-muted-card rounded-[1rem] p-4">
+                        <p className="text-foreground text-sm font-semibold">Ringkasan Kolom</p>
+                        <p className="text-muted-foreground mt-2 font-mono text-xs leading-6 whitespace-pre-line">
+                          {toHeaderPreview(mapping)}
+                        </p>
                       </div>
                     </div>
-
-                    <div className="surface-muted-card rounded-[1rem] p-4">
-                      <p className="text-foreground text-sm font-semibold">Ringkasan Kolom</p>
-                      <p className="text-muted-foreground mt-2 font-mono text-xs leading-6 whitespace-pre-line">
-                        {toHeaderPreview(mapping)}
-                      </p>
-                    </div>
                   </div>
-                </div>
 
-                {actionState.status !== 'idle' ? (
-                  <Alert
-                    className={cn(
-                      'border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]',
-                      actionState.status === 'error'
-                        ? 'bg-red-50 text-red-700'
-                        : 'bg-emerald-50 text-emerald-700'
-                    )}
-                  >
-                    <AlertDescription>
-                      {actionState.message}
-                      {actionState.status === 'success' ? (
-                        <span>
-                          {' '}
-                          Baru: {actionState.importedCount ?? 0}, diperbarui:{' '}
-                          {actionState.updatedCount ?? 0}, dilewati: {actionState.skippedCount ?? 0}
-                          .
-                        </span>
-                      ) : null}
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
+                  {actionState.status !== 'idle' ? (
+                    <Alert
+                      className={cn(
+                        'border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]',
+                        actionState.status === 'error'
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-emerald-50 text-emerald-700'
+                      )}
+                    >
+                      <AlertDescription>
+                        {actionState.message}
+                        {actionState.status === 'success' ? (
+                          <span>
+                            {' '}
+                            Baru: {actionState.importedCount ?? 0}, diperbarui:{' '}
+                            {actionState.updatedCount ?? 0}, dilewati: {actionState.skippedCount ?? 0}
+                            .
+                          </span>
+                        ) : null}
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                  <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
-                    Tutup
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      isPending ||
-                      !rawCsv.trim() ||
-                      parsedImport.records.length === 0 ||
-                      missingRequiredMappings.length > 0
-                    }
-                  >
-                    {isPending ? 'Mengimpor...' : 'Import ke Manajemen Pengguna'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
+                      Tutup
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={
+                        isPending ||
+                        !rawCsv.trim() ||
+                        parsedImport.records.length === 0 ||
+                        missingRequiredMappings.length > 0
+                      }
+                    >
+                      {isPending ? 'Mengimpor...' : 'Import ke Manajemen Pengguna'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
 
           <Button
             variant="outline"
@@ -795,14 +789,16 @@ export function SecurityUserManagement({
             <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
           </Button>
 
-          <SecurityUserCreateDialog
-            roleOptions={roleOptions}
-            managerOptions={managerOptions}
-            sections={sections}
-            departments={departments}
-            positions={positions}
-            sites={sites}
-          />
+          {canEdit && (
+            <SecurityUserCreateDialog
+              roleOptions={roleOptions}
+              managerOptions={managerOptions}
+              sections={sections}
+              departments={departments}
+              positions={positions}
+              sites={sites}
+            />
+          )}
         </>
       }
     >
@@ -1440,6 +1436,8 @@ export function SecurityUserManagement({
                               departments={departments}
                               positions={positions}
                               sites={sites}
+                              canEdit={canEdit}
+                              canDelete={canDelete}
                             />
                           </TableCell>
                         </TableRow>

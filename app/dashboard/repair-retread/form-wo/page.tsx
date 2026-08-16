@@ -5,17 +5,19 @@ import { getFormWoList, getFormWoStats, getWaitingWoFromApi } from "@/app/action
 import { getMasterDataCaiList } from "@/app/actions/master-data-cai"
 import { getCustomersAction } from "@/app/actions/customer-management"
 import { getRepairMasterPriceList } from "@/app/actions/master-price-repair-retread"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormWoClient } from "./_components/form-wo-client"
 
 async function FormWoContent() {
-  const [waitingWoList, formWoList, stats, masterCaiList, customerRes, masterPriceList] = await Promise.all([
+  const [waitingWoList, formWoList, stats, masterCaiList, customerRes, masterPriceList, permission] = await Promise.all([
     getWaitingWoFromApi().catch(() => []),
     getFormWoList().catch(() => []),
     getFormWoStats().catch(() => ({ total: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 })),
     getMasterDataCaiList().catch(() => []),
     getCustomersAction({ limit: 1000 }).catch(() => ({ success: false, data: [] })),
     getRepairMasterPriceList().catch(() => []),
+    getCurrentMenuPermission("repair_form_wo"),
   ])
 
   const customerList = customerRes && customerRes.success && Array.isArray(customerRes.data) ? customerRes.data : []
@@ -86,6 +88,8 @@ async function FormWoContent() {
         masterCaiList={masterCaiList}
         customerList={customerList}
         masterPriceList={masterPriceList}
+        canEdit={permission.canEdit}
+        canDelete={permission.canDelete}
       />
     </>
   )

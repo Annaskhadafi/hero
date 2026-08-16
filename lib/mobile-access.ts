@@ -20,9 +20,13 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/chitralearning',
   '/mobile/activity',
   '/mobile/activity/input',
+  '/mobile/hero-genius',
+  '/mobile/sop-win',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/sop-win', mobile: '/mobile/sop-win' },
+  { desktop: '/dashboard/hero-genius', mobile: '/mobile/hero-genius' },
   { desktop: '/dashboard/apd', mobile: '/mobile/apd' },
   { desktop: '/dashboard/activity-hub/my-day', mobile: '/mobile/activity/input' },
   { desktop: '/dashboard/activity-hub', mobile: '/mobile/activity' },
@@ -112,6 +116,7 @@ const fallbackMobileSegments = new Set([
   'service-form',
   'sia-sio-tools',
   'tire-inspection',
+  'sop-win',
 ])
 
 export function getMobileUrlForDesktopUrl(desktopUrl: string): string | null {

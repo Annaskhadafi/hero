@@ -42,6 +42,8 @@ import {
   Lock,
   Edit3,
   Key,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import type { IndividualDashboardData } from "@/lib/analytics-dashboard-data"
 import { submitAttendance } from "@/app/actions/attendance"
@@ -51,6 +53,7 @@ import { PermissionRequestForm } from "@/components/attendance/permission-reques
 import { MobileOvertimeRequestForm } from "@/components/mobile/mobile-overtime-request-form"
 import { submitMobileOvertimeRequestAction } from "@/app/dashboard/activity-hub/actions"
 import { uploadFile } from "@/app/actions/upload"
+import { changeMyPasswordDirectAction } from "@/app/dashboard/profile/actions"
 import {
   Dialog,
   DialogContent,
@@ -300,88 +303,143 @@ function DesktopChangePasswordView({ onClose }: { onClose: () => void }) {
   const [oldPassword, setOldPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [showOld, setShowOld] = useState(false)
+  const [showNew, setShowNew] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (newPassword !== confirmPassword) {
-      setError("Konfirmasi password baru tidak cocok.")
+    if (!oldPassword.trim()) {
+      setError("Password saat ini wajib diisi.")
       return
     }
     if (newPassword.length < 6) {
       setError("Password baru minimal 6 karakter.")
       return
     }
+    if (newPassword !== confirmPassword) {
+      setError("Konfirmasi password baru tidak cocok.")
+      return
+    }
 
     setError(null)
     setSubmitting(true)
-    setTimeout(() => {
+
+    try {
+      const res = await changeMyPasswordDirectAction({
+        currentPassword: oldPassword,
+        newPassword,
+      })
+
+      if (!res.ok) {
+        setError(res.message || "Gagal mengubah password. Pastikan password lama sudah benar.")
+        setSubmitting(false)
+        return
+      }
+
       setSubmitting(false)
       setSuccess(true)
-    }, 800)
+      setOldPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (err: any) {
+      console.error("[ChangePassword] Error updating password:", err)
+      setError(err?.message || "Terjadi kesalahan sistem saat memperbarui password.")
+      setSubmitting(false)
+    }
   }
 
   return (
     <div className="p-6 bg-slate-50/80 dark:bg-slate-900 text-slate-800 dark:text-white space-y-4 max-w-md mx-auto text-left">
       {success ? (
-        <div className="space-y-4 p-6 text-center rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+        <div className="space-y-4 p-6 text-center rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 animate-in fade-in zoom-in-95">
           <div className="h-16 w-16 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center text-2xl font-bold shadow-md">✓</div>
           <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-200">Password Berhasil Diubah!</h4>
-          <p className="text-xs text-emerald-600 dark:text-emerald-300">Gunakan password baru Anda untuk login berikutnya.</p>
-          <button onClick={onClose} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">Selesai & Tutup</button>
+          <p className="text-xs text-emerald-600 dark:text-emerald-300">Password akun Anda telah berhasil diperbarui. Silakan gunakan password baru ini saat login berikutnya.</p>
+          <button onClick={onClose} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md hover:bg-emerald-700 transition">Selesai & Tutup</button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300">
-              ⚠️ {error}
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="size-4 shrink-0 text-rose-600 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Password Saat Ini</label>
-            <input
-              type="password"
-              required
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              placeholder="Masukkan password saat ini"
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
-            />
+            <div className="relative">
+              <input
+                type={showOld ? "text" : "password"}
+                required
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                placeholder="Masukkan password saat ini"
+                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOld(!showOld)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                {showOld ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Password Baru</label>
-            <input
-              type="password"
-              required
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Masukkan password baru (min. 6 karakter)"
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
-            />
+            <div className="relative">
+              <input
+                type={showNew ? "text" : "password"}
+                required
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Masukkan password baru (min. 6 karakter)"
+                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNew(!showNew)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Konfirmasi Password Baru</label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Ketik ulang password baru"
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
-            />
+            <div className="relative">
+              <input
+                type={showConfirm ? "text" : "password"}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Ketik ulang password baru"
+                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={submitting || !oldPassword || !newPassword || !confirmPassword}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white text-xs font-black shadow-lg shadow-amber-500/20 transition disabled:opacity-50"
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white text-xs font-black shadow-lg shadow-amber-500/20 transition disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {submitting ? "Memproses Perubahan..." : "🔑 SIMPAN PASSWORD BARU"}
+            <Key className="size-4" />
+            {submitting ? "Memproses Perubahan..." : "SIMPAN PASSWORD BARU"}
           </button>
         </form>
       )}

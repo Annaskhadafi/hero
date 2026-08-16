@@ -1163,6 +1163,8 @@ export function SchedulingTimesheetWorkspace({
   activities = EMPTY_ACTIVITIES,
   currentEmployeeSiteId = null,
   currentEmployeeName = 'User Management',
+  canEdit = true,
+  canDelete = true,
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
@@ -1225,6 +1227,8 @@ export function SchedulingTimesheetWorkspace({
     endTime: string
     status: string
   }>
+  canEdit?: boolean
+  canDelete?: boolean
 }) {
   const router = useRouter()
   const [period, setPeriod] = useState(currentMonthPeriod)
@@ -6049,21 +6053,23 @@ export function SchedulingTimesheetWorkspace({
                                             >
                                               Lihat / Edit
                                             </Button>
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={isDeletingScheduleHistory}
-                                              onClick={() =>
-                                                setDeleteScheduleHistoryTarget({
-                                                  siteId: history.siteId,
-                                                  period: history.period,
-                                                  siteName: history.siteName,
-                                                })
-                                              }
-                                            >
-                                              <Trash2 className="mr-2 size-4" />
-                                              Hapus
-                                            </Button>
+                                            {canDelete && (
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={isDeletingScheduleHistory}
+                                                onClick={() =>
+                                                  setDeleteScheduleHistoryTarget({
+                                                    siteId: history.siteId,
+                                                    period: history.period,
+                                                    siteName: history.siteName,
+                                                  })
+                                                }
+                                              >
+                                                <Trash2 className="mr-2 size-4" />
+                                                Hapus
+                                              </Button>
+                                            )}
                                           </div>
                                         </td>
                                       </tr>
@@ -6521,16 +6527,18 @@ export function SchedulingTimesheetWorkspace({
                       Tersimpan per site — tidak perlu set ulang setiap bulan.
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    disabled={siteId === 'all' || isFinalized}
-                    onClick={() => {
-                      saveSiteConfig()
-                      setSiteConfigDialogOpen(false)
-                    }}
-                  >
-                    <Save className="mr-2 size-4" /> Simpan Setting
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      disabled={siteId === 'all' || isFinalized}
+                      onClick={() => {
+                        saveSiteConfig()
+                        setSiteConfigDialogOpen(false)
+                      }}
+                    >
+                      <Save className="mr-2 size-4" /> Simpan Setting
+                    </Button>
+                  )}
                 </div>
                 <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-1.5">
@@ -7513,9 +7521,11 @@ export function SchedulingTimesheetWorkspace({
                   <Button size="sm" variant="outline" onClick={resetAllowanceVariables}>
                     Reset
                   </Button>
-                  <Button size="sm" onClick={saveAllowanceVariables}>
-                    <Save className="mr-2 size-4" /> Simpan MSA/Meals
-                  </Button>
+                  {canEdit && (
+                    <Button size="sm" onClick={saveAllowanceVariables}>
+                      <Save className="mr-2 size-4" /> Simpan MSA/Meals
+                    </Button>
+                  )}
                 </div>
               </div>
               <div className="overflow-auto">
@@ -7631,9 +7641,11 @@ export function SchedulingTimesheetWorkspace({
                   <Button size="sm" variant="outline" onClick={resetOvertimeVariables}>
                     Reset
                   </Button>
-                  <Button size="sm" onClick={saveOvertimeVariables}>
-                    <Save className="mr-2 size-4" /> Simpan Perhitungan Payroll
-                  </Button>
+                  {canEdit && (
+                    <Button size="sm" onClick={saveOvertimeVariables}>
+                      <Save className="mr-2 size-4" /> Simpan Perhitungan Payroll
+                    </Button>
+                  )}
                 </div>
               </div>
               <div className="overflow-auto">
@@ -7959,49 +7971,53 @@ export function SchedulingTimesheetWorkspace({
                         <ChevronLeft className="mr-1 size-4" /> Kembali ke list
                       </Button>
                       <div className="hidden h-4 w-px bg-border/60 sm:block" />
-                      <Button
-                        size="sm"
-                        disabled={!isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized}
-                        onClick={saveAttendanceReal}
-                        className={cn(
-                          'h-9 px-4 text-xs font-semibold shadow-xs transition-all',
-                          isAttendanceDirty
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse'
-                            : 'bg-slate-900 text-white hover:bg-slate-800'
-                        )}
-                      >
-                        <Save className="mr-1.5 size-4" />
-                        {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          disabled={!isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized}
+                          onClick={saveAttendanceReal}
+                          className={cn(
+                            'h-9 px-4 text-xs font-semibold shadow-xs transition-all',
+                            isAttendanceDirty
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse'
+                              : 'bg-slate-900 text-white hover:bg-slate-800'
+                          )}
+                        >
+                          <Save className="mr-1.5 size-4" />
+                          {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
+                        </Button>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-surface-container-low/60 px-5 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant={lastImportSuccess ? 'default' : 'outline'}
-                        disabled={isFinalized || isImportingExcel}
-                        onClick={() => attendanceFileInputRef.current?.click()}
-                        className={cn(
-                          'h-8.5 rounded-lg text-xs font-medium',
-                          lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white'
-                        )}
-                      >
-                        {isImportingExcel ? (
-                          <>
-                            <RefreshCw className="mr-1.5 size-3.5 animate-spin" /> Memproses...
-                          </>
-                        ) : lastImportSuccess ? (
-                          <>
-                            <Check className="mr-1.5 size-3.5" /> Berhasil ({lastImportSuccess.matched} matched)
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="mr-1.5 size-3.5 text-slate-500" /> Import Excel
-                          </>
-                        )}
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant={lastImportSuccess ? 'default' : 'outline'}
+                          disabled={isFinalized || isImportingExcel}
+                          onClick={() => attendanceFileInputRef.current?.click()}
+                          className={cn(
+                            'h-8.5 rounded-lg text-xs font-medium',
+                            lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white'
+                          )}
+                        >
+                          {isImportingExcel ? (
+                            <>
+                              <RefreshCw className="mr-1.5 size-3.5 animate-spin" /> Memproses...
+                            </>
+                          ) : lastImportSuccess ? (
+                            <>
+                              <Check className="mr-1.5 size-3.5" /> Berhasil ({lastImportSuccess.matched} matched)
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-1.5 size-3.5 text-slate-500" /> Import Excel
+                            </>
+                          )}
+                        </Button>
+                      )}
                       <Input
                         ref={attendanceFileInputRef}
                         disabled={isFinalized || isImportingExcel}
@@ -9427,22 +9443,26 @@ export function SchedulingTimesheetWorkspace({
                           : 'Belum tersimpan',
                       ])}
                     />
-                    <Button
-                      variant="outline"
-                      disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
-                      onClick={generateFieldBreakYear}
-                      className="h-10"
-                    >
-                      <RefreshCw className="size-4" /> Generate
-                    </Button>
-                    <Button
-                      disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
-                      onClick={syncFieldBreakPlansToDatabase}
-                      className="h-10"
-                    >
-                      <Save className="size-4" />
-                      {isSavingFieldBreak ? 'Menyimpan' : 'Simpan'}
-                    </Button>
+                    {canEdit && (
+                      <>
+                        <Button
+                          variant="outline"
+                          disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                          onClick={generateFieldBreakYear}
+                          className="h-10"
+                        >
+                          <RefreshCw className="size-4" /> Generate
+                        </Button>
+                        <Button
+                          disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                          onClick={syncFieldBreakPlansToDatabase}
+                          className="h-10"
+                        >
+                          <Save className="size-4" />
+                          {isSavingFieldBreak ? 'Menyimpan' : 'Simpan'}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { getMasterDataPageData } from "@/lib/master-data";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { MasterDataManagement } from "@/components/master-data-management";
 
 export default async function MasterDataPage({
@@ -6,7 +7,10 @@ export default async function MasterDataPage({
 }: {
   searchParams?: Promise<{ tab?: string }>
 }) {
-  const data = await getMasterDataPageData();
+  const [data, permission] = await Promise.all([
+    getMasterDataPageData(),
+    getCurrentMenuPermission("master_data"),
+  ]);
   const tab = (await searchParams)?.tab;
 
   return (
@@ -24,7 +28,10 @@ export default async function MasterDataPage({
         employees={data.employees}
         levelStaff={data.levelStaff}
         defaultTab={tab}
+        canEdit={permission.canEdit}
+        canDelete={permission.canDelete}
       />
     </div>
   );
 }
+
