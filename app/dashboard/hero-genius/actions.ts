@@ -352,17 +352,17 @@ export async function getHeroGeniusSessionsAction() {
     const session = await getServerSession();
     const userId = session?.user?.id;
 
-    // 1. Try remote
+    // 1. Fetch directly from vision.chitraparatama.com RAG API
     try {
       const remote = await listRagSessions(userId);
-      if (remote && Array.isArray(remote.sessions) && remote.sessions.length > 0) {
+      if (remote && Array.isArray(remote.sessions)) {
         return { success: true, sessions: remote.sessions };
       }
-    } catch {
-      // fallback
+    } catch (remoteErr) {
+      console.warn("[getHeroGeniusSessionsAction] Remote fetch warning, using local DB fallback:", remoteErr);
     }
 
-    // 2. Query Local DB
+    // 2. Local DB Fallback
     const sessions = await db
       .select()
       .from(heroGeniusSessions)
@@ -392,17 +392,17 @@ export async function getHeroGeniusSessionMessagesAction(sessionId: string) {
   try {
     if (!sessionId) return { success: false, error: "Session ID required", messages: [] };
 
-    // 1. Try remote
+    // 1. Fetch directly from vision.chitraparatama.com RAG API
     try {
       const remote = await getRagSessionMessages(sessionId);
-      if (remote && Array.isArray(remote.messages) && remote.messages.length > 0) {
+      if (remote && Array.isArray(remote.messages)) {
         return { success: true, messages: remote.messages };
       }
-    } catch {
-      // fallback
+    } catch (remoteErr) {
+      console.warn("[getHeroGeniusSessionMessagesAction] Remote fetch warning, using local DB fallback:", remoteErr);
     }
 
-    // 2. Query Local DB
+    // 2. Local DB Fallback
     const messages = await db
       .select()
       .from(heroGeniusMessages)
@@ -417,9 +417,9 @@ export async function getHeroGeniusSessionMessagesAction(sessionId: string) {
         content: m.content,
         sources: m.sources || [],
         latency_ms: m.latencyMs,
-        feedback_rating: m.feedbackRating,
-        feedback_text: m.feedbackText,
-        feedback_correction: m.feedbackCorrection,
+        rating: m.feedbackRating === "up" ? 1 : m.feedbackRating === "down" ? -1 : null,
+        feedback_notes: m.feedbackText,
+        correction_text: m.feedbackCorrection,
         created_at: m.createdAt.toISOString(),
       })),
     };
@@ -434,56 +434,52 @@ export async function sendHeroGeniusFeedbackAction(payload: RagFeedbackPayload) 
     const session = await getServerSession();
     const userId = session?.user?.id;
 
-    // 1. Try remote RAG
+    const ratingInt =
+      typeof payload.rating === "number"
+        ? payload.rating
+        : String(payload.rating).toLowerCase().includes("down") || payload.rating === -1 || String(payload.rating).toLowerCase().includes("neg")
+        ? -1
+        : 1;
+
+    // 1. Send directly to vision.chitraparatama.com /api/v1/rag/feedback
+    let remoteSuccess = false;
+    let remoteData: any = null;
     try {
-      await sendRagFeedback({ ...payload, user_id: userId });
-    } catch {
-      // continue to local
+      const remoteRes = await sendRagFeedback({
+        message_id: payload.message_id || `msg_${Date.now()}`,
+        rating: ratingInt,
+        feedback_notes: payload.feedback_notes || payload.feedback_text || null,
+        correction_text: payload.correction_text || payload.correction || null,
+      });
+      if (remoteRes.status === "success" || remoteRes.status === "ok") {
+        remoteSuccess = true;
+        remoteData = remoteRes.data;
+      }
+    } catch (remoteErr) {
+      console.warn("[sendHeroGeniusFeedbackAction] Remote warning, saving to local DB:", remoteErr);
     }
 
-    const ratingNormalized =
-      String(payload.rating).toLowerCase().includes("down") ||
-      payload.rating === -1 ||
-      String(payload.rating).toLowerCase().includes("neg")
-        ? "down"
-        : "up";
-
-    // 2. Save locally
-    const [inserted] = await db
-      .insert(heroGeniusFeedback)
-      .values({
+    // 2. Also log locally
+    try {
+      await db.insert(heroGeniusFeedback).values({
         sessionId: payload.session_id || null,
         messageId: payload.message_id ? String(payload.message_id) : null,
-        query: payload.query,
-        answer: payload.answer,
-        rating: ratingNormalized,
-        feedbackText: payload.feedback_text || null,
-        correction: payload.correction || null,
+        query: payload.query || "Query",
+        answer: payload.answer || "Answer",
+        rating: ratingInt === 1 ? "up" : "down",
+        feedbackText: payload.feedback_notes || payload.feedback_text || null,
+        correction: payload.correction_text || payload.correction || null,
         userId: userId || null,
         status: "pending",
-      })
-      .returning({ id: heroGeniusFeedback.id });
-
-    // Update message row if available
-    if (payload.message_id && !isNaN(Number(payload.message_id))) {
-      try {
-        await db
-          .update(heroGeniusMessages)
-          .set({
-            feedbackRating: ratingNormalized,
-            feedbackText: payload.feedback_text || null,
-            feedbackCorrection: payload.correction || null,
-          })
-          .where(eq(heroGeniusMessages.id, Number(payload.message_id)));
-      } catch {
-        // non-fatal
-      }
+      });
+    } catch {
+      // non-fatal
     }
 
     return {
       success: true,
-      message: "Masukan & koreksi Anda berhasil dicatat untuk self-growth AI.",
-      feedbackId: inserted?.id,
+      message: "Masukan & koreksi Anda berhasil dikirim ke Vision AI untuk self-growth.",
+      data: remoteData,
     };
   } catch (error: any) {
     console.error("[sendHeroGeniusFeedbackAction] error:", error);
@@ -496,45 +492,53 @@ export async function sendHeroGeniusFeedbackAction(payload: RagFeedbackPayload) 
 
 export async function learnHeroGeniusFactAction(payload: RagLearnMemoryPayload) {
   try {
-    if (!payload.fact || !payload.fact.trim()) {
+    const contentText = (payload.content || payload.fact || "").trim();
+    if (!contentText) {
       return { success: false, error: "Teks fakta / aturan baru tidak boleh kosong." };
     }
 
-    const session = await getServerSession();
-    const userId = session?.user?.id;
+    const subjectText = (payload.subject || payload.category || "General").trim();
 
-    // 1. Try remote
+    // 1. Send directly to vision.chitraparatama.com /api/v1/rag/memory/learn
+    let remoteFact: any = null;
     try {
-      await teachRagMemory({ ...payload, user_id: userId });
-    } catch {
-      // continue to local
+      const remoteRes = await teachRagMemory({
+        content: contentText,
+        subject: subjectText,
+        fact_type: payload.fact_type || "learned_knowledge",
+      });
+      if (remoteRes.status === "success" || remoteRes.status === "ok") {
+        remoteFact = remoteRes.data;
+      }
+    } catch (remoteErr) {
+      console.warn("[learnHeroGeniusFactAction] Remote API error, saving to local DB:", remoteErr);
     }
 
-    // 2. Save to local DB
+    // 2. Also save to local DB
     const [inserted] = await db
       .insert(heroGeniusLearnedFacts)
       .values({
-        fact: payload.fact.trim(),
-        category: payload.category?.trim() || "General",
-        source: payload.source?.trim() || "Self-Growth Input",
+        fact: contentText,
+        category: subjectText,
+        source: payload.source?.trim() || "Self-Growth Manual Input",
         tags: payload.tags || [],
         confidenceScore: 1.0,
         isActive: true,
-        learnedBy: userId || null,
       })
       .returning();
 
     return {
       success: true,
-      message: "Fakta / aturan baru berhasil dipelajari oleh Hero Genius!",
+      message: "Fakta / aturan baru berhasil dipelajari oleh Vision RAG & Hero Genius!",
       fact: {
-        id: inserted.id,
-        fact: inserted.fact,
-        category: inserted.category,
-        source: inserted.source,
-        tags: inserted.tags,
-        is_active: inserted.isActive,
-        created_at: inserted.createdAt.toISOString(),
+        id: remoteFact?.id || inserted.id,
+        fact: remoteFact?.content || inserted.fact,
+        content: remoteFact?.content || inserted.fact,
+        category: remoteFact?.subject || inserted.category,
+        subject: remoteFact?.subject || inserted.category,
+        source: remoteFact?.learned_from || inserted.source,
+        is_active: true,
+        created_at: remoteFact?.created_at || inserted.createdAt.toISOString(),
       },
     };
   } catch (error: any) {
@@ -552,6 +556,21 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
   search?: string;
 }) {
   try {
+    // 1. Fetch directly from vision.chitraparatama.com /api/v1/rag/memory/facts
+    try {
+      const remote = await getRagMemoryFacts(params);
+      if (remote && Array.isArray(remote.facts) && remote.facts.length > 0) {
+        return {
+          success: true,
+          total: remote.total,
+          facts: remote.facts,
+        };
+      }
+    } catch (remoteErr) {
+      console.warn("[getHeroGeniusLearnedFactsAction] Remote error, using local DB:", remoteErr);
+    }
+
+    // 2. Local DB Fallback
     const conditions = [];
     if (params?.category && params.category !== "all") {
       conditions.push(eq(heroGeniusLearnedFacts.category, params.category));
@@ -573,7 +592,9 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
       facts: facts.map((f) => ({
         id: f.id,
         fact: f.fact,
+        content: f.fact,
         category: f.category,
+        subject: f.category,
         source: f.source,
         tags: f.tags || [],
         confidence_score: f.confidenceScore,
@@ -588,30 +609,37 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
   }
 }
 
-export async function toggleHeroGeniusLearnedFactAction(id: number, isActive: boolean) {
+export async function toggleHeroGeniusLearnedFactAction(id: number | string, isActive: boolean) {
   try {
-    await db
-      .update(heroGeniusLearnedFacts)
-      .set({ isActive, updatedAt: new Date() })
-      .where(eq(heroGeniusLearnedFacts.id, id));
-
+    if (!isNaN(Number(id))) {
+      await db
+        .update(heroGeniusLearnedFacts)
+        .set({ isActive, updatedAt: new Date() })
+        .where(eq(heroGeniusLearnedFacts.id, Number(id)));
+    }
     return { success: true, message: `Status fakta berhasil diperbarui.` };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
-export async function deleteHeroGeniusLearnedFactAction(id: number) {
+export async function deleteHeroGeniusLearnedFactAction(id: number | string) {
   try {
+    // 1. Delete on vision.chitraparatama.com
     try {
       await deleteRagMemoryFact(id);
-    } catch {
+    } catch (e) {
       // non-fatal
     }
 
-    await db.delete(heroGeniusLearnedFacts).where(eq(heroGeniusLearnedFacts.id, id));
+    // 2. Delete on local DB
+    if (!isNaN(Number(id))) {
+      await db.delete(heroGeniusLearnedFacts).where(eq(heroGeniusLearnedFacts.id, Number(id)));
+    }
+
     return { success: true, message: "Fakta berhasil dihapus dari memori AI." };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
+

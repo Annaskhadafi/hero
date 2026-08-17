@@ -376,85 +376,108 @@ export async function getRagRedisStatus(): Promise<RagRedisStatusResponse> {
 export interface RagSessionItem {
   id: string
   session_id?: string
-  user_id?: string | null
   title?: string
-  summary?: string | null
   message_count?: number
-  last_active_at?: string
   created_at?: string
+  updated_at?: string
+  user_id?: string | null
+  summary?: string | null
+  last_active_at?: string
 }
 
 export interface RagSessionsResponse {
   status: string
   total?: number
-  sessions: RagSessionItem[]
+  data?: RagSessionItem[]
+  sessions?: RagSessionItem[]
+}
+
+export interface RagSessionMessageItem {
+  id: string | number
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  sources?: RagSourceItem[]
+  rating?: number | null
+  feedback_notes?: string | null
+  correction_text?: string | null
+  latency_ms?: number
+  created_at?: string
 }
 
 export interface RagSessionMessagesResponse {
   status: string
   session_id: string
-  messages: Array<{
-    id?: string | number
-    role: 'user' | 'assistant' | 'system'
-    content: string
-    sources?: RagSourceItem[]
-    latency_ms?: number
-    created_at?: string
-  }>
+  data?: RagSessionMessageItem[]
+  messages?: RagSessionMessageItem[]
 }
 
 export interface RagFeedbackPayload {
+  message_id: string
+  rating: number // 1 for thumbs up, -1 for thumbs down
+  feedback_notes?: string | null
+  correction_text?: string | null
   session_id?: string | null
-  message_id?: string | null
-  query: string
-  answer: string
-  rating: 'up' | 'down' | 'positive' | 'negative' | number
-  feedback_text?: string | null
-  correction?: string | null
+  query?: string | null
+  answer?: string | null
   user_id?: string | null
 }
 
 export interface RagFeedbackResponse {
   status: string
-  message: string
-  feedback_id?: string | number
+  message?: string
+  data?: {
+    message_id: string
+    rating: number
+    feedback_notes?: string | null
+    correction_text?: string | null
+    learned_fact?: any
+  }
 }
 
 export interface RagLearnMemoryPayload {
-  fact: string
+  content: string
+  subject?: string
+  fact_type?: string
+  // Aliases for compatibility
+  fact?: string
   category?: string
   source?: string
   tags?: string[]
-  user_id?: string | null
 }
 
 export interface RagLearnMemoryResponse {
   status: string
-  message: string
+  message?: string
   data?: {
-    fact_id: string | number
-    fact: string
-    category: string
+    id: string
+    subject?: string
+    content: string
+    fact_type: string
+    learned_from?: string
     created_at?: string
   }
 }
 
 export interface RagMemoryFactItem {
   id: string | number
-  fact: string
-  category: string
-  source?: string | null
-  tags?: string[]
+  subject?: string
+  content: string
+  fact_type?: string
+  learned_from?: string
   confidence_score?: number
-  is_active?: boolean
-  learned_by?: string | null
   created_at?: string
+  // Aliases
+  fact?: string
+  category?: string
+  source?: string
+  is_active?: boolean
 }
 
 export interface RagMemoryFactsResponse {
   status: string
   total: number
-  facts: RagMemoryFactItem[]
+  data?: RagMemoryFactItem[]
+  facts?: RagMemoryFactItem[]
 }
 
 /**
@@ -475,7 +498,22 @@ export async function listRagSessions(userId?: string): Promise<RagSessionsRespo
     throw new Error(`Failed to list sessions (${res.status}): ${await res.text()}`)
   }
 
-  return res.json()
+  const json = await res.json()
+  const rawList = json.data || json.sessions || []
+  return {
+    status: json.status || 'success',
+    total: json.total ?? rawList.length,
+    sessions: rawList.map((s: any) => ({
+      id: s.id || s.session_id,
+      session_id: s.id || s.session_id,
+      title: s.title || 'Percakapan',
+      message_count: s.message_count || 0,
+      created_at: s.created_at,
+      updated_at: s.updated_at,
+      last_active_at: s.updated_at || s.created_at,
+    })),
+    data: rawList,
+  }
 }
 
 /**
@@ -498,23 +536,31 @@ export async function getRagSessionMessages(sessionId: string): Promise<RagSessi
     })
     if (fallbackRes.ok) {
       const data = await fallbackRes.json()
+      const rawHistory = Array.isArray(data.history) ? data.history : []
+      const mapped = rawHistory.map((h: any, idx: number) => ({
+        id: idx,
+        role: h.role,
+        content: h.content,
+        created_at: h.timestamp || new Date().toISOString(),
+      }))
       return {
-        status: 'ok',
+        status: 'success',
         session_id: sessionId,
-        messages: Array.isArray(data.history)
-          ? data.history.map((h: any, idx: number) => ({
-              id: idx,
-              role: h.role,
-              content: h.content,
-              created_at: h.timestamp || new Date().toISOString(),
-            }))
-          : [],
+        messages: mapped,
+        data: mapped,
       }
     }
     throw new Error(`Failed to fetch session messages: ${await res.text()}`)
   }
 
-  return res.json()
+  const json = await res.json()
+  const rawMessages = json.data || json.messages || []
+  return {
+    status: json.status || 'success',
+    session_id: json.session_id || sessionId,
+    messages: rawMessages,
+    data: rawMessages,
+  }
 }
 
 /**
@@ -522,13 +568,25 @@ export async function getRagSessionMessages(sessionId: string): Promise<RagSessi
  */
 export async function sendRagFeedback(payload: RagFeedbackPayload): Promise<RagFeedbackResponse> {
   const baseUrl = getRagBaseUrl()
+
+  const ratingInt = typeof payload.rating === 'number'
+    ? payload.rating
+    : String(payload.rating).toLowerCase().includes('down') ? -1 : 1
+
+  const body = {
+    message_id: payload.message_id || `msg_${Date.now()}`,
+    rating: ratingInt,
+    feedback_notes: payload.feedback_notes || null,
+    correction_text: payload.correction_text || null,
+  }
+
   const res = await fetch(`${baseUrl}/rag/feedback`, {
     method: 'POST',
     headers: {
       ...getAuthHeaders(),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
     cache: 'no-store',
   })
 
@@ -545,13 +603,21 @@ export async function sendRagFeedback(payload: RagFeedbackPayload): Promise<RagF
  */
 export async function teachRagMemory(payload: RagLearnMemoryPayload): Promise<RagLearnMemoryResponse> {
   const baseUrl = getRagBaseUrl()
+
+  const contentText = payload.content || payload.fact || ''
+  const subjectText = payload.subject || payload.category || 'General'
+
   const res = await fetch(`${baseUrl}/rag/memory/learn`, {
     method: 'POST',
     headers: {
       ...getAuthHeaders(),
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      content: contentText,
+      subject: subjectText,
+      fact_type: payload.fact_type || 'learned_knowledge',
+    }),
     cache: 'no-store',
   })
 
@@ -573,9 +639,6 @@ export async function getRagMemoryFacts(params?: {
 }): Promise<RagMemoryFactsResponse> {
   const baseUrl = getRagBaseUrl()
   const url = new URL(`${baseUrl}/rag/memory/facts`)
-  if (params?.limit) url.searchParams.set('limit', String(params.limit))
-  if (params?.category) url.searchParams.set('category', params.category)
-  if (params?.search) url.searchParams.set('search', params.search)
 
   const res = await fetch(url.toString(), {
     method: 'GET',
@@ -587,7 +650,24 @@ export async function getRagMemoryFacts(params?: {
     throw new Error(`Failed to get memory facts (${res.status}): ${await res.text()}`)
   }
 
-  return res.json()
+  const json = await res.json()
+  const rawList = json.data || json.facts || []
+  return {
+    status: json.status || 'success',
+    total: json.total ?? rawList.length,
+    facts: rawList.map((f: any) => ({
+      id: f.id,
+      content: f.content || f.fact,
+      fact: f.content || f.fact,
+      subject: f.subject || f.category || 'General',
+      category: f.subject || f.category || 'General',
+      source: f.learned_from || 'Direct Input',
+      confidence_score: f.confidence_score ?? 1.0,
+      is_active: true,
+      created_at: f.created_at,
+    })),
+    data: rawList,
+  }
 }
 
 /**
@@ -606,3 +686,4 @@ export async function deleteRagMemoryFact(factId: string | number): Promise<{ st
 
   return res.json()
 }
+
