@@ -23,6 +23,7 @@ import {
   retrySopWinRagItem,
   retryAllFailedSopWinRag,
   triggerSopWinRagWorker,
+  syncAndAutoChunkAllSopWinDocuments,
 } from "@/lib/sop-win-rag-queue";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
@@ -503,6 +504,7 @@ export async function getSopWinDocumentsAction(filters?: {
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
         ragDocumentId: sopWinDocuments.ragDocumentId,
+        ragChunksCount: sopWinDocuments.ragChunksCount,
         ragStatus: sopWinDocuments.ragStatus,
         ragErrorMessage: sopWinDocuments.ragErrorMessage,
         ragProcessedAt: sopWinDocuments.ragProcessedAt,
@@ -580,6 +582,7 @@ export async function getSopWinDocumentDetailAction(documentId: number) {
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
         ragDocumentId: sopWinDocuments.ragDocumentId,
+        ragChunksCount: sopWinDocuments.ragChunksCount,
         ragStatus: sopWinDocuments.ragStatus,
         ragErrorMessage: sopWinDocuments.ragErrorMessage,
         ragProcessedAt: sopWinDocuments.ragProcessedAt,
@@ -618,6 +621,7 @@ export async function getSopWinDocumentDetailAction(documentId: number) {
         pdfFileUrl: sopWinRevisions.pdfFileUrl,
         docxFileUrl: sopWinRevisions.docxFileUrl,
         ragDocumentId: sopWinRevisions.ragDocumentId,
+        ragChunksCount: sopWinRevisions.ragChunksCount,
         ragStatus: sopWinRevisions.ragStatus,
         ragErrorMessage: sopWinRevisions.ragErrorMessage,
         createdAt: sopWinRevisions.createdAt,
@@ -1231,6 +1235,18 @@ export async function retrySopWinRagItemAction(documentId: number) {
  */
 export async function retryAllFailedSopWinRagAction() {
   const res = await retryAllFailedSopWinRag();
+  if (res.success) {
+    safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+  }
+  return res;
+}
+
+/**
+ * 12. Sync All Documents with RAG and Auto-Chunk unchunked items
+ */
+export async function syncAndAutoChunkSopWinAction() {
+  const res = await syncAndAutoChunkAllSopWinDocuments();
   if (res.success) {
     safeRevalidatePath("/dashboard/sop-win");
     safeRevalidatePath("/mobile/sop-win");

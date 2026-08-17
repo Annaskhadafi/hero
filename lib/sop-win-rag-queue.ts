@@ -4,8 +4,8 @@ import {
   sopWinRevisions,
   sopWinRagQueue,
 } from "@/db/schema/hero";
-import { eq, asc, sql, desc } from "drizzle-orm";
-import { ingestRagDocument, getRagDocumentChunks } from "@/lib/hero-genius/client";
+import { eq, asc, sql, desc, or, and, inArray } from "drizzle-orm";
+import { ingestRagDocument, getRagDocumentChunks, listRagDocuments } from "@/lib/hero-genius/client";
 import { readFile } from "fs/promises";
 import { join } from "path";
 
@@ -22,19 +22,37 @@ export async function enqueueSopWinRag(params: {
   fileType: "pdf" | "docx";
 }) {
   try {
-    const [inserted] = await db
-      .insert(sopWinRagQueue)
-      .values({
-        documentId: params.documentId,
-        revisionId: params.revisionId || null,
-        fileUrl: params.fileUrl,
-        fileName: params.fileName,
-        fileType: params.fileType,
-        status: "pending",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning({ id: sopWinRagQueue.id });
+    // Check if there is already a pending or processing item for this document
+    const existing = await db
+      .select({ id: sopWinRagQueue.id, status: sopWinRagQueue.status })
+      .from(sopWinRagQueue)
+      .where(
+        and(
+          eq(sopWinRagQueue.documentId, params.documentId),
+          inArray(sopWinRagQueue.status, ["pending", "pending_retry", "processing"])
+        )
+      )
+      .limit(1);
+
+    let queueId: number;
+    if (existing.length > 0) {
+      queueId = existing[0].id;
+    } else {
+      const [inserted] = await db
+        .insert(sopWinRagQueue)
+        .values({
+          documentId: params.documentId,
+          revisionId: params.revisionId || null,
+          fileUrl: params.fileUrl,
+          fileName: params.fileName,
+          fileType: params.fileType,
+          status: "pending",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning({ id: sopWinRagQueue.id });
+      queueId = inserted.id;
+    }
 
     // Mark document as pending in main table
     await db
@@ -59,7 +77,7 @@ export async function enqueueSopWinRag(params: {
     // Trigger non-blocking worker in background
     triggerSopWinRagWorker();
 
-    return { success: true, queueId: inserted.id };
+    return { success: true, queueId };
   } catch (error: any) {
     console.error("[enqueueSopWinRag] error:", error);
     return { success: false, error: error.message };
@@ -71,7 +89,6 @@ export async function enqueueSopWinRag(params: {
  */
 export function triggerSopWinRagWorker() {
   if (isWorkerProcessing) {
-    // Already running, next items in DB will be picked up automatically
     return;
   }
   // Launch in background asynchronously
@@ -141,17 +158,30 @@ export async function processSopWinRagQueue() {
       }
 
       try {
-        // Extract raw filename from fileUrl (e.g. /api/uploads/12345_doc.pdf)
-        const rawFilename = item.fileUrl.split("/").pop() || "";
-        const filePath = join(process.cwd(), "public", "uploads", rawFilename);
+        let fileBuffer: Buffer;
+        try {
+          const rawFilename = item.fileUrl.split("/").pop() || "";
+          const filePath = join(process.cwd(), "public", "uploads", rawFilename);
+          fileBuffer = await readFile(filePath);
+        } catch (fsErr) {
+          // If not in local filesystem, fetch directly via HTTP
+          const resolvedUrl = item.fileUrl.startsWith("http")
+            ? item.fileUrl
+            : `https://vision.chitraparatama.com${item.fileUrl.startsWith("/") ? "" : "/"}${item.fileUrl}`;
+          const resp = await fetch(resolvedUrl);
+          if (!resp.ok) {
+            throw new Error(`Gagal mengunduh file dokumen (${resp.status} ${resp.statusText})`);
+          }
+          const arrayBuf = await resp.arrayBuffer();
+          fileBuffer = Buffer.from(arrayBuf);
+        }
 
-        const fileBuffer = await readFile(filePath);
         const mimeType =
           item.fileType === "docx"
             ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             : "application/pdf";
 
-        const fileBlob = new File([fileBuffer], item.fileName || rawFilename, {
+        const fileBlob = new File([fileBuffer as any], item.fileName || "document.pdf", {
           type: mimeType,
         });
 
@@ -161,13 +191,13 @@ export async function processSopWinRagQueue() {
 
         // Send to RAG Ingestion API
         const ragRes = await ingestRagDocument(ragFormData);
-        const ragDocumentId = ragRes.data?.document_id || null;
-        let totalChunks = ragRes.data?.total_chunks ?? 0;
+        const ragDocumentId = ragRes.document_id || ragRes.data?.document_id || null;
+        let totalChunks = ragRes.total_chunks ?? ragRes.data?.total_chunks ?? 0;
 
         // If chunk count in ingestion response is 0, verify with getRagDocumentChunks
         if (ragDocumentId && totalChunks === 0) {
           try {
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
             const chunksRes = await getRagDocumentChunks(ragDocumentId);
             if (chunksRes?.chunks && chunksRes.chunks.length > 0) {
               totalChunks = chunksRes.chunks.length;
@@ -201,6 +231,7 @@ export async function processSopWinRagQueue() {
           .update(sopWinDocuments)
           .set({
             ragDocumentId,
+            ragChunksCount: totalChunks,
             ragStatus: "ready",
             ragErrorMessage: null,
             ragProcessedAt: new Date(),
@@ -213,6 +244,7 @@ export async function processSopWinRagQueue() {
             .update(sopWinRevisions)
             .set({
               ragDocumentId,
+              ragChunksCount: totalChunks,
               ragStatus: "ready",
               ragErrorMessage: null,
             })
@@ -277,6 +309,7 @@ export async function processSopWinRagQueue() {
           await db
             .update(sopWinDocuments)
             .set({
+              ragChunksCount: 0,
               ragStatus: "failed",
               ragErrorMessage: finalErrMsg,
               updatedAt: new Date(),
@@ -287,6 +320,7 @@ export async function processSopWinRagQueue() {
             await db
               .update(sopWinRevisions)
               .set({
+                ragChunksCount: 0,
                 ragStatus: "failed",
                 ragErrorMessage: finalErrMsg,
               })
@@ -364,6 +398,98 @@ export async function getSopWinRagQueueStatus() {
 }
 
 /**
+ * Sync SOP/WIN documents with actual RAG Knowledge Base and automatically enqueue any unchunked (0 chunks) documents
+ */
+export async function syncAndAutoChunkAllSopWinDocuments() {
+  try {
+    console.log("[RAG Sync] Fetching existing documents from RAG API...");
+    let ragDocs: any[] = [];
+    try {
+      const ragRes = await listRagDocuments();
+      ragDocs = ragRes.documents || [];
+    } catch (e: any) {
+      console.warn("[RAG Sync] Could not fetch listRagDocuments:", e.message);
+    }
+
+    // Get all DB documents
+    const allDbDocs = await db
+      .select({
+        id: sopWinDocuments.id,
+        documentNumber: sopWinDocuments.documentNumber,
+        title: sopWinDocuments.title,
+        pdfFileUrl: sopWinDocuments.pdfFileUrl,
+        docxFileUrl: sopWinDocuments.docxFileUrl,
+        ragDocumentId: sopWinDocuments.ragDocumentId,
+        ragChunksCount: sopWinDocuments.ragChunksCount,
+        ragStatus: sopWinDocuments.ragStatus,
+      })
+      .from(sopWinDocuments);
+
+    let updatedCount = 0;
+    let autoEnqueuedCount = 0;
+
+    for (const doc of allDbDocs) {
+      // Find matching document in RAG Knowledge Base
+      const matchingRag = ragDocs.find((r) => {
+        if (doc.ragDocumentId && r.id === doc.ragDocumentId) return true;
+        // Match by filename or documentNumber
+        const rawFilename = (doc.pdfFileUrl || doc.docxFileUrl || "").split("/").pop() || "";
+        if (rawFilename && r.filename && (r.filename.includes(rawFilename) || rawFilename.includes(r.filename))) return true;
+        if (doc.documentNumber && r.filename && r.filename.includes(doc.documentNumber)) return true;
+        return false;
+      });
+
+      if (matchingRag && (matchingRag.total_chunks || 0) > 0) {
+        // Document exists in RAG with chunks
+        await db
+          .update(sopWinDocuments)
+          .set({
+            ragDocumentId: matchingRag.id,
+            ragChunksCount: matchingRag.total_chunks || 0,
+            ragStatus: "ready",
+            ragErrorMessage: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(sopWinDocuments.id, doc.id));
+        updatedCount++;
+      } else {
+        // Document NOT chunked or 0 chunks in RAG: Auto-enqueue for chunking!
+        console.log(`[RAG Sync] Document ${doc.documentNumber} (${doc.title}) has 0 chunks. Auto-enqueuing for RAG chunking...`);
+        const fileUrl = doc.docxFileUrl || doc.pdfFileUrl;
+        const fileType = doc.docxFileUrl ? "docx" : "pdf";
+        const fileName = `${doc.documentNumber}-${doc.title}.${fileType}`;
+
+        await enqueueSopWinRag({
+          documentId: doc.id,
+          fileUrl,
+          fileName,
+          fileType,
+        });
+
+        autoEnqueuedCount++;
+      }
+    }
+
+    // Trigger worker to start processing immediately
+    triggerSopWinRagWorker();
+
+    return {
+      success: true,
+      totalDocuments: allDbDocs.length,
+      syncedWithChunks: updatedCount,
+      autoEnqueuedCount,
+      message: `Sinkronisasi selesai. ${updatedCount} dokumen siap dengan chunks, ${autoEnqueuedCount} dokumen otomatis masuk antrian chunking.`,
+    };
+  } catch (error: any) {
+    console.error("[syncAndAutoChunkAllSopWinDocuments] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal sinkronisasi dan auto-chunking dokumen.",
+    };
+  }
+}
+
+/**
  * Retry a specific failed queue item or document
  */
 export async function retrySopWinRagItem(documentId: number) {
@@ -371,6 +497,7 @@ export async function retrySopWinRagItem(documentId: number) {
     const doc = await db
       .select({
         id: sopWinDocuments.id,
+        documentNumber: sopWinDocuments.documentNumber,
         title: sopWinDocuments.title,
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
@@ -386,7 +513,7 @@ export async function retrySopWinRagItem(documentId: number) {
     const d = doc[0];
     const fileUrl = d.docxFileUrl || d.pdfFileUrl;
     const fileType = d.docxFileUrl ? "docx" : "pdf";
-    const fileName = `${d.title}.${fileType}`;
+    const fileName = `${d.documentNumber}-${d.title}.${fileType}`;
 
     // Reset status to pending
     await enqueueSopWinRag({
@@ -410,17 +537,18 @@ export async function retryAllFailedSopWinRag() {
     const failedDocs = await db
       .select({
         id: sopWinDocuments.id,
+        documentNumber: sopWinDocuments.documentNumber,
         title: sopWinDocuments.title,
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
       })
       .from(sopWinDocuments)
-      .where(eq(sopWinDocuments.ragStatus, "failed"));
+      .where(or(eq(sopWinDocuments.ragStatus, "failed"), eq(sopWinDocuments.ragChunksCount, 0)));
 
     for (const d of failedDocs) {
       const fileUrl = d.docxFileUrl || d.pdfFileUrl;
       const fileType = d.docxFileUrl ? "docx" : "pdf";
-      const fileName = `${d.title}.${fileType}`;
+      const fileName = `${d.documentNumber}-${d.title}.${fileType}`;
 
       await enqueueSopWinRag({
         documentId: d.id,
@@ -432,7 +560,7 @@ export async function retryAllFailedSopWinRag() {
 
     return {
       success: true,
-      message: `${failedDocs.length} dokumen gagal berhasil dimasukkan kembali ke antrian AI.`,
+      message: `${failedDocs.length} dokumen berhasil dimasukkan ke antrian AI.`,
     };
   } catch (error: any) {
     return { success: false, error: error.message };

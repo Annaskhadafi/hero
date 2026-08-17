@@ -46,6 +46,7 @@ import {
   getSopWinRagQueueStatusAction,
   retrySopWinRagItemAction,
   retryAllFailedSopWinRagAction,
+  syncAndAutoChunkSopWinAction,
 } from "@/app/dashboard/sop-win/actions";
 import { STANDARD_DEPARTMENTS } from "@/lib/sop-win-constants";
 import {
@@ -208,6 +209,12 @@ export function SopWinExplorerWorkspace({
     failedCount: 0,
   });
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Calculate unchunked documents count
+  const unchunkedDocsCount = useMemo(() => {
+    return initialDocuments.filter((d) => (d.ragChunksCount ?? 0) === 0 || d.ragStatus === "failed").length;
+  }, [initialDocuments]);
 
   // Poll RAG Queue when active
   useEffect(() => {
@@ -246,12 +253,31 @@ export function SopWinExplorerWorkspace({
     };
   }, [initialDocuments]);
 
+  const handleSyncAndAutoChunk = async () => {
+    try {
+      setIsSyncing(true);
+      const res = await syncAndAutoChunkSopWinAction();
+      if (res.success) {
+        toast.success(res.message || "Sinkronisasi AI & Auto-Chunking berhasil dipicu!");
+        const qRes = await getSopWinRagQueueStatusAction();
+        if (qRes.success) setQueueStatus(qRes);
+        if (onRefreshData) onRefreshData();
+      } else {
+        toast.error(res.error || "Gagal sinkronisasi data RAG AI.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal sinkronisasi data RAG.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleRetryItem = async (docId: number) => {
     try {
       setIsRetrying(true);
       const res = await retrySopWinRagItemAction(docId);
       if (res.success) {
-        toast.success(res.message || "Dokumen dimasukkan kembali ke antrian AI.");
+        toast.success(res.message || "Dokumen dimasukkan ke antrian chunking AI.");
         const qRes = await getSopWinRagQueueStatusAction();
         if (qRes.success) setQueueStatus(qRes);
         if (onRefreshData) onRefreshData();
@@ -270,7 +296,7 @@ export function SopWinExplorerWorkspace({
       setIsRetrying(true);
       const res = await retryAllFailedSopWinRagAction();
       if (res.success) {
-        toast.success(res.message || "Semua dokumen gagal dimasukkan ke antrian AI.");
+        toast.success(res.message || "Semua dokumen belum di-chunk dimasukkan ke antrian AI.");
         const qRes = await getSopWinRagQueueStatusAction();
         if (qRes.success) setQueueStatus(qRes);
         if (onRefreshData) onRefreshData();
@@ -285,19 +311,26 @@ export function SopWinExplorerWorkspace({
   };
 
   const renderRagStatusBadge = (doc: any) => {
-    const status = doc.ragStatus || (doc.ragDocumentId ? "ready" : "pending");
+    const chunks = doc.ragChunksCount ?? 0;
+    const status = doc.ragStatus || (chunks > 0 ? "ready" : "pending");
 
-    if (status === "ready") {
+    if (status === "ready" && chunks > 0) {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" title="Dokumen siap & terindeks AI">
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
+          title={`Dokumen siap & terindeks Smart Chat (${chunks} Chunks)`}
+        >
           <Sparkles className="size-2.5 text-emerald-600" />
-          AI Ready
+          Smart Chat Ready ({chunks} Chunks)
         </span>
       );
     }
     if (status === "processing") {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" title="Sedang OCR & Chunking di background">
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+          title="Sedang OCR & Chunking di background"
+        >
           <Loader2 className="size-2.5 animate-spin text-amber-600" />
           OCR & AI...
         </span>
@@ -305,29 +338,34 @@ export function SopWinExplorerWorkspace({
     }
     if (status === "pending") {
       return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" title="Menunggu giliran antrian background">
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
+          title="Menunggu giliran antrian background"
+        >
           <Clock className="size-2.5 text-blue-600" />
           Antrian AI
         </span>
       );
     }
-    if (status === "failed") {
-      return (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleRetryItem(doc.id);
-          }}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 transition-colors"
-          title={doc.ragErrorMessage ? `Error: ${doc.ragErrorMessage} (Klik untuk retry)` : "Gagal sinkron AI (Klik untuk retry)"}
-        >
-          <AlertCircle className="size-2.5 text-rose-600" />
-          Gagal AI (Retry)
-        </button>
-      );
-    }
-    return null;
+    // 0 Chunks / Failed / Unchunked
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleRetryItem(doc.id);
+        }}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 transition-colors"
+        title={
+          doc.ragErrorMessage
+            ? `0 Chunks: ${doc.ragErrorMessage} (Klik untuk Chunk Otomatis)`
+            : "0 Chunks (Belum di-chunk - Klik untuk proses Chunking AI)"
+        }
+      >
+        <AlertCircle className="size-2.5 text-amber-600" />
+        0 Chunks (Belum di-chunk)
+      </button>
+    );
   };
 
   const handleDelete = async (docId: number, docNum: string) => {
@@ -502,6 +540,24 @@ export function SopWinExplorerWorkspace({
                 className="h-8 pl-8 rounded-xl text-xs bg-white dark:bg-slate-900"
               />
             </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isSyncing}
+              onClick={handleSyncAndAutoChunk}
+              className="h-8 gap-1.5 rounded-xl border-slate-200 hover:bg-slate-100 text-slate-700 dark:border-slate-800 dark:text-slate-300 text-xs font-semibold shrink-0 shadow-xs"
+              title="Sinkronkan dokumen dengan Knowledge Base & Chunk otomatis dokumen yang belum memiliki chunk"
+            >
+              <RefreshCw className={`size-3 text-indigo-600 ${isSyncing ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">Sinkron AI</span>
+              {unchunkedDocsCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  {unchunkedDocsCount} Belum
+                </span>
+              )}
+            </Button>
 
             <Button
               type="button"

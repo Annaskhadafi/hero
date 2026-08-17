@@ -156,12 +156,22 @@ export interface RagDocumentChunksResponse {
 
 export interface RagIngestResponse {
   status: string
-  message: string
+  message?: string
+  document_id?: string
+  filename?: string
+  total_chunks?: number
+  format?: string
+  s3_url?: string
+  char_count?: number
+  word_count?: number
+  processing_time_ms?: number
+  embedding_model?: string
+  preview_markdown?: string
   data?: {
     document_id: string
     filename: string
     total_chunks: number
-    format: string
+    format?: string
     s3_url?: string
     char_count?: number
     word_count?: number

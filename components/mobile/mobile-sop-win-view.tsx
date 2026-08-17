@@ -176,13 +176,14 @@ export function MobileSopWinView({
   };
 
   const renderRagStatusBadge = (doc: any) => {
-    const status = (doc as any).ragStatus || (doc.ragDocumentId ? "ready" : "pending");
+    const chunks = doc.ragChunksCount ?? 0;
+    const status = (doc as any).ragStatus || (chunks > 0 ? "ready" : "pending");
 
-    if (status === "ready") {
+    if (status === "ready" && chunks > 0) {
       return (
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-300">
           <Sparkles className="size-2.5 text-emerald-600" />
-          AI Ready
+          Smart Chat Ready ({chunks} Chunks)
         </span>
       );
     }
@@ -202,15 +203,13 @@ export function MobileSopWinView({
         </span>
       );
     }
-    if (status === "failed") {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950 dark:text-rose-300">
-          <AlertCircle className="size-2.5 text-rose-600" />
-          Gagal AI
-        </span>
-      );
-    }
-    return null;
+    // 0 Chunks / Failed / Unchunked
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300">
+        <AlertCircle className="size-2.5 text-amber-600" />
+        0 Chunks (Belum di-chunk)
+      </span>
+    );
   };
 
   return (

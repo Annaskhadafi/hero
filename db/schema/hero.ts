@@ -3968,6 +3968,7 @@ export const sopWinDocuments = pgTable('hero_sop_win_documents', {
   pdfFileUrl: text('pdf_file_url').notNull(),
   docxFileUrl: text('docx_file_url'),
   ragDocumentId: text('rag_document_id'),
+  ragChunksCount: integer('rag_chunks_count').notNull().default(0),
   ragStatus: text('rag_status').notNull().default('pending'), // 'pending', 'processing', 'ready', 'failed'
   ragErrorMessage: text('rag_error_message'),
   ragProcessedAt: timestamp('rag_processed_at'),
@@ -3989,6 +3990,7 @@ export const sopWinRevisions = pgTable('hero_sop_win_revisions', {
   pdfFileUrl: text('pdf_file_url').notNull(),
   docxFileUrl: text('docx_file_url'),
   ragDocumentId: text('rag_document_id'),
+  ragChunksCount: integer('rag_chunks_count').notNull().default(0),
   ragStatus: text('rag_status').notNull().default('pending'), // 'pending', 'processing', 'ready', 'failed'
   ragErrorMessage: text('rag_error_message'),
   revisedByEmployeeId: integer('revised_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
