@@ -232,7 +232,7 @@ export function MarkdownDocViewer({
             >
               <MarkdownRenderer
                 content={content}
-                className="text-slate-200 [&_h1]:text-white [&_h2]:text-white [&_h3]:text-sky-300 [&_strong]:text-white [&_table]:border-slate-700 [&_th]:bg-slate-800 [&_th]:text-slate-200 [&_td]:border-slate-800 [&_td]:text-slate-300"
+                className="text-slate-200 [&_h1]:text-white [&_h2]:text-white [&_h3]:text-sky-300 [&_strong]:text-white"
               />
             </div>
           ) : (
