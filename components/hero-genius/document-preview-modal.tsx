@@ -25,6 +25,7 @@ interface DocumentPreviewModalProps {
   onClose: () => void;
   filename: string;
   url?: string | null;
+  format?: string | null;
 }
 
 export function DocumentPreviewModal({
@@ -32,18 +33,23 @@ export function DocumentPreviewModal({
   onClose,
   filename,
   url,
+  format,
 }: DocumentPreviewModalProps) {
   const [totalPages, setTotalPages] = useState<number>(0);
 
   if (!isOpen || !url) return null;
 
   const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(filename || url);
-  const isMarkdown = /\.(md|markdown|txt)$/i.test(filename || url);
+  const isMarkdown =
+    format === "md" ||
+    format === "markdown" ||
+    format === "txt" ||
+    /\.(md|markdown|txt)$/i.test(filename || url);
 
   // Route through our dedicated proxy to ensure streaming and bypass cors
   const streamUrl = `/api/hero-genius/document-stream?url=${encodeURIComponent(
     url
-  )}&filename=${encodeURIComponent(filename)}`;
+  )}&filename=${encodeURIComponent(filename)}&format=${encodeURIComponent(format || "")}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

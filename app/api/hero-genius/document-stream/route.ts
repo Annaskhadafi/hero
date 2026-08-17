@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRagDocumentUrl } from "@/lib/hero-genius/client";
+import { resolveRagDocumentUrl, getRagApiKey } from "@/lib/hero-genius/client";
 
 export const dynamic = "force-dynamic";
 
@@ -8,15 +8,33 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const targetUrl = searchParams.get("url") || searchParams.get("file");
     const requestedFilename = searchParams.get("filename") || "document.pdf";
+    const requestedFormat = searchParams.get("format") || "";
 
     if (!targetUrl) {
       return NextResponse.json({ error: "Missing document url parameter" }, { status: 400 });
     }
 
+    const apiKey = getRagApiKey();
+    const headersInit: HeadersInit = {
+      "X-API-Key": apiKey,
+      Authorization: `Bearer ${apiKey}`,
+    };
+
     const resolved = resolveRagDocumentUrl(targetUrl);
-    const upstreamRes = await fetch(resolved, {
+    
+    // Try fetching with auth headers
+    let upstreamRes = await fetch(resolved, {
+      headers: headersInit,
       cache: "no-store",
     });
+
+    // Fallback: If resolved vision proxy failed, try fetching direct targetUrl
+    if (!upstreamRes.ok && targetUrl !== resolved && targetUrl.startsWith("http")) {
+      upstreamRes = await fetch(targetUrl, {
+        headers: headersInit,
+        cache: "no-store",
+      });
+    }
 
     if (!upstreamRes.ok) {
       return NextResponse.json(
@@ -28,15 +46,22 @@ export async function GET(req: NextRequest) {
     const arrayBuffer = await upstreamRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Detect actual MIME type from magic bytes or extension
+    // Detect actual MIME type from format, extension or magic bytes
     let contentType = "application/octet-stream";
-    const headerPrefix = buffer.slice(0, 5).toString("ascii");
+    const headerPrefix = buffer.slice(0, 8).toString("ascii");
 
-    if (/\.(md|markdown)$/i.test(requestedFilename)) {
+    if (
+      requestedFormat === "md" ||
+      requestedFormat === "markdown" ||
+      /\.(md|markdown)$/i.test(requestedFilename)
+    ) {
       contentType = "text/markdown; charset=utf-8";
-    } else if (/\.txt$/i.test(requestedFilename)) {
+    } else if (
+      requestedFormat === "txt" ||
+      /\.txt$/i.test(requestedFilename)
+    ) {
       contentType = "text/plain; charset=utf-8";
-    } else if (headerPrefix.startsWith("%PDF") || requestedFilename.endsWith(".pdf")) {
+    } else if (headerPrefix.startsWith("%PDF") || requestedFilename.toLowerCase().endsWith(".pdf")) {
       contentType = "application/pdf";
     } else if (
       buffer[0] === 0xff &&
@@ -51,8 +76,12 @@ export async function GET(req: NextRequest) {
       buffer[3] === 0x47
     ) {
       contentType = "image/png";
+    } else if (headerPrefix.startsWith("<?xml") || headerPrefix.startsWith("<!DOCT") || headerPrefix.startsWith("<html>")) {
+      contentType = "text/html; charset=utf-8";
     } else {
-      contentType = "application/pdf";
+      // Default to text if human readable, otherwise octet-stream
+      const isAscii = buffer.slice(0, 100).every((b) => (b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9);
+      contentType = isAscii ? "text/markdown; charset=utf-8" : "application/pdf";
     }
 
     const headers = new Headers();

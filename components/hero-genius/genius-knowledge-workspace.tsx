@@ -19,6 +19,14 @@ import {
   Lock,
   Globe,
   Sparkles,
+  Maximize2,
+  Minimize2,
+  Copy,
+  Check,
+  Expand,
+  LayoutList,
+  BookOpen,
+  Code2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +52,7 @@ import {
 } from "@/app/dashboard/hero-genius/actions";
 import { DocumentPreviewModal } from "./document-preview-modal";
 import { WebParserModal } from "./web-parser-modal";
+import { MarkdownRenderer } from "./markdown-renderer";
 import {
   resolveRagDocumentUrl,
   type RagChunkItem,
@@ -87,14 +96,41 @@ export function GeniusKnowledgeWorkspace({
   const [activeDocName, setActiveDocName] = useState("");
   const [activeDocId, setActiveDocId] = useState("");
   const [isLoadingChunks, setIsLoadingChunks] = useState(false);
+  const [chunksError, setChunksError] = useState<string | null>(null);
+  const [chunkSearch, setChunkSearch] = useState("");
   const [isAiRestructuring, setIsAiRestructuring] = useState(false);
+  const [isFullscreenChunks, setIsFullscreenChunks] = useState(false);
+  const [chunksViewMode, setChunksViewMode] = useState<"cards" | "document">("cards");
+  const [chunkFormatMode, setChunkFormatMode] = useState<"formatted" | "raw">("formatted");
+  const [selectedChunkForFullView, setSelectedChunkForFullView] = useState<RagChunkItem | null>(null);
+  const [copiedChunkId, setCopiedChunkId] = useState<string | null>(null);
+  const [copiedAllChunks, setCopiedAllChunks] = useState(false);
+
+  const handleCopyChunk = (chunk: RagChunkItem) => {
+    navigator.clipboard.writeText(chunk.content);
+    setCopiedChunkId(chunk.id);
+    toast.success(`Chunk #${chunk.chunk_index} berhasil disalin!`);
+    setTimeout(() => setCopiedChunkId(null), 2000);
+  };
+
+  const handleCopyAllChunks = () => {
+    const combined = activeDocChunks.map((c) => c.content).join("\n\n---\n\n");
+    navigator.clipboard.writeText(combined);
+    setCopiedAllChunks(true);
+    toast.success("Seluruh teks chunks berhasil disalin ke clipboard!");
+    setTimeout(() => setCopiedAllChunks(false), 2000);
+  };
 
   // Semantic Search Sandbox State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<RagSearchResultItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [previewDoc, setPreviewDoc] = useState<{ filename: string; url: string } | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{
+    filename: string;
+    url: string;
+    format?: string | null;
+  } | null>(null);
 
   // Filtered documents
   const filteredDocs = documents.filter((doc) =>
@@ -221,18 +257,28 @@ export function GeniusKnowledgeWorkspace({
   const handleViewChunks = async (docId: string, filename: string) => {
     setActiveDocId(docId);
     setActiveDocName(filename);
+    setActiveDocChunks([]);
+    setChunksError(null);
+    setChunkSearch("");
     setChunksDialogOpen(true);
     setIsLoadingChunks(true);
 
     try {
       const res = await getHeroGeniusDocumentChunksAction(docId);
-      if (res.success) {
-        setActiveDocChunks(res.chunks || []);
+      if (res.success && Array.isArray(res.chunks)) {
+        setActiveDocChunks(res.chunks);
+        if (res.chunks.length === 0) {
+          setChunksError("Tidak ada potongan teks yang ditemukan untuk dokumen ini.");
+        }
       } else {
-        toast.error(res.error || "Gagal mengambil chunks");
+        const err = res.error || "Gagal mengambil chunks dari backend RAG";
+        setChunksError(err);
+        toast.error(err);
       }
     } catch (err: any) {
-      toast.error(err.message || "Gagal memuat chunks");
+      const errorMsg = err.message || "Gagal memuat chunks";
+      setChunksError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsLoadingChunks(false);
     }
@@ -499,6 +545,7 @@ export function GeniusKnowledgeWorkspace({
                             setPreviewDoc({
                               filename: doc.filename,
                               url: doc.s3_url || doc.local_url || "",
+                              format: doc.format,
                             });
                           }}
                           className="h-8 px-2.5 text-xs text-slate-600 hover:text-sky-600 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -716,74 +763,403 @@ export function GeniusKnowledgeWorkspace({
 
       {/* View Chunks Modal */}
       <Dialog open={chunksDialogOpen} onOpenChange={setChunksDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pr-6">
-              <div>
-                <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
-                  <Layers className="size-4 text-indigo-600 dark:text-indigo-400" />
-                  Chunks Vektor: {activeDocName}
+        <DialogContent
+          className={`transition-all duration-200 flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 ${
+            isFullscreenChunks
+              ? "w-[98vw] max-w-[98vw] h-[95vh]"
+              : "w-[95vw] sm:max-w-4xl lg:max-w-5xl h-[90vh]"
+          }`}
+        >
+          {/* Top Header */}
+          <DialogHeader className="p-4 border-b border-slate-200 dark:border-slate-800 bg-[#003461] text-white flex flex-col gap-3 shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="min-w-0 pr-2">
+                <DialogTitle className="flex items-center gap-2 text-sm sm:text-base font-bold text-white truncate">
+                  <Layers className="size-4 text-sky-300 shrink-0" />
+                  <span className="truncate">Chunks Vektor: {activeDocName}</span>
+                  {activeDocChunks.length > 0 && (
+                    <Badge className="bg-sky-500/20 text-sky-200 border-none text-[10px] font-mono shrink-0">
+                      {activeDocChunks.length} Chunks
+                    </Badge>
+                  )}
                 </DialogTitle>
-                <DialogDescription className="text-xs">
-                  Daftar potongan teks yang terindeks di pgvector untuk pencarian semantik.
+                <DialogDescription className="text-xs text-blue-200/80 mt-0.5">
+                  Potongan teks terindeks di pgvector untuk pencarian semantik RAG.
                 </DialogDescription>
               </div>
 
-              {canManageDocuments && activeDocChunks.length > 0 && (
+              {/* Header Action Controls */}
+              <div className="flex items-center flex-wrap gap-1.5 shrink-0">
+                {/* View Mode Toggle: Cards vs Full Document */}
+                {activeDocChunks.length > 0 && (
+                  <div className="flex items-center bg-white/10 p-0.5 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setChunksViewMode("cards")}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        chunksViewMode === "cards"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-white/80 hover:text-white"
+                      }`}
+                      title="Tampilan Kartu Per-Chunk"
+                    >
+                      <LayoutList className="size-3" />
+                      <span>Kartu Chunks</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChunksViewMode("document")}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all ${
+                        chunksViewMode === "document"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-white/80 hover:text-white"
+                      }`}
+                      title="Tampilan Dokumen Utuh Tanpa Terpotong"
+                    >
+                      <BookOpen className="size-3" />
+                      <span>Dokumen Utuh</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Copy All Chunks */}
+                {activeDocChunks.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCopyAllChunks}
+                    className="h-7 text-[11px] gap-1 rounded-lg text-white/90 hover:bg-white/20 hover:text-white"
+                    title="Salin Seluruh Isi Chunks ke Clipboard"
+                  >
+                    {copiedAllChunks ? (
+                      <Check className="size-3 text-emerald-300" />
+                    ) : (
+                      <Copy className="size-3" />
+                    )}
+                    <span className="hidden sm:inline">Salin Semua</span>
+                  </Button>
+                )}
+
+                {/* AI Restructure Trigger */}
+                {canManageDocuments && activeDocChunks.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAiRestructureDocument}
+                    disabled={isAiRestructuring || isLoadingChunks}
+                    className="h-7 text-[11px] font-semibold rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm gap-1.5"
+                    title="Bersihkan teks OCR/dokumen mentah dan rapikan menjadi tabel Markdown dengan AI"
+                  >
+                    {isAiRestructuring ? (
+                      <>
+                        <RefreshCw className="size-3 animate-spin" />
+                        Restrukturisasi AI...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="size-3 text-amber-200" />
+                        <span>AI Clean & Restructure</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {/* Refresh Chunks */}
                 <Button
                   type="button"
+                  variant="ghost"
                   size="sm"
-                  onClick={handleAiRestructureDocument}
-                  disabled={isAiRestructuring || isLoadingChunks}
-                  className="h-8 text-xs font-semibold rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm gap-1.5 shrink-0"
+                  onClick={() => handleViewChunks(activeDocId, activeDocName)}
+                  disabled={isLoadingChunks}
+                  className="size-7 p-0 text-white/80 hover:bg-white/20 hover:text-white rounded-lg"
+                  title="Muat Ulang Chunks"
                 >
-                  {isAiRestructuring ? (
-                    <>
-                      <RefreshCw className="size-3.5 animate-spin" />
-                      Restrukturisasi AI...
-                    </>
+                  <RefreshCw className={`size-3.5 ${isLoadingChunks ? "animate-spin" : ""}`} />
+                </Button>
+
+                {/* Fullscreen / Maximize Toggle */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsFullscreenChunks(!isFullscreenChunks)}
+                  className="size-7 p-0 text-white/80 hover:bg-white/20 hover:text-white rounded-lg"
+                  title={isFullscreenChunks ? "Kecilkan Tampilan" : "Perbesar Penuh (Fullscreen)"}
+                >
+                  {isFullscreenChunks ? (
+                    <Minimize2 className="size-3.5" />
                   ) : (
-                    <>
-                      <Sparkles className="size-3.5 text-amber-300" />
-                      AI Clean & Restructure
-                    </>
+                    <Maximize2 className="size-3.5" />
                   )}
                 </Button>
-              )}
+              </div>
             </div>
+
+            {/* Quick Filter Search & Format Mode */}
+            {activeDocChunks.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1 border-t border-white/10">
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3 text-slate-400" />
+                  <Input
+                    placeholder="Cari atau filter isi chunks..."
+                    value={chunkSearch}
+                    onChange={(e) => setChunkSearch(e.target.value)}
+                    className="pl-8 h-7 text-xs bg-white text-slate-900 placeholder:text-slate-400 border-none dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+
+                {chunksViewMode === "cards" && (
+                  <div className="flex items-center gap-1 text-[11px] text-white/80 shrink-0">
+                    <span>Format Kartu:</span>
+                    <button
+                      type="button"
+                      onClick={() => setChunkFormatMode("formatted")}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                        chunkFormatMode === "formatted"
+                          ? "bg-white text-slate-900 font-bold"
+                          : "text-white/70 hover:text-white"
+                      }`}
+                    >
+                      Rapi (Markdown)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChunkFormatMode("raw")}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                        chunkFormatMode === "raw"
+                          ? "bg-white text-slate-900 font-bold"
+                          : "text-white/70 hover:text-white"
+                      }`}
+                    >
+                      Mentah (Raw)
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-3 py-2 pr-1">
+          {/* Modal Content Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/70 dark:bg-slate-950 space-y-4">
             {isLoadingChunks ? (
-              <div className="py-12 text-center text-slate-400 space-y-2">
-                <RefreshCw className="mx-auto size-6 animate-spin text-indigo-600" />
-                <p className="text-xs">Memuat data chunks...</p>
+              <div className="py-20 text-center text-slate-400 space-y-3">
+                <RefreshCw className="mx-auto size-7 animate-spin text-blue-600" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Memuat data chunks dari pgvector...
+                </p>
+              </div>
+            ) : chunksError ? (
+              <div className="py-16 text-center text-slate-400 space-y-3 max-w-md mx-auto">
+                <AlertCircle className="mx-auto size-10 text-rose-500" />
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Gagal Memuat Chunks
+                </p>
+                <p className="text-xs text-slate-500">{chunksError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewChunks(activeDocId, activeDocName)}
+                  className="mt-2 text-xs gap-1.5 rounded-lg"
+                >
+                  <RefreshCw className="size-3.5" />
+                  Coba Lagi
+                </Button>
               </div>
             ) : activeDocChunks.length === 0 ? (
-              <p className="py-8 text-center text-xs text-slate-400">Tidak ada chunk ditemukan.</p>
-            ) : (
-              activeDocChunks.map((chunk) => (
-                <div
-                  key={chunk.id}
-                  className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs space-y-1.5"
-                >
-                  <div className="flex items-center justify-between text-slate-500">
-                    <span className="font-semibold text-slate-700">
-                      Chunk #{chunk.chunk_index} {chunk.heading ? `• ${chunk.heading}` : ""}
-                    </span>
-                    <span className="font-mono text-[10px]">
-                      {chunk.char_count || chunk.content.length} Karakter
-                    </span>
+              <div className="py-16 text-center text-slate-400 space-y-2">
+                <Layers className="mx-auto size-8 text-slate-300 dark:text-slate-700" />
+                <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                  Tidak ada chunk ditemukan.
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  Dokumen mungkin belum selesai diproses atau sedang dalam antrean embedding.
+                </p>
+              </div>
+            ) : chunksViewMode === "document" ? (
+              /* FULL DOCUMENT UNIFIED VIEW */
+              <div className="max-w-4xl mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-10 shadow-sm space-y-6">
+                <div className="border-b border-slate-100 dark:border-slate-800 pb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      {activeDocName}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Rekonstruksi {activeDocChunks.length} chunks menjadi dokumen utuh
+                    </p>
                   </div>
-                  <div className="rounded bg-white p-2.5 text-slate-700 leading-relaxed whitespace-pre-wrap border border-slate-100 font-sans">
-                    {chunk.content}
-                  </div>
+                  <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-mono text-xs">
+                    {activeDocChunks.reduce((acc, c) => acc + (c.char_count || c.content.length), 0).toLocaleString()} Karakter
+                  </Badge>
                 </div>
-              ))
+
+                <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm">
+                  {activeDocChunks.map((chunk) => (
+                    <div key={chunk.id} className="relative group my-4 pt-2">
+                      <div className="flex items-center gap-2 mb-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500">
+                          § Chunk #{chunk.chunk_index}
+                        </span>
+                        {chunk.heading && (
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                            {chunk.heading}
+                          </span>
+                        )}
+                      </div>
+                      <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-800 group-hover:border-blue-400 transition-colors">
+                        <MarkdownRenderer content={chunk.content} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* CARDS VIEW */
+              <div className="space-y-4 max-w-5xl mx-auto">
+                {activeDocChunks
+                  .filter((chunk) =>
+                    !chunkSearch ||
+                    chunk.content.toLowerCase().includes(chunkSearch.toLowerCase()) ||
+                    (chunk.heading && chunk.heading.toLowerCase().includes(chunkSearch.toLowerCase()))
+                  )
+                  .map((chunk) => (
+                    <div
+                      key={chunk.id}
+                      className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-sm p-4 sm:p-5 space-y-3 hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
+                    >
+                      {/* Card Top Info & Controls */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="bg-[#003461] text-white text-[10px] font-mono px-2 py-0.5">
+                            Chunk #{chunk.chunk_index}
+                          </Badge>
+                          {chunk.heading && (
+                            <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                              {chunk.heading}
+                            </span>
+                          )}
+                          <Badge variant="outline" className="text-[10px] text-slate-400 font-mono">
+                            {chunk.char_count || chunk.content.length} Karakter
+                          </Badge>
+                          {chunk.token_count && (
+                            <Badge variant="secondary" className="text-[10px] font-mono">
+                              ~{chunk.token_count} Tokens
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCopyChunk(chunk)}
+                            className="h-7 text-[11px] gap-1 px-2.5 rounded-lg border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:text-slate-300"
+                            title="Salin isi potongan ini"
+                          >
+                            {copiedChunkId === chunk.id ? (
+                              <Check className="size-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="size-3" />
+                            )}
+                            <span>{copiedChunkId === chunk.id ? "Tersalin" : "Salin"}</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedChunkForFullView(chunk)}
+                            className="h-7 text-[11px] gap-1 px-2.5 rounded-lg border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 font-semibold"
+                            title="Lihat teks secara utuh dalam layar besar"
+                          >
+                            <Expand className="size-3" />
+                            <span>Full View</span>
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Card Body Content */}
+                      <div className="rounded-xl bg-slate-50 dark:bg-slate-950 p-4 border border-slate-100 dark:border-slate-800 overflow-x-auto">
+                        {chunkFormatMode === "formatted" ? (
+                          <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed select-text">
+                            <MarkdownRenderer content={chunk.content} />
+                          </div>
+                        ) : (
+                          <pre className="font-mono text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed select-text">
+                            {chunk.content}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Single Chunk Dedicated Full View Modal */}
+      {selectedChunkForFullView && (
+        <Dialog
+          open={!!selectedChunkForFullView}
+          onOpenChange={(open) => !open && setSelectedChunkForFullView(null)}
+        >
+          <DialogContent className="sm:max-w-4xl max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 z-[10000]">
+            <DialogHeader className="p-4 border-b border-slate-200 dark:border-slate-800 bg-[#003461] text-white flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white">
+                  <Layers className="size-4 text-sky-300" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-sm font-bold text-white truncate">
+                    Detail Chunk #{selectedChunkForFullView.chunk_index}: {activeDocName}
+                  </DialogTitle>
+                  <p className="text-[11px] text-blue-200/80">
+                    {selectedChunkForFullView.char_count || selectedChunkForFullView.content.length} Karakter • {selectedChunkForFullView.heading || "General"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyChunk(selectedChunkForFullView)}
+                  className="h-8 text-xs gap-1.5 rounded-lg border-white/20 bg-white/10 text-white hover:bg-white/20"
+                >
+                  {copiedChunkId === selectedChunkForFullView.id ? (
+                    <Check className="size-3.5 text-emerald-300" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                  <span>Salin Teks</span>
+                </Button>
+              </div>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-slate-950 space-y-4">
+              <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 select-text">
+                <MarkdownRenderer content={selectedChunkForFullView.content} />
+              </div>
+            </div>
+
+            <DialogFooter className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedChunkForFullView(null)}
+                className="h-8 text-xs"
+              >
+                Tutup
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Secure Document Preview Modal */}
       {previewDoc && (
@@ -792,6 +1168,7 @@ export function GeniusKnowledgeWorkspace({
           onClose={() => setPreviewDoc(null)}
           filename={previewDoc.filename}
           url={previewDoc.url}
+          format={previewDoc.format}
         />
       )}
 
