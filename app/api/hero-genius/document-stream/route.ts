@@ -29,10 +29,14 @@ export async function GET(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Detect actual MIME type from magic bytes or extension
-    let contentType = "application/pdf";
+    let contentType = "application/octet-stream";
     const headerPrefix = buffer.slice(0, 5).toString("ascii");
 
-    if (headerPrefix.startsWith("%PDF")) {
+    if (/\.(md|markdown)$/i.test(requestedFilename)) {
+      contentType = "text/markdown; charset=utf-8";
+    } else if (/\.txt$/i.test(requestedFilename)) {
+      contentType = "text/plain; charset=utf-8";
+    } else if (headerPrefix.startsWith("%PDF") || requestedFilename.endsWith(".pdf")) {
       contentType = "application/pdf";
     } else if (
       buffer[0] === 0xff &&
@@ -47,7 +51,7 @@ export async function GET(req: NextRequest) {
       buffer[3] === 0x47
     ) {
       contentType = "image/png";
-    } else if (requestedFilename.endsWith(".pdf")) {
+    } else {
       contentType = "application/pdf";
     }
 

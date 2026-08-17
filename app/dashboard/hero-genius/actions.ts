@@ -36,6 +36,7 @@ import {
   heroGeniusLearnedFacts,
   heroGeniusMessages,
   heroGeniusSessions,
+  heroGeniusWebCrawlHistory,
 } from "@/db/schema";
 import { and, desc, eq, ilike } from "drizzle-orm";
 
@@ -390,7 +391,7 @@ export async function ingestHeroGeniusDocumentAction(formData: FormData) {
  */
 export async function parseWebUrlPreviewAction(
   url: string,
-  options?: { chunkSize?: number; chunkOverlap?: number }
+  options?: { chunkSize?: number; chunkOverlap?: number; enableAiClean?: boolean }
 ) {
   try {
     if (!url || typeof url !== "string") {
@@ -400,7 +401,22 @@ export async function parseWebUrlPreviewAction(
     const parsed = await parseWebUrl(url.trim(), {
       chunkSize: options?.chunkSize || 800,
       chunkOverlap: options?.chunkOverlap || 120,
+      enableAiClean: options?.enableAiClean,
     });
+
+    // Auto-save to history asynchronously
+    saveWebCrawlHistoryAction({
+      url: parsed.url,
+      title: parsed.title,
+      description: parsed.description,
+      siteName: parsed.siteName,
+      markdown: parsed.markdown,
+      charCount: parsed.charCount,
+      wordCount: parsed.wordCount,
+      totalChunks: parsed.chunks.length,
+      isAiEnhanced: parsed.isAiEnhanced,
+      modelUsed: parsed.modelUsed,
+    }).catch((err) => console.warn("[parseWebUrlPreviewAction] Save history error:", err));
 
     return {
       success: true,
@@ -411,6 +427,169 @@ export async function parseWebUrlPreviewAction(
     return {
       success: false,
       error: error.message || "Gagal melakukan web parsing",
+    };
+  }
+}
+
+/**
+ * Get Web Crawl History from DB
+ */
+export async function getWebCrawlHistoryAction(search?: string) {
+  try {
+    const records = await db
+      .select()
+      .from(heroGeniusWebCrawlHistory)
+      .orderBy(desc(heroGeniusWebCrawlHistory.createdAt));
+
+    const filtered = search
+      ? records.filter(
+          (r) =>
+            r.title.toLowerCase().includes(search.toLowerCase()) ||
+            r.url.toLowerCase().includes(search.toLowerCase())
+        )
+      : records;
+
+    return {
+      success: true,
+      data: filtered,
+    };
+  } catch (error: any) {
+    console.error("[getWebCrawlHistoryAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal mengambil riwayat web parsing",
+      data: [],
+    };
+  }
+}
+
+/**
+ * Save Web Crawl Result to History
+ */
+export async function saveWebCrawlHistoryAction(payload: {
+  url: string;
+  title: string;
+  description?: string;
+  siteName?: string;
+  markdown: string;
+  charCount?: number;
+  wordCount?: number;
+  totalChunks?: number;
+  isAiEnhanced?: boolean;
+  modelUsed?: string;
+}) {
+  try {
+    let userId: string | null = null;
+    try {
+      const session = await getServerSession();
+      userId = session?.user?.id || null;
+    } catch {
+      userId = null;
+    }
+
+    const [inserted] = await db
+      .insert(heroGeniusWebCrawlHistory)
+      .values({
+        url: payload.url,
+        title: payload.title || "Web Document",
+        description: payload.description || null,
+        siteName: payload.siteName || null,
+        markdown: payload.markdown,
+        charCount: payload.charCount || payload.markdown.length,
+        wordCount: payload.wordCount || payload.markdown.split(/\s+/).filter(Boolean).length,
+        totalChunks: payload.totalChunks || 0,
+        isAiEnhanced: payload.isAiEnhanced || false,
+        modelUsed: payload.modelUsed || null,
+        userId,
+      })
+      .returning();
+
+    return {
+      success: true,
+      data: inserted,
+    };
+  } catch (error: any) {
+    console.error("[saveWebCrawlHistoryAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal menyimpan riwayat crawling",
+    };
+  }
+}
+
+/**
+ * Update Web Crawl History Item (Edit Title / Markdown)
+ */
+export async function updateWebCrawlHistoryAction(payload: {
+  id: number;
+  title: string;
+  markdown: string;
+}) {
+  try {
+    const { id, title, markdown } = payload;
+    if (!id || !markdown.trim()) {
+      return { success: false, error: "ID dan konten markdown wajib diisi" };
+    }
+
+    const wordCount = markdown.split(/\s+/).filter(Boolean).length;
+    const charCount = markdown.length;
+
+    // Calculate updated chunks count
+    const chunks = chunkMarkdown(markdown, {
+      chunkSize: 800,
+      chunkOverlap: 120,
+      docTitle: title,
+    });
+
+    const [updated] = await db
+      .update(heroGeniusWebCrawlHistory)
+      .set({
+        title,
+        markdown,
+        wordCount,
+        charCount,
+        totalChunks: chunks.length,
+        updatedAt: new Date(),
+      })
+      .where(eq(heroGeniusWebCrawlHistory.id, id))
+      .returning();
+
+    return {
+      success: true,
+      message: "Riwayat web parsing berhasil diperbarui!",
+      data: updated,
+    };
+  } catch (error: any) {
+    console.error("[updateWebCrawlHistoryAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal memperbarui riwayat",
+    };
+  }
+}
+
+/**
+ * Delete Web Crawl History Item
+ */
+export async function deleteWebCrawlHistoryAction(id: number) {
+  try {
+    if (!id) {
+      return { success: false, error: "ID wajib disertakan" };
+    }
+
+    await db
+      .delete(heroGeniusWebCrawlHistory)
+      .where(eq(heroGeniusWebCrawlHistory.id, id));
+
+    return {
+      success: true,
+      message: "Item riwayat berhasil dihapus",
+    };
+  } catch (error: any) {
+    console.error("[deleteWebCrawlHistoryAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal menghapus riwayat",
     };
   }
 }
@@ -453,6 +632,19 @@ export async function ingestWebUrlToKnowledgeBaseAction(payload: {
     formData.append("source_url", url || "");
 
     const response = await ingestRagDocument(formData);
+
+    // Mark ingested in history if matching url
+    if (url) {
+      db.update(heroGeniusWebCrawlHistory)
+        .set({
+          ingestedToKnowledgeBase: true,
+          ingestedDocumentId: response.data?.document_id || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(heroGeniusWebCrawlHistory.url, url))
+        .catch((err) => console.warn("[ingestWebUrlToKnowledgeBaseAction] Update history status error:", err));
+    }
+
     return {
       success: true,
       message: response.message || `Web content "${filename}" berhasil di-ingest ke Knowledge Base!`,

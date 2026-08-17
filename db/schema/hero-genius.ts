@@ -93,3 +93,33 @@ export const heroGeniusLearnedFactsRelations = relations(heroGeniusLearnedFacts,
     references: [user.id],
   }),
 }));
+
+/**
+ * 5. Hero Genius Web Crawl & Parsing History
+ */
+export const heroGeniusWebCrawlHistory = pgTable("hero_genius_web_crawl_history", {
+  id: serial("id").primaryKey(),
+  url: text("url").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  siteName: varchar("site_name", { length: 150 }),
+  markdown: text("markdown").notNull(),
+  charCount: integer("char_count").notNull().default(0),
+  wordCount: integer("word_count").notNull().default(0),
+  totalChunks: integer("total_chunks").notNull().default(0),
+  isAiEnhanced: boolean("is_ai_enhanced").notNull().default(false),
+  modelUsed: varchar("model_used", { length: 100 }),
+  ingestedToKnowledgeBase: boolean("ingested_to_knowledge_base").notNull().default(false),
+  ingestedDocumentId: varchar("ingested_document_id", { length: 120 }),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const heroGeniusWebCrawlHistoryRelations = relations(heroGeniusWebCrawlHistory, ({ one }) => ({
+  user: one(user, {
+    fields: [heroGeniusWebCrawlHistory.userId],
+    references: [user.id],
+  }),
+}));
+

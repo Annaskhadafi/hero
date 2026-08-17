@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PdfCanvasViewer } from "./pdf-canvas-viewer";
+import { MarkdownDocViewer } from "./markdown-doc-viewer";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export function DocumentPreviewModal({
   if (!isOpen || !url) return null;
 
   const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(filename || url);
+  const isMarkdown = /\.(md|markdown|txt)$/i.test(filename || url);
 
   // Route through our dedicated proxy to ensure streaming and bypass cors
   const streamUrl = `/api/hero-genius/document-stream?url=${encodeURIComponent(
@@ -64,9 +66,14 @@ export function DocumentPreviewModal({
                   <ShieldCheck className="size-3 text-emerald-400" />
                   Pratinjau HERO Read-Only
                 </span>
-                {totalPages > 0 && !isImage && (
+                {totalPages > 0 && !isImage && !isMarkdown && (
                   <Badge className="bg-sky-500/20 text-sky-200 border-none text-[9px] px-1.5 py-0 font-mono">
                     {totalPages} Halaman
+                  </Badge>
+                )}
+                {isMarkdown && (
+                  <Badge className="bg-emerald-500/20 text-emerald-200 border-none text-[9px] px-1.5 py-0 font-mono">
+                    Markdown Doc
                   </Badge>
                 )}
               </div>
@@ -89,7 +96,7 @@ export function DocumentPreviewModal({
 
         {/* Preview Content Area */}
         <div
-          className="relative flex-1 w-full h-full bg-slate-900 overflow-hidden select-none"
+          className="relative flex-1 w-full h-full bg-slate-900 overflow-hidden"
           onContextMenu={(e) => e.preventDefault()}
         >
           {isImage ? (
@@ -101,6 +108,12 @@ export function DocumentPreviewModal({
                 className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
               />
             </div>
+          ) : isMarkdown ? (
+            <MarkdownDocViewer
+              url={streamUrl}
+              filename={filename}
+              className="h-full w-full"
+            />
           ) : (
             <PdfCanvasViewer
               url={streamUrl}
@@ -115,7 +128,11 @@ export function DocumentPreviewModal({
         <div className="border-t border-slate-800 bg-slate-950 px-4 py-2 text-[10px] sm:text-xs text-slate-400 flex items-center justify-between shrink-0">
           <span className="flex items-center gap-1 text-slate-400">
             <Eye className="size-3 text-emerald-400" />
-            PDF Canvas Inline Viewer (Mobile & Desktop)
+            {isMarkdown
+              ? "Markdown Document Viewer (HERO Systems)"
+              : isImage
+              ? "Image Document Viewer (HERO Systems)"
+              : "PDF Canvas Inline Viewer (Mobile & Desktop)"}
           </span>
           <span className="font-semibold text-slate-500">HERO Systems</span>
         </div>
