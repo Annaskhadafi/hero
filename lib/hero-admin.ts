@@ -395,7 +395,18 @@ const GOVERNANCE_ROLE_SEEDS = [
 ]
 
 const RAW_SIDEBAR_MENU_SEEDS = [
-  // Hero Genius AI
+  // Hero Genius AI & Blueprint
+  {
+    menuArea: 'main',
+    section: 'Genius AI',
+    title: 'Peta Fitur & Blueprint',
+    url: '/dashboard/feature-map',
+    iconName: 'map-2',
+    resource: 'system_blueprint_map',
+    sortOrder: 0,
+    isVisible: true,
+    openInNewTab: false,
+  },
   {
     menuArea: 'main',
     section: 'Genius AI',
