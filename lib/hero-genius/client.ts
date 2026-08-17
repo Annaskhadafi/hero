@@ -372,3 +372,237 @@ export async function getRagRedisStatus(): Promise<RagRedisStatusResponse> {
 
   return res.json()
 }
+
+export interface RagSessionItem {
+  id: string
+  session_id?: string
+  user_id?: string | null
+  title?: string
+  summary?: string | null
+  message_count?: number
+  last_active_at?: string
+  created_at?: string
+}
+
+export interface RagSessionsResponse {
+  status: string
+  total?: number
+  sessions: RagSessionItem[]
+}
+
+export interface RagSessionMessagesResponse {
+  status: string
+  session_id: string
+  messages: Array<{
+    id?: string | number
+    role: 'user' | 'assistant' | 'system'
+    content: string
+    sources?: RagSourceItem[]
+    latency_ms?: number
+    created_at?: string
+  }>
+}
+
+export interface RagFeedbackPayload {
+  session_id?: string | null
+  message_id?: string | null
+  query: string
+  answer: string
+  rating: 'up' | 'down' | 'positive' | 'negative' | number
+  feedback_text?: string | null
+  correction?: string | null
+  user_id?: string | null
+}
+
+export interface RagFeedbackResponse {
+  status: string
+  message: string
+  feedback_id?: string | number
+}
+
+export interface RagLearnMemoryPayload {
+  fact: string
+  category?: string
+  source?: string
+  tags?: string[]
+  user_id?: string | null
+}
+
+export interface RagLearnMemoryResponse {
+  status: string
+  message: string
+  data?: {
+    fact_id: string | number
+    fact: string
+    category: string
+    created_at?: string
+  }
+}
+
+export interface RagMemoryFactItem {
+  id: string | number
+  fact: string
+  category: string
+  source?: string | null
+  tags?: string[]
+  confidence_score?: number
+  is_active?: boolean
+  learned_by?: string | null
+  created_at?: string
+}
+
+export interface RagMemoryFactsResponse {
+  status: string
+  total: number
+  facts: RagMemoryFactItem[]
+}
+
+/**
+ * 11. GET /api/v1/rag/sessions: Mengambil daftar riwayat sesi percakapan pengguna
+ */
+export async function listRagSessions(userId?: string): Promise<RagSessionsResponse> {
+  const baseUrl = getRagBaseUrl()
+  const url = new URL(`${baseUrl}/rag/sessions`)
+  if (userId) url.searchParams.set('user_id', userId)
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    throw new Error(`Failed to list sessions (${res.status}): ${await res.text()}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * 12. GET /api/v1/rag/sessions/{session_id}/messages: Mengambil histori chat lengkap dari sesi tertentu
+ */
+export async function getRagSessionMessages(sessionId: string): Promise<RagSessionMessagesResponse> {
+  const baseUrl = getRagBaseUrl()
+  const res = await fetch(`${baseUrl}/rag/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    // Fallback try redis session history
+    const fallbackRes = await fetch(`${baseUrl}/rag/chat/session/${encodeURIComponent(sessionId)}/history`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      cache: 'no-store',
+    })
+    if (fallbackRes.ok) {
+      const data = await fallbackRes.json()
+      return {
+        status: 'ok',
+        session_id: sessionId,
+        messages: Array.isArray(data.history)
+          ? data.history.map((h: any, idx: number) => ({
+              id: idx,
+              role: h.role,
+              content: h.content,
+              created_at: h.timestamp || new Date().toISOString(),
+            }))
+          : [],
+      }
+    }
+    throw new Error(`Failed to fetch session messages: ${await res.text()}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * 13. POST /api/v1/rag/feedback: Menerima rating (thumbs up/down) dan teks koreksi/masukan untuk self-growth
+ */
+export async function sendRagFeedback(payload: RagFeedbackPayload): Promise<RagFeedbackResponse> {
+  const baseUrl = getRagBaseUrl()
+  const res = await fetch(`${baseUrl}/rag/feedback`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`Failed to submit feedback (${res.status}): ${errorText}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * 14. POST /api/v1/rag/memory/learn: Mengajari AI fakta/aturan baru secara instan
+ */
+export async function teachRagMemory(payload: RagLearnMemoryPayload): Promise<RagLearnMemoryResponse> {
+  const baseUrl = getRagBaseUrl()
+  const res = await fetch(`${baseUrl}/rag/memory/learn`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`Failed to teach memory (${res.status}): ${errorText}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * 15. GET /api/v1/rag/memory/facts: Menginspeksi daftar memori/fakta yang sudah dipelajari sistem
+ */
+export async function getRagMemoryFacts(params?: {
+  limit?: number
+  category?: string
+  search?: string
+}): Promise<RagMemoryFactsResponse> {
+  const baseUrl = getRagBaseUrl()
+  const url = new URL(`${baseUrl}/rag/memory/facts`)
+  if (params?.limit) url.searchParams.set('limit', String(params.limit))
+  if (params?.category) url.searchParams.set('category', params.category)
+  if (params?.search) url.searchParams.set('search', params.search)
+
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    throw new Error(`Failed to get memory facts (${res.status}): ${await res.text()}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * 16. DELETE /api/v1/rag/memory/facts/{fact_id}
+ */
+export async function deleteRagMemoryFact(factId: string | number): Promise<{ status: string; message: string }> {
+  const baseUrl = getRagBaseUrl()
+  const res = await fetch(`${baseUrl}/rag/memory/facts/${encodeURIComponent(factId)}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Failed to delete memory fact (${res.status}): ${await res.text()}`)
+  }
+
+  return res.json()
+}

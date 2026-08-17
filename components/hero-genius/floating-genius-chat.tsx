@@ -247,25 +247,51 @@ export function FloatingGeniusChat() {
                         )}
                       </span>
 
-                      {!isUser && (
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(msg.id, msg.content)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
-                          title="Salin Pesan"
-                        >
-                          {copiedId === msg.id ? (
-                            <Check className="size-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="size-3.5" />
-                          )}
-                        </button>
+                      {!isUser && msg.id !== "welcome-floating" && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await fetch("/api/v1/rag/feedback", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    query: "Floating query",
+                                    answer: msg.content,
+                                    rating: "up",
+                                  }),
+                                });
+                                setCopiedId(`fb-${msg.id}`);
+                                setTimeout(() => setCopiedId(null), 2000);
+                              } catch {}
+                            }}
+                            className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600"
+                            title="Jawaban Bermanfaat (Thumbs Up)"
+                          >
+                            <Check className={`size-3 ${copiedId === `fb-${msg.id}` ? "text-emerald-600 font-bold" : "text-slate-400"}`} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(msg.id, msg.content)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+                            title="Salin Pesan"
+                          >
+                            {copiedId === msg.id ? (
+                              <Check className="size-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="size-3.5" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
               );
             })}
+
 
             {isLoading && (
               <div className="flex items-center gap-2.5">

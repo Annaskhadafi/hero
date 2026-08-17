@@ -261,8 +261,8 @@ export function MobileGeniusChat({
                   </div>
                 )}
 
-                {/* Timestamp & Copy */}
-                <div className="mt-2 flex items-center justify-between text-[10px] opacity-70">
+                {/* Timestamp, Feedback & Copy */}
+                <div className="mt-2 flex items-center justify-between text-[10px] opacity-75">
                   <span className={isUser ? "text-blue-200" : "text-slate-400"} suppressHydrationWarning>
                     {msg.timestamp.toLocaleTimeString("id-ID", {
                       hour: "2-digit",
@@ -273,25 +273,51 @@ export function MobileGeniusChat({
                     )}
                   </span>
 
-                  {!isUser && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(msg.id, msg.content)}
-                      className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
-                      title="Salin Pesan"
-                    >
-                      {copiedId === msg.id ? (
-                        <Check className="size-3.5 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3.5" />
-                      )}
-                    </button>
+                  {!isUser && msg.id !== "welcome-mobile" && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await fetch("/api/v1/rag/feedback", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                query: "Mobile query",
+                                answer: msg.content,
+                                rating: "up",
+                              }),
+                            });
+                            setCopiedId(`fb-${msg.id}`);
+                            setTimeout(() => setCopiedId(null), 2000);
+                          } catch {}
+                        }}
+                        className="text-slate-400 hover:text-emerald-600 p-0.5"
+                        title="Bermanfaat"
+                      >
+                        <Check className={`size-3.5 ${copiedId === `fb-${msg.id}` ? "text-emerald-600 font-bold" : ""}`} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(msg.id, msg.content)}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                        title="Salin Pesan"
+                      >
+                        {copiedId === msg.id ? (
+                          <Check className="size-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
           );
         })}
+
 
         {isLoading && (
           <div className="flex items-center gap-2">

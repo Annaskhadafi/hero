@@ -273,3 +273,6 @@ export {
 export { repairFormWo } from './form-wo'
 export { repairMasterPrice } from './repair-master-price'
 
+// Hero Genius & Self-Growth Smart Memory
+export * from './hero-genius'
+

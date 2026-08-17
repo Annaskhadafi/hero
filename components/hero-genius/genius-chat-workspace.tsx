@@ -18,12 +18,32 @@ import {
   Layers,
   FileText,
   X,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquarePlus,
+  Lightbulb,
+  PlusCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { SourceCitations } from "./source-citations";
 import { MarkdownRenderer } from "./markdown-renderer";
 import type { RagSourceItem } from "@/lib/hero-genius/client";
+import {
+  learnHeroGeniusFactAction,
+  sendHeroGeniusFeedbackAction,
+} from "@/app/dashboard/hero-genius/actions";
 
 interface Message {
   id: string;
@@ -31,6 +51,10 @@ interface Message {
   content: string;
   sources?: RagSourceItem[];
   latency_ms?: number;
+  message_id?: string | number;
+  userQuery?: string;
+  feedbackRating?: "up" | "down" | null;
+  feedbackGiven?: boolean;
   timestamp: Date;
 }
 
@@ -62,12 +86,13 @@ export function GeniusChatWorkspace({
   const docParam = searchParams ? searchParams.get("doc") : null;
   const hasSentInitialRef = useRef(false);
 
+  const [sessionId, setSessionId] = useState<string>(() => `sess-${Date.now()}`);
   const [activeDocContext, setActiveDocContext] = useState<string | null>(docParam);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "assistant",
-      content: `Halo! Saya **Hero Genius**, asisten operasional Chitra Paratama.\n\nSaya terhubung langsung dengan **Knowledge Base & pgvector** untuk menjawab pertanyaan seputar SOP, spesifikasi teknis ban, standar keselamatan kerja HSE, dan dokumen operasional perusahaan.\n\nAda yang bisa saya bantu hari ini?`,
+      content: `Halo! Saya **Hero Genius**, asisten operasional Chitra Paratama.\n\nSaya terhubung langsung dengan **Knowledge Base & pgvector** dan dilengkapi kemampuan **Self-Growth** untuk menjawab pertanyaan seputar SOP, spesifikasi ban, izin kerja PTW, dan standar keselamatan HSE.\n\nAda yang bisa saya bantu hari ini?`,
       timestamp: new Date(),
     },
   ]);
@@ -77,6 +102,21 @@ export function GeniusChatWorkspace({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Feedback & Correction Modal State
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [activeFeedbackMsg, setActiveFeedbackMsg] = useState<Message | null>(null);
+  const [feedbackRatingType, setFeedbackRatingType] = useState<"up" | "down">("down");
+  const [correctionText, setCorrectionText] = useState("");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+  // Quick "Ajari AI Fakta Baru" Modal State
+  const [learnModalOpen, setLearnModalOpen] = useState(false);
+  const [quickFact, setQuickFact] = useState("");
+  const [quickCategory, setQuickCategory] = useState("SOP & Prosedur");
+  const [quickSource, setQuickSource] = useState("Chat Input");
+  const [isSubmittingLearn, setIsSubmittingLearn] = useState(false);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -85,7 +125,6 @@ export function GeniusChatWorkspace({
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Auto-send query if passed from SOP/WIN or other modules
   useEffect(() => {
     if (initialQuery && !hasSentInitialRef.current) {
       hasSentInitialRef.current = true;
@@ -109,7 +148,6 @@ export function GeniusChatWorkspace({
     setInput("");
     setIsLoading(true);
 
-    // Format previous messages context for multi-turn RAG
     const apiMessages = newMessages
       .filter((m) => m.id !== "welcome")
       .map((m) => ({
@@ -125,6 +163,7 @@ export function GeniusChatWorkspace({
           query: queryText,
           messages: apiMessages,
           top_k: 4,
+          session_id: sessionId,
         }),
       });
 
@@ -140,6 +179,8 @@ export function GeniusChatWorkspace({
         content: data.content || "Maaf, tidak ada respons yang dihasilkan.",
         sources: data.sources || [],
         latency_ms: data.latency_ms,
+        message_id: data.message_id,
+        userQuery: queryText,
         timestamp: new Date(),
       };
 
@@ -158,6 +199,113 @@ export function GeniusChatWorkspace({
     }
   };
 
+  const handleQuickThumbs = async (msg: Message, rating: "up" | "down") => {
+    if (msg.feedbackGiven) {
+      toast.info("Anda sudah memberikan feedback untuk jawaban ini.");
+      return;
+    }
+
+    if (rating === "down") {
+      // Open detailed correction modal for thumbs down
+      setActiveFeedbackMsg(msg);
+      setFeedbackRatingType("down");
+      setCorrectionText("");
+      setFeedbackNote("");
+      setFeedbackModalOpen(true);
+      return;
+    }
+
+    // Direct submit for thumbs up
+    try {
+      const res = await sendHeroGeniusFeedbackAction({
+        session_id: sessionId,
+        message_id: msg.message_id ? String(msg.message_id) : undefined,
+        query: msg.userQuery || "Pertanyaan umum",
+        answer: msg.content,
+        rating: "up",
+      });
+
+      if (res.success) {
+        toast.success("Terima kasih atas penilaian positif Anda!");
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? { ...m, feedbackRating: "up", feedbackGiven: true } : m))
+        );
+      }
+    } catch (err) {
+      toast.error("Gagal mengirim feedback");
+    }
+  };
+
+  const handleOpenCorrection = (msg: Message) => {
+    setActiveFeedbackMsg(msg);
+    setFeedbackRatingType("down");
+    setCorrectionText("");
+    setFeedbackNote("");
+    setFeedbackModalOpen(true);
+  };
+
+  const handleSubmitFeedbackModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeFeedbackMsg) return;
+
+    setIsSubmittingFeedback(true);
+    try {
+      const res = await sendHeroGeniusFeedbackAction({
+        session_id: sessionId,
+        message_id: activeFeedbackMsg.message_id ? String(activeFeedbackMsg.message_id) : undefined,
+        query: activeFeedbackMsg.userQuery || "Pertanyaan RAG",
+        answer: activeFeedbackMsg.content,
+        rating: feedbackRatingType,
+        feedback_text: feedbackNote.trim() || undefined,
+        correction: correctionText.trim() || undefined,
+      });
+
+      if (res.success) {
+        toast.success("Masukan & koreksi Anda berhasil dicatat untuk self-growth AI!");
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === activeFeedbackMsg.id
+              ? { ...m, feedbackRating: feedbackRatingType, feedbackGiven: true }
+              : m
+          )
+        );
+        setFeedbackModalOpen(false);
+      } else {
+        toast.error(res.error || "Gagal menyimpan feedback");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Terjadi kesalahan");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  const handleSubmitQuickLearn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickFact.trim()) return;
+
+    setIsSubmittingLearn(true);
+    try {
+      const res = await learnHeroGeniusFactAction({
+        fact: quickFact.trim(),
+        category: quickCategory,
+        source: quickSource.trim() || "Chat Quick Input",
+      });
+
+      if (res.success) {
+        toast.success("Fakta baru berhasil dipelajari oleh Hero Genius!");
+        setQuickFact("");
+        setLearnModalOpen(false);
+      } else {
+        toast.error(res.error || "Gagal menyimpan fakta");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Terjadi kesalahan");
+    } finally {
+      setIsSubmittingLearn(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -172,6 +320,7 @@ export function GeniusChatWorkspace({
   };
 
   const handleClearChat = () => {
+    setSessionId(`sess-${Date.now()}`);
     setMessages([
       {
         id: `welcome-${Date.now()}`,
@@ -196,7 +345,7 @@ export function GeniusChatWorkspace({
                 Hero Genius
               </h2>
               <Badge className="bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 border-none text-[10px] font-semibold">
-                Online RAG
+                Online RAG & Self-Growth
               </Badge>
             </div>
             <p className="text-xs text-slate-500">
@@ -206,6 +355,17 @@ export function GeniusChatWorkspace({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLearnModalOpen(true)}
+            className="h-8 gap-1.5 text-xs text-indigo-700 bg-indigo-50/70 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800"
+          >
+            <Lightbulb className="size-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Ajari AI Fakta Baru</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -268,8 +428,8 @@ export function GeniusChatWorkspace({
                   <SourceCitations sources={msg.sources} />
                 )}
 
-                {/* Footer Metadata & Actions */}
-                <div className="mt-2 flex items-center justify-between text-[10px] opacity-70">
+                {/* Footer Metadata & Self-Growth Feedback Buttons */}
+                <div className="mt-2.5 pt-1.5 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-[10px] opacity-80">
                   <span className={isUser ? "text-blue-200" : "text-slate-400"} suppressHydrationWarning>
                     {msg.timestamp.toLocaleTimeString("id-ID", {
                       hour: "2-digit",
@@ -282,19 +442,61 @@ export function GeniusChatWorkspace({
                     )}
                   </span>
 
-                  {!isUser && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(msg.id, msg.content)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-500"
-                      title="Salin Pesan"
-                    >
-                      {copiedId === msg.id ? (
-                        <Check className="size-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3" />
-                      )}
-                    </button>
+                  {!isUser && msg.id !== "welcome" && (
+                    <div className="flex items-center gap-1">
+                      {/* Thumbs Up Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleQuickThumbs(msg, "up")}
+                        className={`p-1 rounded transition-colors ${
+                          msg.feedbackRating === "up"
+                            ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 font-bold"
+                            : "text-slate-400 hover:text-emerald-600 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                        }`}
+                        title="Jawaban Tepat & Bermanfaat (Thumbs Up)"
+                      >
+                        <ThumbsUp className="size-3.5" />
+                      </button>
+
+                      {/* Thumbs Down Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleQuickThumbs(msg, "down")}
+                        className={`p-1 rounded transition-colors ${
+                          msg.feedbackRating === "down"
+                            ? "text-rose-600 bg-rose-50 dark:bg-rose-950/60 font-bold"
+                            : "text-slate-400 hover:text-rose-600 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                        }`}
+                        title="Jawaban Kurang Tepat / Butuh Koreksi"
+                      >
+                        <ThumbsDown className="size-3.5" />
+                      </button>
+
+                      {/* Beri Masukan / Koreksi Action */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCorrection(msg)}
+                        className="text-[10px] text-slate-500 hover:text-blue-600 px-1.5 py-0.5 rounded hover:bg-slate-200/50 transition-colors flex items-center gap-1 ml-0.5"
+                        title="Beri Masukan / Koreksi Jawaban"
+                      >
+                        <MessageSquarePlus className="size-3" />
+                        <span className="hidden md:inline">Koreksi</span>
+                      </button>
+
+                      {/* Copy Action */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(msg.id, msg.content)}
+                        className="ml-1 p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600"
+                        title="Salin Pesan"
+                      >
+                        {copiedId === msg.id ? (
+                          <Check className="size-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -320,7 +522,7 @@ export function GeniusChatWorkspace({
                 <span className="size-1.5 rounded-full bg-indigo-600 animate-bounce" />
               </div>
               <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                Hero Genius sedang membaca database RAG & menganalisis jawaban...
+                Hero Genius sedang membaca database RAG & memori terpelajar...
               </span>
             </div>
           </div>
@@ -329,7 +531,7 @@ export function GeniusChatWorkspace({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Starter Prompts (if chat is fresh) */}
+      {/* Starter Prompts */}
       {messages.length <= 2 && (
         <div className="px-5 py-2 border-t border-slate-100 bg-slate-50/40 dark:border-slate-800/80 dark:bg-slate-900/40">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase text-slate-400 mb-2">
@@ -386,9 +588,154 @@ export function GeniusChatWorkspace({
           </Button>
         </form>
         <p className="mt-1.5 text-center text-[10px] text-slate-400">
-          Hero Genius AI dapat menghasilkan referensi dari ribuan chunks dokumen pgvector. Selalu verifikasi data penting pada dokumen aslinya.
+          Hero Genius AI terhubung dengan ribuan chunks dokumen pgvector & Smart Memory. Feedback Anda membantu sistem berkembang secara otomatis.
         </p>
       </div>
+
+      {/* Feedback & Correction Modal */}
+      <Dialog open={feedbackModalOpen} onOpenChange={setFeedbackModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <MessageSquarePlus className="size-4 text-blue-600" />
+              Beri Masukan & Koreksi Jawaban AI
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Bantu Hero Genius belajar dari kesalahan agar memberikan jawaban yang lebih akurat di masa mendatang (Self-Growth).
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitFeedbackModal} className="space-y-3.5 py-1">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">Teks Koreksi / Jawaban yang Benar:</label>
+              <textarea
+                rows={3}
+                value={correctionText}
+                onChange={(e) => setCorrectionText(e.target.value)}
+                placeholder="Tuliskan informasi atau jawaban yang benar menurut SOP / standar perusahaan..."
+                className="w-full resize-none rounded-xl border border-slate-200 p-2.5 text-xs focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">Catatan Tambahan (Opsional):</label>
+              <Input
+                type="text"
+                value={feedbackNote}
+                onChange={(e) => setFeedbackNote(e.target.value)}
+                placeholder="Misal: Kurang detail di bagian PIC persetujuan"
+                className="text-xs h-8 rounded-lg"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setFeedbackModalOpen(false)}
+                disabled={isSubmittingFeedback}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmittingFeedback}
+                className="bg-[#003461] hover:bg-[#002647] text-white gap-1.5 font-bold"
+              >
+                {isSubmittingFeedback ? (
+                  <RefreshCw className="size-3.5 animate-spin" />
+                ) : (
+                  <Check className="size-3.5" />
+                )}
+                Kirim Koreksi
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Learn Modal */}
+      <Dialog open={learnModalOpen} onOpenChange={setLearnModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <Lightbulb className="size-4 text-amber-500" />
+              Ajari AI Fakta & Aturan Baru
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Tambahkan pengetahuan baru secara langsung ke memori Hero Genius tanpa perlu upload dokumen.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmitQuickLearn} className="space-y-3 py-1">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700">Fakta / Aturan Operasional Baru:</label>
+              <textarea
+                rows={3}
+                value={quickFact}
+                onChange={(e) => setQuickFact(e.target.value)}
+                placeholder="Contoh: Form PTW wajib disetujui minimal 1 jam sebelum pekerjaan berisiko dimulai..."
+                className="w-full resize-none rounded-xl border border-slate-200 p-2.5 text-xs focus:border-blue-500 focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 block mb-1">Kategori:</label>
+                <select
+                  value={quickCategory}
+                  onChange={(e) => setQuickCategory(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                >
+                  <option value="SOP & Prosedur">SOP & Prosedur</option>
+                  <option value="Ban & Spesifikasi Teknis">Ban & Spesifikasi Teknis</option>
+                  <option value="HSE & Keselamatan Kerja">HSE & Keselamatan Kerja</option>
+                  <option value="Operasional & Logistik">Operasional & Logistik</option>
+                  <option value="General">General</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 block mb-1">Sumber:</label>
+                <Input
+                  type="text"
+                  value={quickSource}
+                  onChange={(e) => setQuickSource(e.target.value)}
+                  className="h-8 text-xs rounded-lg"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setLearnModalOpen(false)}
+                disabled={isSubmittingLearn}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmittingLearn || !quickFact.trim()}
+                className="bg-[#003461] hover:bg-[#002647] text-white gap-1.5 font-bold"
+              >
+                {isSubmittingLearn ? (
+                  <RefreshCw className="size-3.5 animate-spin" />
+                ) : (
+                  <PlusCircle className="size-3.5" />
+                )}
+                Ajarkan ke AI
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

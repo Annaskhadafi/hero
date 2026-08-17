@@ -5,14 +5,15 @@ import { getServerSession } from "@/lib/auth-session";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { GeniusChatWorkspace } from "@/components/hero-genius/genius-chat-workspace";
 import { GeniusKnowledgeWorkspace } from "@/components/hero-genius/genius-knowledge-workspace";
+import { GeniusMemoryWorkspace } from "@/components/hero-genius/genius-memory-workspace";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Database, Bot, BookOpen } from "lucide-react";
+import { Sparkles, Database, Bot, Brain } from "lucide-react";
 
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
 
 export const metadata: Metadata = {
   title: "Hero Genius | HERO",
-  description: "Knowledge Base Assistant powered by pgvector.",
+  description: "Knowledge Base Assistant & Self-Growth AI powered by pgvector.",
 };
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,7 @@ export default async function HeroGeniusPage() {
             </h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Asisten & Knowledge Engine Berbasis RAG (Retrieval-Augmented Generation) & pgvector.
+            Asisten & Knowledge Engine Berbasis RAG (Retrieval-Augmented Generation), pgvector, dan Self-Growth Learning.
           </p>
         </div>
       </div>
@@ -87,6 +88,13 @@ export default async function HeroGeniusPage() {
           >
             <Bot className="size-3.5" />
             Chat Assistant
+          </TabsTrigger>
+          <TabsTrigger
+            value="memory"
+            className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-sm"
+          >
+            <Brain className="size-3.5" />
+            Riwayat & Memori Pintar ({overview.totalLearnedFacts || 0})
           </TabsTrigger>
           <TabsTrigger
             value="knowledge"
@@ -107,6 +115,10 @@ export default async function HeroGeniusPage() {
           </Suspense>
         </TabsContent>
 
+        <TabsContent value="memory" className="space-y-4 outline-none">
+          <GeniusMemoryWorkspace />
+        </TabsContent>
+
         <TabsContent value="knowledge" className="space-y-4 outline-none">
           <GeniusKnowledgeWorkspace
             initialDocuments={overview.documents}
@@ -119,3 +131,4 @@ export default async function HeroGeniusPage() {
     </div>
   );
 }
+
