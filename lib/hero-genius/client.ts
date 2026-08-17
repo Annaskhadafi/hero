@@ -45,6 +45,7 @@ export function resolveRagDocumentUrl(rawUrl?: string | null): string {
 function getAuthHeaders(): HeadersInit {
   const apiKey = getRagApiKey()
   return {
+    'X-API-Key': apiKey,
     Authorization: apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`,
   }
 }

@@ -23,6 +23,42 @@ import {
   IconShieldHalfFilled,
   IconSparkles,
   IconUsers,
+  IconUser,
+  IconActivity,
+  IconAlertTriangle,
+  IconTarget,
+  IconTrendingUp,
+  IconTool,
+  IconTools,
+  IconAddressBook,
+  IconId,
+  IconGitBranch,
+  IconShieldExclamation,
+  IconSignature,
+  IconFileCheck,
+  IconSearch,
+  IconTruck,
+  IconBuilding,
+  IconBriefcase,
+  IconCalendar,
+  IconLock,
+  IconLink,
+  IconGlobe,
+  IconCpu,
+  IconAward,
+  IconArchive,
+  IconCamera,
+  IconCash,
+  IconCreditCard,
+  IconFlame,
+  IconHeart,
+  IconKey,
+  IconNews,
+  IconPhone,
+  IconPrinter,
+  IconStar,
+  IconTag,
+  IconShoppingCart,
 } from "@tabler/icons-react"
 
 import { NavDocuments } from "@/components/nav-documents"
@@ -38,8 +74,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-const iconMap = {
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   bell: IconBell,
+  book: IconBook,
   "book-open": IconBook,
   "chart-bar": IconChartBar,
   checklist: IconChecklist,
@@ -47,6 +84,7 @@ const iconMap = {
   dashboard: IconDashboard,
   database: IconDatabase,
   "file-word": IconFileWord,
+  "file-text": IconFileText,
   files: IconFileText,
   folder: IconFolder,
   help: IconHelp,
@@ -56,9 +94,46 @@ const iconMap = {
   report: IconReport,
   settings: IconSettings,
   shield: IconShieldHalfFilled,
+  "shield-alert": IconShieldExclamation,
   sparkles: IconSparkles,
   users: IconUsers,
-} as const
+  user: IconUser,
+  activity: IconActivity,
+  "alert-triangle": IconAlertTriangle,
+  target: IconTarget,
+  "trending-up": IconTrendingUp,
+  wrench: IconTool,
+  tool: IconTool,
+  tools: IconTools,
+  "address-card": IconAddressBook,
+  id: IconId,
+  "git-branch": IconGitBranch,
+  "file-signature": IconSignature,
+  "file-check": IconFileCheck,
+  search: IconSearch,
+  truck: IconTruck,
+  building: IconBuilding,
+  briefcase: IconBriefcase,
+  calendar: IconCalendar,
+  lock: IconLock,
+  link: IconLink,
+  globe: IconGlobe,
+  cpu: IconCpu,
+  award: IconAward,
+  archive: IconArchive,
+  camera: IconCamera,
+  cash: IconCash,
+  "credit-card": IconCreditCard,
+  flame: IconFlame,
+  heart: IconHeart,
+  key: IconKey,
+  news: IconNews,
+  phone: IconPhone,
+  printer: IconPrinter,
+  star: IconStar,
+  tag: IconTag,
+  "shopping-cart": IconShoppingCart,
+}
 
 type SidebarMenuItem = {
   id?: number
@@ -180,15 +255,46 @@ export function AppSidebar({
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder,
   }))
 
+  const [customSectionOrder, setCustomSectionOrder] = React.useState<string[] | null>(null)
+
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem("hero_sidebar_section_order")
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCustomSectionOrder(parsed)
+        }
+      }
+    } catch {}
+
+    const handleOrderChange = () => {
+      try {
+        const saved = localStorage.getItem("hero_sidebar_section_order")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCustomSectionOrder(parsed)
+          }
+        }
+      } catch {}
+    }
+
+    window.addEventListener("hero_sidebar_order_changed", handleOrderChange)
+    return () => window.removeEventListener("hero_sidebar_order_changed", handleOrderChange)
+  }, [])
+
+  const baseOrder = customSectionOrder && customSectionOrder.length > 0 ? customSectionOrder : DESKTOP_MENU_ORDER
+
   const extraSections = Array.from(
     new Set(
       desktopItems
         .map((item) => item.section)
-        .filter((section) => !DESKTOP_MENU_ORDER.includes(section as (typeof DESKTOP_MENU_ORDER)[number]))
+        .filter((section) => !baseOrder.includes(section as any))
     )
   )
 
-  const orderedSections = [...DESKTOP_MENU_ORDER, ...extraSections]
+  const orderedSections = [...baseOrder, ...extraSections]
 
   const desktopGroups = orderedSections
     .map((section) => {

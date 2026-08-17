@@ -119,10 +119,15 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
       // ignore
     }
 
-    // Append learned facts as system guidance if present
+    // Append learned facts as system guidance if present (excluding any auto_chat)
+    const validActiveFacts = activeFacts.filter((f) => {
+      const src = String(f.source || "").toLowerCase();
+      return src !== "auto_chat" && !src.includes("auto_chat");
+    });
+
     const augmentedMessages = [...(payload.messages || [])];
-    if (activeFacts.length > 0) {
-      const memoryContext = activeFacts
+    if (validActiveFacts.length > 0) {
+      const memoryContext = validActiveFacts
         .map((f, i) => `[Aturan/Fakta #${i + 1}] (${f.category}): ${f.fact}`)
         .join("\n");
 
@@ -987,8 +992,13 @@ export async function getHeroGeniusSessionMessagesAction(sessionId: string) {
 
 export async function sendHeroGeniusFeedbackAction(payload: RagFeedbackPayload) {
   try {
-    const session = await getServerSession();
-    const userId = session?.user?.id;
+    let userId: string | null = null;
+    try {
+      const session = await getServerSession();
+      userId = session?.user?.id || null;
+    } catch {
+      // safe fallback if called outside request store
+    }
 
     const ratingInt =
       typeof payload.rating === "number"
@@ -997,44 +1007,61 @@ export async function sendHeroGeniusFeedbackAction(payload: RagFeedbackPayload) 
         ? -1
         : 1;
 
+    const messageId = payload.message_id ? String(payload.message_id) : `msg_${Date.now()}`;
+    const feedbackNotes = payload.feedback_notes || payload.feedback_text || null;
+    const correctionText = payload.correction_text || payload.correction || null;
+
     // 1. Send directly to vision.chitraparatama.com /api/v1/rag/feedback
     let remoteSuccess = false;
     let remoteData: any = null;
     try {
       const remoteRes = await sendRagFeedback({
-        message_id: payload.message_id || `msg_${Date.now()}`,
+        message_id: messageId,
         rating: ratingInt,
-        feedback_notes: payload.feedback_notes || payload.feedback_text || null,
-        correction_text: payload.correction_text || payload.correction || null,
+        feedback_notes: feedbackNotes,
+        correction_text: correctionText,
       });
-      if (remoteRes.status === "success" || remoteRes.status === "ok") {
+      if (remoteRes && (remoteRes.status === "success" || remoteRes.status === "ok")) {
         remoteSuccess = true;
         remoteData = remoteRes.data;
       }
-    } catch (remoteErr) {
-      console.warn("[sendHeroGeniusFeedbackAction] Remote warning, saving to local DB:", remoteErr);
+    } catch (remoteErr: any) {
+      console.warn("[sendHeroGeniusFeedbackAction] Remote warning, saving to local DB:", remoteErr?.message || remoteErr);
     }
 
-    // 2. Also log locally
+    // 2. Also log locally to PostgreSQL database
     try {
       await db.insert(heroGeniusFeedback).values({
         sessionId: payload.session_id || null,
-        messageId: payload.message_id ? String(payload.message_id) : null,
+        messageId: messageId,
         query: payload.query || "Query",
         answer: payload.answer || "Answer",
         rating: ratingInt === 1 ? "up" : "down",
-        feedbackText: payload.feedback_notes || payload.feedback_text || null,
-        correction: payload.correction_text || payload.correction || null,
+        feedbackText: feedbackNotes,
+        correction: correctionText,
         userId: userId || null,
-        status: "pending",
+        status: "approved",
       });
-    } catch {
-      // non-fatal
+    } catch (dbErr: any) {
+      console.warn("[sendHeroGeniusFeedbackAction] DB insert warning:", dbErr?.message);
+    }
+
+    // 3. If correction was provided, also record as learned fact if possible
+    if (correctionText) {
+      try {
+        await teachRagMemory({
+          content: correctionText,
+          subject: payload.query ? payload.query.slice(0, 80) : "User Correction",
+          fact_type: "correction",
+        });
+      } catch {
+        // non-fatal
+      }
     }
 
     return {
       success: true,
-      message: "Masukan & koreksi Anda berhasil dikirim ke Vision AI untuk self-growth.",
+      message: "Masukan & koreksi Anda berhasil dikirim ke Hero Genius untuk self-growth.",
       data: remoteData,
     };
   } catch (error: any) {
@@ -1116,10 +1143,16 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
     try {
       const remote = await getRagMemoryFacts(params);
       if (remote && Array.isArray(remote.facts) && remote.facts.length > 0) {
+        // Exclude automatic chat history from Smart Memory facts
+        const validFacts = remote.facts.filter((f) => {
+          const src = String(f.source || f.category || "").toLowerCase();
+          return src !== "auto_chat" && !src.includes("auto_chat");
+        });
+
         return {
           success: true,
-          total: remote.total,
-          facts: remote.facts,
+          total: validFacts.length,
+          facts: validFacts,
         };
       }
     } catch (remoteErr) {
@@ -1142,10 +1175,12 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
       .orderBy(desc(heroGeniusLearnedFacts.createdAt))
       .limit(params?.limit || 100);
 
-    return {
-      success: true,
-      total: facts.length,
-      facts: facts.map((f) => ({
+    const validLocalFacts = facts
+      .filter((f) => {
+        const src = String(f.source || "").toLowerCase();
+        return src !== "auto_chat" && !src.includes("auto_chat");
+      })
+      .map((f) => ({
         id: f.id,
         fact: f.fact,
         content: f.fact,
@@ -1157,7 +1192,12 @@ export async function getHeroGeniusLearnedFactsAction(params?: {
         is_active: f.isActive,
         learned_by: f.learnedBy,
         created_at: f.createdAt.toISOString(),
-      })),
+      }));
+
+    return {
+      success: true,
+      total: validLocalFacts.length,
+      facts: validLocalFacts,
     };
   } catch (error: any) {
     console.error("[getHeroGeniusLearnedFactsAction] error:", error);

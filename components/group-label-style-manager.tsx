@@ -23,10 +23,14 @@ export function GroupLabelStyleManager({ color }: { color: string }) {
 
       if (res.ok) {
         toast.success("Warna group label berhasil diupdate");
-        router.refresh();
+        try {
+          router.refresh();
+        } catch {}
       } else {
         toast.error("Gagal update warna");
       }
+    } catch {
+      toast.error("Terjadi kesalahan koneksi");
     } finally {
       setIsPending(false);
     }

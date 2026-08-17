@@ -3,9 +3,6 @@
 import React, { useState, useEffect } from "react";
 import {
   FileText,
-  Copy,
-  Check,
-  Download,
   Search,
   ZoomIn,
   ZoomOut,
@@ -18,11 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { MarkdownRenderer } from "./markdown-renderer";
-import { toast } from "sonner";
 
 interface MarkdownDocViewerProps {
   url: string;
@@ -39,7 +32,6 @@ export function MarkdownDocViewer({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"formatted" | "raw">("formatted");
-  const [copied, setCopied] = useState<boolean>(false);
   const [fontSize, setFontSize] = useState<number>(14); // px
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showSearch, setShowSearch] = useState<boolean>(false);
@@ -73,28 +65,6 @@ export function MarkdownDocViewer({
       isMounted = false;
     };
   }, [url]);
-
-  const handleCopy = () => {
-    if (!content) return;
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    toast.success("Konten markdown disalin ke clipboard!");
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownload = () => {
-    if (!content) return;
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = filename.endsWith(".md") ? filename : `${filename}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-    toast.success(`Mengunduh ${filename}...`);
-  };
 
   const wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
   const charCount = content ? content.length : 0;
@@ -178,7 +148,7 @@ export function MarkdownDocViewer({
         {/* Action Controls */}
         <div className="flex items-center gap-1.5">
           {/* Font Zoom */}
-          <div className="hidden md:flex items-center gap-1 bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
+          <div className="flex items-center gap-1 bg-slate-800/80 rounded-lg p-0.5 border border-slate-700/60">
             <button
               type="button"
               onClick={() => setFontSize((prev) => Math.max(11, prev - 1))}
@@ -199,26 +169,6 @@ export function MarkdownDocViewer({
               <ZoomIn className="size-3.5" />
             </button>
           </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCopy}
-            className="h-7 text-xs gap-1 text-slate-300 hover:bg-slate-800 hover:text-white px-2.5"
-          >
-            {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
-            <span>{copied ? "Tersalin" : "Copy"}</span>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDownload}
-            className="h-7 text-xs gap-1 text-slate-300 hover:bg-slate-800 hover:text-white px-2.5"
-          >
-            <Download className="size-3.5" />
-            <span className="hidden sm:inline">Download</span>
-          </Button>
         </div>
       </div>
 
