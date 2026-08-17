@@ -17,6 +17,7 @@ import {
   FileUp,
   Sliders,
   Lock,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,8 +38,10 @@ import {
   getHeroGeniusDocumentChunksAction,
   ingestHeroGeniusDocumentAction,
   searchHeroGeniusKnowledgeAction,
+  resyncWebDocumentAction,
 } from "@/app/dashboard/hero-genius/actions";
 import { DocumentPreviewModal } from "./document-preview-modal";
+import { WebParserModal } from "./web-parser-modal";
 import {
   resolveRagDocumentUrl,
   type RagChunkItem,
@@ -67,6 +70,13 @@ export function GeniusKnowledgeWorkspace({
   const [autoOcr, setAutoOcr] = useState(true);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [webParserOpen, setWebParserOpen] = useState(false);
+
+  // Re-Sync Modal State
+  const [resyncDialogOpen, setResyncDialogOpen] = useState(false);
+  const [resyncDoc, setResyncDoc] = useState<RagDocumentItem | null>(null);
+  const [resyncUrl, setResyncUrl] = useState("");
+  const [isResyncing, setIsResyncing] = useState(false);
 
   // Chunks Modal State
   const [chunksDialogOpen, setChunksDialogOpen] = useState(false);
@@ -148,6 +158,57 @@ export function GeniusKnowledgeWorkspace({
       }
     } catch (err: any) {
       toast.error(err.message || "Kesalahan saat menghapus");
+    }
+  };
+
+  const handleOpenResync = (doc: RagDocumentItem) => {
+    setResyncDoc(doc);
+    const existingUrl = doc.s3_url && doc.s3_url.startsWith("http") ? doc.s3_url : "";
+    setResyncUrl(existingUrl);
+    setResyncDialogOpen(true);
+  };
+
+  const handleResyncSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resyncDoc || !resyncUrl.trim()) {
+      toast.error("Masukkan URL web yang valid untuk re-sync!");
+      return;
+    }
+
+    setIsResyncing(true);
+    try {
+      const res = await resyncWebDocumentAction({
+        documentId: resyncDoc.id,
+        url: resyncUrl.trim(),
+        customTitle: resyncDoc.filename.replace(/\.md$/, ""),
+      });
+
+      if (res.success) {
+        toast.success(res.message || "Dokumen berhasil di-resync dengan konten web terbaru!");
+        setResyncDialogOpen(false);
+        if (onRefresh) onRefresh();
+        if (res.data) {
+          setDocuments((prev) =>
+            prev.map((d) =>
+              d.id === resyncDoc.id
+                ? {
+                    ...d,
+                    id: res.data!.document_id,
+                    char_count: res.data!.char_count || d.char_count,
+                    total_chunks: res.data!.total_chunks || d.total_chunks,
+                    created_at: new Date().toISOString(),
+                  }
+                : d
+            )
+          );
+        }
+      } else {
+        toast.error(res.error || "Gagal melakukan re-sync dokumen");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error saat re-sync dokumen");
+    } finally {
+      setIsResyncing(false);
     }
   };
 
@@ -285,13 +346,23 @@ export function GeniusKnowledgeWorkspace({
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             {canManageDocuments ? (
-              <Button
-                onClick={() => setUploadDialogOpen(true)}
-                className="h-9 gap-1.5 rounded-lg bg-[#003461] hover:bg-[#002647] text-white shadow-sm text-xs font-semibold"
-              >
-                <FileUp className="size-4" />
-                Ingest Dokumen Baru
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setWebParserOpen(true)}
+                  variant="outline"
+                  className="h-9 gap-1.5 rounded-lg border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950 text-xs font-semibold shadow-sm"
+                >
+                  <Globe className="size-4 text-blue-600 dark:text-blue-400" />
+                  Parse Web URL
+                </Button>
+                <Button
+                  onClick={() => setUploadDialogOpen(true)}
+                  className="h-9 gap-1.5 rounded-lg bg-[#003461] hover:bg-[#002647] text-white shadow-sm text-xs font-semibold"
+                >
+                  <FileUp className="size-4" />
+                  Ingest Dokumen Baru
+                </Button>
+              </div>
             ) : (
               <Badge
                 variant="outline"
@@ -400,6 +471,22 @@ export function GeniusKnowledgeWorkspace({
                         <Eye className="size-3.5 mr-1" />
                         Chunks
                       </Button>
+                      {canManageDocuments &&
+                        (doc.filename.endsWith(".md") ||
+                          doc.format === "md" ||
+                          doc.engine_used === "web_parser" ||
+                          doc.s3_url?.startsWith("http")) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenResync(doc)}
+                            className="h-8 px-2.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                            title="Re-Sync Konten Web Terbaru"
+                          >
+                            <RefreshCw className="size-3.5 mr-1" />
+                            Re-Sync
+                          </Button>
+                        )}
                       {canManageDocuments && (
                         <Button
                           variant="ghost"
@@ -621,6 +708,103 @@ export function GeniusKnowledgeWorkspace({
           url={previewDoc.url}
         />
       )}
+
+      {/* Re-Sync Web Document Dialog */}
+      <Dialog open={resyncDialogOpen} onOpenChange={setResyncDialogOpen}>
+        <DialogContent className="sm:max-w-lg rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <RefreshCw className="size-4 text-blue-600" />
+              Re-Sync Dokumen Web
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Tarik konten terbaru dari URL web asli dan perbarui seluruh vektor embedding di pgvector.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleResyncSubmit} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Nama Dokumen</Label>
+              <Input
+                value={resyncDoc?.filename || ""}
+                disabled
+                className="h-9 text-xs bg-slate-50 dark:bg-slate-900"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">URL Sumber Web</Label>
+              <Input
+                type="url"
+                value={resyncUrl}
+                onChange={(e) => setResyncUrl(e.target.value)}
+                placeholder="https://example.com/artikel"
+                required
+                className="h-9 text-xs font-mono"
+                disabled={isResyncing}
+              />
+              <p className="text-[11px] text-slate-500">
+                Sistem akan mengikis ulang halaman web ini, membuat clean markdown baru, dan memperbarui database vektor.
+              </p>
+            </div>
+
+            <DialogFooter className="pt-2 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setResyncDialogOpen(false)}
+                disabled={isResyncing}
+                className="h-9 text-xs rounded-xl"
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                disabled={isResyncing || !resyncUrl.trim()}
+                className="h-9 px-4 text-xs font-semibold rounded-xl bg-[#003461] hover:bg-[#002647] text-white gap-2 shadow-sm"
+              >
+                {isResyncing ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Memperbarui Vektor...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="size-3.5" />
+                    Mulai Re-Sync
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Web Parser & Smart Chunking Modal */}
+      <WebParserModal
+        open={webParserOpen}
+        onOpenChange={setWebParserOpen}
+        onIngestSuccess={(res) => {
+          if (onRefresh) onRefresh();
+          if (res?.data) {
+            setDocuments((prev) => [
+              {
+                id: res.data.document_id || `doc-${Date.now()}`,
+                filename: res.data.filename || res.filename || "web_article.md",
+                format: "md",
+                s3_url: res.data.s3_url,
+                char_count: res.data.char_count || 0,
+                word_count: res.data.word_count || 0,
+                total_chunks: res.data.total_chunks || 0,
+                engine_used: "web_parser",
+                embedding_model: "BAAI/bge-small-en-v1.5",
+                created_at: new Date().toISOString(),
+              },
+              ...prev,
+            ]);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   type RagFeedbackPayload,
   type RagLearnMemoryPayload,
 } from "@/lib/hero-genius/client";
+import { parseWebUrl, parseBatchWebUrls, type ParseWebOptions } from "@/lib/hero-genius/web-parser";
 import { getServerSession } from "@/lib/auth-session";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
@@ -293,6 +294,184 @@ export async function ingestHeroGeniusDocumentAction(formData: FormData) {
     return {
       success: false,
       error: error.message || "Gagal memproses ingest dokumen",
+    };
+  }
+}
+
+/**
+ * Preview Web Scraping & Hierarchical Chunking (No-API)
+ */
+export async function parseWebUrlPreviewAction(
+  url: string,
+  options?: { chunkSize?: number; chunkOverlap?: number }
+) {
+  try {
+    if (!url || typeof url !== "string") {
+      return { success: false, error: "URL wajib diisi" };
+    }
+
+    const parsed = await parseWebUrl(url.trim(), {
+      chunkSize: options?.chunkSize || 800,
+      chunkOverlap: options?.chunkOverlap || 120,
+    });
+
+    return {
+      success: true,
+      data: parsed,
+    };
+  } catch (error: any) {
+    console.error("[parseWebUrlPreviewAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal melakukan web parsing",
+    };
+  }
+}
+
+/**
+ * Ingest Parsed Web Content directly to RAG Knowledge Base & pgvector
+ */
+export async function ingestWebUrlToKnowledgeBaseAction(payload: {
+  url: string;
+  title: string;
+  markdownContent: string;
+  customFilename?: string;
+}) {
+  try {
+    const isSuperAdmin = await isSuperAdminUser();
+    if (!isSuperAdmin) {
+      return {
+        success: false,
+        error: "Akses ditolak: Hanya Super Admin yang diizinkan meng-ingest dokumen ke Knowledge Base.",
+      };
+    }
+
+    const { url, title, markdownContent, customFilename } = payload;
+    if (!markdownContent || markdownContent.trim().length === 0) {
+      return { success: false, error: "Konten markdown tidak boleh kosong" };
+    }
+
+    // Sanitize filename
+    const cleanTitle = (customFilename || title || "web_article")
+      .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 60);
+    const filename = `${cleanTitle}.md`;
+
+    // Package markdown as File in FormData
+    const fileBlob = new Blob([markdownContent], { type: "text/markdown" });
+    const formData = new FormData();
+    formData.append("file", fileBlob, filename);
+    formData.append("auto_ocr", "false");
+    formData.append("source_url", url || "");
+
+    const response = await ingestRagDocument(formData);
+    return {
+      success: true,
+      message: response.message || `Web content "${filename}" berhasil di-ingest ke Knowledge Base!`,
+      data: response.data,
+      filename,
+    };
+  } catch (error: any) {
+    console.error("[ingestWebUrlToKnowledgeBaseAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal meng-ingest web content ke Knowledge Base",
+    };
+  }
+}
+
+/**
+ * Batch Parse multiple Web URLs at once
+ */
+export async function parseBatchWebUrlsAction(
+  urls: string[],
+  options?: { chunkSize?: number; chunkOverlap?: number }
+) {
+  try {
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return { success: false, error: "Daftar URL tidak boleh kosong" };
+    }
+
+    const batchResult = await parseBatchWebUrls(urls, {
+      chunkSize: options?.chunkSize || 800,
+      chunkOverlap: options?.chunkOverlap || 120,
+    });
+
+    return {
+      success: true,
+      data: batchResult,
+    };
+  } catch (error: any) {
+    console.error("[parseBatchWebUrlsAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal memproses batch web parsing",
+    };
+  }
+}
+
+/**
+ * Re-Sync / Update an existing web-scraped document with latest content from the web
+ */
+export async function resyncWebDocumentAction(payload: {
+  documentId: string;
+  url: string;
+  customTitle?: string;
+}) {
+  try {
+    const isSuperAdmin = await isSuperAdminUser();
+    if (!isSuperAdmin) {
+      return {
+        success: false,
+        error: "Akses ditolak: Hanya Super Admin yang diizinkan memperbarui dokumen di Knowledge Base.",
+      };
+    }
+
+    const { documentId, url, customTitle } = payload;
+    if (!url || !url.startsWith("http")) {
+      return { success: false, error: "URL sumber dokumen tidak valid" };
+    }
+
+    // 1. Fetch fresh content from Web
+    const parsed = await parseWebUrl(url, { chunkSize: 800, chunkOverlap: 120 });
+
+    const title = customTitle || parsed.title || "web_article";
+    const cleanTitle = title
+      .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 60);
+    const filename = `${cleanTitle}.md`;
+
+    // 2. Ingest updated document
+    const fileBlob = new Blob([parsed.markdown], { type: "text/markdown" });
+    const formData = new FormData();
+    formData.append("file", fileBlob, filename);
+    formData.append("auto_ocr", "false");
+    formData.append("source_url", url);
+
+    const ingestRes = await ingestRagDocument(formData);
+
+    // 3. Delete old document id if it differs from the new one
+    if (documentId && ingestRes?.data?.document_id && ingestRes.data.document_id !== documentId) {
+      try {
+        await deleteRagDocument(documentId);
+      } catch (delErr) {
+        console.warn("[resyncWebDocumentAction] Note: failed to remove previous doc version:", delErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: `Dokumen "${filename}" berhasil di-resync dengan konten web terbaru!`,
+      data: ingestRes.data,
+      filename,
+    };
+  } catch (error: any) {
+    console.error("[resyncWebDocumentAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal melakukan re-sync dokumen web",
     };
   }
 }

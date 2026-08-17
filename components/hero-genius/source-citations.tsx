@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Eye, BookOpen } from "lucide-react";
+import { FileText, Eye, BookOpen, Globe, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,14 +32,26 @@ export function SourceCitations({ sources }: SourceCitationsProps) {
       </span>
       {sources.map((src, idx) => {
         const scorePercent = Math.round((src.similarity_score || 0) * 100);
+        const isWebDoc =
+          src.filename.endsWith(".md") ||
+          (src.content && src.content.includes("[Sumber]: http"));
+
         return (
           <button
             key={idx}
             type="button"
             onClick={() => setSelectedSource(src)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 transition-colors dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/70 cursor-pointer"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+              isWebDoc
+                ? "border-blue-200 bg-blue-50/90 text-blue-800 hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+                : "border-sky-200 bg-sky-50/80 text-sky-800 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300"
+            }`}
           >
-            <FileText className="size-3 text-sky-600 dark:text-sky-400" />
+            {isWebDoc ? (
+              <Globe className="size-3 text-blue-600 dark:text-blue-400" />
+            ) : (
+              <FileText className="size-3 text-sky-600 dark:text-sky-400" />
+            )}
             <span className="max-w-[140px] truncate">{src.filename}</span>
             <Badge
               variant="outline"
@@ -56,7 +68,11 @@ export function SourceCitations({ sources }: SourceCitationsProps) {
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
-              <FileText className="size-4 text-sky-600" />
+              {selectedSource?.filename.endsWith(".md") ? (
+                <Globe className="size-4 text-blue-600" />
+              ) : (
+                <FileText className="size-4 text-sky-600" />
+              )}
               Detail Sumber Dokumen
             </DialogTitle>
             <DialogDescription className="text-xs">
@@ -87,6 +103,36 @@ export function SourceCitations({ sources }: SourceCitationsProps) {
                     {(selectedSource.similarity_score * 100).toFixed(1)}% Match
                   </Badge>
                 </div>
+
+                {/* Extract Web Source URL if available in chunk */}
+                {(() => {
+                  const urlMatch = selectedSource.content?.match(
+                    /\[Sumber\]:\s*(https?:\/\/[^\s\n\r]+)/i
+                  );
+                  const webUrl = urlMatch ? urlMatch[1] : null;
+
+                  if (webUrl) {
+                    return (
+                      <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2">
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <Globe className="size-3 text-blue-500" />
+                          Web Asli:
+                        </span>
+                        <a
+                          href={webUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium truncate max-w-[280px]"
+                        >
+                          {webUrl}
+                          <ExternalLink className="size-3 shrink-0" />
+                        </a>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {selectedSource.s3_url && (
                   <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800">
                     <Button
@@ -111,7 +157,7 @@ export function SourceCitations({ sources }: SourceCitationsProps) {
                   <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">
                     Cuplikan Teks (Chunk Content):
                   </label>
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-700 whitespace-pre-wrap dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-700 whitespace-pre-wrap dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 font-mono">
                     {selectedSource.content}
                   </div>
                 </div>
