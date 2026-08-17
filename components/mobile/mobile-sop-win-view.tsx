@@ -15,6 +15,9 @@ import {
   Sparkles,
   MessageSquare,
   Info,
+  Loader2,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -170,6 +173,44 @@ export function MobileSopWinView({
       doc.documentNumber
     )}`;
     router.push(url);
+  };
+
+  const renderRagStatusBadge = (doc: any) => {
+    const status = (doc as any).ragStatus || (doc.ragDocumentId ? "ready" : "pending");
+
+    if (status === "ready") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-300">
+          <Sparkles className="size-2.5 text-emerald-600" />
+          AI Ready
+        </span>
+      );
+    }
+    if (status === "processing") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-950 dark:text-amber-300">
+          <Loader2 className="size-2.5 animate-spin text-amber-600" />
+          OCR & AI...
+        </span>
+      );
+    }
+    if (status === "pending") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950 dark:text-blue-300">
+          <Clock className="size-2.5 text-blue-600" />
+          Antrian AI
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950 dark:text-rose-300">
+          <AlertCircle className="size-2.5 text-rose-600" />
+          Gagal AI
+        </span>
+      );
+    }
+    return null;
   };
 
   return (
@@ -365,6 +406,7 @@ export function MobileSopWinView({
                     <Badge variant="secondary" className="text-[10px] font-mono font-semibold px-1.5 py-0.5">
                       {doc.departmentCode}
                     </Badge>
+                    {renderRagStatusBadge(doc)}
                   </div>
 
                   <button

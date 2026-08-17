@@ -138,7 +138,7 @@ export function SopWinFormDialog({
                 Tambah Dokumen SOP / WIN / POL
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500 mt-0.5">
-                Dokumen akan otomatis di-ingest ke AI Hero Genius untuk pencarian semantik cerdas.
+                Dokumen disimpan instan, proses OCR & sinkronisasi AI berjalan di background secara berurutan.
               </DialogDescription>
             </div>
           </div>

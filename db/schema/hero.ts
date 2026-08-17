@@ -3968,6 +3968,9 @@ export const sopWinDocuments = pgTable('hero_sop_win_documents', {
   pdfFileUrl: text('pdf_file_url').notNull(),
   docxFileUrl: text('docx_file_url'),
   ragDocumentId: text('rag_document_id'),
+  ragStatus: text('rag_status').notNull().default('pending'), // 'pending', 'processing', 'ready', 'failed'
+  ragErrorMessage: text('rag_error_message'),
+  ragProcessedAt: timestamp('rag_processed_at'),
   summary: text('summary').notNull().default(''),
   effectiveDate: timestamp('effective_date'),
   createdById: integer('created_by_id').references(() => employees.id, { onDelete: 'set null' }),
@@ -3986,6 +3989,8 @@ export const sopWinRevisions = pgTable('hero_sop_win_revisions', {
   pdfFileUrl: text('pdf_file_url').notNull(),
   docxFileUrl: text('docx_file_url'),
   ragDocumentId: text('rag_document_id'),
+  ragStatus: text('rag_status').notNull().default('pending'), // 'pending', 'processing', 'ready', 'failed'
+  ragErrorMessage: text('rag_error_message'),
   revisedByEmployeeId: integer('revised_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
@@ -3998,6 +4003,26 @@ export const sopWinDepartments = pgTable('hero_sop_win_departments', {
   headEmployeeId: integer('head_employee_id').references(() => employees.id, { onDelete: 'set null' }),
   isActive: boolean('is_active').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// SOP / WIN Background RAG Ingestion Queue (FIFO 1-by-1 Worker)
+export const sopWinRagQueue = pgTable('hero_sop_win_rag_queue', {
+  id: serial('id').primaryKey(),
+  documentId: integer('document_id')
+    .notNull()
+    .references(() => sopWinDocuments.id, { onDelete: 'cascade' }),
+  revisionId: integer('revision_id')
+    .references(() => sopWinRevisions.id, { onDelete: 'cascade' }),
+  fileUrl: text('file_url').notNull(),
+  fileName: text('file_name').notNull(),
+  fileType: text('file_type').notNull().default('pdf'), // 'pdf' | 'docx'
+  status: text('status').notNull().default('pending'), // 'pending', 'processing', 'completed', 'failed'
+  attempts: integer('attempts').notNull().default(0),
+  errorMessage: text('error_message'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

@@ -24,6 +24,10 @@ import {
   RefreshCw,
   Edit3,
   ArrowRightLeft,
+  Loader2,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +43,9 @@ import {
   deleteSopWinDocumentAction,
   getSopWinDocumentDetailAction,
   getSopWinDepartmentsAction,
+  getSopWinRagQueueStatusAction,
+  retrySopWinRagItemAction,
+  retryAllFailedSopWinRagAction,
 } from "@/app/dashboard/sop-win/actions";
 import { STANDARD_DEPARTMENTS } from "@/lib/sop-win-constants";
 import {
@@ -187,6 +194,141 @@ export function SopWinExplorerWorkspace({
       isMounted = false;
     };
   }, [selectedDocId]);
+
+  // Queue stats state
+  const [queueStatus, setQueueStatus] = useState<{
+    isWorkerRunning: boolean;
+    pendingCount: number;
+    processingCount: number;
+    failedCount: number;
+  }>({
+    isWorkerRunning: false,
+    pendingCount: 0,
+    processingCount: 0,
+    failedCount: 0,
+  });
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  // Poll RAG Queue when active
+  useEffect(() => {
+    let timer: any = null;
+    let isMounted = true;
+
+    const checkQueue = async () => {
+      try {
+        const res = await getSopWinRagQueueStatusAction();
+        if (isMounted && res.success) {
+          setQueueStatus({
+            isWorkerRunning: res.isWorkerRunning,
+            pendingCount: res.pendingCount,
+            processingCount: res.processingCount,
+            failedCount: res.failedCount,
+          });
+
+          // If items are in queue, poll again in 3.5 seconds
+          if (res.pendingCount > 0 || res.processingCount > 0) {
+            timer = setTimeout(checkQueue, 3500);
+          } else {
+            // Re-fetch document list once queue is empty
+            if (onRefreshData) onRefreshData();
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check RAG queue:", err);
+      }
+    };
+
+    checkQueue();
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [initialDocuments]);
+
+  const handleRetryItem = async (docId: number) => {
+    try {
+      setIsRetrying(true);
+      const res = await retrySopWinRagItemAction(docId);
+      if (res.success) {
+        toast.success(res.message || "Dokumen dimasukkan kembali ke antrian AI.");
+        const qRes = await getSopWinRagQueueStatusAction();
+        if (qRes.success) setQueueStatus(qRes);
+        if (onRefreshData) onRefreshData();
+      } else {
+        toast.error(res.error || "Gagal memasukkan dokumen ke antrian.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal retry antrian RAG.");
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const handleRetryAllFailed = async () => {
+    try {
+      setIsRetrying(true);
+      const res = await retryAllFailedSopWinRagAction();
+      if (res.success) {
+        toast.success(res.message || "Semua dokumen gagal dimasukkan ke antrian AI.");
+        const qRes = await getSopWinRagQueueStatusAction();
+        if (qRes.success) setQueueStatus(qRes);
+        if (onRefreshData) onRefreshData();
+      } else {
+        toast.error(res.error || "Gagal retry antrian.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal retry semua dokumen.");
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const renderRagStatusBadge = (doc: any) => {
+    const status = doc.ragStatus || (doc.ragDocumentId ? "ready" : "pending");
+
+    if (status === "ready") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" title="Dokumen siap & terindeks AI">
+          <Sparkles className="size-2.5 text-emerald-600" />
+          AI Ready
+        </span>
+      );
+    }
+    if (status === "processing") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" title="Sedang OCR & Chunking di background">
+          <Loader2 className="size-2.5 animate-spin text-amber-600" />
+          OCR & AI...
+        </span>
+      );
+    }
+    if (status === "pending") {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" title="Menunggu giliran antrian background">
+          <Clock className="size-2.5 text-blue-600" />
+          Antrian AI
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRetryItem(doc.id);
+          }}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 transition-colors"
+          title={doc.ragErrorMessage ? `Error: ${doc.ragErrorMessage} (Klik untuk retry)` : "Gagal sinkron AI (Klik untuk retry)"}
+        >
+          <AlertCircle className="size-2.5 text-rose-600" />
+          Gagal AI (Retry)
+        </button>
+      );
+    }
+    return null;
+  };
 
   const handleDelete = async (docId: number, docNum: string) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus dokumen ${docNum}?`)) {
@@ -373,6 +515,44 @@ export function SopWinExplorerWorkspace({
           </div>
         </div>
 
+        {/* Active Background Queue Notification Banner */}
+        {(queueStatus.pendingCount > 0 || queueStatus.processingCount > 0 || queueStatus.failedCount > 0) && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-amber-50 border-b border-indigo-100 text-xs dark:from-slate-900 dark:via-blue-950/40 dark:to-slate-900 dark:border-slate-800 shrink-0">
+            <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
+              {queueStatus.processingCount > 0 ? (
+                <Loader2 className="size-3.5 animate-spin text-blue-600 dark:text-blue-400 shrink-0" />
+              ) : (
+                <Clock className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              )}
+              <span>
+                <strong>Antrian RAG AI:</strong>{" "}
+                {queueStatus.processingCount > 0
+                  ? "1 dokumen sedang diproses OCR & chunking"
+                  : "Menunggu giliran antrian"}
+                {queueStatus.pendingCount > 0 && `, ${queueStatus.pendingCount} dalam antrian`}
+                {queueStatus.failedCount > 0 && (
+                  <span className="text-rose-600 font-semibold ml-1">
+                    ({queueStatus.failedCount} gagal sinkron)
+                  </span>
+                )}
+              </span>
+            </div>
+            {queueStatus.failedCount > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isRetrying}
+                onClick={handleRetryAllFailed}
+                className="h-6 px-2 text-[10px] font-bold text-rose-700 bg-white border-rose-200 hover:bg-rose-50 dark:bg-slate-900 dark:text-rose-300 dark:border-rose-800 shrink-0"
+              >
+                <RefreshCw className={`size-2.5 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
+                Retry Gagal ({queueStatus.failedCount})
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Table Content */}
         <div className="flex-1 overflow-x-auto overflow-y-auto max-h-[700px]">
           <table className="w-full text-left text-xs">
@@ -422,9 +602,11 @@ export function SopWinExplorerWorkspace({
                       </td>
                       <td className="px-3 py-3 font-medium text-slate-800 dark:text-slate-200">
                         <p className="font-semibold text-xs leading-snug line-clamp-2">{doc.title}</p>
-                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-400">
                           <span>Dept: {doc.departmentCode}</span>
                           {doc.ownerName && <span>• PIC: {doc.ownerName}</span>}
+                          <span>•</span>
+                          {renderRagStatusBadge(doc)}
                         </div>
                       </td>
                       <td className="px-2 py-3 whitespace-nowrap">
@@ -613,9 +795,9 @@ export function SopWinExplorerWorkspace({
           </div>
 
           {/* Document Meta & Revision Log Tab Area */}
-          <div className="p-4 space-y-3 shrink-0 max-h-48 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 text-xs">
+          <div className="p-4 space-y-3 shrink-0 max-h-56 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span>
                   <strong className="text-slate-500">Owner:</strong>{" "}
                   {activeDoc.ownerName || "-"}
@@ -630,6 +812,10 @@ export function SopWinExplorerWorkspace({
                       })
                     : "-"}
                 </span>
+                <div className="flex items-center gap-1.5">
+                  <strong className="text-slate-500">Status AI:</strong>
+                  {renderRagStatusBadge(activeDoc)}
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
@@ -675,12 +861,15 @@ export function SopWinExplorerWorkspace({
                   {activeDocRevisions.map((rev: any) => (
                     <div
                       key={rev.id}
-                      className="rounded-xl border border-slate-200/80 bg-white p-2 text-xs space-y-0.5 shadow-2xs dark:border-slate-800 dark:bg-slate-950"
+                      className="rounded-xl border border-slate-200/80 bg-white p-2 text-xs space-y-1 shadow-2xs dark:border-slate-800 dark:bg-slate-950"
                     >
                       <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="font-mono text-[9px] font-bold">
-                          Rev {rev.revisionNumber}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="font-mono text-[9px] font-bold">
+                            Rev {rev.revisionNumber}
+                          </Badge>
+                          {renderRagStatusBadge(rev)}
+                        </div>
                         <span className="text-[9px] text-slate-400">
                           {new Date(rev.effectiveDate || rev.createdAt).toLocaleDateString(
                             "id-ID",

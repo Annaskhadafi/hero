@@ -17,6 +17,13 @@ import {
   ingestRagDocument,
   deleteRagDocument,
 } from "@/lib/hero-genius/client";
+import {
+  enqueueSopWinRag,
+  getSopWinRagQueueStatus,
+  retrySopWinRagItem,
+  retryAllFailedSopWinRag,
+  triggerSopWinRagWorker,
+} from "@/lib/sop-win-rag-queue";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -496,6 +503,9 @@ export async function getSopWinDocumentsAction(filters?: {
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
         ragDocumentId: sopWinDocuments.ragDocumentId,
+        ragStatus: sopWinDocuments.ragStatus,
+        ragErrorMessage: sopWinDocuments.ragErrorMessage,
+        ragProcessedAt: sopWinDocuments.ragProcessedAt,
         summary: sopWinDocuments.summary,
         effectiveDate: sopWinDocuments.effectiveDate,
         createdAt: sopWinDocuments.createdAt,
@@ -533,6 +543,7 @@ export async function getSopWinDocumentsAction(filters?: {
       documents: docs.map((doc) => ({
         ...doc,
         effectiveDate: doc.effectiveDate ? doc.effectiveDate.toISOString() : null,
+        ragProcessedAt: doc.ragProcessedAt ? doc.ragProcessedAt.toISOString() : null,
         createdAt: doc.createdAt ? doc.createdAt.toISOString() : new Date().toISOString(),
         updatedAt: doc.updatedAt ? doc.updatedAt.toISOString() : new Date().toISOString(),
       })),
@@ -569,6 +580,9 @@ export async function getSopWinDocumentDetailAction(documentId: number) {
         pdfFileUrl: sopWinDocuments.pdfFileUrl,
         docxFileUrl: sopWinDocuments.docxFileUrl,
         ragDocumentId: sopWinDocuments.ragDocumentId,
+        ragStatus: sopWinDocuments.ragStatus,
+        ragErrorMessage: sopWinDocuments.ragErrorMessage,
+        ragProcessedAt: sopWinDocuments.ragProcessedAt,
         summary: sopWinDocuments.summary,
         effectiveDate: sopWinDocuments.effectiveDate,
         createdAt: sopWinDocuments.createdAt,
@@ -589,6 +603,7 @@ export async function getSopWinDocumentDetailAction(documentId: number) {
     const doc = {
       ...rawDoc,
       effectiveDate: rawDoc.effectiveDate ? rawDoc.effectiveDate.toISOString() : null,
+      ragProcessedAt: rawDoc.ragProcessedAt ? rawDoc.ragProcessedAt.toISOString() : null,
       createdAt: rawDoc.createdAt ? rawDoc.createdAt.toISOString() : new Date().toISOString(),
       updatedAt: rawDoc.updatedAt ? rawDoc.updatedAt.toISOString() : new Date().toISOString(),
     };
@@ -603,6 +618,8 @@ export async function getSopWinDocumentDetailAction(documentId: number) {
         pdfFileUrl: sopWinRevisions.pdfFileUrl,
         docxFileUrl: sopWinRevisions.docxFileUrl,
         ragDocumentId: sopWinRevisions.ragDocumentId,
+        ragStatus: sopWinRevisions.ragStatus,
+        ragErrorMessage: sopWinRevisions.ragErrorMessage,
         createdAt: sopWinRevisions.createdAt,
         revisedByName: employees.name,
         revisedBySn: employees.employeeSn,
@@ -808,7 +825,7 @@ export async function getEmployeeOptionsForSopAction() {
 }
 
 /**
- * 5. Create SOP / WIN / POL Document with Auto RAG Ingestion
+ * 5. Create SOP / WIN / POL Document with Fast Background RAG Ingestion
  */
 export async function createSopWinDocumentAction(formData: FormData) {
   try {
@@ -861,26 +878,7 @@ export async function createSopWinDocumentAction(formData: FormData) {
       docxFileUrl = `/api/uploads/${docxFilename}`;
     }
 
-    // Auto Ingest to RAG pgvector API (Prefer DOCX if available, else PDF)
-    let ragDocumentId: string | null = null;
-    try {
-      const ragFormData = new FormData();
-      if (docxFile && docxFile.size > 0) {
-        ragFormData.append("file", docxFile);
-      } else {
-        ragFormData.append("file", pdfFile);
-      }
-      ragFormData.append("auto_ocr", "true");
-
-      const ragRes = await ingestRagDocument(ragFormData);
-      if (ragRes.data?.document_id) {
-        ragDocumentId = ragRes.data.document_id;
-      }
-    } catch (ragErr) {
-      console.warn("[createSopWinDocumentAction] RAG ingestion warning:", ragErr);
-    }
-
-    // Save Document to Database
+    // Save Document to Database (Initial status: pending RAG processing)
     const inserted = await db
       .insert(sopWinDocuments)
       .values({
@@ -893,7 +891,9 @@ export async function createSopWinDocumentAction(formData: FormData) {
         status: "active",
         pdfFileUrl,
         docxFileUrl,
-        ragDocumentId,
+        ragDocumentId: null,
+        ragStatus: "pending",
+        ragErrorMessage: null,
         summary,
         effectiveDate,
         createdById: currentEmp?.id || null,
@@ -905,22 +905,41 @@ export async function createSopWinDocumentAction(formData: FormData) {
     const newDocId = inserted[0].id;
 
     // Save Initial Revision
-    await db.insert(sopWinRevisions).values({
+    const [insertedRev] = await db
+      .insert(sopWinRevisions)
+      .values({
+        documentId: newDocId,
+        revisionNumber,
+        effectiveDate,
+        changeDescription,
+        pdfFileUrl,
+        docxFileUrl,
+        ragDocumentId: null,
+        ragStatus: "pending",
+        revisedByEmployeeId: currentEmp?.id || null,
+        createdAt: new Date(),
+      })
+      .returning({ id: sopWinRevisions.id });
+
+    // Enqueue to Sequential Background Worker (Non-blocking)
+    const activeFileUrl = docxFileUrl || pdfFileUrl;
+    const activeFileType = docxFileUrl ? "docx" : "pdf";
+    const activeFileName = docxFile ? docxFile.name : pdfFile.name;
+
+    await enqueueSopWinRag({
       documentId: newDocId,
-      revisionNumber,
-      effectiveDate,
-      changeDescription,
-      pdfFileUrl,
-      docxFileUrl,
-      ragDocumentId,
-      revisedByEmployeeId: currentEmp?.id || null,
-      createdAt: new Date(),
+      revisionId: insertedRev.id,
+      fileUrl: activeFileUrl,
+      fileName: activeFileName,
+      fileType: activeFileType,
     });
 
     safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+
     return {
       success: true,
-      message: `Dokumen ${documentNumber} berhasil ditambahkan dan disinkronkan ke AI!`,
+      message: `Dokumen ${documentNumber} berhasil disimpan! OCR & sinkronisasi AI sedang diproses di background.`,
       documentId: newDocId,
     };
   } catch (error: any) {
@@ -975,6 +994,11 @@ export async function updateSopWinDocumentAction(formData: FormData) {
 
     // Optional File Replacements
     const uploadDir = join(process.cwd(), "public", "uploads");
+    let hasNewFile = false;
+    let newFileUrl = "";
+    let newFileName = "";
+    let newFileType: "pdf" | "docx" = "pdf";
+
     if (pdfFile && pdfFile.size > 0) {
       const pdfBytes = await pdfFile.arrayBuffer();
       const pdfBuffer = Buffer.from(pdfBytes);
@@ -982,19 +1006,10 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       await mkdir(uploadDir, { recursive: true });
       await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
       updatePayload.pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-      // Ingest to RAG if replacement uploaded
-      try {
-        const ragFormData = new FormData();
-        ragFormData.append("file", pdfFile);
-        ragFormData.append("auto_ocr", "true");
-        const ragRes = await ingestRagDocument(ragFormData);
-        if (ragRes.data?.document_id) {
-          updatePayload.ragDocumentId = ragRes.data.document_id;
-        }
-      } catch (err) {
-        console.warn("[updateSopWinDocumentAction] RAG re-ingest warning:", err);
-      }
+      hasNewFile = true;
+      newFileUrl = updatePayload.pdfFileUrl;
+      newFileName = pdfFile.name;
+      newFileType = "pdf";
     }
 
     if (docxFile && docxFile.size > 0) {
@@ -1004,6 +1019,14 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       await mkdir(uploadDir, { recursive: true });
       await writeFile(join(uploadDir, docxFilename), docxBuffer);
       updatePayload.docxFileUrl = `/api/uploads/${docxFilename}`;
+      hasNewFile = true;
+      newFileUrl = updatePayload.docxFileUrl;
+      newFileName = docxFile.name;
+      newFileType = "docx";
+    }
+
+    if (hasNewFile) {
+      updatePayload.ragStatus = "pending";
     }
 
     await db
@@ -1011,10 +1034,21 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       .set(updatePayload)
       .where(eq(sopWinDocuments.id, documentId));
 
+    if (hasNewFile) {
+      await enqueueSopWinRag({
+        documentId,
+        fileUrl: newFileUrl,
+        fileName: newFileName,
+        fileType: newFileType,
+      });
+    }
+
     safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+
     return {
       success: true,
-      message: `Dokumen ${documentNumber} berhasil diperbarui (Departemen: ${departmentCode.toUpperCase()})!`,
+      message: `Dokumen ${documentNumber} berhasil diperbarui!`,
     };
   } catch (error: any) {
     console.error("[updateSopWinDocumentAction] error:", error);
@@ -1026,7 +1060,7 @@ export async function updateSopWinDocumentAction(formData: FormData) {
 }
 
 /**
- * 7. Add Revision to Existing Document with Auto RAG Ingestion
+ * 7. Add Revision to Existing Document with Fast Background RAG Ingestion
  */
 export async function createSopWinRevisionAction(formData: FormData) {
   try {
@@ -1071,37 +1105,22 @@ export async function createSopWinRevisionAction(formData: FormData) {
       docxFileUrl = `/api/uploads/${docxFilename}`;
     }
 
-    // Auto Ingest new revision to RAG
-    let ragDocumentId: string | null = null;
-    try {
-      const ragFormData = new FormData();
-      if (docxFile && docxFile.size > 0) {
-        ragFormData.append("file", docxFile);
-      } else {
-        ragFormData.append("file", pdfFile);
-      }
-      ragFormData.append("auto_ocr", "true");
-
-      const ragRes = await ingestRagDocument(ragFormData);
-      if (ragRes.data?.document_id) {
-        ragDocumentId = ragRes.data.document_id;
-      }
-    } catch (ragErr) {
-      console.warn("[createSopWinRevisionAction] RAG ingestion warning:", ragErr);
-    }
-
-    // Insert Revision
-    await db.insert(sopWinRevisions).values({
-      documentId,
-      revisionNumber,
-      effectiveDate,
-      changeDescription,
-      pdfFileUrl,
-      docxFileUrl,
-      ragDocumentId,
-      revisedByEmployeeId: currentEmp?.id || null,
-      createdAt: new Date(),
-    });
+    // Insert Revision with pending RAG status
+    const [insertedRev] = await db
+      .insert(sopWinRevisions)
+      .values({
+        documentId,
+        revisionNumber,
+        effectiveDate,
+        changeDescription,
+        pdfFileUrl,
+        docxFileUrl,
+        ragDocumentId: null,
+        ragStatus: "pending",
+        revisedByEmployeeId: currentEmp?.id || null,
+        createdAt: new Date(),
+      })
+      .returning({ id: sopWinRevisions.id });
 
     // Update Main Document
     await db
@@ -1110,16 +1129,31 @@ export async function createSopWinRevisionAction(formData: FormData) {
         currentRevision: revisionNumber,
         pdfFileUrl,
         docxFileUrl: docxFileUrl || undefined,
-        ragDocumentId: ragDocumentId || undefined,
+        ragStatus: "pending",
         effectiveDate,
         updatedAt: new Date(),
       })
       .where(eq(sopWinDocuments.id, documentId));
 
+    // Enqueue new revision to RAG
+    const activeFileUrl = docxFileUrl || pdfFileUrl;
+    const activeFileType = docxFileUrl ? "docx" : "pdf";
+    const activeFileName = docxFile ? docxFile.name : pdfFile.name;
+
+    await enqueueSopWinRag({
+      documentId,
+      revisionId: insertedRev.id,
+      fileUrl: activeFileUrl,
+      fileName: activeFileName,
+      fileType: activeFileType,
+    });
+
     safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+
     return {
       success: true,
-      message: `Revisi ${revisionNumber} berhasil diterbitkan dan disinkronkan ke AI!`,
+      message: `Revisi ${revisionNumber} berhasil diterbitkan! OCR & sinkronisasi AI sedang diproses di background.`,
     };
   } catch (error: any) {
     console.error("[createSopWinRevisionAction] error:", error);
@@ -1158,6 +1192,8 @@ export async function deleteSopWinDocumentAction(documentId: number) {
     await db.delete(sopWinDocuments).where(eq(sopWinDocuments.id, documentId));
 
     safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+
     return {
       success: true,
       message: "Dokumen berhasil dihapus dari sistem.",
@@ -1170,3 +1206,35 @@ export async function deleteSopWinDocumentAction(documentId: number) {
     };
   }
 }
+
+/**
+ * 9. Get Background RAG Queue Status Action
+ */
+export async function getSopWinRagQueueStatusAction() {
+  return await getSopWinRagQueueStatus();
+}
+
+/**
+ * 10. Retry Failed RAG Item Action
+ */
+export async function retrySopWinRagItemAction(documentId: number) {
+  const res = await retrySopWinRagItem(documentId);
+  if (res.success) {
+    safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+  }
+  return res;
+}
+
+/**
+ * 11. Retry All Failed RAG Items Action
+ */
+export async function retryAllFailedSopWinRagAction() {
+  const res = await retryAllFailedSopWinRag();
+  if (res.success) {
+    safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+  }
+  return res;
+}
+
