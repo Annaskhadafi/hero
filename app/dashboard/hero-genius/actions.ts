@@ -279,6 +279,42 @@ async function isSuperAdminUser(): Promise<boolean> {
   }
 }
 
+/**
+ * Extract raw text from various document formats (PDF, Excel, TXT, CSV)
+ */
+async function extractTextFromFile(file: File): Promise<string> {
+  const ext = (file.name || "").split(".").pop()?.toLowerCase() || "";
+
+  if (ext === "pdf") {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const { PDFParse } = require("pdf-parse");
+    const parser = new PDFParse({ data: buffer });
+    const textResult = await parser.getText();
+    await parser.destroy();
+    return textResult.text || "";
+  }
+
+  if (["txt", "md", "csv"].includes(ext)) {
+    return await file.text();
+  }
+
+  if (["xlsx", "xls"].includes(ext)) {
+    const XLSX = require("xlsx");
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(Buffer.from(arrayBuffer), { type: "buffer" });
+    let fullCsv = "";
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      fullCsv += `\n\n## Sheet: ${sheetName}\n\n` + csv;
+    }
+    return fullCsv;
+  }
+
+  return "";
+}
+
 export async function ingestHeroGeniusDocumentAction(formData: FormData) {
   try {
     const isSuperAdmin = await isSuperAdminUser();
@@ -289,6 +325,51 @@ export async function ingestHeroGeniusDocumentAction(formData: FormData) {
       };
     }
 
+    const file = formData.get("file") as File | null;
+    const enableAiClean = formData.get("enable_ai_clean") !== "false";
+
+    // 1. AUTO AI CLEAN & STRUCTURING FOR UPLOADED DOCUMENTS (SOP, WIN, PDF, XLSX, TXT)
+    if (file && enableAiClean) {
+      const fileName = file.name || "document";
+      const ext = fileName.split(".").pop()?.toLowerCase() || "";
+
+      if (["pdf", "txt", "md", "csv", "xlsx", "xls"].includes(ext)) {
+        try {
+          const rawText = await extractTextFromFile(file);
+          if (rawText && rawText.trim().length > 50) {
+            const docTitle = fileName.replace(/\.[^/.]+$/, "");
+            const aiRes = await cleanMarkdownWithAi(rawText, {
+              docTitle,
+            });
+
+            if (aiRes.cleanMarkdown && aiRes.cleanMarkdown.length > 50) {
+              const cleanTitle = docTitle
+                .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+                .replace(/\s+/g, "_")
+                .slice(0, 60);
+              const structuredFilename = `${cleanTitle}.md`;
+
+              const cleanBlob = new Blob([aiRes.cleanMarkdown], { type: "text/markdown" });
+              const newFormData = new FormData();
+              newFormData.append("file", cleanBlob, structuredFilename);
+              newFormData.append("auto_ocr", "false");
+
+              const response = await ingestRagDocument(newFormData);
+              return {
+                success: true,
+                message: `Dokumen "${structuredFilename}" berhasil dibersihkan & distrukturkan AI sebelum chunking!`,
+                data: response.data,
+                isAiEnhanced: true,
+              };
+            }
+          }
+        } catch (extractErr) {
+          console.warn("[ingestHeroGeniusDocumentAction] Pre-AI extraction failed, fallback to native ingest:", extractErr);
+        }
+      }
+    }
+
+    // 2. Direct Ingest Fallback
     const response = await ingestRagDocument(formData);
     return {
       success: true,

@@ -70,6 +70,7 @@ export function GeniusKnowledgeWorkspace({
   const [searchFilter, setSearchFilter] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [autoOcr, setAutoOcr] = useState(true);
+  const [autoAiCleanDoc, setAutoAiCleanDoc] = useState(true);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [webParserOpen, setWebParserOpen] = useState(false);
@@ -111,6 +112,7 @@ export function GeniusKnowledgeWorkspace({
     const formData = new FormData();
     formData.append("file", selectedFile);
     formData.append("auto_ocr", autoOcr ? "true" : "false");
+    formData.append("enable_ai_clean", autoAiCleanDoc ? "true" : "false");
 
     try {
       const res = await ingestHeroGeniusDocumentAction(formData);
@@ -656,10 +658,23 @@ export function GeniusKnowledgeWorkspace({
               )}
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 bg-slate-50/50">
+            <div className="flex items-center justify-between rounded-xl border border-indigo-100 dark:border-indigo-900/60 p-3 bg-indigo-50/50 dark:bg-indigo-950/30">
               <div className="space-y-0.5">
-                <Label className="text-xs font-bold text-slate-800">Auto OCR Processing</Label>
-                <p className="text-[11px] text-slate-500">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                  <Sparkles className="size-3.5 text-amber-500" />
+                  Auto AI Clean & Structuring
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Otomatis membersihkan teks SOP/WIN, merapikan tabel & heading sebelum chunking & embedding
+                </p>
+              </div>
+              <Switch checked={autoAiCleanDoc} onCheckedChange={setAutoAiCleanDoc} />
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/50">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-bold text-slate-800 dark:text-slate-200">Auto OCR Processing</Label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Ekstrak teks otomatis dari scan PDF dan foto dokumen
                 </p>
               </div>
