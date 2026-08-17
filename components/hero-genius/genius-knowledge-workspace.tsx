@@ -18,6 +18,7 @@ import {
   Sliders,
   Lock,
   Globe,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ import {
   ingestHeroGeniusDocumentAction,
   searchHeroGeniusKnowledgeAction,
   resyncWebDocumentAction,
+  aiRestructureDocumentAction,
 } from "@/app/dashboard/hero-genius/actions";
 import { DocumentPreviewModal } from "./document-preview-modal";
 import { WebParserModal } from "./web-parser-modal";
@@ -82,7 +84,9 @@ export function GeniusKnowledgeWorkspace({
   const [chunksDialogOpen, setChunksDialogOpen] = useState(false);
   const [activeDocChunks, setActiveDocChunks] = useState<RagChunkItem[]>([]);
   const [activeDocName, setActiveDocName] = useState("");
+  const [activeDocId, setActiveDocId] = useState("");
   const [isLoadingChunks, setIsLoadingChunks] = useState(false);
+  const [isAiRestructuring, setIsAiRestructuring] = useState(false);
 
   // Semantic Search Sandbox State
   const [searchQuery, setSearchQuery] = useState("");
@@ -213,6 +217,7 @@ export function GeniusKnowledgeWorkspace({
   };
 
   const handleViewChunks = async (docId: string, filename: string) => {
+    setActiveDocId(docId);
     setActiveDocName(filename);
     setChunksDialogOpen(true);
     setIsLoadingChunks(true);
@@ -228,6 +233,46 @@ export function GeniusKnowledgeWorkspace({
       toast.error(err.message || "Gagal memuat chunks");
     } finally {
       setIsLoadingChunks(false);
+    }
+  };
+
+  const handleAiRestructureDocument = async () => {
+    if (!activeDocId) return;
+    setIsAiRestructuring(true);
+    try {
+      const res = await aiRestructureDocumentAction({
+        documentId: activeDocId,
+        customTitle: activeDocName,
+      });
+
+      if (res.success) {
+        toast.success(res.message || "Dokumen berhasil dibersihkan & direstrukturisasi dengan AI!");
+        setChunksDialogOpen(false);
+        if (onRefresh) onRefresh();
+        if (res.data) {
+          setDocuments((prev) => [
+            {
+              id: res.data!.document_id,
+              filename: res.data!.filename || res.filename || "ai_cleaned_doc.md",
+              format: "md",
+              s3_url: res.data!.s3_url,
+              char_count: res.data!.char_count || 0,
+              word_count: res.data!.word_count || 0,
+              total_chunks: res.data!.total_chunks || 0,
+              engine_used: "ai_clean_structurer",
+              embedding_model: "BAAI/bge-small-en-v1.5",
+              created_at: new Date().toISOString(),
+            },
+            ...prev,
+          ]);
+        }
+      } else {
+        toast.error(res.error || "Gagal merestrukturisasi dokumen dengan AI");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Terjadi kesalahan saat AI restructure");
+    } finally {
+      setIsAiRestructuring(false);
     }
   };
 
@@ -658,13 +703,39 @@ export function GeniusKnowledgeWorkspace({
       <Dialog open={chunksDialogOpen} onOpenChange={setChunksDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
-              <Layers className="size-4 text-indigo-600" />
-              Chunks Vektor: {activeDocName}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Daftar potongan teks yang terindeks di pgvector untuk pencarian semantik.
-            </DialogDescription>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pr-6">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                  <Layers className="size-4 text-indigo-600 dark:text-indigo-400" />
+                  Chunks Vektor: {activeDocName}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Daftar potongan teks yang terindeks di pgvector untuk pencarian semantik.
+                </DialogDescription>
+              </div>
+
+              {canManageDocuments && activeDocChunks.length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAiRestructureDocument}
+                  disabled={isAiRestructuring || isLoadingChunks}
+                  className="h-8 text-xs font-semibold rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm gap-1.5 shrink-0"
+                >
+                  {isAiRestructuring ? (
+                    <>
+                      <RefreshCw className="size-3.5 animate-spin" />
+                      Restrukturisasi AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-3.5 text-amber-300" />
+                      AI Clean & Restructure
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-3 py-2 pr-1">

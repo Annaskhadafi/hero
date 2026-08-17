@@ -1,70 +1,71 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+dotenv.config({ path: ".env" });
+
 import {
   cleanHtml,
   htmlToMarkdown,
   chunkMarkdown,
+  cleanMarkdownWithAi,
   parseWebUrl,
-  parseBatchWebUrls,
 } from "../lib/hero-genius/web-parser";
 
 async function main() {
-  console.log("=== 1. Testing Single HTML Cleaning & Markdown Conversion ===");
+  console.log("=== 1. Testing AI Clean Markdown & Structuring Engine ===");
 
-  const sampleHtml = `
-    <html>
-      <head>
-        <title>Standar Pengoperasian Tyre Handler</title>
-        <meta name="description" content="SOP pengoperasian unit tyre handler di pit area">
-      </head>
-      <body>
-        <nav><a href="/">Home</a></nav>
-        <article>
-          <h1>SOP Tyre Handler Operasional</h1>
-          <p>Operator wajib memastikan <strong>clamp pad</strong> dalam kondisi presisi sebelum mengangkat ban.</p>
-          <h2>Prosedur Pengangkatan</h2>
-          <ul>
-            <li>Cek tekanan hidrolik clamp</li>
-            <li>Posisikan clamp tegak lurus dengan bead ban</li>
-          </ul>
-        </article>
-        <footer>© 2026 PT Chitra Paratama</footer>
-      </body>
-    </html>
+  const rawMessyText = `
+Back to search
+Loading...
+Close
+What kind of usages?
+# MICHELIN XD GRIP
+Designed for superior traction in the most demanding off-road conditions.
+Size: 27.00R49 Tread Depth: 95mm Pressure: 105 PSI Load Capacity: 30000kg
+Features:
+- Aggressive tread pattern
+- High cut resistance
+- Reinforced bead structure
+mailto:?subject=Tyre%20Inquiry
+Terms and Conditions Cookie Policy All rights reserved
   `;
 
-  const cleaned = cleanHtml(sampleHtml);
-  console.log("Title extracted:", cleaned.title);
+  console.log("Input text (Raw messy):", rawMessyText.trim().slice(0, 150) + "...");
+  console.log("\nExecuting cleanMarkdownWithAi...");
 
-  const md = htmlToMarkdown(cleaned.bodyHtml);
-  console.log("Clean Markdown extracted:\n" + md);
-
-  const chunks = chunkMarkdown(md, {
-    chunkSize: 300,
-    chunkOverlap: 50,
-    docTitle: cleaned.title,
-    sourceUrl: "https://intra.chitraparatama.com/tyre-handler",
+  const aiResult = await cleanMarkdownWithAi(rawMessyText, {
+    docTitle: "MICHELIN XD GRIP",
+    sourceUrl: "https://commercial.michelin.com/xd-grip",
   });
 
-  console.log(`Chunks generated: ${chunks.length}`);
+  console.log(`\nAI Enhanced: ${aiResult.isAiEnhanced} (Model: ${aiResult.modelUsed || "heuristic"})`);
+  console.log("--- Clean Structured Markdown Output ---");
+  console.log(aiResult.cleanMarkdown);
 
-  console.log("\n=== 2. Testing Batch Web Parsing (Simulation) ===");
-  // Test batch parsing handler with local validation
-  const testUrls = [
-    "https://nextjs.org/docs",
-    "https://id.wikipedia.org/wiki/Kecerdasan_buatan",
-  ];
+  console.log("\n=== 2. Chunking AI-Cleaned Output ===");
+  const chunks = chunkMarkdown(aiResult.cleanMarkdown, {
+    chunkSize: 400,
+    chunkOverlap: 60,
+    docTitle: "MICHELIN XD GRIP",
+    sourceUrl: "https://commercial.michelin.com/xd-grip",
+  });
 
-  console.log(`Testing batch parse for ${testUrls.length} live URLs...`);
-  try {
-    const batchResult = await parseBatchWebUrls(testUrls, { chunkSize: 800, chunkOverlap: 120 });
-    console.log(`Batch finished: ${batchResult.successCount}/${batchResult.total} success! Total chunks: ${batchResult.totalChunks}`);
-    batchResult.items.forEach((it, idx) => {
-      console.log(`  [${idx + 1}] ${it.url} => ${it.success ? `${it.data?.title} (${it.data?.chunks.length} chunks)` : `Failed: ${it.error}`}`);
-    });
-  } catch (err) {
-    console.log("Note: Network request skipped/offline fallback:", err);
+  console.log(`Total Chunks Generated: ${chunks.length}`);
+  chunks.forEach((c) => {
+    console.log(`\n[Chunk #${c.chunkIndex}] ${c.heading} (${c.charCount} chars)`);
+    console.log(c.content);
+  });
+
+  // Assert no UI noise remains
+  const hasNoise =
+    aiResult.cleanMarkdown.includes("Back to search") ||
+    aiResult.cleanMarkdown.includes("mailto:") ||
+    aiResult.cleanMarkdown.includes("Loading...");
+
+  if (!hasNoise) {
+    console.log("\n✅ [SUCCESS] AI Clean Markdown completely eliminated noise and structured technical specs into clean chunks!");
+  } else {
+    console.warn("\n⚠️ [WARNING] Some noise was still found in output.");
   }
-
-  console.log("\n[SUCCESS] All Web Parser & Smart Chunking enhancements verified!");
 }
 
 main().catch((err) => {

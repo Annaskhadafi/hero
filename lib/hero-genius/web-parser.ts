@@ -16,6 +16,8 @@ export interface ParsedWebResult {
   headings: string[];
   chunks: WebChunk[];
   scrapedAt: string;
+  isAiEnhanced?: boolean;
+  modelUsed?: string;
 }
 
 export interface WebChunk {
@@ -32,6 +34,7 @@ export interface ParseWebOptions {
   chunkOverlap?: number; // Characters overlap between sub-chunks (default: 120)
   timeoutMs?: number; // Request timeout in ms (default: 15000)
   customUserAgent?: string;
+  enableAiClean?: boolean; // Automatically clean & structure markdown with AI before chunking (default: true)
 }
 
 /**
@@ -446,14 +449,35 @@ export async function parseWebUrl(
   }
 
   const { title, description, siteName, bodyHtml } = cleanHtml(rawHtml);
-  const markdown = htmlToMarkdown(bodyHtml);
+  let rawMarkdown = htmlToMarkdown(bodyHtml);
 
-  if (!markdown || markdown.trim().length < 20) {
+  if (!rawMarkdown || rawMarkdown.trim().length < 20) {
     throw new Error("Konten teks halaman terlalu sedikit atau situs web diblokir/memerlukan JavaScript interaktif.");
+  }
+
+  // 3. AUTO AI CLEAN & STRUCTURING (Enabled by default)
+  let markdown = rawMarkdown;
+  let isAiEnhanced = false;
+  let modelUsed: string | undefined;
+
+  if (options.enableAiClean !== false) {
+    try {
+      const aiRes = await cleanMarkdownWithAi(rawMarkdown, {
+        docTitle: title,
+        sourceUrl: parsedUrl.toString(),
+      });
+      markdown = aiRes.cleanMarkdown;
+      isAiEnhanced = aiRes.isAiEnhanced;
+      modelUsed = aiRes.modelUsed;
+    } catch (cleanErr) {
+      console.warn("[parseWebUrl] AI cleanup failed, using heuristic sanitizer:", cleanErr);
+      markdown = sanitizeMarkdownHeuristically(rawMarkdown, title);
+    }
   }
 
   const headings = (markdown.match(/^(#{1,4})\s+(.+)$/gm) || []).map((h) => h.trim());
 
+  // 4. SMART HIERARCHICAL CHUNKING ON AI-CLEANED MARKDOWN
   const chunks = chunkMarkdown(markdown, {
     chunkSize: options.chunkSize || 800,
     chunkOverlap: options.chunkOverlap || 120,
@@ -478,7 +502,152 @@ export async function parseWebUrl(
     headings,
     chunks,
     scrapedAt: new Date().toISOString(),
+    isAiEnhanced,
+    modelUsed,
   };
+}
+
+/**
+ * 6. AI-Powered Markdown Structurer & Boilerplate Cleaner
+ * Uses integrated OpenRouter / LLM to restructure raw parsed text into professional markdown.
+ */
+export async function cleanMarkdownWithAi(
+  rawContent: string,
+  options: { docTitle?: string; sourceUrl?: string; timeoutMs?: number } = {}
+): Promise<{
+  cleanMarkdown: string;
+  isAiEnhanced: boolean;
+  modelUsed?: string;
+}> {
+  if (!rawContent || rawContent.trim().length < 20) {
+    return { cleanMarkdown: rawContent, isAiEnhanced: false };
+  }
+
+  const apiKey =
+    process.env.INSPECTION_AI_API_KEY ||
+    process.env.OLLAMA_API_KEY ||
+    process.env.TIRE_PATTERN_API_KEY ||
+    "";
+
+  const apiUrl =
+    process.env.INSPECTION_AI_URL ||
+    process.env.OLLAMA_URL ||
+    "https://openrouter.ai/api/v1/chat/completions";
+
+  const model =
+    process.env.INSPECTION_AI_MODEL ||
+    process.env.TIRE_PATTERN_MODEL ||
+    process.env.OLLAMA_MODEL ||
+    "openai/gpt-4o-mini";
+
+  // If no API key configured, use intelligent rule-based sanitizer fallback
+  if (!apiKey) {
+    const heuristicCleaned = sanitizeMarkdownHeuristically(rawContent, options.docTitle);
+    return { cleanMarkdown: heuristicCleaned, isAiEnhanced: false };
+  }
+
+  const promptSystem = `Anda adalah Enterprise Technical Document Structurer & AI Content Cleaner untuk PT Chitra Paratama.
+
+Tugas Anda:
+Bersihkan, rapikan, dan susun kembali teks dokumen / hasil web scraping mentah menjadi Clean Markdown berkualitas tinggi, mudah dibaca, kaya informasi, dan optimal untuk Chunking RAG.
+
+Aturan Wajib:
+1. ELIMINASI SAMPAH UI: Hapus semua teks tombol, navigasi, header/footer web, popup, dan artefak seperti "Back to search", "Close", "Loading...", "Search by size", "Terms & Conditions", "Cookie policy", "Share on social media", "mailto:", menu dropdown, pagination, dll.
+2. PERTAHANKAN DATA TEKNIS: Jangan pernah membuang spesifikasi teknis, dimensi, ukuran ban, kompon (compound), tekanan angin (PSI), rating beban, indeks kecepatan, keunggulan fitur, dan petunjuk keselamatan.
+3. BUAT TABEL MARKDOWN: Jika menemukan spesifikasi teknis, ukuran, atau data berpasangan, WAJIB susun dalam format Tabel Markdown yang rapi (| Parameter | Nilai | atau | Ukuran | Rekomendasi PSI | dll).
+4. SUSUN HIERARKI HEADING: Gunakan hierarki heading yang jelas (# Judul Dokumen, ## Kategori / Spesifikasi Utama, ### Sub-bagian / Fitur).
+5. TATA BAHASA & PARAGRAF: Rangkai kalimat yang terpotong menjadi paragraf penjelasan yang mengalir profesional dalam Bahasa Indonesia (pertahankan istilah teknis baku).
+6. OUTPUT RULE: Kembalikan HANYA teks markdown bersih. JANGAN berikan kata pengantar ("Berikut adalah..."), JANGAN gunakan code fence (\`\`\`markdown ... \`\`\`), langsung berikan isi konten markdown.`;
+
+  const userContent = `Judul Dokumen: ${options.docTitle || "Dokumen"}
+Sumber: ${options.sourceUrl || "-"}
+
+Teks Mentah yang Perlu Dibersihkan & Disusun:
+"""
+${rawContent.slice(0, 15000)}
+"""`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 45000);
+
+    const res = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://chitraparatama.com",
+        "X-Title": "Hero Genius AI Structurer",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: promptSystem },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.2,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      let content = data.choices?.[0]?.message?.content?.trim() || "";
+
+      // Strip code fence if LLM wrapped it
+      if (content.startsWith("```markdown")) {
+        content = content.replace(/^```markdown\s*/, "").replace(/\s*```$/, "");
+      } else if (content.startsWith("```")) {
+        content = content.replace(/^```[a-z]*\s*/i, "").replace(/\s*```$/, "");
+      }
+
+      if (content && content.length > 30) {
+        return { cleanMarkdown: content.trim(), isAiEnhanced: true, modelUsed: model };
+      }
+    }
+  } catch (err) {
+    console.warn("[cleanMarkdownWithAi] AI cleaning request failed, falling back to heuristic:", err);
+  }
+
+  // Fallback to heuristic sanitizer
+  const heuristicCleaned = sanitizeMarkdownHeuristically(rawContent, options.docTitle);
+  return { cleanMarkdown: heuristicCleaned, isAiEnhanced: false };
+}
+
+/**
+ * Intelligent Rule-Based Heuristic Sanitizer (Instant fallback if offline)
+ */
+export function sanitizeMarkdownHeuristically(markdown: string, docTitle?: string): string {
+  const noisePatterns = [
+    /\[\s*Back to search\s*\]\([^\)]*\)/gi,
+    /\[\s*Close\s*\]\([^\)]*\)/gi,
+    /\bLoading…\b/gi,
+    /\bLoading\.\.\.\b/gi,
+    /\[\s*\]\(mailto:[^\)]*\)/gi,
+    /mailto:\?subject=[^\s\n\r]+/gi,
+    /What kind of usages\?/gi,
+    /For which vehicles\?/gi,
+    /\bSearch by size\b/gi,
+    /\bCookie (?:Policy|Settings|Preferences)\b/gi,
+    /\bTerms (?:and|&) Conditions\b/gi,
+    /\bAll rights reserved\b/gi,
+  ];
+
+  let cleaned = markdown;
+  for (const pattern of noisePatterns) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  // Remove empty lines and redundant whitespace
+  cleaned = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && l !== "**" && l !== "*")
+    .join("\n\n");
+
+  return cleaned.trim();
 }
 
 export interface BatchParseItemResult {

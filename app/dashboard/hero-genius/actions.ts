@@ -20,7 +20,13 @@ import {
   type RagFeedbackPayload,
   type RagLearnMemoryPayload,
 } from "@/lib/hero-genius/client";
-import { parseWebUrl, parseBatchWebUrls, type ParseWebOptions } from "@/lib/hero-genius/web-parser";
+import {
+  parseWebUrl,
+  parseBatchWebUrls,
+  cleanMarkdownWithAi,
+  chunkMarkdown,
+  type ParseWebOptions,
+} from "@/lib/hero-genius/web-parser";
 import { getServerSession } from "@/lib/auth-session";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
@@ -472,6 +478,119 @@ export async function resyncWebDocumentAction(payload: {
     return {
       success: false,
       error: error.message || "Gagal melakukan re-sync dokumen web",
+    };
+  }
+}
+
+/**
+ * Server Action: Clean and structure arbitrary markdown with AI and generate chunks
+ */
+export async function cleanMarkdownWithAiAction(
+  rawContent: string,
+  options?: { docTitle?: string; chunkSize?: number; chunkOverlap?: number }
+) {
+  try {
+    if (!rawContent || rawContent.trim().length === 0) {
+      return { success: false, error: "Konten markdown tidak boleh kosong" };
+    }
+
+    const aiRes = await cleanMarkdownWithAi(rawContent, {
+      docTitle: options?.docTitle || "Dokumen",
+    });
+
+    const chunks = chunkMarkdown(aiRes.cleanMarkdown, {
+      chunkSize: options?.chunkSize || 800,
+      chunkOverlap: options?.chunkOverlap || 120,
+      docTitle: options?.docTitle || "Dokumen",
+    });
+
+    const wordCount = aiRes.cleanMarkdown.split(/\s+/).filter(Boolean).length;
+    const charCount = aiRes.cleanMarkdown.length;
+    const estimatedTokens = Math.ceil(charCount / 4);
+
+    return {
+      success: true,
+      data: {
+        cleanMarkdown: aiRes.cleanMarkdown,
+        isAiEnhanced: aiRes.isAiEnhanced,
+        modelUsed: aiRes.modelUsed,
+        chunks,
+        wordCount,
+        charCount,
+        estimatedTokens,
+      },
+    };
+  } catch (error: any) {
+    console.error("[cleanMarkdownWithAiAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal membersihkan markdown dengan AI",
+    };
+  }
+}
+
+/**
+ * Server Action: AI Restructure & Clean an existing document in Knowledge Base (PDF / OCR / Docx)
+ */
+export async function aiRestructureDocumentAction(payload: {
+  documentId: string;
+  customTitle?: string;
+}) {
+  try {
+    const isSuperAdmin = await isSuperAdminUser();
+    if (!isSuperAdmin) {
+      return {
+        success: false,
+        error: "Akses ditolak: Hanya Super Admin yang diizinkan merestrukturisasi dokumen di Knowledge Base.",
+      };
+    }
+
+    const { documentId, customTitle } = payload;
+    if (!documentId) {
+      return { success: false, error: "Document ID wajib diisi" };
+    }
+
+    // 1. Fetch all chunks of the document
+    const chunksRes = await getRagDocumentChunks(documentId);
+    if (!chunksRes.chunks || chunksRes.chunks.length === 0) {
+      return { success: false, error: "Dokumen tidak memiliki chunk untuk direstrukturisasi" };
+    }
+
+    // 2. Combine chunks into text
+    const fullText = chunksRes.chunks.map((c) => c.content).join("\n\n---\n\n");
+    const docTitle = customTitle || chunksRes.filename.replace(/\.[^/.]+$/, "");
+
+    // 3. Clean & Restructure with AI
+    const aiRes = await cleanMarkdownWithAi(fullText, {
+      docTitle,
+    });
+
+    const cleanTitle = docTitle
+      .replace(/[^a-zA-Z0-9_\-\s]/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 60);
+    const filename = `${cleanTitle}_AI_Cleaned.md`;
+
+    // 4. Ingest new AI Cleaned document
+    const fileBlob = new Blob([aiRes.cleanMarkdown], { type: "text/markdown" });
+    const formData = new FormData();
+    formData.append("file", fileBlob, filename);
+    formData.append("auto_ocr", "false");
+
+    const ingestRes = await ingestRagDocument(formData);
+
+    return {
+      success: true,
+      message: `Dokumen berhasil dibersihkan & direstrukturisasi dengan AI menjadi "${filename}"!`,
+      data: ingestRes.data,
+      filename,
+      isAiEnhanced: aiRes.isAiEnhanced,
+    };
+  } catch (error: any) {
+    console.error("[aiRestructureDocumentAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal melakukan AI Restructure dokumen",
     };
   }
 }

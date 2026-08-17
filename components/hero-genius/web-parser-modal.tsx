@@ -36,10 +36,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import {
   parseWebUrlPreviewAction,
   parseBatchWebUrlsAction,
   ingestWebUrlToKnowledgeBaseAction,
+  cleanMarkdownWithAiAction,
 } from "@/app/dashboard/hero-genius/actions";
 import type { ParsedWebResult, BatchParseResult } from "@/lib/hero-genius/web-parser";
 
@@ -75,8 +77,10 @@ export function WebParserModal({
   const [url, setUrl] = useState("");
   const [chunkSize, setChunkSize] = useState<number>(800);
   const [chunkOverlap, setChunkOverlap] = useState<number>(120);
+  const [autoAiClean, setAutoAiClean] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [isAiCleaning, setIsAiCleaning] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const [parsedData, setParsedData] = useState<ParsedWebResult | null>(null);
   const [editedMarkdown, setEditedMarkdown] = useState("");
@@ -106,13 +110,17 @@ export function WebParserModal({
       const res = await parseWebUrlPreviewAction(rawUrl.trim(), {
         chunkSize,
         chunkOverlap,
+        enableAiClean: autoAiClean,
       });
 
       if (res.success && res.data) {
         setParsedData(res.data);
         setEditedMarkdown(res.data.markdown);
         setCustomTitle(res.data.title || "Web Document");
-        toast.success(`Berhasil mengekstrak ${res.data.chunks.length} chunks dari web!`);
+        const msg = res.data.isAiEnhanced
+          ? `✨ Auto AI Clean & Structuring selesai! (${res.data.chunks.length} chunks siap RAG)`
+          : `Berhasil mengekstrak ${res.data.chunks.length} chunks dari web!`;
+        toast.success(msg);
       } else {
         toast.error(res.error || "Gagal mem-parsing web");
       }
@@ -120,6 +128,45 @@ export function WebParserModal({
       toast.error(err.message || "Kesalahan saat menghubungi parser");
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handleManualAiClean = async () => {
+    if (!editedMarkdown.trim()) {
+      toast.error("Tidak ada konten markdown untuk dibersihkan");
+      return;
+    }
+
+    setIsAiCleaning(true);
+    try {
+      const res = await cleanMarkdownWithAiAction(editedMarkdown, {
+        docTitle: customTitle || parsedData?.title || "Dokumen",
+        chunkSize,
+        chunkOverlap,
+      });
+
+      if (res.success && res.data) {
+        setEditedMarkdown(res.data.cleanMarkdown);
+        if (parsedData) {
+          setParsedData({
+            ...parsedData,
+            markdown: res.data.cleanMarkdown,
+            chunks: res.data.chunks,
+            wordCount: res.data.wordCount,
+            charCount: res.data.charCount,
+            estimatedTokens: res.data.estimatedTokens,
+            isAiEnhanced: true,
+            modelUsed: res.data.modelUsed,
+          });
+        }
+        toast.success(`✨ Berhasil dibersihkan & direstrukturisasi dengan AI (${res.data.chunks.length} chunks)!`);
+      } else {
+        toast.error(res.error || "Gagal membersihkan markdown");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Error saat membersihkan markdown");
+    } finally {
+      setIsAiCleaning(false);
     }
   };
 
@@ -393,6 +440,22 @@ export function WebParserModal({
                       />
                       <p className="text-[10px] text-slate-500">Mencegah hilangnya konteks di batas potongan.</p>
                     </div>
+
+                    <div className="sm:col-span-2 pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 font-semibold text-[11px] text-slate-800 dark:text-slate-200">
+                          <Sparkles className="size-3.5 text-amber-500" />
+                          Auto AI Clean & Structure Markdown
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Otomatis membuang teks navigasi web & menyusun spesifikasi menjadi tabel rapi sebelum di-chunk.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={autoAiClean}
+                        onCheckedChange={setAutoAiClean}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -404,6 +467,12 @@ export function WebParserModal({
                     <div className="space-y-1 flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] uppercase font-bold text-slate-400">Judul Dokumen</span>
+                        {parsedData.isAiEnhanced && (
+                          <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 text-[10px] gap-1 h-5 font-semibold">
+                            <Sparkles className="size-3 text-amber-500" />
+                            AI Cleaned & Structured
+                          </Badge>
+                        )}
                       </div>
                       <Input
                         value={customTitle}
@@ -473,15 +542,36 @@ export function WebParserModal({
                         </TabsTrigger>
                       </TabsList>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(editedMarkdown)}
-                        className="h-8 text-xs gap-1.5 rounded-lg"
-                      >
-                        {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                        {copied ? "Tersalin" : "Copy Markdown"}
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleManualAiClean}
+                          disabled={isAiCleaning || isParsing}
+                          className="h-8 text-xs gap-1.5 rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950 font-semibold"
+                        >
+                          {isAiCleaning ? (
+                            <>
+                              <RefreshCw className="size-3.5 animate-spin" />
+                              Membersihkan...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="size-3.5 text-amber-500" />
+                              AI Re-Clean
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(editedMarkdown)}
+                          className="h-8 text-xs gap-1.5 rounded-lg"
+                        >
+                          {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                          {copied ? "Tersalin" : "Copy Markdown"}
+                        </Button>
+                      </div>
                     </div>
 
                     <TabsContent value="chunks" className="pt-3">
