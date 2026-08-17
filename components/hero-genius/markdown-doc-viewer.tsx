@@ -102,7 +102,7 @@ export function MarkdownDocViewer({
   }
 
   return (
-    <div className={`flex h-full w-full flex-col bg-slate-950 text-slate-100 ${className}`}>
+    <div className={`dark flex h-full w-full flex-col bg-slate-950 text-slate-100 ${className}`}>
       {/* Viewer Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/90 px-4 py-2 text-xs backdrop-blur shrink-0">
         <div className="flex items-center gap-3">
@@ -182,7 +182,7 @@ export function MarkdownDocViewer({
             >
               <MarkdownRenderer
                 content={content}
-                className="text-slate-200 [&_h1]:text-white [&_h2]:text-white [&_h3]:text-sky-300 [&_strong]:text-white"
+                className="text-slate-200"
               />
             </div>
           ) : (
