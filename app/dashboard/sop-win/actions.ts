@@ -22,13 +22,18 @@ import {
   getSopWinRagQueueStatus,
   retrySopWinRagItem,
   retryAllFailedSopWinRag,
+  deleteSopWinRagQueueItem,
+  clearAllCompletedOrFailedQueue,
   triggerSopWinRagWorker,
   syncAndAutoChunkAllSopWinDocuments,
 } from "@/lib/sop-win-rag-queue";
+
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
 import { STANDARD_DEPARTMENTS } from "@/lib/sop-win-constants";
+import { uploadAnyFileToS3, isS3UploadConfigured } from "@/lib/s3-storage";
+
 
 function safeRevalidatePath(path: string) {
   try {
@@ -864,14 +869,25 @@ export async function createSopWinDocumentAction(formData: FormData) {
       return { success: false, error: "File PDF wajib diunggah untuk pratinjau dokumen." };
     }
 
-    // Save PDF to persistent uploads
+    // Save PDF to persistent uploads & S3
     const pdfBytes = await pdfFile.arrayBuffer();
     const pdfBuffer = Buffer.from(pdfBytes);
     const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
     await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    const pdfFileUrl = `/api/uploads/${pdfFilename}`;
+    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
+
+    if (isS3UploadConfigured()) {
+      try {
+        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
+        if (s3Res?.url) {
+          pdfFileUrl = s3Res.url;
+        }
+      } catch (s3Err) {
+        console.warn("[createSopWinDocumentAction] S3 upload error:", s3Err);
+      }
+    }
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
@@ -880,7 +896,19 @@ export async function createSopWinDocumentAction(formData: FormData) {
       const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       await writeFile(join(uploadDir, docxFilename), docxBuffer);
       docxFileUrl = `/api/uploads/${docxFilename}`;
+
+      if (isS3UploadConfigured()) {
+        try {
+          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
+          if (s3DocxRes?.url) {
+            docxFileUrl = s3DocxRes.url;
+          }
+        } catch (s3Err) {
+          console.warn("[createSopWinDocumentAction] S3 docx upload error:", s3Err);
+        }
+      }
     }
+
 
     // Save Document to Database (Initial status: pending RAG processing)
     const inserted = await db
@@ -1010,6 +1038,18 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       await mkdir(uploadDir, { recursive: true });
       await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
       updatePayload.pdfFileUrl = `/api/uploads/${pdfFilename}`;
+
+      if (isS3UploadConfigured()) {
+        try {
+          const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
+          if (s3Res?.url) {
+            updatePayload.pdfFileUrl = s3Res.url;
+          }
+        } catch (s3Err) {
+          console.warn("[updateSopWinDocumentAction] S3 upload error:", s3Err);
+        }
+      }
+
       hasNewFile = true;
       newFileUrl = updatePayload.pdfFileUrl;
       newFileName = pdfFile.name;
@@ -1023,11 +1063,24 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       await mkdir(uploadDir, { recursive: true });
       await writeFile(join(uploadDir, docxFilename), docxBuffer);
       updatePayload.docxFileUrl = `/api/uploads/${docxFilename}`;
+
+      if (isS3UploadConfigured()) {
+        try {
+          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
+          if (s3DocxRes?.url) {
+            updatePayload.docxFileUrl = s3DocxRes.url;
+          }
+        } catch (s3Err) {
+          console.warn("[updateSopWinDocumentAction] S3 docx upload error:", s3Err);
+        }
+      }
+
       hasNewFile = true;
       newFileUrl = updatePayload.docxFileUrl;
       newFileName = docxFile.name;
       newFileType = "docx";
     }
+
 
     if (hasNewFile) {
       updatePayload.ragStatus = "pending";
@@ -1098,7 +1151,18 @@ export async function createSopWinRevisionAction(formData: FormData) {
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
     await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    const pdfFileUrl = `/api/uploads/${pdfFilename}`;
+    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
+
+    if (isS3UploadConfigured()) {
+      try {
+        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
+        if (s3Res?.url) {
+          pdfFileUrl = s3Res.url;
+        }
+      } catch (s3Err) {
+        console.warn("[createSopWinRevisionAction] S3 upload error:", s3Err);
+      }
+    }
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
@@ -1107,7 +1171,19 @@ export async function createSopWinRevisionAction(formData: FormData) {
       const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       await writeFile(join(uploadDir, docxFilename), docxBuffer);
       docxFileUrl = `/api/uploads/${docxFilename}`;
+
+      if (isS3UploadConfigured()) {
+        try {
+          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
+          if (s3DocxRes?.url) {
+            docxFileUrl = s3DocxRes.url;
+          }
+        } catch (s3Err) {
+          console.warn("[createSopWinRevisionAction] S3 docx upload error:", s3Err);
+        }
+      }
     }
+
 
     // Insert Revision with pending RAG status
     const [insertedRev] = await db
@@ -1253,4 +1329,29 @@ export async function syncAndAutoChunkSopWinAction() {
   }
   return res;
 }
+
+/**
+ * 13. Delete a specific RAG Queue Item Action
+ */
+export async function deleteSopWinRagQueueItemAction(queueId: number) {
+  const res = await deleteSopWinRagQueueItem(queueId);
+  if (res.success) {
+    safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+  }
+  return res;
+}
+
+/**
+ * 14. Clear All Completed or Failed Queue Items Action
+ */
+export async function clearAllCompletedOrFailedQueueAction() {
+  const res = await clearAllCompletedOrFailedQueue();
+  if (res.success) {
+    safeRevalidatePath("/dashboard/sop-win");
+    safeRevalidatePath("/mobile/sop-win");
+  }
+  return res;
+}
+
 

@@ -25,22 +25,18 @@ export function resolveRagDocumentUrl(rawUrl?: string | null): string {
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     if (trimmed.includes('vision.chitraparatama.com')) {
+      if (trimmed.includes('/api/v1/uploads/')) {
+        return trimmed.replace('/api/v1/uploads/', '/uploads/')
+      }
       return trimmed
     }
-    // Route cloudhost or other raw S3 storage through the working Vision proxy endpoint
-    return `https://vision.chitraparatama.com/api/v1/uploads/${encodeURIComponent(filename)}`
+    // Route cloudhost or other storage through working Vision uploads endpoint
+    return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
   }
 
-  if (trimmed.startsWith('/api/v1/uploads/')) {
-    return `https://vision.chitraparatama.com${trimmed}`
-  }
-
-  if (trimmed.startsWith('/uploads/')) {
-    return `https://vision.chitraparatama.com/api/v1${trimmed}`
-  }
-
-  return `https://vision.chitraparatama.com/api/v1/uploads/${encodeURIComponent(filename)}`
+  return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
 }
+
 
 function getAuthHeaders(): HeadersInit {
   const apiKey = getRagApiKey()

@@ -217,6 +217,8 @@ export async function processSopWinRagQueue() {
         }
 
         // Mark as completed
+        const remoteS3Url = ragRes.s3_url || ragRes.data?.s3_url || null;
+
         await db
           .update(sopWinRagQueue)
           .set({
@@ -235,6 +237,7 @@ export async function processSopWinRagQueue() {
             ragStatus: "ready",
             ragErrorMessage: null,
             ragProcessedAt: new Date(),
+            ...(remoteS3Url ? { pdfFileUrl: remoteS3Url } : {}),
             updatedAt: new Date(),
           })
           .where(eq(sopWinDocuments.id, item.documentId));
@@ -247,13 +250,15 @@ export async function processSopWinRagQueue() {
               ragChunksCount: totalChunks,
               ragStatus: "ready",
               ragErrorMessage: null,
+              ...(remoteS3Url ? { pdfFileUrl: remoteS3Url } : {}),
             })
             .where(eq(sopWinRevisions.id, item.revisionId));
         }
 
         console.log(
-          `[SOP/WIN RAG Queue] Successfully ingested item #${item.id} (Doc #${item.documentId}, Chunks: ${totalChunks}, RAG ID: ${ragDocumentId})`
+          `[SOP/WIN RAG Queue] Successfully ingested item #${item.id} (Doc #${item.documentId}, Chunks: ${totalChunks}, RAG ID: ${ragDocumentId}, S3: ${remoteS3Url || "N/A"})`
         );
+
       } catch (itemErr: any) {
         const errMsg = itemErr?.message || "Gagal memproses OCR atau ingest RAG AI.";
         const currentAttempts = (item.attempts || 0) + 1;
@@ -344,6 +349,45 @@ export async function processSopWinRagQueue() {
  */
 export async function getSopWinRagQueueStatus() {
   try {
+    // Auto-recover stale 'processing' jobs that exceeded 10 minutes (e.g. from server reboot)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const staleItems = await db
+      .select()
+      .from(sopWinRagQueue)
+      .where(
+        and(
+          eq(sopWinRagQueue.status, "processing"),
+          or(
+            sql`${sopWinRagQueue.startedAt} < ${tenMinutesAgo}`,
+            sql`${sopWinRagQueue.createdAt} < ${tenMinutesAgo}`
+          )
+        )
+      );
+
+    for (const stale of staleItems) {
+      // If the doc is already ready in sopWinDocuments, mark queue completed
+      const [doc] = await db
+        .select({ ragStatus: sopWinDocuments.ragStatus })
+        .from(sopWinDocuments)
+        .where(eq(sopWinDocuments.id, stale.documentId));
+
+      if (doc?.ragStatus === "ready") {
+        await db
+          .update(sopWinRagQueue)
+          .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
+          .where(eq(sopWinRagQueue.id, stale.id));
+      } else {
+        await db
+          .update(sopWinRagQueue)
+          .set({
+            status: "failed",
+            errorMessage: "Waktu pemrosesan melebihi batas (stale timeout)",
+            updatedAt: new Date(),
+          })
+          .where(eq(sopWinRagQueue.id, stale.id));
+      }
+    }
+
     const queueRows = await db
       .select({
         id: sopWinRagQueue.id,
@@ -396,6 +440,7 @@ export async function getSopWinRagQueueStatus() {
     };
   }
 }
+
 
 /**
  * Sync SOP/WIN documents with actual RAG Knowledge Base and automatically enqueue any unchunked (0 chunks) documents
@@ -566,3 +611,30 @@ export async function retryAllFailedSopWinRag() {
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Delete a specific queue item by queue ID
+ */
+export async function deleteSopWinRagQueueItem(queueId: number) {
+  try {
+    await db.delete(sopWinRagQueue).where(eq(sopWinRagQueue.id, queueId));
+    return { success: true, message: "Item antrian berhasil dihapus." };
+  } catch (error: any) {
+    return { success: false, error: error.message || "Gagal menghapus item antrian." };
+  }
+}
+
+/**
+ * Clear all completed, failed, or stuck queue items
+ */
+export async function clearAllCompletedOrFailedQueue() {
+  try {
+    await db
+      .delete(sopWinRagQueue)
+      .where(or(eq(sopWinRagQueue.status, "completed"), eq(sopWinRagQueue.status, "failed")));
+    return { success: true, message: "Riwayat antrian berhasil dibersihkan." };
+  } catch (error: any) {
+    return { success: false, error: error.message || "Gagal membersihkan antrian." };
+  }
+}
+

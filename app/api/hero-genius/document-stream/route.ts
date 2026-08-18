@@ -1,7 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveRagDocumentUrl, getRagApiKey } from "@/lib/hero-genius/client";
+import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
+import { existsSync, promises as fs } from "fs";
+import { join } from "path";
 
 export const dynamic = "force-dynamic";
+
+function extractLocalUploadPath(targetUrl: string): string | null {
+  try {
+    let clean = targetUrl.trim();
+    if (clean.startsWith("http://") || clean.startsWith("https://")) {
+      try {
+        const parsed = new URL(clean);
+        clean = parsed.pathname;
+      } catch (_) {}
+    }
+
+    clean = clean.replace(/^\/+/, "");
+
+    // Strip bucket prefix if present
+    if (clean.startsWith("onechitra/")) {
+      clean = clean.slice("onechitra/".length);
+    }
+
+    if (clean.startsWith("api/uploads/")) {
+      return clean.slice("api/uploads/".length);
+    }
+    if (clean.startsWith("uploads/")) {
+      return clean.slice("uploads/".length);
+    }
+    if (clean.startsWith("public/uploads/")) {
+      return clean.slice("public/uploads/".length);
+    }
+
+    return clean;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,37 +50,150 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing document url parameter" }, { status: 400 });
     }
 
-    const apiKey = getRagApiKey();
-    const headersInit: HeadersInit = {
-      "X-API-Key": apiKey,
-      Authorization: `Bearer ${apiKey}`,
-    };
+    let buffer: Buffer | null = null;
+    const filename = targetUrl.split("/").pop() || requestedFilename;
 
-    const resolved = resolveRagDocumentUrl(targetUrl);
-    
-    // Try fetching with auth headers
-    let upstreamRes = await fetch(resolved, {
-      headers: headersInit,
-      cache: "no-store",
-    });
+    // 1. Try S3 storage proxy first if configured
+    if (isS3UploadConfigured()) {
+      try {
+        // Try direct targetUrl
+        let s3Obj = await getS3ObjectForProxy(targetUrl);
 
-    // Fallback: If resolved vision proxy failed, try fetching direct targetUrl
-    if (!upstreamRes.ok && targetUrl !== resolved && targetUrl.startsWith("http")) {
-      upstreamRes = await fetch(targetUrl, {
-        headers: headersInit,
-        cache: "no-store",
-      });
+        // Try upload/<filename>
+        if (!s3Obj?.body && filename) {
+          s3Obj = await getS3ObjectForProxy(`upload/${filename}`);
+        }
+
+        // Try raw filename
+        if (!s3Obj?.body && filename) {
+          s3Obj = await getS3ObjectForProxy(filename);
+        }
+
+        if (s3Obj?.body) {
+          buffer = Buffer.from(s3Obj.body);
+        }
+      } catch (s3Err) {
+        console.warn("[document-stream] S3 proxy error:", s3Err);
+      }
     }
 
-    if (!upstreamRes.ok) {
+    // 2. Try local filesystem (public/uploads and public/)
+    if (!buffer) {
+      const localRelPath = extractLocalUploadPath(targetUrl);
+      if (localRelPath) {
+        const uploadFilePath = join(process.cwd(), "public", "uploads", localRelPath);
+        if (existsSync(uploadFilePath)) {
+          try {
+            buffer = await fs.readFile(uploadFilePath);
+          } catch (err) {
+            console.warn("[document-stream] Local uploads read error:", err);
+          }
+        }
+
+        if (!buffer) {
+          const publicFilePath = join(process.cwd(), "public", localRelPath);
+          if (existsSync(publicFilePath)) {
+            try {
+              buffer = await fs.readFile(publicFilePath);
+            } catch (err) {
+              console.warn("[document-stream] Public file read error:", err);
+            }
+          }
+        }
+      }
+
+      if (!buffer && filename) {
+        const filenamePath = join(process.cwd(), "public", "uploads", filename);
+        if (existsSync(filenamePath)) {
+          try {
+            buffer = await fs.readFile(filenamePath);
+          } catch (err) {
+            console.warn("[document-stream] Local filename read error:", err);
+          }
+        }
+      }
+    }
+
+    // 3. If not found locally or in S3, fetch from upstream (Vision proxy or external URL)
+    if (!buffer) {
+      const apiKey = getRagApiKey();
+      const headersInit: HeadersInit = {
+        "X-API-Key": apiKey,
+        Authorization: `Bearer ${apiKey}`,
+      };
+
+      const isExternalUrl = targetUrl.startsWith("http://") || targetUrl.startsWith("https://");
+      const resolved = resolveRagDocumentUrl(targetUrl);
+
+      // Try fetching resolved Vision proxy URL
+      if (resolved && resolved.startsWith("http")) {
+        try {
+          const upstreamRes = await fetch(resolved, {
+            headers: headersInit,
+            cache: "no-store",
+          });
+
+          if (upstreamRes.ok) {
+            const arrayBuffer = await upstreamRes.arrayBuffer();
+            const tempBuf = Buffer.from(arrayBuffer);
+            const prefix = tempBuf.slice(0, 10).toString("ascii").toLowerCase();
+            // Validate: If it's an HTML fallback SPA page, ignore it
+            if (!prefix.startsWith("<!doct") && !prefix.startsWith("<html")) {
+              buffer = tempBuf;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("[document-stream] Vision proxy fetch error:", fetchErr);
+        }
+      }
+
+      // Fallback: Try fetching direct targetUrl if it's an http URL
+      if (!buffer && isExternalUrl && targetUrl !== resolved) {
+        try {
+          const directRes = await fetch(targetUrl, {
+            headers: headersInit,
+            cache: "no-store",
+          });
+          if (directRes.ok) {
+            const arrayBuffer = await directRes.arrayBuffer();
+            const tempBuf = Buffer.from(arrayBuffer);
+            const prefix = tempBuf.slice(0, 10).toString("ascii").toLowerCase();
+            if (!prefix.startsWith("<!doct") && !prefix.startsWith("<html")) {
+              buffer = tempBuf;
+            }
+          }
+        } catch (directErr) {
+          console.warn("[document-stream] Direct fetch error:", directErr);
+        }
+      }
+
+      // Fallback: If targetUrl is an internal relative URL, try fetching via Next.js host
+      if (!buffer && targetUrl.startsWith("/")) {
+        try {
+          const fullInternalUrl = new URL(targetUrl, req.url).toString();
+          const internalRes = await fetch(fullInternalUrl, {
+            cache: "no-store",
+          });
+          if (internalRes.ok) {
+            const arrayBuffer = await internalRes.arrayBuffer();
+            const tempBuf = Buffer.from(arrayBuffer);
+            const prefix = tempBuf.slice(0, 10).toString("ascii").toLowerCase();
+            if (!prefix.startsWith("<!doct") && !prefix.startsWith("<html")) {
+              buffer = tempBuf;
+            }
+          }
+        } catch (internalErr) {
+          console.warn("[document-stream] Internal route fetch error:", internalErr);
+        }
+      }
+    }
+
+    if (!buffer) {
       return NextResponse.json(
-        { error: `Failed to fetch upstream document: ${upstreamRes.status}` },
-        { status: upstreamRes.status }
+        { error: "Dokumen tidak ditemukan atau gagal dimuat dari penyimpanan." },
+        { status: 404 }
       );
     }
-
-    const arrayBuffer = await upstreamRes.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
 
     // Detect actual MIME type from format, extension or magic bytes
     let contentType = "application/octet-stream";
@@ -79,7 +228,6 @@ export async function GET(req: NextRequest) {
     } else if (headerPrefix.startsWith("<?xml") || headerPrefix.startsWith("<!DOCT") || headerPrefix.startsWith("<html>")) {
       contentType = "text/html; charset=utf-8";
     } else {
-      // Default to text if human readable, otherwise octet-stream
       const isAscii = buffer.slice(0, 100).every((b) => (b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9);
       contentType = isAscii ? "text/markdown; charset=utf-8" : "application/pdf";
     }
@@ -107,3 +255,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+
