@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { heroSafetyInductions } from '@/db/schema/safety-induction'
+import { eq, inArray } from 'drizzle-orm'
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3 } from '@/lib/s3-storage'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { writeFile, mkdir } from 'fs/promises'
@@ -96,6 +97,87 @@ export async function submitSafetyInduction(formData: FormData) {
   } catch (error) {
     console.error('Error submitting safety induction:', error)
     return { success: false, error: 'Terjadi kesalahan sistem' }
+  }
+}
+
+export async function updateSafetyInduction(
+  id: string,
+  data: {
+    fullName: string
+    companyOrigin: string
+    phoneNumber: string
+    purpose: string
+  }
+) {
+  try {
+    const { fullName, companyOrigin, phoneNumber, purpose } = data
+
+    if (!id || !fullName?.trim() || !companyOrigin?.trim() || !phoneNumber?.trim() || !purpose?.trim()) {
+      return { success: false, error: 'Semua kolom wajib diisi' }
+    }
+
+    const [updated] = await db
+      .update(heroSafetyInductions)
+      .set({
+        fullName: fullName.trim(),
+        companyOrigin: companyOrigin.trim(),
+        phoneNumber: phoneNumber.trim(),
+        purpose: purpose.trim(),
+        updatedAt: new Date(),
+      })
+      .where(eq(heroSafetyInductions.id, id))
+      .returning()
+
+    if (!updated) {
+      return { success: false, error: 'Data tidak ditemukan' }
+    }
+
+    revalidatePath('/dashboard/safety-induction')
+    return { success: true, data: updated }
+  } catch (error) {
+    console.error('Error updating safety induction:', error)
+    return { success: false, error: 'Gagal memperbarui data safety induction' }
+  }
+}
+
+export async function deleteSafetyInduction(id: string) {
+  try {
+    if (!id) {
+      return { success: false, error: 'ID tidak valid' }
+    }
+
+    const [deleted] = await db
+      .delete(heroSafetyInductions)
+      .where(eq(heroSafetyInductions.id, id))
+      .returning()
+
+    if (!deleted) {
+      return { success: false, error: 'Data tidak ditemukan atau sudah dihapus' }
+    }
+
+    revalidatePath('/dashboard/safety-induction')
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting safety induction:', error)
+    return { success: false, error: 'Gagal menghapus data safety induction' }
+  }
+}
+
+export async function deleteBulkSafetyInductions(ids: string[]) {
+  try {
+    if (!ids || ids.length === 0) {
+      return { success: false, error: 'Tidak ada data yang dipilih' }
+    }
+
+    await db
+      .delete(heroSafetyInductions)
+      .where(inArray(heroSafetyInductions.id, ids))
+
+    revalidatePath('/dashboard/safety-induction')
+    return { success: true }
+  } catch (error) {
+    console.error('Error bulk deleting safety inductions:', error)
+    return { success: false, error: 'Gagal menghapus data terpilih' }
   }
 }
 
