@@ -81,13 +81,10 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
   const [open, setOpen] = useState(false);
   const allowedResources = new Set(sidebarItems.map((item) => item.resource).filter(Boolean));
   const isServiceAllowed = (service: { href: string; resource?: string }) => {
-    if (isMobileHrefAllowed(service.href, allowedLinks)) {
-      return true;
-    }
     if (service.resource) {
       return allowedResources.has(service.resource);
     }
-    return false;
+    return isMobileHrefAllowed(service.href, allowedLinks);
   };
 
   const mainServices: Array<{
@@ -106,9 +103,16 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-sky-500/10 text-sky-600",
     },
     {
+      title: "Aktivitas Harian",
+      href: "/mobile/activity",
+      resource: "tire_service",
+      icon: FileText,
+      bg: "bg-blue-500/10 text-blue-600",
+    },
+    {
       title: "Hero Genius",
       href: "/mobile/hero-genius",
-      resource: "hero_genius",
+      resource: "hero-genius",
       icon: Sparkles,
       bg: "bg-gradient-to-tr from-indigo-500/20 to-blue-500/20 text-indigo-600",
     },
@@ -235,14 +239,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
   const visibleServices = mainServices.filter(isServiceAllowed);
 
   const extraServices = [
-    {
-      title: "Daily Activity Log",
-      href: "/mobile/activity",
-      resource: "tire_service",
-      icon: FileText,
-      description: "Lihat riwayat progress aktivitas harian Anda",
-      bg: "bg-blue-500/10 text-blue-600",
-    },
+
     {
       title: "Attendance History",
       href: "/mobile/attendance",
@@ -290,9 +287,9 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
             key={index}
             href={service.href}
             target={service.target}
-            className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform"
+            className="flex flex-col items-center justify-start text-center group active:scale-95 transition-transform"
           >
-            <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg} transition-colors duration-200`}>
+            <div className={`flex shrink-0 size-12 items-center justify-center rounded-2xl ${service.bg} transition-colors duration-200`}>
               <service.icon className="size-5" />
             </div>
             <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight group-hover:text-primary transition-colors">

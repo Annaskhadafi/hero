@@ -36,6 +36,7 @@ import {
 import { LogoutButton } from '@/components/logout-button'
 import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
 import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
+import { useMobilePermissions } from '@/components/mobile/permission-provider'
 import { cn } from '@/lib/utils'
 
 type NotificationCountResponse = {
@@ -47,6 +48,7 @@ type DrawerLinkItem = {
   label: string
   href: string
   icon: typeof Home
+  resource?: string
 }
 
 type DrawerSectionItem = {
@@ -58,23 +60,24 @@ type DrawerItem = DrawerLinkItem | DrawerSectionItem
 
 const bottomNavItems = [
   { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { label: 'Activity', href: '/mobile/activity', icon: ClipboardList },
-  { label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
+  { label: 'Activity', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
+  { label: 'Approval', href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
   { label: 'Profile', href: '/mobile/profile', icon: UserRound },
 ]
 
 const drawerItems: DrawerItem[] = [
   { type: 'section', label: 'HOME' },
   { type: 'link', label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { type: 'link', label: 'Hero Genius AI', href: '/mobile/hero-genius', icon: Sparkles },
+  { type: 'link', label: 'Hero Genius AI', href: '/mobile/hero-genius', icon: Sparkles, resource: 'hero-genius' },
   { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
-  { type: 'section', label: 'AKTIVITAS' },
-  { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
+  { type: 'section', label: 'Produktivitas' },
+  { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
   {
     type: 'link',
     label: mobileActivityDrawerItem.label,
     href: mobileActivityDrawerItem.href,
     icon: ClipboardList,
+    resource: 'tire_service',
   },
   { type: 'section', label: 'IZIN & ROSTER' },
   {
@@ -82,32 +85,34 @@ const drawerItems: DrawerItem[] = [
     label: 'Izin Sakit & Terlambat',
     href: '/mobile/attendance/permission',
     icon: ShieldAlert,
+    resource: 'hc_attendance_permission',
   },
-  { type: 'link', label: 'SPL', href: '/mobile/overtime', icon: FileSignature },
-  { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer },
-  { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
-  { type: 'section', label: 'SAFETY & HSE' },
-  { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
-  { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck },
+  { type: 'link', label: 'SPL', href: '/mobile/overtime', icon: FileSignature, resource: 'overtime_requests' },
+  { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
+  { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
+  { type: 'section', label: 'Health & Safety (HSE)' },
+  { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck, resource: 'safety_dashboard' },
+  { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck, resource: 'safety_inspections' },
   {
     type: 'link',
     label: 'Tire Site Inspection',
     href: '/mobile/hse/tire-inspection',
     icon: ShieldCheck,
+    resource: 'hse_tire_inspection',
   },
-  { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck },
-  { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck },
+  { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck, resource: 'hse_jsa' },
+  { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck, resource: 'hse_izin_kerja_ptw' },
   { type: 'section', label: 'LAINNYA' },
-  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance', icon: ScanFace },
-  { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
-  { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText },
-  { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature },
-  { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen },
-  { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert },
-  { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
-  { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy },
-  { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3 },
-  { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package },
+  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance', icon: ScanFace, resource: 'attendance' },
+  { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
+  { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText, resource: 'daily_report_admin' },
+  { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature, resource: 'service360_service_form' },
+  { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen, resource: 'chitralearning_lms_workspace' },
+  { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
+  { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
+  { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
+  { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
+  { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
   { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
 ]
 
@@ -125,17 +130,40 @@ export function MobileAppShell({
   const pathname = usePathname()
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount)
-  const isCurrentPathAllowed = isMobileHrefAllowed(pathname, allowedLinks)
+  const permissions = useMobilePermissions()
+
+  const checkAccess = (href: string, resource?: string) => {
+    // If it has a resource, strictly check permissions (deny by default)
+    if (resource) {
+      return Boolean(permissions[resource]?.canView)
+    }
+    // If no resource, it's a basic route like Dashboard, Profile, Information
+    // We can fallback to the old behavior or just allow it if no resource is defined.
+    return isMobileHrefAllowed(href, allowedLinks)
+  }
+
+  const activeItem = [...drawerItems, ...bottomNavItems].find((item) => {
+    if (item.type === 'section' || !('href' in item)) return false
+    return pathname === item.href || pathname.startsWith(`${item.href}/`)
+  })
+
+  // Check access for the current path based on the matched menu item's resource
+  // If not found in the menu, fallback to the allowedLinks (old logic for dynamic detail pages if any)
+  const isCurrentPathAllowed = activeItem && 'resource' in activeItem
+    ? checkAccess(activeItem.href, (activeItem as DrawerLinkItem).resource)
+    : isMobileHrefAllowed(pathname, allowedLinks)
+
   const visibleBottomNavItems = bottomNavItems.filter((item) =>
-    isMobileHrefAllowed(item.href, allowedLinks)
+    checkAccess(item.href, item.resource)
   )
+
   const permittedDrawerItems = drawerItems.reduce<DrawerItem[]>((items, item) => {
     if (item.type === 'section') {
       items.push(item)
       return items
     }
 
-    if (isMobileHrefAllowed(item.href, allowedLinks)) {
+    if (checkAccess(item.href, item.resource)) {
       items.push(item)
     }
 

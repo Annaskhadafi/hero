@@ -11,6 +11,8 @@ import { getSidebarDataForUser } from "@/lib/hero-admin";
 import { buildMobileAllowedLinks } from "@/lib/mobile-access";
 import { FaceRegistrationReminderPopup } from "@/components/face-registration-reminder-popup";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
+import { getUserMobilePermissions } from "@/lib/mobile-permissions";
+import { MobilePermissionProvider } from "@/components/mobile/permission-provider";
 
 import "@/app/dashboard/theme.css";
 
@@ -51,6 +53,8 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     console.error("[mobile/layout] getEligibleBroadcastsForMobile failed:", err);
   }
 
+  let permissions = {};
+
   try {
     if (session.user.email) {
       const sidebarData = await getSidebarDataForUser(session.user.email);
@@ -59,6 +63,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
         ...sidebarData.navSecondary,
         ...sidebarData.documents,
       ]);
+      permissions = await getUserMobilePermissions(session.user.email);
     }
   } catch (err) {
     console.error("[mobile/layout] getSidebarDataForUser failed:", err);
@@ -79,18 +84,20 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   }
 
   return (
-    <MobileAppShell
-      userName={session.user.name || session.user.email || "HERO User"}
-      notificationCount={notificationCount}
-      allowedLinks={allowedLinks}
-    >
-      {children}
-      <MobileBroadcastPopup initialBroadcasts={eligibleBroadcasts} />
-      <FaceRegistrationReminderPopup 
-        isRegistered={isFaceRegistered} 
-        employeeId={employeeId}
-        siteId={siteId}
-      />
-    </MobileAppShell>
+    <MobilePermissionProvider permissions={permissions}>
+      <MobileAppShell
+        userName={session.user.name || session.user.email || "HERO User"}
+        notificationCount={notificationCount}
+        allowedLinks={allowedLinks}
+      >
+        {children}
+        <MobileBroadcastPopup initialBroadcasts={eligibleBroadcasts} />
+        <FaceRegistrationReminderPopup 
+          isRegistered={isFaceRegistered} 
+          employeeId={employeeId}
+          siteId={siteId}
+        />
+      </MobileAppShell>
+    </MobilePermissionProvider>
   );
 }
