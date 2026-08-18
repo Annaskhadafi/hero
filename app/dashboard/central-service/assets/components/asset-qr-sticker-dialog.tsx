@@ -79,61 +79,61 @@ async function generateStickerPng(
     img.src = qrDataUrl;
   });
 
-  // Draw Big QR Code on the left
-  ctx.drawImage(qrImg, 20, 20, 360, 360);
+  // Draw Big QR Code on the left with 0 margin (fills full 400x400 box)
+  ctx.drawImage(qrImg, 0, 0, 400, 400);
 
-  // Right side text coordinate
-  const leftTextX = 405;
-  const maxTextWidth = width - leftTextX - 25; // 370px
+  // Right side text coordinate (starts right next to QR code, margin 0 on right)
+  const leftTextX = 410;
+  const maxTextWidth = width - leftTextX; // 390px (stretches to edge)
 
-  // 1. PT CHITRA PARATAMA (Small, crisp, elegant)
+  // 1. PT CHITRA PARATAMA (Top margin 0)
   ctx.fillStyle = "#000000";
-  ctx.font = "bold 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("PT CHITRA PARATAMA", leftTextX, 55);
+  ctx.font = "900 32px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText("PT CHITRA PARATAMA", leftTextX, 36);
 
   // Divider Line
   ctx.beginPath();
-  ctx.moveTo(leftTextX, 68);
-  ctx.lineTo(leftTextX + maxTextWidth, 68);
-  ctx.lineWidth = 3;
+  ctx.moveTo(leftTextX, 48);
+  ctx.lineTo(width, 48);
+  ctx.lineWidth = 4;
   ctx.strokeStyle = "#000000";
   ctx.stroke();
 
   // 2. Asset Number
-  ctx.font = "bold 32px 'Geist Mono', monospace, sans-serif";
+  ctx.font = "bold 60px 'Geist Mono', monospace, sans-serif";
   const assetNo = asset.assetNumber ? asset.assetNumber : `ID #${asset.id}`;
-  ctx.fillText(assetNo, leftTextX, 120);
+  ctx.fillText(assetNo, leftTextX, 118);
 
-  // 3. Asset Description (Auto-wrap max 2 lines)
-  ctx.font = "600 24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  // 3. Asset Description (Auto wrap across lines without clipping)
+  ctx.font = "bold 36px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   const desc = asset.description || "-";
   const words = desc.split(" ");
-  let line1 = "";
-  let line2 = "";
+  const lines: string[] = [];
+  let currentLine = "";
   for (const word of words) {
-    const testLine = line1 ? `${line1} ${word}` : word;
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
     if (ctx.measureText(testLine).width <= maxTextWidth) {
-      line1 = testLine;
-    } else if (!line2) {
-      line2 = word;
+      currentLine = testLine;
     } else {
-      const testLine2 = `${line2} ${word}`;
-      if (ctx.measureText(testLine2).width <= maxTextWidth) {
-        line2 = testLine2;
-      }
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
     }
   }
-  ctx.fillText(line1, leftTextX, 175);
-  if (line2) {
-    ctx.fillText(line2, leftTextX, 210);
+  if (currentLine) lines.push(currentLine);
+
+  let descY = 175;
+  const maxDescLines = 3;
+  for (let i = 0; i < Math.min(lines.length, maxDescLines); i++) {
+    ctx.fillText(lines[i], leftTextX, descY);
+    descY += 44;
   }
 
-  // 4. Metadata: SN / Location
-  ctx.font = "500 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillStyle = "#222222";
+  // 4. Metadata: SN / Location (Bottom margin 0)
+  ctx.font = "bold 34px 'Geist Mono', monospace, sans-serif";
+  ctx.fillStyle = "#000000";
   const metaText = asset.serialNumber ? `SN: ${asset.serialNumber}` : (asset.location ? `Loc: ${asset.location}` : "");
   if (metaText) {
-    ctx.fillText(metaText, leftTextX, 360);
+    ctx.fillText(metaText, leftTextX, 388);
   }
 
   const cleanNo = (asset.assetNumber || `ID_${asset.id}`).replace(/[^a-zA-Z0-9_-]/g, "_");
