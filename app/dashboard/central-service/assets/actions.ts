@@ -94,6 +94,50 @@ export async function getAssets() {
   }
 }
 
+export async function getAssetById(id: number) {
+  try {
+    const [asset] = await db
+      .select()
+      .from(centralServiceAssets)
+      .where(eq(centralServiceAssets.id, id))
+      .limit(1);
+
+    if (!asset) return { success: false, error: "Asset tidak ditemukan", data: null };
+
+    const [attachmentRows, historyRows] = await Promise.all([
+      db
+        .select()
+        .from(centralServiceAssetAttachments)
+        .where(eq(centralServiceAssetAttachments.assetId, id))
+        .orderBy(asc(centralServiceAssetAttachments.createdAt), asc(centralServiceAssetAttachments.id)),
+      db
+        .select()
+        .from(centralServiceAssetHistories)
+        .where(eq(centralServiceAssetHistories.assetId, id))
+        .orderBy(desc(centralServiceAssetHistories.createdAt), desc(centralServiceAssetHistories.id)),
+    ]);
+
+    const attachments = [];
+    for (const attachment of attachmentRows) {
+      const previewUrl = await getS3ObjectReadUrl(attachment.fileUrl);
+      attachments.push({ ...attachment, previewUrl });
+    }
+
+    return {
+      success: true,
+      data: {
+        ...asset,
+        attachments,
+        histories: historyRows,
+      },
+    };
+  } catch (error) {
+    console.error("Failed to fetch asset by id:", error);
+    return { success: false, error: "Failed to fetch asset", data: null };
+  }
+}
+
+
 export async function getMasterSectionOptions() {
   try {
     const data = await db

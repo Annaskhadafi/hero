@@ -31,6 +31,7 @@ import {
   Hash,
   X,
   Upload,
+  QrCode,
 } from "lucide-react";
 import {
   createAsset,
@@ -38,6 +39,7 @@ import {
   updateAssetCondition,
   deleteAsset,
 } from "@/app/dashboard/central-service/assets/actions";
+import { AssetQrStickerDialog } from "@/app/dashboard/central-service/assets/components/asset-qr-sticker-dialog";
 import { uploadFile } from "@/app/actions/upload";
 import {
   Dialog,
@@ -243,6 +245,7 @@ export function MobileAssetsClientPage({
   // Modal Dialogs
   const [historyModalAsset, setHistoryModalAsset] = useState<Asset | null>(null);
   const [attachmentModalAsset, setAttachmentModalAsset] = useState<Asset | null>(null);
+  const [qrModalAsset, setQrModalAsset] = useState<Asset | null>(null);
   const [deleteConfirmAsset, setDeleteConfirmAsset] = useState<Asset | null>(null);
   const [updatingConditionId, setUpdatingConditionId] = useState<number | null>(null);
 
@@ -882,6 +885,14 @@ export function MobileAssetsClientPage({
                               </select>
                             )}
 
+                            <button
+                              onClick={() => setQrModalAsset(asset)}
+                              className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 active:scale-95 transition-all"
+                              title="QR Code & Stiker"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                            </button>
+
                             {permissions.canEdit && (
                               <button
                                 onClick={() => handleOpenForm(asset)}
@@ -1248,6 +1259,15 @@ export function MobileAssetsClientPage({
         onOpenChange={(open) => {
           if (!open) setAttachmentModalAsset(null);
         }}
+      />
+
+      {/* QR CODE & STIKER MODAL */}
+      <AssetQrStickerDialog
+        open={qrModalAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) setQrModalAsset(null);
+        }}
+        assets={qrModalAsset ? [qrModalAsset] : []}
       />
 
       {/* HISTORY AUDIT TRAIL DIALOG */}
