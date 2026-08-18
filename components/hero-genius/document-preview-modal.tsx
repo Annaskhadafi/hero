@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FileText,
   X,
@@ -8,6 +8,8 @@ import {
   Eye,
   Download,
   ExternalLink,
+  Smartphone,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +38,23 @@ export function DocumentPreviewModal({
   format,
 }: DocumentPreviewModalProps) {
   const [totalPages, setTotalPages] = useState<number>(0);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobileUA =
+        typeof navigator !== "undefined" &&
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+      const isNarrowScreen =
+        typeof window !== "undefined" && window.innerWidth < 768;
+      setIsMobile(isMobileUA || isNarrowScreen);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   if (!isOpen || !url) return null;
 
@@ -72,7 +91,7 @@ export function DocumentPreviewModal({
                   <ShieldCheck className="size-3 text-emerald-400" />
                   Pratinjau HERO Read-Only
                 </span>
-                {totalPages > 0 && !isImage && !isMarkdown && (
+                {totalPages > 0 && !isImage && !isMarkdown && isMobile && (
                   <Badge className="bg-sky-500/20 text-sky-200 border-none text-[9px] px-1.5 py-0 font-mono">
                     {totalPages} Halaman
                   </Badge>
@@ -80,6 +99,11 @@ export function DocumentPreviewModal({
                 {isMarkdown && (
                   <Badge className="bg-emerald-500/20 text-emerald-200 border-none text-[9px] px-1.5 py-0 font-mono">
                     Markdown Doc
+                  </Badge>
+                )}
+                {!isImage && !isMarkdown && (
+                  <Badge className="bg-white/15 text-white border-none text-[9px] px-1.5 py-0">
+                    {isMobile ? "HTML5 Mobile" : "Desktop PDF Embed"}
                   </Badge>
                 )}
               </div>
@@ -120,12 +144,18 @@ export function DocumentPreviewModal({
               filename={filename}
               className="h-full w-full"
             />
-          ) : (
+          ) : isMobile ? (
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
               onLoaded={(pages) => setTotalPages(pages)}
               className="h-full w-full"
+            />
+          ) : (
+            <iframe
+              src={`${streamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+              title={filename}
+              className="w-full h-full border-0 bg-white"
             />
           )}
         </div>
@@ -138,7 +168,9 @@ export function DocumentPreviewModal({
               ? "Markdown Document Viewer (HERO Systems)"
               : isImage
               ? "Image Document Viewer (HERO Systems)"
-              : "PDF Canvas Inline Viewer (Mobile & Desktop)"}
+              : isMobile
+              ? "HTML5 Mobile PDF Canvas Viewer (HERO Systems)"
+              : "Desktop PDF Native Embed (Instant)"}
           </span>
           <span className="font-semibold text-slate-500">HERO Systems</span>
         </div>
@@ -146,3 +178,4 @@ export function DocumentPreviewModal({
     </Dialog>
   );
 }
+

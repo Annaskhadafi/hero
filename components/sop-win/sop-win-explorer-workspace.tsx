@@ -830,25 +830,18 @@ export function SopWinExplorerWorkspace({
 
           {/* Full Height Side PDF Previewer */}
           <div
-            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-slate-100 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
+            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
             onContextMenu={(e) => e.preventDefault()}
           >
-            <object
-              data={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+            <iframe
+              src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
                 activeDoc.pdfFileUrl
               )}&filename=${encodeURIComponent(activeDoc.documentNumber)}#toolbar=0&navpanes=0&scrollbar=1`}
-              type="application/pdf"
-              className="w-full h-full border-0 select-none"
-            >
-              <iframe
-                src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
-                  activeDoc.pdfFileUrl
-                )}&filename=${encodeURIComponent(activeDoc.documentNumber)}#toolbar=0&navpanes=0&scrollbar=1`}
-                title="Pratinjau Dokumen"
-                className="w-full h-full border-0"
-              />
-            </object>
+              title={activeDoc.title}
+              className="w-full h-full border-0 bg-white dark:bg-slate-900"
+            />
           </div>
+
 
           {/* Document Meta & Revision Log Tab Area */}
           <div className="p-4 space-y-3 shrink-0 max-h-56 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
