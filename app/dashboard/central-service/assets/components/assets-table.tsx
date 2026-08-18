@@ -29,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plus,
   Search,
@@ -53,8 +54,10 @@ import {
   HelpCircle,
   History,
   ChevronDown,
+  QrCode,
 } from "lucide-react";
 import { AssetFormDialog } from "./asset-form-dialog";
+import { AssetQrStickerDialog, type AssetStickerItem } from "./asset-qr-sticker-dialog";
 import { deleteAsset, updateAssetCondition } from "../actions";
 import { toast } from "sonner";
 import { format, differenceInMonths, isAfter, isBefore, addMonths, startOfDay } from "date-fns";
@@ -489,7 +492,10 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([
     { id: "condition", value: DEFAULT_CONDITION_FILTERS },
   ]);
+  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isQrDialogOpen, setIsQrDialogOpen] = useState(false);
+  const [qrStickerAssets, setQrStickerAssets] = useState<AssetStickerItem[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [attachmentAsset, setAttachmentAsset] = useState<Asset | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null);
@@ -583,6 +589,31 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
   const columns = useMemo<ColumnDef<Asset>[]>(
     () => [
       {
+        id: "select",
+        header: ({ table }) => (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Pilih Semua"
+            className="translate-y-[2px]"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Pilih baris"
+            className="translate-y-[2px]"
+          />
+        ),
+        size: 38,
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
         id: "duePriority",
         accessorFn: dueSortValue,
       },
@@ -595,7 +626,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
       {
         id: "no",
         header: "No",
-        size: 50,
+        size: 45,
         cell: ({ row }) => (
           <span className="text-muted-foreground text-xs">{row.index + 1}</span>
         ),
@@ -812,14 +843,31 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={() => {
+                  setQrStickerAssets([row.original]);
+                  setIsQrDialogOpen(true);
+                }}
+              >
+                <QrCode className="mr-2 h-4 w-4 text-blue-600" /> Export Stiker PNG
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href={`/public/assets/${row.original.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4 text-slate-500" /> Buka Link Publik
+                </a>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
                   setSelectedAsset(row.original);
                   setIsDialogOpen(true);
                 }}
               >
-                <Edit className="mr-2 h-4 w-4" /> Edit
+                <Edit className="mr-2 h-4 w-4 text-slate-600" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-red-600"
@@ -838,10 +886,12 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnFilters, globalFilter },
+    state: { sorting, columnFilters, globalFilter, rowSelection },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     globalFilterFn: (row, _columnId, filterValue) =>
       assetSearchText(row.original).includes(String(filterValue ?? "").toLowerCase()),
     getCoreRowModel: getCoreRowModel(),
@@ -1015,7 +1065,35 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {table.getSelectedRowModel().rows.length > 0 ? (
+            <Button
+              size="sm"
+              className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
+              onClick={() => {
+                const selected = table.getSelectedRowModel().rows.map((r) => r.original);
+                setQrStickerAssets(selected);
+                setIsQrDialogOpen(true);
+              }}
+            >
+              <QrCode className="h-4 w-4" />
+              Export Stiker PNG ({table.getSelectedRowModel().rows.length})
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5 text-slate-700 dark:text-slate-200"
+              onClick={() => {
+                const filtered = table.getFilteredRowModel().rows.map((r) => r.original);
+                setQrStickerAssets(filtered);
+                setIsQrDialogOpen(true);
+              }}
+            >
+              <QrCode className="h-4 w-4 text-blue-600" />
+              Export Stiker PNG
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1255,6 +1333,12 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         open={attachmentAsset !== null}
         onOpenChange={(open) => !open && setAttachmentAsset(null)}
         asset={attachmentAsset}
+      />
+
+      <AssetQrStickerDialog
+        open={isQrDialogOpen}
+        onOpenChange={setIsQrDialogOpen}
+        assets={qrStickerAssets}
       />
 
       {/* Delete Confirm */}
