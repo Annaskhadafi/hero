@@ -13,8 +13,10 @@ import { eq, desc, sql, and, or, ilike } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "@/lib/auth-session";
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import {
   ingestRagDocument,
+
   deleteRagDocument,
 } from "@/lib/hero-genius/client";
 import {
@@ -152,6 +154,11 @@ export async function createSopWinDepartmentAction(data: {
   headEmployeeId?: number | null;
 }) {
   try {
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canEdit) {
+      return { success: false, error: "Anda tidak memiliki izin untuk mengelola departemen." };
+    }
+
     const code = data.code.trim().toUpperCase();
     const name = data.name.trim();
     if (!code || !name) {
@@ -227,6 +234,11 @@ export async function updateSopWinDepartmentAction(
   }
 ) {
   try {
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canEdit) {
+      return { success: false, error: "Anda tidak memiliki izin untuk mengedit departemen." };
+    }
+
     const code = data.code.trim().toUpperCase();
     const name = data.name.trim();
     if (!code || !name) {
@@ -295,6 +307,11 @@ export async function updateSopWinDepartmentAction(
  */
 export async function deleteSopWinDepartmentAction(id: number) {
   try {
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canDelete) {
+      return { success: false, error: "Anda tidak memiliki izin untuk menghapus departemen." };
+    }
+
     const deptRes = await db
       .select({ id: sopWinDepartments.id, code: sopWinDepartments.code, name: sopWinDepartments.name })
       .from(sopWinDepartments)
@@ -337,6 +354,7 @@ export async function deleteSopWinDepartmentAction(id: number) {
     return { success: false, error: error.message || "Gagal menghapus departemen." };
   }
 }
+
 
 /**
  * 1. Get Dashboard Summary & Analytics
@@ -843,7 +861,13 @@ export async function createSopWinDocumentAction(formData: FormData) {
       return { success: false, error: "Silakan login terlebih dahulu." };
     }
 
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canEdit) {
+      return { success: false, error: "Anda tidak memiliki izin (permission) untuk menambah dokumen." };
+    }
+
     const currentEmp = await getEmployeeDisplayDataByEmail(session.user.email);
+
 
     const documentNumber = (formData.get("documentNumber") as string)?.trim();
     const title = (formData.get("title") as string)?.trim();
@@ -993,7 +1017,13 @@ export async function updateSopWinDocumentAction(formData: FormData) {
       return { success: false, error: "Silakan login terlebih dahulu." };
     }
 
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canEdit) {
+      return { success: false, error: "Anda tidak memiliki izin (permission) untuk mengubah dokumen." };
+    }
+
     const documentId = Number(formData.get("documentId"));
+
     const documentNumber = (formData.get("documentNumber") as string)?.trim();
     const title = (formData.get("title") as string)?.trim();
     const documentType = (formData.get("documentType") as string)?.trim() || "SOP";
@@ -1126,6 +1156,11 @@ export async function createSopWinRevisionAction(formData: FormData) {
       return { success: false, error: "Silakan login terlebih dahulu." };
     }
 
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canEdit) {
+      return { success: false, error: "Anda tidak memiliki izin (permission) untuk menerbitkan revisi." };
+    }
+
     const currentEmp = await getEmployeeDisplayDataByEmail(session.user.email);
     const documentId = Number(formData.get("documentId"));
     const revisionNumber = (formData.get("revisionNumber") as string)?.trim();
@@ -1254,7 +1289,13 @@ export async function deleteSopWinDocumentAction(documentId: number) {
       return { success: false, error: "Silakan login terlebih dahulu." };
     }
 
+    const perm = await getCurrentMenuPermission("sop-win");
+    if (!perm.canDelete) {
+      return { success: false, error: "Anda tidak memiliki izin (permission) untuk menghapus dokumen." };
+    }
+
     // Get rag ID
+
     const doc = await db
       .select({ ragDocumentId: sopWinDocuments.ragDocumentId })
       .from(sopWinDocuments)

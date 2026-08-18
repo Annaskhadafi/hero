@@ -61,6 +61,9 @@ interface SopWinExplorerWorkspaceProps {
   employees: Array<{ id: number; name: string; employeeSn: string | null; position: string | null }>;
   picOptions?: PicSelectOption[];
   headSections?: Array<{ id: number; name: string; employeeSn?: string | null; position?: string | null; unitName?: string | null }>;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   canManageDocuments?: boolean;
   onRefreshData?: () => void;
   selectedDeptInitial?: string;
@@ -73,12 +76,20 @@ export function SopWinExplorerWorkspace({
   employees,
   picOptions = [],
   headSections = [],
-  canManageDocuments = true,
+  canCreate: propCanCreate,
+  canEdit: propCanEdit,
+  canDelete: propCanDelete,
+  canManageDocuments = false,
   onRefreshData,
   selectedDeptInitial = "ALL",
 }: SopWinExplorerWorkspaceProps) {
+  const canCreate = propCanCreate ?? canManageDocuments;
+  const canEdit = propCanEdit ?? canManageDocuments;
+  const canDelete = propCanDelete ?? canManageDocuments;
+
   const router = useRouter();
   const [selectedDepartment, setSelectedDepartment] = useState<string>(selectedDeptInitial);
+
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [deptSearchQuery, setDeptSearchQuery] = useState<string>("");
@@ -396,17 +407,20 @@ export function SopWinExplorerWorkspace({
             <Building className="size-3.5 text-[#003461]" />
             Departemen
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setManageDeptDialogOpen(true)}
-            className="h-6 px-2 text-[10px] font-bold text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-900 rounded-lg gap-1"
-          >
-            <Plus className="size-3" />
-            Kelola
-          </Button>
+          {canEdit && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setManageDeptDialogOpen(true)}
+              className="h-6 px-2 text-[10px] font-bold text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-900 rounded-lg gap-1"
+            >
+              <Plus className="size-3" />
+              Kelola
+            </Button>
+          )}
         </div>
+
 
         {/* Live Search Department */}
         <div className="relative mb-2">
@@ -559,16 +573,19 @@ export function SopWinExplorerWorkspace({
               )}
             </Button>
 
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => setCreateDialogOpen(true)}
-              className="h-8 gap-1.5 rounded-xl bg-[#003461] hover:bg-[#002647] text-white text-xs font-semibold shrink-0 shadow-xs"
-            >
-              <Plus className="size-3.5" />
-              Tambah
-            </Button>
+            {(canCreate || canEdit) && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setCreateDialogOpen(true)}
+                className="h-8 gap-1.5 rounded-xl bg-[#003461] hover:bg-[#002647] text-white text-xs font-semibold shrink-0 shadow-xs"
+              >
+                <Plus className="size-3.5" />
+                Tambah
+              </Button>
+            )}
           </div>
+
         </div>
 
         {/* Active Background Queue Notification Banner */}
@@ -700,20 +717,23 @@ export function SopWinExplorerWorkspace({
                         >
                           <Sparkles className="size-3.5" />
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingDoc(doc);
-                            setEditDialogOpen(true);
-                          }}
-                          className="size-7 p-0 text-amber-600 hover:bg-amber-50 rounded-lg"
-                          title="Edit Dokumen / Pindah Departemen"
-                        >
-                          <Edit3 className="size-3.5" />
-                        </Button>
+                        {canEdit && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDoc(doc);
+                              setEditDialogOpen(true);
+                            }}
+                            className="size-7 p-0 text-amber-600 hover:bg-amber-50 rounded-lg"
+                            title="Edit Dokumen / Pindah Departemen"
+                          >
+                            <Edit3 className="size-3.5" />
+                          </Button>
+                        )}
+
                         <Button
                           type="button"
                           variant="ghost"
@@ -786,20 +806,23 @@ export function SopWinExplorerWorkspace({
                 <Sparkles className="size-3.5 text-amber-300" />
                 <span className="hidden sm:inline">Chat Dokumen</span>
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditingDoc(activeDoc);
-                  setEditDialogOpen(true);
-                }}
-                className="h-7 px-2 text-xs text-amber-200 hover:bg-white/15 hover:text-white rounded-lg gap-1"
-                title="Edit / Pindah Departemen"
-              >
-                <Edit3 className="size-3.5" />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
+              {canEdit && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditingDoc(activeDoc);
+                    setEditDialogOpen(true);
+                  }}
+                  className="h-7 px-2 text-xs text-amber-200 hover:bg-white/15 hover:text-white rounded-lg gap-1"
+                  title="Edit / Pindah Departemen"
+                >
+                  <Edit3 className="size-3.5" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+              )}
+
               <Button
                 type="button"
                 variant="ghost"
@@ -877,26 +900,31 @@ export function SopWinExplorerWorkspace({
                   <Sparkles className="size-3 text-amber-300" />
                   Chat Dokumen
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setRevisionDialogOpen(true)}
-                  className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold gap-1"
-                >
-                  <Plus className="size-3" />
-                  Terbitkan Revisi
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(activeDoc.id, activeDoc.documentNumber)}
-                  className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                >
-                  <Trash2 className="size-3.5 mr-1" />
-                  Hapus
-                </Button>
+                {canEdit && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setRevisionDialogOpen(true)}
+                    className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold gap-1"
+                  >
+                    <Plus className="size-3" />
+                    Terbitkan Revisi
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(activeDoc.id, activeDoc.documentNumber)}
+                    className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    <Trash2 className="size-3.5 mr-1" />
+                    Hapus
+                  </Button>
+                )}
               </div>
+
             </div>
 
             {/* Revision Changelogs */}

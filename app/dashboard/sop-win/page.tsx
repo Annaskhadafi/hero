@@ -1,3 +1,4 @@
+import { Metadata } from "next";
 import {
   getSopWinDashboardAction,
   getSopWinDocumentsAction,
@@ -5,7 +6,7 @@ import {
   getSopWinDepartmentsAction,
 } from "@/app/dashboard/sop-win/actions";
 import { getServerSession } from "@/lib/auth-session";
-import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { SopWinExplorerWorkspace } from "@/components/sop-win/sop-win-explorer-workspace";
 import { SopWinDashboardView } from "@/components/sop-win/sop-win-dashboard-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,11 +20,12 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function SopWinPage() {
-  const [rawDashboard, rawDocs, rawEmployees, rawDepts, session] = await Promise.all([
+  const [rawDashboard, rawDocs, rawEmployees, rawDepts, permission, session] = await Promise.all([
     getSopWinDashboardAction(),
     getSopWinDocumentsAction(),
     getEmployeeOptionsForSopAction(),
     getSopWinDepartmentsAction(),
+    getCurrentMenuPermission("sop-win"),
     getServerSession(),
   ]);
 
@@ -51,25 +53,16 @@ export default async function SopWinPage() {
     departments: [],
   };
 
-  let isSuperAdmin = true; // Allow document management
-  if (session?.user?.email) {
-    const employee = await getEmployeeDisplayDataByEmail(session.user.email);
-    const accessRole = (employee as any)?.accessRole || (session.user as any)?.role;
-    isSuperAdmin =
-      accessRole === "Super Admin" ||
-      accessRole === "super_admin" ||
-      accessRole === "Admin" ||
-      accessRole === "HC Manager" ||
-      accessRole === "HSE" ||
-      true;
-  }
-
   const initialDocs = Array.isArray(docsData?.documents) ? docsData.documents : [];
   const deptCounts = docsData?.departmentCounts || {};
   const empList = Array.isArray(employeeData?.employees) ? employeeData.employees : [];
   const picList = Array.isArray(employeeData?.picOptions) ? employeeData.picOptions : [];
   const headSecList = Array.isArray(employeeData?.headSections) ? employeeData.headSections : [];
   const departmentsList = Array.isArray(deptData?.departments) ? deptData.departments : [];
+
+  const canEdit = !!permission?.canEdit;
+  const canDelete = !!permission?.canDelete;
+  const canCreate = !!permission?.canEdit;
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 sm:p-5 lg:p-6 w-full max-w-none">
@@ -119,7 +112,10 @@ export default async function SopWinPage() {
             employees={empList}
             picOptions={picList}
             headSections={headSecList}
-            canManageDocuments={isSuperAdmin}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            canManageDocuments={canEdit}
           />
         </TabsContent>
 
@@ -130,3 +126,4 @@ export default async function SopWinPage() {
     </div>
   );
 }
+
