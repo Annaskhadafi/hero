@@ -128,12 +128,17 @@ async function generateStickerPng(
     descY += 44;
   }
 
-  // 4. Metadata: SN / Location (Bottom margin 0)
-  ctx.font = "bold 34px 'Geist Mono', monospace, sans-serif";
-  ctx.fillStyle = "#000000";
+  // 4. Metadata: SN / Location (Enlarged to 48-50px bold mono, maximum visibility)
   const metaText = asset.serialNumber ? `SN: ${asset.serialNumber}` : (asset.location ? `Loc: ${asset.location}` : "");
   if (metaText) {
-    ctx.fillText(metaText, leftTextX, 388);
+    let snFontSize = 50;
+    ctx.font = `bold ${snFontSize}px 'Geist Mono', monospace, sans-serif`;
+    while (ctx.measureText(metaText).width > maxTextWidth && snFontSize > 34) {
+      snFontSize -= 2;
+      ctx.font = `bold ${snFontSize}px 'Geist Mono', monospace, sans-serif`;
+    }
+    ctx.fillStyle = "#000000";
+    ctx.fillText(metaText, leftTextX, 385);
   }
 
   const cleanNo = (asset.assetNumber || `ID_${asset.id}`).replace(/[^a-zA-Z0-9_-]/g, "_");
