@@ -519,32 +519,6 @@ export async function rarayCheckFaceStatus(params: {
   return { status: 'success', registered: false, employee_id: String(employeeId) }
 }
 
-/**
- * Delete an employee face from Raray Vision.
- */
-export async function rarayDeleteFace(params: {
-  employeeId: number
-}): Promise<{ status: 'success' | 'error'; message?: string }> {
-  const { employeeId } = params
-  const baseUrl = getBaseUrl()
-  const authHeader = await getAuthHeader()
-  const faceId = `emp-${employeeId}`
-
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/faces/${faceId}`, {
-      method: 'DELETE',
-      headers: { Authorization: authHeader },
-      cache: 'no-store',
-    })
-
-    if (res.ok) {
-      return { status: 'success', message: `Wajah untuk employee ${employeeId} berhasil dihapus.` }
-    }
-    return { status: 'error', message: `Delete failed: ${res.status}` }
-  } catch (err) {
-    return { status: 'error', message: err instanceof Error ? err.message : 'Delete error' }
-  }
-}
 
 /**
  * Health check: verify Raray Vision is reachable.
