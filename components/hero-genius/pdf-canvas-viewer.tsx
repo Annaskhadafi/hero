@@ -27,6 +27,7 @@ interface PdfCanvasViewerProps {
   url: string;
   filename?: string;
   className?: string;
+  defaultViewMode?: "single" | "continuous";
   onLoaded?: (totalPages: number) => void;
 }
 
@@ -34,12 +35,14 @@ export function PdfCanvasViewer({
   url,
   filename = "Dokumen",
   className = "",
+  defaultViewMode = "single",
   onLoaded,
 }: PdfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<"single" | "continuous">(defaultViewMode);
   const [scale, setScale] = useState<number>(1.0);
   const [fitToWidth, setFitToWidth] = useState<boolean>(true);
   const [rotation, setRotation] = useState<number>(0);
@@ -188,17 +191,23 @@ export function PdfCanvasViewer({
     [pdfDoc, scale, fitToWidth, rotation]
   );
 
-  // Re-render all pages when scale, rotation, or doc changes
+  // Re-render pages when scale, rotation, viewMode, or doc changes
   useEffect(() => {
     if (!pdfDoc || numPages === 0) return;
 
-    for (let p = 1; p <= numPages; p++) {
-      renderPage(p);
+    if (viewMode === "single") {
+      renderPage(currentPage);
+    } else {
+      for (let p = 1; p <= numPages; p++) {
+        renderPage(p);
+      }
     }
-  }, [pdfDoc, numPages, renderPage, scale, fitToWidth, rotation]);
+  }, [pdfDoc, numPages, renderPage, scale, fitToWidth, rotation, viewMode, currentPage]);
 
-  // Handle intersection observer to update current page indicator on scroll
+  // Handle intersection observer to update current page indicator on scroll (continuous mode only)
   useEffect(() => {
+    if (viewMode !== "continuous") return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -224,15 +233,22 @@ export function PdfCanvasViewer({
     return () => {
       observer.disconnect();
     };
-  }, [numPages, pdfDoc]);
+  }, [numPages, pdfDoc, viewMode]);
 
-  // Scroll to specific page
-  const scrollToPage = (targetPage: number) => {
+  // Navigate to specific page
+  const goToPage = (targetPage: number) => {
     if (targetPage < 1 || targetPage > numPages) return;
-    const canvas = canvasRefs.current[targetPage];
-    if (canvas) {
-      canvas.scrollIntoView({ behavior: "smooth", block: "start" });
-      setCurrentPage(targetPage);
+    setCurrentPage(targetPage);
+
+    if (viewMode === "continuous") {
+      const canvas = canvasRefs.current[targetPage];
+      if (canvas) {
+        canvas.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } else {
+      if (containerRef.current) {
+        containerRef.current.scrollTop = 0;
+      }
     }
   };
 
@@ -256,24 +272,24 @@ export function PdfCanvasViewer({
   };
 
   return (
-    <div className={`flex flex-col h-full w-full bg-slate-900 select-none ${className}`}>
+    <div className={`flex flex-col h-full w-full bg-slate-900 select-none overflow-hidden ${className}`}>
       {/* Floating / Sticky Control Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-950/90 backdrop-blur border-b border-slate-800 text-white shrink-0 z-20 gap-2">
+      <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-950 border-b border-slate-800 text-white shrink-0 z-20 gap-2 text-xs">
         {/* Page Nav */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => scrollToPage(currentPage - 1)}
+            onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage <= 1 || isLoading}
-            className="size-7 sm:size-8 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 rounded-lg"
+            className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 rounded-lg"
             title="Halaman Sebelumnya"
           >
-            <ChevronLeft className="size-4" />
+            <ChevronLeft className="size-3.5" />
           </Button>
 
-          <div className="flex items-center gap-1 text-[11px] sm:text-xs font-mono font-medium text-slate-300">
+          <div className="flex items-center gap-1 text-[11px] font-mono font-medium text-slate-300 px-1">
             <span className="text-white font-bold">{currentPage}</span>
             <span className="text-slate-500">/</span>
             <span>{numPages || "-"}</span>
@@ -283,27 +299,45 @@ export function PdfCanvasViewer({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => scrollToPage(currentPage + 1)}
+            onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= numPages || isLoading}
-            className="size-7 sm:size-8 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 rounded-lg"
+            className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 disabled:opacity-30 rounded-lg"
             title="Halaman Berikutnya"
           >
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-3.5" />
+          </Button>
+
+          {/* Mode Toggle */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setViewMode((prev) => (prev === "single" ? "continuous" : "single"))}
+            disabled={isLoading || numPages <= 1}
+            className={`h-7 px-2 text-[10px] font-medium rounded-lg ml-1 gap-1 ${
+              viewMode === "single"
+                ? "bg-slate-800 text-sky-300 border border-slate-700"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+            }`}
+            title={viewMode === "single" ? "Tampilan: 1 Halaman (Klik untuk mode scroll semua)" : "Tampilan: Scroll Semua (Klik untuk mode 1 halaman)"}
+          >
+            <Layers className="size-3" />
+            <span className="hidden sm:inline">{viewMode === "single" ? "1 Hal" : "Scroll"}</span>
           </Button>
         </div>
 
         {/* Zoom & View Controls */}
-        <div className="flex items-center gap-1 sm:gap-1.5">
+        <div className="flex items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={handleZoomOut}
             disabled={isLoading || scale <= 0.5}
-            className="size-7 sm:size-8 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
+            className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
             title="Perkecil (-)"
           >
-            <ZoomOut className="size-3.5 sm:size-4" />
+            <ZoomOut className="size-3.5" />
           </Button>
 
           <Button
@@ -312,7 +346,7 @@ export function PdfCanvasViewer({
             size="sm"
             onClick={handleFitWidth}
             disabled={isLoading}
-            className={`h-7 sm:h-8 px-2 text-[11px] font-medium rounded-lg ${
+            className={`h-7 px-2 text-[10px] font-medium rounded-lg ${
               fitToWidth
                 ? "bg-blue-600/30 text-sky-300 border border-blue-500/40"
                 : "text-slate-300 hover:bg-slate-800"
@@ -329,10 +363,10 @@ export function PdfCanvasViewer({
             size="icon"
             onClick={handleZoomIn}
             disabled={isLoading || scale >= 3.0}
-            className="size-7 sm:size-8 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
+            className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
             title="Perbesar (+)"
           >
-            <ZoomIn className="size-3.5 sm:size-4" />
+            <ZoomIn className="size-3.5" />
           </Button>
 
           <Button
@@ -341,10 +375,10 @@ export function PdfCanvasViewer({
             size="icon"
             onClick={handleRotate}
             disabled={isLoading}
-            className="size-7 sm:size-8 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
+            className="size-7 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg"
             title="Putar 90°"
           >
-            <RotateCw className="size-3.5 sm:size-4" />
+            <RotateCw className="size-3.5" />
           </Button>
         </div>
       </div>
@@ -352,20 +386,20 @@ export function PdfCanvasViewer({
       {/* Main Canvas Scroll Area */}
       <div
         ref={containerRef}
-        className="flex-1 w-full overflow-y-auto overflow-x-auto p-2 sm:p-4 flex flex-col items-center gap-4 bg-slate-900/95 touch-pan-y"
+        className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-auto p-2 sm:p-4 flex flex-col items-center gap-4 bg-slate-900/95 touch-pan-y"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {isLoading && (
-          <div className="flex flex-col items-center justify-center my-auto py-16 gap-3 text-center">
-            <RefreshCw className="size-8 text-sky-400 animate-spin" />
+          <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-center">
+            <RefreshCw className="size-7 text-sky-400 animate-spin" />
             <p className="text-xs font-semibold text-slate-200">{loadingProgress}</p>
-            <p className="text-[11px] text-slate-400">Merender halaman berkualitas tinggi...</p>
+            <p className="text-[11px] text-slate-400">Merender halaman dokumen...</p>
           </div>
         )}
 
         {errorMsg && (
-          <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-center max-w-sm px-4">
-            <AlertCircle className="size-10 text-rose-400" />
+          <div className="flex flex-col items-center justify-center my-auto py-10 gap-3 text-center max-w-sm px-4">
+            <AlertCircle className="size-9 text-rose-400" />
             <p className="text-sm font-semibold text-white">Gagal Menampilkan PDF</p>
             <p className="text-xs text-slate-400">{errorMsg}</p>
             <Button
@@ -381,31 +415,49 @@ export function PdfCanvasViewer({
           </div>
         )}
 
-        {/* Render Each Page As Canvas */}
+        {/* Render Page(s) */}
         {!isLoading && !errorMsg && pdfDoc && (
-          <div className="flex flex-col items-center gap-4 w-full max-w-full pb-8">
-            {Array.from({ length: numPages }, (_, index) => {
-              const pageNum = index + 1;
-              return (
-                <div
-                  key={pageNum}
-                  data-page-number={pageNum}
-                  className="relative flex flex-col items-center group shadow-2xl rounded-sm bg-white overflow-hidden transition-transform duration-150 border border-slate-700/50"
-                >
-                  <canvas
-                    ref={(el) => {
-                      canvasRefs.current[pageNum] = el;
-                    }}
-                    className="block bg-white"
-                  />
-                  {/* Subtle Page Number Watermark Badge */}
-                  <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-mono text-white/80 pointer-events-none">
-                    Hal. {pageNum}
-                  </div>
+          viewMode === "single" ? (
+            <div className="flex flex-col items-center w-full max-w-full my-auto pb-4">
+              <div
+                data-page-number={currentPage}
+                className="relative flex flex-col items-center group shadow-2xl rounded-sm bg-white overflow-hidden border border-slate-700/50"
+              >
+                <canvas
+                  ref={(el) => {
+                    canvasRefs.current[currentPage] = el;
+                  }}
+                  className="block bg-white"
+                />
+                <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-mono text-white/80 pointer-events-none">
+                  Hal. {currentPage} / {numPages}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4 w-full max-w-full pb-8">
+              {Array.from({ length: numPages }, (_, index) => {
+                const pageNum = index + 1;
+                return (
+                  <div
+                    key={pageNum}
+                    data-page-number={pageNum}
+                    className="relative flex flex-col items-center group shadow-2xl rounded-sm bg-white overflow-hidden transition-transform duration-150 border border-slate-700/50"
+                  >
+                    <canvas
+                      ref={(el) => {
+                        canvasRefs.current[pageNum] = el;
+                      }}
+                      className="block bg-white"
+                    />
+                    <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 backdrop-blur rounded text-[10px] font-mono text-white/80 pointer-events-none">
+                      Hal. {pageNum}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
       </div>
     </div>

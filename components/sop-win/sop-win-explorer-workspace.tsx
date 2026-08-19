@@ -400,9 +400,9 @@ export function SopWinExplorerWorkspace({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 w-full min-h-[calc(100vh-200px)] items-stretch">
+    <div className="flex flex-col lg:flex-row gap-4 w-full items-start">
       {/* 1. Left Sidebar: Department Folders Tree */}
-      <div className="w-full lg:w-64 xl:w-72 shrink-0 rounded-3xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col">
+      <div className="w-full lg:w-64 xl:w-72 shrink-0 rounded-3xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col h-[calc(100vh-210px)] min-h-[580px] max-h-[820px]">
         <div className="flex items-center justify-between px-2 py-2 border-b border-slate-100 dark:border-slate-800 mb-2">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
             <Building className="size-3.5 text-[#003461]" />
@@ -521,7 +521,7 @@ export function SopWinExplorerWorkspace({
 
       {/* 2. Center Area: Documents List Table */}
       <div
-        className={`flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 overflow-hidden transition-all ${
+        className={`flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 overflow-hidden transition-all h-[calc(100vh-210px)] min-h-[580px] max-h-[820px] ${
           selectedDocId ? "w-full lg:w-5/12 xl:w-5/12" : "flex-1"
         }`}
       >
@@ -762,9 +762,9 @@ export function SopWinExplorerWorkspace({
         </div>
       </div>
 
-      {/* 3. Right Panel: Side-by-Side PDF Preview (Full Height & Width) */}
+      {/* 3. Right Panel: Side-by-Side PDF Preview (Balanced Height & Width) */}
       {selectedDocId && activeDoc && (
-        <div className="w-full lg:w-7/12 xl:w-7/12 rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col overflow-hidden">
+        <div className="w-full lg:w-7/12 xl:w-7/12 rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col overflow-hidden h-[calc(100vh-210px)] min-h-[580px] max-h-[820px] lg:sticky lg:top-4">
           {/* Side Panel Header */}
           <div className="flex items-center justify-between border-b border-slate-100 bg-[#003461] px-4 py-3 text-white dark:border-slate-800 shrink-0">
             <div className="min-w-0 pr-2">
@@ -852,9 +852,9 @@ export function SopWinExplorerWorkspace({
             </div>
           </div>
 
-          {/* Full Height Side PDF Previewer */}
+          {/* Balanced Side PDF Previewer */}
           <div
-            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
+            className="relative flex-1 min-h-0 w-full bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
             onContextMenu={(e) => e.preventDefault()}
           >
             {activeDoc.pdfFileUrl ? (
@@ -875,11 +875,12 @@ export function SopWinExplorerWorkspace({
                     activeDoc.pdfFileUrl
                   )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
                   filename={activeDoc.documentNumber || activeDoc.title}
+                  defaultViewMode="single"
                   className="h-full w-full"
                 />
               )
             ) : (
-              <div className="flex flex-col items-center justify-center h-full min-h-[450px] text-center p-6 text-slate-400 bg-slate-950">
+              <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-center p-6 text-slate-400 bg-slate-950">
                 <FileText className="size-12 text-slate-500 mb-3" />
                 <p className="font-semibold text-sm text-slate-200">
                   Dokumen PDF Belum Tersedia
@@ -908,7 +909,7 @@ export function SopWinExplorerWorkspace({
 
 
           {/* Document Meta & Revision Log Tab Area */}
-          <div className="p-4 space-y-3 shrink-0 max-h-56 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
+          <div className="p-3.5 space-y-2 shrink-0 max-h-44 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span>
