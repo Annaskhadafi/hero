@@ -6877,12 +6877,14 @@ export async function getSecurityUsersData() {
       birthDate: employees.birthDate,
       domicile: employees.domicile,
       directManagerId: employees.directManagerId,
-      section: masterSections.name,
+      section: sql<string>`coalesce(${masterSections.name}, ${employees.section}, '')`.as(
+        'section'
+      ),
       sectionId: employees.sectionId,
       jobTitle: sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as(
         'job_title'
       ),
-      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, '')`.as(
+      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, ${employees.workLocation}, '')`.as(
         'work_location'
       ),
       phoneNumber: employees.phoneNumber,
@@ -6894,7 +6896,9 @@ export async function getSecurityUsersData() {
           'access_role'
         ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
-      department: masterDepartments.name,
+      department: sql<string>`coalesce(${masterDepartments.name}, ${employees.department}, '')`.as(
+        'department'
+      ),
       departmentId: employees.departmentId,
       levelName: sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as(
         'level_name'

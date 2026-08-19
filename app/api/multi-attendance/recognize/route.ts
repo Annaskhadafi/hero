@@ -109,12 +109,12 @@ export async function POST(req: NextRequest) {
     // ── 1. Raray Vision: 1:N Recognition ──────────────────────────────────────
     const rarayResult = await rarayRecognizeFace({ imageBuffer, mimeType })
 
-    if (!rarayResult.recognized || !rarayResult.employee_id) {
+    if (!rarayResult.recognized || !rarayResult.employee_id || (rarayResult.confidence ?? 0) < 0.65) {
       return NextResponse.json<MultiAttendanceRecognizeResponse>({
         recognized: false,
         confidence: rarayResult.confidence ?? 0,
         reason: rarayResult.status === 'no_faces_registered' ? 'not_registered' : 'recognition_failed',
-        error: rarayResult.message ?? 'Wajah tidak dikenali',
+        error: rarayResult.message ?? 'Wajah tidak dikenali atau tingkat kecocokan di bawah standar keamanan (minimal 65%).',
       })
     }
 

@@ -126,6 +126,55 @@ async function getAuthHeader(): Promise<string> {
 }
 
 /**
+ * Delete all face records for an employee across all alias IDs on Raray Vision.
+ */
+export async function rarayDeleteFace(params: {
+  employeeId: number
+  employeeSn?: string
+  faceRarayId?: string
+}): Promise<void> {
+  const { employeeId, employeeSn, faceRarayId } = params
+  const baseUrl = getBaseUrl()
+  const authHeader = await getAuthHeader()
+
+  const allAliases = Array.from(
+    new Set(
+      [
+        employeeSn?.trim(),
+        faceRarayId?.trim(),
+        faceRarayId ? faceRarayId.replace(/^emp-/, '').trim() : '',
+        `emp-${employeeId}`,
+        String(employeeId),
+      ].filter(Boolean) as string[]
+    )
+  )
+
+  // 1. Try HERO unregister endpoint
+  try {
+    await fetch(`${baseUrl}/api/v1/hero/unregister/${employeeId}`, {
+      method: 'DELETE',
+      headers: { Authorization: authHeader },
+      cache: 'no-store',
+    })
+  } catch {
+    // Ignore
+  }
+
+  // 2. Delete each alias from /api/v1/faces/{user_id}
+  for (const alias of allAliases) {
+    try {
+      await fetch(`${baseUrl}/api/v1/faces/${encodeURIComponent(alias)}`, {
+        method: 'DELETE',
+        headers: { Authorization: authHeader },
+        cache: 'no-store',
+      })
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
  * Register or update an employee face in Raray Vision.
  * Tries custom `/api/v1/hero/register` first, falls back to native `/api/v1/faces/live` or `/api/v1/faces`
  */
@@ -141,6 +190,11 @@ export async function rarayRegisterFace(params: {
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
   const faceId = employeeSn?.trim() || `emp-${employeeId}`
+
+  // If force overwrite, purge old aliases in Raray Vision first to prevent multiple face vectors
+  if (force) {
+    await rarayDeleteFace({ employeeId, employeeSn })
+  }
 
   // 1. Try custom HERO controller endpoint
   try {
@@ -257,8 +311,10 @@ export async function rarayRecognizeFace(params: {
     }
 
     const data = await res.json()
-    const match = data.match ?? false
     const info = data.data || {}
+    const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
+    const similarity = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+    const normalizedSim = similarity > 1 ? similarity / 100 : similarity
 
     const faceId = info.id || data.face_id || data.user_id
     let employeeId: string | undefined = info.employee_id || info.user_id || faceId
@@ -266,13 +322,16 @@ export async function rarayRecognizeFace(params: {
       employeeId = String(faceId).slice(4)
     }
 
+    const recognized = Boolean((isMatch && normalizedSim >= 0.60) || normalizedSim >= 0.65) && !!employeeId && employeeId !== 'Unknown'
+
     return {
       status: 'success',
-      recognized: match && !!employeeId && employeeId !== 'Unknown',
+      recognized,
       face_id: faceId,
       employee_id: employeeId,
       employee_name: info.name || data.name,
-      confidence: info.similarity ?? data.confidence ?? 0,
+      confidence: normalizedSim,
+      threshold: 0.65,
     }
   } catch (err) {
     return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }
@@ -379,10 +438,12 @@ export async function rarayVerifyFace(params: {
       }
 
       const data = await res.json()
-      const similarity = data.similarity ?? data.data?.similarity ?? 0
-      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
-      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+      const info = data.data || {}
+      const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+      const similarity = rawSim > 1 ? rawSim / 100 : rawSim
+      const livenessScore = data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
+      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+      const isSpoof = data.is_spoof ?? info.is_spoof ?? false
 
       if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
         return {
@@ -396,14 +457,17 @@ export async function rarayVerifyFace(params: {
         }
       }
 
-      const verified = (data.match ?? data.status === 'success') && similarity >= 0.45
+      const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
+      // Strict verification rule:
+      // Must either have isMatch from Vision engine with similarity >= 0.60, OR similarity >= 0.65
+      const verified = (isMatch && similarity >= 0.60) || similarity >= 0.65
 
       return {
         status: 'success',
         verified,
         employee_id: String(employeeId),
         confidence: similarity,
-        threshold: 0.45,
+        threshold: 0.65,
         liveness_score: livenessScore ?? 1.0,
         is_live: true,
       }

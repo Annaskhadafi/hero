@@ -116,12 +116,12 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
 
-        if (verifyRes.status === "success" && verifyRes.verified) {
+        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.65) {
           matchedEmployee = emp;
           confidenceScore = verifyRes.confidence || 0.85;
-          console.log("[face-login] 1:1 verification succeeded for:", emp.name);
+          console.log("[face-login] 1:1 verification succeeded for:", emp.name, "Confidence:", confidenceScore);
         } else {
-          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold.");
+          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.65:", verifyRes.confidence);
         }
       } catch (err) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
           if (extraction && extraction.embedding && Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
             const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
             console.log("[face-login] Local 1:1 embedding similarity for", emp.name, ":", sim);
-            if (sim >= 0.55) {
+            if (sim >= 0.65) {
               matchedEmployee = emp;
               confidenceScore = sim;
               verificationMode = "local-1:1";
@@ -172,7 +172,12 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:N result:", JSON.stringify(rarayResult));
 
-        if (rarayResult.status === "success" && rarayResult.recognized && (rarayResult.employee_id || rarayResult.face_id)) {
+        if (
+          rarayResult.status === "success" &&
+          rarayResult.recognized &&
+          (rarayResult.employee_id || rarayResult.face_id) &&
+          (rarayResult.confidence ?? 0) >= 0.65
+        ) {
           const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
           const numericId = Number(rawIdOrSn);
 
@@ -258,7 +263,7 @@ export async function POST(request: NextRequest) {
 
           console.log("[face-login] Local embedding best match:", bestMatch ? bestMatch.name : "None", "Similarity:", highestSimilarity);
 
-          if (bestMatch && highestSimilarity >= 0.55) {
+          if (bestMatch && highestSimilarity >= 0.65) {
             matchedEmployee = bestMatch;
             confidenceScore = highestSimilarity;
           }

@@ -197,7 +197,7 @@ import {
   parseTrainingRecordCsv,
   type TrainingRecordImportState,
 } from '@/lib/training-record-import'
-import { normalizeBirthDateValue } from '@/lib/birth-date'
+import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import {
   type ApprovalRouteResolution,
   type ResolvedApprovalStep,
@@ -6548,6 +6548,17 @@ export async function manageSecurityUserAction(
       })
       const orgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
 
+      const directManagerId =
+        payload.directManagerId && payload.directManagerId !== 'none'
+          ? Number.parseInt(payload.directManagerId, 10) || null
+          : null
+      const parsedBirthDate =
+        getBirthDateInputValue(payload.birthDate?.trim() || payload.birthPlaceDate?.trim() || '') ||
+        null
+      const normalizedBirthPlaceDate = normalizeBirthDateValue(
+        payload.birthPlaceDate?.trim() || payload.birthDate?.trim() || ''
+      )
+
       // 1. Upsert auth user
       if (existingAuthUser) {
         await db
@@ -6587,9 +6598,10 @@ export async function manageSecurityUserAction(
             siteId: defaultSite.id,
             joinDate: parseJoinDateFromYear(payload.joinYear),
             joinYear: parseJoinYear(payload.joinYear ?? ''),
-            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            birthDate: parsedBirthDate,
+            birthPlaceDate: normalizedBirthPlaceDate,
             domicile: payload.domicile?.trim() || 'Belum diisi',
+            directManagerId,
             departmentId: hrGovernanceIds.departmentId,
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
@@ -6620,9 +6632,10 @@ export async function manageSecurityUserAction(
             siteId: defaultSite.id,
             joinDate: parseJoinDateFromYear(payload.joinYear),
             joinYear: parseJoinYear(payload.joinYear ?? ''),
-            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            birthDate: parsedBirthDate,
+            birthPlaceDate: normalizedBirthPlaceDate,
             domicile: payload.domicile?.trim() || 'Belum diisi',
+            directManagerId,
             departmentId: hrGovernanceIds.departmentId,
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
@@ -6740,8 +6753,12 @@ export async function manageSecurityUserAction(
       const joinDate = payload.joinDate || null
       const contractDurationStart = payload.contractDurationStart || null
       const contractDurationEnd = payload.contractDurationEnd || null
-      const permanentDate = payload.permanentDate || null
-      const birthDateValue = payload.birthDate || null
+      const birthDateValue =
+        getBirthDateInputValue(payload.birthDate?.trim() || payload.birthPlaceDate?.trim() || '') ||
+        null
+      const normalizedBirthPlaceDate = normalizeBirthDateValue(
+        payload.birthPlaceDate?.trim() || payload.birthDate?.trim() || ''
+      )
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
@@ -6802,9 +6819,8 @@ export async function manageSecurityUserAction(
           joinYear: joinDate
             ? new Date(joinDate).getFullYear()
             : parseJoinYear(payload.joinYear ?? ''),
-          birthDate:
-            birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
-          birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
+          birthDate: birthDateValue,
+          birthPlaceDate: normalizedBirthPlaceDate,
           domicile: payload.domicile || 'Belum diisi',
           directManagerId,
           departmentId: hrGovernanceIds.departmentId,
