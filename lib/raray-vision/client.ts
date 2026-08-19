@@ -322,7 +322,7 @@ export async function rarayRecognizeFace(params: {
       employeeId = String(faceId).slice(4)
     }
 
-    const recognized = Boolean((isMatch && normalizedSim >= 0.60) || normalizedSim >= 0.65) && !!employeeId && employeeId !== 'Unknown'
+    const recognized = Boolean((isMatch && normalizedSim >= 0.45) || normalizedSim >= 0.48) && !!employeeId && employeeId !== 'Unknown'
 
     return {
       status: 'success',
@@ -331,7 +331,7 @@ export async function rarayRecognizeFace(params: {
       employee_id: employeeId,
       employee_name: info.name || data.name,
       confidence: normalizedSim,
-      threshold: 0.65,
+      threshold: 0.45,
     }
   } catch (err) {
     return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }
@@ -382,10 +382,10 @@ export async function rarayVerifyFace(params: {
       const data = await res.json()
       if (data.status === 'success' && data.verified !== undefined) {
         const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
         const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
           return {
             status: 'spoofing_detected',
             verified: false,
@@ -449,10 +449,10 @@ export async function rarayVerifyFace(params: {
       const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
       const similarity = rawSim > 1 ? rawSim / 100 : rawSim
       const livenessScore = data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
-      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
       const isSpoof = data.is_spoof ?? info.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
         return {
           status: 'spoofing_detected',
           verified: false,
@@ -465,16 +465,15 @@ export async function rarayVerifyFace(params: {
       }
 
       const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
-      // Strict verification rule:
-      // Must either have isMatch from Vision engine with similarity >= 0.60, OR similarity >= 0.65
-      const verified = (isMatch && similarity >= 0.60) || similarity >= 0.65
+      // Balanced verification rule for ArcFace:
+      const verified = (isMatch && similarity >= 0.45) || similarity >= 0.48
 
       return {
         status: 'success',
         verified,
         employee_id: String(employeeId),
         confidence: similarity,
-        threshold: 0.65,
+        threshold: 0.45,
         liveness_score: livenessScore ?? 1.0,
         is_live: true,
       }
