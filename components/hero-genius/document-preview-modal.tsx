@@ -91,7 +91,7 @@ export function DocumentPreviewModal({
                   <ShieldCheck className="size-3 text-emerald-400" />
                   Pratinjau HERO Read-Only
                 </span>
-                {totalPages > 0 && !isImage && !isMarkdown && isMobile && (
+                {totalPages > 0 && !isImage && !isMarkdown && (
                   <Badge className="bg-sky-500/20 text-sky-200 border-none text-[9px] px-1.5 py-0 font-mono">
                     {totalPages} Halaman
                   </Badge>
@@ -103,7 +103,7 @@ export function DocumentPreviewModal({
                 )}
                 {!isImage && !isMarkdown && (
                   <Badge className="bg-white/15 text-white border-none text-[9px] px-1.5 py-0">
-                    {isMobile ? "HTML5 Mobile" : "Desktop PDF Embed"}
+                    PDF Canvas Viewer
                   </Badge>
                 )}
               </div>
@@ -144,18 +144,12 @@ export function DocumentPreviewModal({
               filename={filename}
               className="h-full w-full"
             />
-          ) : isMobile ? (
+          ) : (
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
               onLoaded={(pages) => setTotalPages(pages)}
               className="h-full w-full"
-            />
-          ) : (
-            <iframe
-              src={`${streamUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-              title={filename}
-              className="w-full h-full border-0 bg-white"
             />
           )}
         </div>
@@ -168,9 +162,7 @@ export function DocumentPreviewModal({
               ? "Markdown Document Viewer (HERO Systems)"
               : isImage
               ? "Image Document Viewer (HERO Systems)"
-              : isMobile
-              ? "HTML5 Mobile PDF Canvas Viewer (HERO Systems)"
-              : "Desktop PDF Native Embed (Instant)"}
+              : "PDF Canvas Reader (HERO Systems)"}
           </span>
           <span className="font-semibold text-slate-500">HERO Systems</span>
         </div>

@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { DocumentPreviewModal } from "@/components/hero-genius/document-preview-modal";
+import { PdfCanvasViewer } from "@/components/hero-genius/pdf-canvas-viewer";
 import { SopWinFormDialog } from "./sop-win-form-dialog";
 import { SopWinEditDialog } from "./sop-win-edit-dialog";
 import { SopWinRevisionDialog } from "./sop-win-revision-dialog";
@@ -853,16 +854,56 @@ export function SopWinExplorerWorkspace({
 
           {/* Full Height Side PDF Previewer */}
           <div
-            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
+            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
             onContextMenu={(e) => e.preventDefault()}
           >
-            <iframe
-              src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
-                activeDoc.pdfFileUrl
-              )}&filename=${encodeURIComponent(activeDoc.documentNumber)}#toolbar=0&navpanes=0&scrollbar=1`}
-              title={activeDoc.title}
-              className="w-full h-full border-0 bg-white dark:bg-slate-900"
-            />
+            {activeDoc.pdfFileUrl ? (
+              /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(activeDoc.pdfFileUrl) ? (
+                <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-950">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                      activeDoc.pdfFileUrl
+                    )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
+                    alt={activeDoc.title}
+                    className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+                  />
+                </div>
+              ) : (
+                <PdfCanvasViewer
+                  url={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                    activeDoc.pdfFileUrl
+                  )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
+                  filename={activeDoc.documentNumber || activeDoc.title}
+                  className="h-full w-full"
+                />
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full min-h-[450px] text-center p-6 text-slate-400 bg-slate-950">
+                <FileText className="size-12 text-slate-500 mb-3" />
+                <p className="font-semibold text-sm text-slate-200">
+                  Dokumen PDF Belum Tersedia
+                </p>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                  File PDF untuk dokumen ini belum diunggah atau masih dalam proses pembaruan.
+                </p>
+                {canEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingDoc(activeDoc);
+                      setEditDialogOpen(true);
+                    }}
+                    className="mt-4 text-xs border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
+                  >
+                    <Edit3 className="size-3.5 mr-1.5" />
+                    Unggah / Edit Dokumen
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
 
