@@ -230,7 +230,8 @@ export async function POST(request: NextRequest) {
     // 9. Call Raray Vision to verify face using Employee SN / faceRarayId
     const rvResult = await rarayVerifyFace({
       employeeId: empId,
-      employeeSn: employee.employeeSn || employee.faceRarayId || undefined,
+      employeeSn: employee.employeeSn || undefined,
+      faceRarayId: employee.faceRarayId || undefined,
       imageBuffer,
       mimeType,
     })

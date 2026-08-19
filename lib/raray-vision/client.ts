@@ -380,29 +380,31 @@ export async function rarayVerifyFace(params: {
 
     if (res.ok) {
       const data = await res.json()
-      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
-      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+      if (data.status === 'success' && data.verified !== undefined) {
+        const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
+        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+        const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
-        return {
-          status: 'spoofing_detected',
-          verified: false,
-          employee_id: String(employeeId),
-          confidence: data.confidence ?? data.similarity ?? 0,
-          liveness_score: livenessScore ?? 0,
-          is_live: false,
-          message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+          return {
+            status: 'spoofing_detected',
+            verified: false,
+            employee_id: String(employeeId),
+            confidence: data.confidence ?? data.similarity ?? 0,
+            liveness_score: livenessScore ?? 0,
+            is_live: false,
+            message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+          }
         }
-      }
 
-      return data as RarayVerifyResult
+        return data as RarayVerifyResult
+      }
     }
   } catch {
     // Fall through
   }
 
-  // 2. Native endpoint fallback: try candidate user_ids (POST /api/v1/faces/compare/live or /api/v1/faces/compare)
+  // 2. Native endpoint fallback: try candidate user_ids directly on POST /api/v1/faces/compare
   let lastErrorMessage = ''
   for (const faceId of candidateIds) {
     try {
@@ -410,24 +412,14 @@ export async function rarayVerifyFace(params: {
       formData.append('user_id', faceId)
       formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
 
-      let res = await fetch(`${baseUrl}/api/v1/faces/compare/live`, {
+      const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
         method: 'POST',
         headers: { Authorization: authHeader },
         body: formData,
         cache: 'no-store',
       })
 
-      if (!res.ok) {
-        res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
-          method: 'POST',
-          headers: { Authorization: authHeader },
-          body: formData,
-          cache: 'no-store',
-        })
-      }
-
       if (res.status === 404) {
-        // Try next candidate face ID
         continue
       }
 
@@ -438,6 +430,21 @@ export async function rarayVerifyFace(params: {
       }
 
       const data = await res.json()
+
+      // If user not found on this ID alias, continue trying next candidate ID
+      if (
+        data.status === 'error' &&
+        (String(data.message).toLowerCase().includes('not found') ||
+          String(data.message).toLowerCase().includes('tidak ditemukan'))
+      ) {
+        continue
+      }
+
+      if (data.status === 'error') {
+        lastErrorMessage = data.message || 'Error from Vision API'
+        continue
+      }
+
       const info = data.data || {}
       const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
       const similarity = rawSim > 1 ? rawSim / 100 : rawSim
