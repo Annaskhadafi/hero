@@ -1,7 +1,10 @@
-"use client"
+'use client'
 
-import { Fragment, useEffect, useMemo, useState, useTransition, useRef } from "react"
+import html2canvas from 'html2canvas-pro'
+import jsPDF from 'jspdf'
+import { Fragment, useEffect, useMemo, useState, useTransition, useRef } from 'react'
 import {
+  Loader2,
   AlertCircle,
   AlertTriangle,
   ArrowRight,
@@ -29,9 +32,9 @@ import {
   Upload,
   Wrench,
   X,
-} from "lucide-react"
-import { toast } from "sonner"
-import { useSession } from "@/lib/auth-client"
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useSession } from '@/lib/auth-client'
 
 // Master Data CAI & Master Price Server Actions
 import {
@@ -40,27 +43,24 @@ import {
   updateFormWo,
   updateFormWoStatus,
   saveWipPo,
-} from "@/app/actions/form-wo"
+} from '@/app/actions/form-wo'
 import {
   createMasterDataCai,
   deleteMasterDataCai,
   updateMasterDataCai,
-} from "@/app/actions/master-data-cai"
+} from '@/app/actions/master-data-cai'
 import {
   createRepairMasterPrice,
   deleteRepairMasterPrice,
   updateRepairMasterPrice,
   bulkImportRepairMasterPrice,
-} from "@/app/actions/master-price-repair-retread"
-import type { RepairMasterPriceRecord } from "@/db/schema/repair-master-price"
-import {
-  INITIAL_KPC_CAI,
-  INITIAL_OTHER_CAI,
-} from "@/lib/constants/master-cai-initial"
-import type { CustomerRecord } from "@/app/actions/customer-management"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+} from '@/app/actions/master-price-repair-retread'
+import type { RepairMasterPriceRecord } from '@/db/schema/repair-master-price'
+import { INITIAL_KPC_CAI, INITIAL_OTHER_CAI } from '@/lib/constants/master-cai-initial'
+import type { CustomerRecord } from '@/app/actions/customer-management'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Command,
   CommandEmpty,
@@ -68,7 +68,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command"
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -76,18 +76,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+} from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -95,11 +95,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
-import type { WipRepairRecord } from "@/lib/types/wip-repair"
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import type { WipRepairRecord } from '@/lib/types/wip-repair'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,79 +190,90 @@ type MultiSelectOption = { value: string; label: string }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const ALL_FILTER = "__all__"
+const ALL_FILTER = '__all__'
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
-const HARI_OPTIONS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"]
+const HARI_OPTIONS = ['Senin', 'Selasa', 'Rabu', 'Kamis', "Jum'at", 'Sabtu', 'Minggu']
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   pending: {
-    label: "Pending",
-    cls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200",
+    label: 'Pending',
+    cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200',
   },
   diproses: {
-    label: "Diproses",
-    cls: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200",
+    label: 'Diproses',
+    cls: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200',
   },
   approved: {
-    label: "Approved",
-    cls: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
+    label: 'Approved',
+    cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200',
   },
   rejected: {
-    label: "Rejected",
-    cls: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200",
+    label: 'Rejected',
+    cls: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200',
   },
 }
 
 const JENIS_CONFIG: Record<string, { label: string; cls: string }> = {
   service: {
-    label: "WO Service",
-    cls: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200",
+    label: 'WO Service',
+    cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200',
   },
   repair: {
-    label: "WO Repair",
-    cls: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-200",
+    label: 'WO Repair',
+    cls: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-200',
   },
   non_repair: {
-    label: "Non-Repair",
-    cls: "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-200",
+    label: 'Non-Repair',
+    cls: 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/40 dark:text-cyan-200',
   },
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function nv(v: string | null | undefined) {
-  return v?.trim() || "-"
+  return v?.trim() || '-'
 }
 
 function formatDate(v: string | Date | null | undefined) {
-  if (!v) return "-"
-  const d = typeof v === "string" ? new Date(v) : v
+  if (!v) return '-'
+  const d = typeof v === 'string' ? new Date(v) : v
   if (isNaN(d.getTime())) return String(v)
-  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(d)
+  return new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(d)
 }
 
 function formatCurrency(val: string | number | null | undefined): string {
-  if (val === null || val === undefined || val === "") return ""
-  const num = typeof val === "string" ? parseFloat(val.replace(/[^0-9.-]+/g, "")) : val
+  if (val === null || val === undefined || val === '') return ''
+  const num = typeof val === 'string' ? parseFloat(val.replace(/[^0-9.-]+/g, '')) : val
   if (isNaN(num)) return String(val)
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num)
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(num)
 }
 
 function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function HighlightText({ value, query }: { value: string | null | undefined; query: string }) {
   const text = nv(value)
   const q = query.trim()
   if (!q) return <>{text}</>
-  const parts = text.split(new RegExp(`(${escapeRegExp(q)})`, "gi"))
+  const parts = text.split(new RegExp(`(${escapeRegExp(q)})`, 'gi'))
   return (
     <>
       {parts.map((part, i) =>
         part.toLowerCase() === q.toLowerCase() ? (
-          <mark key={i} className="rounded bg-yellow-200 px-0.5 text-yellow-950 dark:bg-yellow-400/30 dark:text-yellow-100">
+          <mark
+            key={i}
+            className="rounded bg-yellow-200 px-0.5 text-yellow-950 dark:bg-yellow-400/30 dark:text-yellow-100"
+          >
             {part}
           </mark>
         ) : (
@@ -285,15 +296,15 @@ function parseItems<T>(jsonStr: string | null | undefined, defaultItems: T[]): T
 }
 
 function getTodayHari(): string {
-  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu"]
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', "Jum'at", 'Sabtu']
   return days[new Date().getDay()]
 }
 
 const getTodayIsoDate = (): string => {
   const d = new Date()
   const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
@@ -308,7 +319,7 @@ function TableCustomerCell({
 }) {
   const [open, setOpen] = useState(false)
   const isPreset = customerOptions.includes(value)
-  const [isCustom, setIsCustom] = useState(!isPreset && value !== "")
+  const [isCustom, setIsCustom] = useState(!isPreset && value !== '')
 
   useEffect(() => {
     if (value && !customerOptions.includes(value)) {
@@ -317,7 +328,7 @@ function TableCustomerCell({
   }, [value, customerOptions])
 
   return (
-    <div className="space-y-1 min-w-[200px]">
+    <div className="min-w-[200px] space-y-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -325,19 +336,17 @@ function TableCustomerCell({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="h-9 w-full justify-between bg-white text-xs border-slate-200 px-2 font-normal hover:bg-slate-50"
+            className="h-9 w-full justify-between border-slate-200 bg-white px-2 text-xs font-normal hover:bg-slate-50"
           >
-            <span className="truncate">
-              {value || "Pilih Customer..."}
-            </span>
+            <span className="truncate">{value || 'Pilih Customer...'}</span>
             <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Cari nama customer..." className="text-xs h-9" />
+            <CommandInput placeholder="Cari nama customer..." className="h-9 text-xs" />
             <CommandList className="max-h-60 overflow-y-auto">
-              <CommandEmpty className="p-2 text-xs text-muted-foreground text-center">
+              <CommandEmpty className="text-muted-foreground p-2 text-center text-xs">
                 Customer tidak ditemukan.
               </CommandEmpty>
               <CommandGroup>
@@ -347,7 +356,7 @@ function TableCustomerCell({
                     setIsCustom(true)
                     setOpen(false)
                   }}
-                  className="text-xs font-semibold text-primary cursor-pointer border-b mb-1"
+                  className="text-primary mb-1 cursor-pointer border-b text-xs font-semibold"
                 >
                   + Input Manual / Custom Customer
                 </CommandItem>
@@ -360,12 +369,12 @@ function TableCustomerCell({
                       setIsCustom(false)
                       setOpen(false)
                     }}
-                    className="text-xs cursor-pointer"
+                    className="cursor-pointer text-xs"
                   >
                     <Check
                       className={cn(
-                        "mr-2 h-3.5 w-3.5",
-                        value === name ? "opacity-100" : "opacity-0"
+                        'mr-2 h-3.5 w-3.5',
+                        value === name ? 'opacity-100' : 'opacity-0'
                       )}
                     />
                     {name}
@@ -382,41 +391,35 @@ function TableCustomerCell({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Ketik Customer Manual..."
-          className="h-8 text-xs border-indigo-300 font-medium bg-indigo-50/30 w-full"
+          className="h-8 w-full border-indigo-300 bg-indigo-50/30 text-xs font-medium"
         />
       )}
     </div>
   )
 }
 
-function TableSizeCell({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
+function TableSizeCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const PRESET_TIRE_SIZES = [
-    "27.00R49",
-    "12.00R24",
-    "11.00R20",
-    "13.00R22.5",
-    "16.00R25",
-    "18.00R33",
-    "20.50R25",
-    "24.00R35",
-    "23.50R35",
-    "26.5R25",
-    "29.50R25",
-    "325/95R24",
-    "33.R51",
-    "37R57",
-    "35/65R33",
+    '27.00R49',
+    '12.00R24',
+    '11.00R20',
+    '13.00R22.5',
+    '16.00R25',
+    '18.00R33',
+    '20.50R25',
+    '24.00R35',
+    '23.50R35',
+    '26.5R25',
+    '29.50R25',
+    '325/95R24',
+    '33.R51',
+    '37R57',
+    '35/65R33',
   ]
 
   const [open, setOpen] = useState(false)
   const isPreset = PRESET_TIRE_SIZES.includes(value)
-  const [isCustom, setIsCustom] = useState(!isPreset && value !== "")
+  const [isCustom, setIsCustom] = useState(!isPreset && value !== '')
 
   useEffect(() => {
     if (value && !PRESET_TIRE_SIZES.includes(value)) {
@@ -425,7 +428,7 @@ function TableSizeCell({
   }, [value])
 
   return (
-    <div className="space-y-1 min-w-[150px]">
+    <div className="min-w-[150px] space-y-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -433,19 +436,17 @@ function TableSizeCell({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="h-9 w-full justify-between bg-white text-xs border-slate-200 px-2 font-normal hover:bg-slate-50 font-mono"
+            className="h-9 w-full justify-between border-slate-200 bg-white px-2 font-mono text-xs font-normal hover:bg-slate-50"
           >
-            <span className="truncate">
-              {value || "Pilih Size..."}
-            </span>
+            <span className="truncate">{value || 'Pilih Size...'}</span>
             <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[240px] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Cari size tire..." className="text-xs h-9" />
+            <CommandInput placeholder="Cari size tire..." className="h-9 text-xs" />
             <CommandList className="max-h-60 overflow-y-auto">
-              <CommandEmpty className="p-2 text-xs text-muted-foreground text-center">
+              <CommandEmpty className="text-muted-foreground p-2 text-center text-xs">
                 Size tidak ditemukan.
               </CommandEmpty>
               <CommandGroup>
@@ -455,7 +456,7 @@ function TableSizeCell({
                     setIsCustom(true)
                     setOpen(false)
                   }}
-                  className="text-xs font-semibold text-primary cursor-pointer border-b mb-1"
+                  className="text-primary mb-1 cursor-pointer border-b text-xs font-semibold"
                 >
                   + Input Manual / Custom Size
                 </CommandItem>
@@ -468,13 +469,10 @@ function TableSizeCell({
                       setIsCustom(false)
                       setOpen(false)
                     }}
-                    className="text-xs cursor-pointer font-mono"
+                    className="cursor-pointer font-mono text-xs"
                   >
                     <Check
-                      className={cn(
-                        "mr-2 h-3.5 w-3.5",
-                        value === sz ? "opacity-100" : "opacity-0"
-                      )}
+                      className={cn('mr-2 h-3.5 w-3.5', value === sz ? 'opacity-100' : 'opacity-0')}
                     />
                     {sz}
                   </CommandItem>
@@ -490,23 +488,17 @@ function TableSizeCell({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Ketik Size Manual..."
-          className="h-8 text-xs border-indigo-300 font-medium bg-indigo-50/30 w-full"
+          className="h-8 w-full border-indigo-300 bg-indigo-50/30 text-xs font-medium"
         />
       )}
     </div>
   )
 }
 
-function TableCategoryCell({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
-  const PRESET_CATEGORIES = ["R1", "R2", "R3"]
+function TableCategoryCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const PRESET_CATEGORIES = ['R1', 'R2', 'R3']
   const isPreset = PRESET_CATEGORIES.includes(value)
-  const [isCustom, setIsCustom] = useState(!isPreset && value !== "")
+  const [isCustom, setIsCustom] = useState(!isPreset && value !== '')
 
   useEffect(() => {
     if (value && !PRESET_CATEGORIES.includes(value)) {
@@ -515,11 +507,11 @@ function TableCategoryCell({
   }, [value])
 
   return (
-    <div className="space-y-1 min-w-[130px]">
+    <div className="min-w-[130px] space-y-1">
       <Select
-        value={isCustom ? "__custom__" : value || "R1"}
+        value={isCustom ? '__custom__' : value || 'R1'}
         onValueChange={(val) => {
-          if (val === "__custom__") {
+          if (val === '__custom__') {
             setIsCustom(true)
           } else {
             setIsCustom(false)
@@ -527,14 +519,20 @@ function TableCategoryCell({
           }
         }}
       >
-        <SelectTrigger className="h-9 text-xs border-slate-200 bg-white w-full">
+        <SelectTrigger className="h-9 w-full border-slate-200 bg-white text-xs">
           <SelectValue placeholder="Category" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="R1" className="text-xs font-medium">R1 (Minor Repair)</SelectItem>
-          <SelectItem value="R2" className="text-xs font-medium">R2 (Medium Repair)</SelectItem>
-          <SelectItem value="R3" className="text-xs font-medium">R3 (Major Repair)</SelectItem>
-          <SelectItem value="__custom__" className="text-xs font-semibold text-primary">
+          <SelectItem value="R1" className="text-xs font-medium">
+            R1 (Minor Repair)
+          </SelectItem>
+          <SelectItem value="R2" className="text-xs font-medium">
+            R2 (Medium Repair)
+          </SelectItem>
+          <SelectItem value="R3" className="text-xs font-medium">
+            R3 (Major Repair)
+          </SelectItem>
+          <SelectItem value="__custom__" className="text-primary text-xs font-semibold">
             + Custom Category
           </SelectItem>
         </SelectContent>
@@ -545,7 +543,7 @@ function TableCategoryCell({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Ketik Category..."
-          className="h-8 text-xs border-indigo-300 font-medium bg-indigo-50/30 w-full"
+          className="h-8 w-full border-indigo-300 bg-indigo-50/30 text-xs font-medium"
         />
       )}
     </div>
@@ -568,22 +566,22 @@ function TablePriceCell({
   site: string
   size: string
   category: string
-  jenisWo: "service" | "repair" | "retread" | "non_repair"
+  jenisWo: 'service' | 'repair' | 'retread' | 'non_repair'
   masterPriceList: RepairMasterPriceRecord[]
 }) {
-  const targetCategory = jenisWo === "retread" ? "Retread" : "Repair"
+  const targetCategory = jenisWo === 'retread' ? 'Retread' : 'Repair'
 
   // Filter matching master prices ONLY if exact customer matches strictly
   const matchingPrices = useMemo(() => {
     if (!masterPriceList || masterPriceList.length === 0 || !customer || !customer.trim()) return []
     const catLower = targetCategory.toLowerCase()
     const custLower = customer.trim().toLowerCase()
-    const sizeLower = (size || "").trim().toLowerCase()
+    const sizeLower = (size || '').trim().toLowerCase()
 
     return masterPriceList.filter((p) => {
-      const pCat = (p.category || "Repair").trim().toLowerCase()
-      const pCust = (p.customer || "").trim().toLowerCase()
-      const pSize = (p.size || "").trim().toLowerCase()
+      const pCat = (p.category || 'Repair').trim().toLowerCase()
+      const pCust = (p.customer || '').trim().toLowerCase()
+      const pSize = (p.size || '').trim().toLowerCase()
 
       if (pCat !== catLower) return false
       // STRICT REQUIREMENT: Only match records for this exact customer!
@@ -606,12 +604,12 @@ function TablePriceCell({
   }, [matchingPrices.length])
 
   return (
-    <div className="space-y-1 min-w-[150px]">
+    <div className="min-w-[150px] space-y-1">
       {matchingPrices.length > 0 && !isCustom ? (
         <Select
-          value={value || ""}
+          value={value || ''}
           onValueChange={(val) => {
-            if (val === "__custom__") {
+            if (val === '__custom__') {
               setIsCustom(true)
             } else {
               setIsCustom(false)
@@ -619,21 +617,21 @@ function TablePriceCell({
             }
           }}
         >
-          <SelectTrigger className="h-9 text-xs border-slate-200 bg-white text-right font-mono w-full">
+          <SelectTrigger className="h-9 w-full border-slate-200 bg-white text-right font-mono text-xs">
             <SelectValue placeholder="Pilih Price..." />
           </SelectTrigger>
           <SelectContent className="max-h-60">
             {matchingPrices.map((p) => {
               const num = parseFloat(p.price)
-              const formattedPrice = !isNaN(num) && num > 0 ? num.toLocaleString("en-US") : p.price
-              const label = `${formattedPrice} (${p.damageType || "R1"}${p.site ? ` - ${p.site}` : ""}${p.size ? ` [${p.size}]` : ""})`
+              const formattedPrice = !isNaN(num) && num > 0 ? num.toLocaleString('en-US') : p.price
+              const label = `${formattedPrice} (${p.damageType || 'R1'}${p.site ? ` - ${p.site}` : ''}${p.size ? ` [${p.size}]` : ''})`
               return (
-                <SelectItem key={p.id} value={formattedPrice} className="text-xs font-mono">
+                <SelectItem key={p.id} value={formattedPrice} className="font-mono text-xs">
                   {label}
                 </SelectItem>
               )
             })}
-            <SelectItem value="__custom__" className="text-xs font-semibold text-primary">
+            <SelectItem value="__custom__" className="text-primary text-xs font-semibold">
               + Input Manual Price
             </SelectItem>
           </SelectContent>
@@ -644,7 +642,7 @@ function TablePriceCell({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="0"
-            className="h-9 text-xs border-slate-200 text-right font-mono w-full"
+            className="h-9 w-full border-slate-200 text-right font-mono text-xs"
           />
           {matchingPrices.length > 0 && (
             <Button
@@ -653,7 +651,7 @@ function TablePriceCell({
               size="icon"
               onClick={() => setIsCustom(false)}
               title="Pilih dari Master Price Customer"
-              className="h-7 w-7 text-xs shrink-0 text-slate-400 hover:text-indigo-600"
+              className="h-7 w-7 shrink-0 text-xs text-slate-400 hover:text-indigo-600"
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </Button>
@@ -670,7 +668,7 @@ function TablePriceCell({
 
 function findMatchingMasterPrice(
   masterPriceList: RepairMasterPriceRecord[] = [],
-  targetCategory: "Repair" | "Retread",
+  targetCategory: 'Repair' | 'Retread',
   customer: string,
   size: string,
   damageType?: string
@@ -679,36 +677,38 @@ function findMatchingMasterPrice(
 
   const targetCatLower = targetCategory.toLowerCase()
   const custLower = customer.trim().toLowerCase()
-  const sizeLower = (size || "").trim().toLowerCase()
-  const dtLower = (damageType || "R1").trim().toLowerCase()
+  const sizeLower = (size || '').trim().toLowerCase()
+  const dtLower = (damageType || 'R1').trim().toLowerCase()
 
   // STRICT REQUIREMENT: Only match if customer matches exact customer in Master Price!
   // 1. Exact match: category + customer + size + damageType
   const exact = masterPriceList.find((p) => {
-    const pCat = (p.category || "Repair").trim().toLowerCase()
-    const pCust = (p.customer || "").trim().toLowerCase()
-    const pSize = (p.size || "").trim().toLowerCase()
-    const pDt = (p.damageType || "R1").trim().toLowerCase()
+    const pCat = (p.category || 'Repair').trim().toLowerCase()
+    const pCust = (p.customer || '').trim().toLowerCase()
+    const pSize = (p.size || '').trim().toLowerCase()
+    const pDt = (p.damageType || 'R1').trim().toLowerCase()
     return pCat === targetCatLower && pCust === custLower && pSize === sizeLower && pDt === dtLower
   })
-  if (exact && exact.price && exact.price !== "0") return exact.price
+  if (exact && exact.price && exact.price !== '0') return exact.price
 
   // 2. Match category + customer + size
   const matchCustSize = masterPriceList.find((p) => {
-    const pCat = (p.category || "Repair").trim().toLowerCase()
-    const pCust = (p.customer || "").trim().toLowerCase()
-    const pSize = (p.size || "").trim().toLowerCase()
+    const pCat = (p.category || 'Repair').trim().toLowerCase()
+    const pCust = (p.customer || '').trim().toLowerCase()
+    const pSize = (p.size || '').trim().toLowerCase()
     return pCat === targetCatLower && pCust === custLower && pSize === sizeLower
   })
-  if (matchCustSize && matchCustSize.price && matchCustSize.price !== "0") return matchCustSize.price
+  if (matchCustSize && matchCustSize.price && matchCustSize.price !== '0')
+    return matchCustSize.price
 
   // 3. Match category + customer (any size for this exact customer)
   const matchCustOnly = masterPriceList.find((p) => {
-    const pCat = (p.category || "Repair").trim().toLowerCase()
-    const pCust = (p.customer || "").trim().toLowerCase()
+    const pCat = (p.category || 'Repair').trim().toLowerCase()
+    const pCust = (p.customer || '').trim().toLowerCase()
     return pCat === targetCatLower && pCust === custLower
   })
-  if (matchCustOnly && matchCustOnly.price && matchCustOnly.price !== "0") return matchCustOnly.price
+  if (matchCustOnly && matchCustOnly.price && matchCustOnly.price !== '0')
+    return matchCustOnly.price
 
   // DO NOT FALL BACK TO OTHER CUSTOMERS!
   return null
@@ -722,7 +722,7 @@ function CreateOrEditWoDialog({
   editItem,
   prefillWip,
   prefillWipList,
-  initialJenis = "service",
+  initialJenis = 'service',
   customerList = [],
   masterPriceList = [],
   onSuccess,
@@ -732,57 +732,86 @@ function CreateOrEditWoDialog({
   editItem?: FormWoRow | null
   prefillWip?: WipRepairRecord | null
   prefillWipList?: WipRepairRecord[] | null
-  initialJenis?: "service" | "repair" | "retread" | "non_repair"
+  initialJenis?: 'service' | 'repair' | 'retread' | 'non_repair'
   customerList?: CustomerRecord[]
   masterPriceList?: RepairMasterPriceRecord[]
   onSuccess: () => void
 }) {
   const { data: session } = useSession()
-  const activeUser = session?.user?.name || session?.user?.email || "Nama Pengguna"
+  const activeUser = session?.user?.name || session?.user?.email || 'Nama Pengguna'
 
   const [isPending, startTransition] = useTransition()
-  const [jenisPengajuan, setJenisPengajuan] = useState<"service" | "repair" | "retread" | "non_repair">(initialJenis)
+  const [jenisPengajuan, setJenisPengajuan] = useState<
+    'service' | 'repair' | 'retread' | 'non_repair'
+  >(initialJenis)
   const [tanggal, setTanggal] = useState(getTodayIsoDate())
-  const [pemohon, setPemohon] = useState("")
-  const [catatanPengajuan, setCatatanPengajuan] = useState("")
-  const [statusPengajuan, setStatusPengajuan] = useState<"pending" | "approved" | "rejected" | "diproses">("pending")
-  const [noWoTerbit, setNoWoTerbit] = useState("")
-  const [noPo, setNoPo] = useState("")
-  const [tanggalPo, setTanggalPo] = useState("")
+  const [pemohon, setPemohon] = useState('')
+  const [catatanPengajuan, setCatatanPengajuan] = useState('')
+  const [statusPengajuan, setStatusPengajuan] = useState<
+    'pending' | 'approved' | 'rejected' | 'diproses'
+  >('pending')
+  const [noWoTerbit, setNoWoTerbit] = useState('')
+  const [noPo, setNoPo] = useState('')
+  const [tanggalPo, setTanggalPo] = useState('')
 
   // Multi-item tables
   const [serviceItems, setServiceItems] = useState<ServiceItemRow[]>([
-    { id: "1", description: "Labour Service", job: "", customer: "", site: "", serialNo: "", refNo: "", noWoCp: "", price: "", noPo: "", tanggalPo: "" },
+    {
+      id: '1',
+      description: 'Labour Service',
+      job: '',
+      customer: '',
+      site: '',
+      serialNo: '',
+      refNo: '',
+      noWoCp: '',
+      price: '',
+      noPo: '',
+      tanggalPo: '',
+    },
   ])
 
   const [repairItems, setRepairItems] = useState<RepairItemRow[]>([
-    { id: "1", description: "", noUnit: "", pos: "", size: "", site: "", customer: "", category: "R1", price: "", noWoCp: "", noPo: "", tanggalPo: "" },
+    {
+      id: '1',
+      description: '',
+      noUnit: '',
+      pos: '',
+      size: '',
+      site: '',
+      customer: '',
+      category: 'R1',
+      price: '',
+      noWoCp: '',
+      noPo: '',
+      tanggalPo: '',
+    },
   ])
 
   const allCustomerOptions = useMemo(() => {
     const set = new Set<string>()
-    set.add("OTHER CUSTOMER")
+    set.add('OTHER CUSTOMER')
     if (Array.isArray(customerList)) {
       customerList.forEach((c) => {
         if (c.name?.trim()) set.add(c.name.trim())
       })
     }
     const PRESETS = [
-      "PT Kaltim Prima Coal",
-      "PT Berau Coal",
-      "PT Adaro Indonesia",
-      "PT Bukit Asam Tbk",
-      "PT Freeport Indonesia",
-      "PT Arutmin Indonesia",
-      "PT Saptaindra Sejati",
-      "PT Pamapersada Nusantara",
-      "PT Putra Perkasa Abadi",
-      "PT Darma Henwa Tbk",
-      "PT Delta Dunia Makmur Tbk (BUMA)",
-      "PT Vale Indonesia Tbk",
-      "PT Amman Mineral Nusa Tenggara",
-      "PT Borneo Indobara",
-      "PT Kideco Jaya Agung",
+      'PT Kaltim Prima Coal',
+      'PT Berau Coal',
+      'PT Adaro Indonesia',
+      'PT Bukit Asam Tbk',
+      'PT Freeport Indonesia',
+      'PT Arutmin Indonesia',
+      'PT Saptaindra Sejati',
+      'PT Pamapersada Nusantara',
+      'PT Putra Perkasa Abadi',
+      'PT Darma Henwa Tbk',
+      'PT Delta Dunia Makmur Tbk (BUMA)',
+      'PT Vale Indonesia Tbk',
+      'PT Amman Mineral Nusa Tenggara',
+      'PT Borneo Indobara',
+      'PT Kideco Jaya Agung',
     ]
     PRESETS.forEach((c) => set.add(c))
     return Array.from(set).sort()
@@ -792,123 +821,154 @@ function CreateOrEditWoDialog({
     if (open) {
       const userDefault = activeUser
       if (editItem) {
-        setJenisPengajuan((editItem.jenisPengajuan as any) || "service")
+        setJenisPengajuan((editItem.jenisPengajuan as any) || 'service')
         setTanggal(editItem.tanggal || getTodayIsoDate())
-        setPemohon(editItem.pemohon && editItem.pemohon !== "User Logged In" ? editItem.pemohon : userDefault)
-        setCatatanPengajuan(editItem.catatanPengajuan || "")
-        setStatusPengajuan((editItem.statusPengajuan as any) || "pending")
-        setNoWoTerbit(editItem.noWoTerbit || "")
-        setNoPo(editItem.noPo || "")
-        setTanggalPo(editItem.tanggalPo || "")
+        setPemohon(
+          editItem.pemohon && editItem.pemohon !== 'User Logged In' ? editItem.pemohon : userDefault
+        )
+        setCatatanPengajuan(editItem.catatanPengajuan || '')
+        setStatusPengajuan((editItem.statusPengajuan as any) || 'pending')
+        setNoWoTerbit(editItem.noWoTerbit || '')
+        setNoPo(editItem.noPo || '')
+        setTanggalPo(editItem.tanggalPo || '')
 
-        if (editItem.jenisPengajuan === "service") {
+        if (editItem.jenisPengajuan === 'service') {
           const parsed = parseItems<ServiceItemRow>(editItem.items, [
             {
-              id: "1",
-              description: editItem.deskripsiPekerjaan || "Labour Service",
-              job: editItem.jobType || "",
-              customer: editItem.customer || "",
-              site: editItem.site || "",
-              serialNo: editItem.tireSn || "",
-              refNo: editItem.storeLoc || "",
-              noWoCp: editItem.noWoTerbit || "",
-              price: editItem.totalAmount || "",
-              noPo: editItem.noPo || "",
-              tanggalPo: editItem.tanggalPo || "",
+              id: '1',
+              description: editItem.deskripsiPekerjaan || 'Labour Service',
+              job: editItem.jobType || '',
+              customer: editItem.customer || '',
+              site: editItem.site || '',
+              serialNo: editItem.tireSn || '',
+              refNo: editItem.storeLoc || '',
+              noWoCp: editItem.noWoTerbit || '',
+              price: editItem.totalAmount || '',
+              noPo: editItem.noPo || '',
+              tanggalPo: editItem.tanggalPo || '',
             },
           ])
           setServiceItems(parsed)
         } else {
           const parsed = parseItems<RepairItemRow>(editItem.items, [
             {
-              id: "1",
-              description: editItem.tireSn || editItem.deskripsiPekerjaan || "",
-              noUnit: editItem.storeLoc || "",
-              pos: editItem.pattern || "",
-              size: editItem.size || "",
-              site: editItem.site || "",
-              customer: editItem.customer || "",
-              category: editItem.brand || "R1",
-              price: editItem.totalAmount || "",
-              noWoCp: editItem.noWoTerbit || "",
-              noPo: editItem.noPo || "",
-              tanggalPo: editItem.tanggalPo || "",
+              id: '1',
+              description: editItem.tireSn || editItem.deskripsiPekerjaan || '',
+              noUnit: editItem.storeLoc || '',
+              pos: editItem.pattern || '',
+              size: editItem.size || '',
+              site: editItem.site || '',
+              customer: editItem.customer || '',
+              category: editItem.brand || 'R1',
+              price: editItem.totalAmount || '',
+              noWoCp: editItem.noWoTerbit || '',
+              noPo: editItem.noPo || '',
+              tanggalPo: editItem.tanggalPo || '',
             },
           ])
           setRepairItems(parsed)
         }
       } else if (prefillWipList && prefillWipList.length > 0) {
-        setJenisPengajuan("repair")
+        setJenisPengajuan('repair')
         setTanggal(getTodayIsoDate())
         setPemohon(userDefault)
-        setCatatanPengajuan("")
+        setCatatanPengajuan('')
 
         const posList = Array.from(new Set(prefillWipList.map((i) => i.po).filter(Boolean)))
-        setNoPo(posList.join(", "))
+        setNoPo(posList.join(', '))
 
-        const firstPoDate = prefillWipList[0]?.po_date || prefillWipList[0]?.inspect_date || ""
+        const firstPoDate = prefillWipList[0]?.po_date || prefillWipList[0]?.inspect_date || ''
         setTanggalPo(firstPoDate)
 
         setRepairItems(
           prefillWipList.map((item, idx) => ({
             id: String(idx + 1),
-            description: item.tire_sn || "",
-            noUnit: item.store_loc || "",
-            pos: "",
-            size: item.size || "",
-            site: item.site || "",
-            customer: item.customer || "",
-            category: "R1",
-            price: "",
-            noWoCp: "",
-            noPo: item.po || "",
-            tanggalPo: item.po_date || item.inspect_date || "",
+            description: item.tire_sn || '',
+            noUnit: item.store_loc || '',
+            pos: '',
+            size: item.size || '',
+            site: item.site || '',
+            customer: item.customer || '',
+            category: 'R1',
+            price: '',
+            noWoCp: '',
+            noPo: item.po || '',
+            tanggalPo: item.po_date || item.inspect_date || '',
           }))
         )
       } else if (prefillWip) {
-        setJenisPengajuan("repair")
+        setJenisPengajuan('repair')
         setTanggal(getTodayIsoDate())
         setPemohon(userDefault)
-        setCatatanPengajuan("")
-        setNoPo(prefillWip.po || "")
-        setTanggalPo(prefillWip.po_date || prefillWip.inspect_date || "")
+        setCatatanPengajuan('')
+        setNoPo(prefillWip.po || '')
+        setTanggalPo(prefillWip.po_date || prefillWip.inspect_date || '')
         setRepairItems([
           {
-            id: "1",
-            description: prefillWip.tire_sn || "",
-            noUnit: prefillWip.store_loc || "",
-            pos: "",
-            size: prefillWip.size || "",
-            site: prefillWip.site || "",
-            customer: prefillWip.customer || "",
-            category: "R1",
-            price: "",
-            noWoCp: "",
-            noPo: prefillWip.po || "",
-            tanggalPo: prefillWip.po_date || "",
+            id: '1',
+            description: prefillWip.tire_sn || '',
+            noUnit: prefillWip.store_loc || '',
+            pos: '',
+            size: prefillWip.size || '',
+            site: prefillWip.site || '',
+            customer: prefillWip.customer || '',
+            category: 'R1',
+            price: '',
+            noWoCp: '',
+            noPo: prefillWip.po || '',
+            tanggalPo: prefillWip.po_date || '',
           },
         ])
       } else {
         setJenisPengajuan(initialJenis)
         setTanggal(getTodayIsoDate())
         setPemohon(userDefault)
-        setCatatanPengajuan("")
-        setStatusPengajuan("pending")
-        setNoWoTerbit("")
-        setNoPo("")
-        setTanggalPo("")
+        setCatatanPengajuan('')
+        setStatusPengajuan('pending')
+        setNoWoTerbit('')
+        setNoPo('')
+        setTanggalPo('')
         setServiceItems([
-          { id: "1", description: "Labour Service", job: "", customer: "", site: "", serialNo: "", refNo: "", noWoCp: "", price: "", noPo: "", tanggalPo: "" },
+          {
+            id: '1',
+            description: 'Labour Service',
+            job: '',
+            customer: '',
+            site: '',
+            serialNo: '',
+            refNo: '',
+            noWoCp: '',
+            price: '',
+            noPo: '',
+            tanggalPo: '',
+          },
         ])
         setRepairItems([
-          { id: "1", description: "", noUnit: "", pos: "", size: "", site: "", customer: "", category: "R1", price: "", noWoCp: "", noPo: "", tanggalPo: "" },
+          {
+            id: '1',
+            description: '',
+            noUnit: '',
+            pos: '',
+            size: '',
+            site: '',
+            customer: '',
+            category: 'R1',
+            price: '',
+            noWoCp: '',
+            noPo: '',
+            tanggalPo: '',
+          },
         ])
       }
     }
   }, [open, editItem, prefillWip, prefillWipList, initialJenis, activeUser])
 
   useEffect(() => {
-    if (open && session?.user?.name && (!pemohon || pemohon === "User Logged In" || pemohon === "Nama Pengguna")) {
+    if (
+      open &&
+      session?.user?.name &&
+      (!pemohon || pemohon === 'User Logged In' || pemohon === 'Nama Pengguna')
+    ) {
       setPemohon(session.user.name)
     }
   }, [open, session?.user?.name])
@@ -916,14 +976,14 @@ function CreateOrEditWoDialog({
   // Calculation helpers
   const totalServiceAmount = useMemo(() => {
     return serviceItems.reduce((sum, item) => {
-      const p = parseFloat(item.price.replace(/[^0-9.-]+/g, ""))
+      const p = parseFloat(item.price.replace(/[^0-9.-]+/g, ''))
       return sum + (isNaN(p) ? 0 : p)
     }, 0)
   }, [serviceItems])
 
   const totalRepairAmount = useMemo(() => {
     return repairItems.reduce((sum, item) => {
-      const p = parseFloat(item.price.replace(/[^0-9.-]+/g, ""))
+      const p = parseFloat(item.price.replace(/[^0-9.-]+/g, ''))
       return sum + (isNaN(p) ? 0 : p)
     }, 0)
   }, [repairItems])
@@ -934,16 +994,16 @@ function CreateOrEditWoDialog({
       ...prev,
       {
         id: String(Date.now()),
-        description: "Labour Service",
-        job: "",
-        customer: prev[0]?.customer || "",
-        site: prev[0]?.site || "",
-        serialNo: "",
-        refNo: "",
-        noWoCp: "",
-        price: "",
-        noPo: noPo || "",
-        tanggalPo: tanggalPo || "",
+        description: 'Labour Service',
+        job: '',
+        customer: prev[0]?.customer || '',
+        site: prev[0]?.site || '',
+        serialNo: '',
+        refNo: '',
+        noWoCp: '',
+        price: '',
+        noPo: noPo || '',
+        tanggalPo: tanggalPo || '',
       },
     ])
   }
@@ -967,17 +1027,17 @@ function CreateOrEditWoDialog({
       ...prev,
       {
         id: String(Date.now()),
-        description: "",
-        noUnit: "",
-        pos: "",
-        size: prev[0]?.size || "",
-        site: prev[0]?.site || "",
-        customer: prev[0]?.customer || "",
-        category: "R1",
-        price: "",
-        noWoCp: "",
-        noPo: noPo || "",
-        tanggalPo: tanggalPo || "",
+        description: '',
+        noUnit: '',
+        pos: '',
+        size: prev[0]?.size || '',
+        site: prev[0]?.site || '',
+        customer: prev[0]?.customer || '',
+        category: 'R1',
+        price: '',
+        noWoCp: '',
+        noPo: noPo || '',
+        tanggalPo: tanggalPo || '',
       },
     ])
   }
@@ -993,8 +1053,8 @@ function CreateOrEditWoDialog({
       const updatedRow = { ...next[index], [key]: value }
 
       // Auto-fill price from Master Price when customer, size, or category is selected
-      if (key === "customer" || key === "size" || key === "category") {
-        const targetCategory = jenisPengajuan === "retread" ? "Retread" : "Repair"
+      if (key === 'customer' || key === 'size' || key === 'category') {
+        const targetCategory = jenisPengajuan === 'retread' ? 'Retread' : 'Repair'
         const foundPrice = findMatchingMasterPrice(
           masterPriceList,
           targetCategory,
@@ -1003,9 +1063,9 @@ function CreateOrEditWoDialog({
           updatedRow.category
         )
         if (foundPrice) {
-          const num = parseFloat(foundPrice.replace(/[^0-9.-]+/g, ""))
+          const num = parseFloat(foundPrice.replace(/[^0-9.-]+/g, ''))
           if (!isNaN(num) && num > 0) {
-            updatedRow.price = num.toLocaleString("en-US")
+            updatedRow.price = num.toLocaleString('en-US')
           } else {
             updatedRow.price = foundPrice
           }
@@ -1022,12 +1082,13 @@ function CreateOrEditWoDialog({
       const firstService = serviceItems[0]
       const firstRepair = repairItems[0]
 
-      const isService = jenisPengajuan === "service"
+      const isService = jenisPengajuan === 'service'
       const currentTotalAmount = isService ? totalServiceAmount : totalRepairAmount
       const itemsJson = JSON.stringify(isService ? serviceItems : repairItems)
 
       const headerNoPo = noPo || (isService ? firstService?.noPo : firstRepair?.noPo)
-      const headerTanggalPo = tanggalPo || (isService ? firstService?.tanggalPo : firstRepair?.tanggalPo)
+      const headerTanggalPo =
+        tanggalPo || (isService ? firstService?.tanggalPo : firstRepair?.tanggalPo)
 
       const payload = {
         jenisPengajuan,
@@ -1041,11 +1102,17 @@ function CreateOrEditWoDialog({
         totalAmount: currentTotalAmount > 0 ? String(currentTotalAmount) : undefined,
         items: itemsJson,
         // Header summary values
-        customer: isService ? firstService?.customer || undefined : firstRepair?.customer || undefined,
+        customer: isService
+          ? firstService?.customer || undefined
+          : firstRepair?.customer || undefined,
         site: isService ? firstService?.site || undefined : firstRepair?.site || undefined,
         jobType: isService ? firstService?.job || undefined : firstRepair?.category || undefined,
-        deskripsiPekerjaan: isService ? firstService?.description || undefined : firstRepair?.description || undefined,
-        tireSn: isService ? firstService?.serialNo || undefined : firstRepair?.description || undefined,
+        deskripsiPekerjaan: isService
+          ? firstService?.description || undefined
+          : firstRepair?.description || undefined,
+        tireSn: isService
+          ? firstService?.serialNo || undefined
+          : firstRepair?.description || undefined,
         size: isService ? undefined : firstRepair?.size || undefined,
         storeLoc: isService ? firstService?.refNo || undefined : firstRepair?.noUnit || undefined,
         noWoCp: isService ? firstService?.noWoCp || undefined : firstRepair?.noWoCp || undefined,
@@ -1059,62 +1126,77 @@ function CreateOrEditWoDialog({
       }
 
       if (result.success) {
-        toast.success(editItem ? "Form WO berhasil diperbarui." : `Form WO berhasil dibuat (${result.noPengajuan || ""})`)
+        toast.success(
+          editItem
+            ? 'Form WO berhasil diperbarui.'
+            : `Form WO berhasil dibuat (${result.noPengajuan || ''})`
+        )
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(result.error ?? "Terjadi kesalahan saat menyimpan.")
+        toast.error(result.error ?? 'Terjadi kesalahan saat menyimpan.')
       }
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[99vw] w-[99vw] sm:max-w-[99vw] lg:max-w-[99vw] xl:max-w-[99vw] max-h-[95vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="max-h-[95vh] w-[99vw] max-w-[99vw] overflow-y-auto p-4 sm:max-w-[99vw] sm:p-6 lg:max-w-[99vw] xl:max-w-[99vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Wrench className="h-5 w-5 text-indigo-600" />
-            {editItem ? `Edit Form Work Order (${editItem.noPengajuan || ""})` : "Form Permintaan Work Order"}
+            {editItem
+              ? `Edit Form Work Order (${editItem.noPengajuan || ''})`
+              : 'Form Permintaan Work Order'}
           </DialogTitle>
           <DialogDescription>
-            Pilih Jenis WO (Service, Repair, atau Retread) dan isi tabel pekerjaan. Seluruh kolom bersifat opsional (tidak ada yang wajib).
+            Pilih Jenis WO (Service, Repair, atau Retread) dan isi tabel pekerjaan. Seluruh kolom
+            bersifat opsional (tidak ada yang wajib).
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-5 py-2">
           {/* Header Controls: WO Type Selector & Document Dates */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {/* Jenis Form WO Selector */}
               <div className="flex flex-col gap-1.5 sm:col-span-1">
-                <Label className="text-xs font-semibold uppercase text-slate-500">Jenis Form WO</Label>
+                <Label className="text-xs font-semibold text-slate-500 uppercase">
+                  Jenis Form WO
+                </Label>
                 <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-1">
                   <button
                     type="button"
-                    onClick={() => setJenisPengajuan("service")}
+                    onClick={() => setJenisPengajuan('service')}
                     className={cn(
-                      "flex-1 rounded-md py-1.5 text-xs font-semibold transition",
-                      jenisPengajuan === "service" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
+                      'flex-1 rounded-md py-1.5 text-xs font-semibold transition',
+                      jenisPengajuan === 'service'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100'
                     )}
                   >
                     WO Service
                   </button>
                   <button
                     type="button"
-                    onClick={() => setJenisPengajuan("repair")}
+                    onClick={() => setJenisPengajuan('repair')}
                     className={cn(
-                      "flex-1 rounded-md py-1.5 text-xs font-semibold transition",
-                      jenisPengajuan === "repair" ? "bg-violet-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
+                      'flex-1 rounded-md py-1.5 text-xs font-semibold transition',
+                      jenisPengajuan === 'repair'
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100'
                     )}
                   >
                     WO Repair
                   </button>
                   <button
                     type="button"
-                    onClick={() => setJenisPengajuan("retread")}
+                    onClick={() => setJenisPengajuan('retread')}
                     className={cn(
-                      "flex-1 rounded-md py-1.5 text-xs font-semibold transition",
-                      jenisPengajuan === "retread" ? "bg-amber-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
+                      'flex-1 rounded-md py-1.5 text-xs font-semibold transition',
+                      jenisPengajuan === 'retread'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100'
                     )}
                   >
                     WO Retread
@@ -1124,7 +1206,7 @@ function CreateOrEditWoDialog({
 
               {/* Tanggal Header (Date Picker Default Today) */}
               <div className="flex flex-col gap-1.5 sm:col-span-1">
-                <Label className="text-xs font-semibold uppercase text-slate-500">Tanggal</Label>
+                <Label className="text-xs font-semibold text-slate-500 uppercase">Tanggal</Label>
                 <Input
                   type="date"
                   value={tanggal}
@@ -1135,7 +1217,7 @@ function CreateOrEditWoDialog({
             </div>
 
             {/* Additional Pemohon & Status Fields (PO & No WO Terbit fields removed as requested) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-slate-500">Pemohon</Label>
                 <Input
@@ -1165,15 +1247,21 @@ function CreateOrEditWoDialog({
           {/* Table Spreadsheet Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                Rincian Pekerjaan ({jenisPengajuan === "service" ? "Form WO Service" : jenisPengajuan === "retread" ? "Form WO Retread" : "Form WO Repair"})
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                Rincian Pekerjaan (
+                {jenisPengajuan === 'service'
+                  ? 'Form WO Service'
+                  : jenisPengajuan === 'retread'
+                    ? 'Form WO Retread'
+                    : 'Form WO Repair'}
+                )
               </h3>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={jenisPengajuan === "service" ? addServiceRow : addRepairRow}
-                className="h-8 border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs font-semibold"
+                onClick={jenisPengajuan === 'service' ? addServiceRow : addRepairRow}
+                className="h-8 border-indigo-200 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
               >
                 <Plus className="mr-1 h-3.5 w-3.5" />
                 Tambah Baris Pekerjaan
@@ -1181,10 +1269,10 @@ function CreateOrEditWoDialog({
             </div>
 
             {/* Table Spreadsheet Editor for SERVICE */}
-            {jenisPengajuan === "service" && (
-              <div className="rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-sm">
-                <Table className="text-xs w-full min-w-[1550px]">
-                  <TableHeader className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold">
+            {jenisPengajuan === 'service' && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Table className="w-full min-w-[1550px] text-xs">
+                  <TableHeader className="border-b border-slate-200 bg-slate-100/80 font-bold text-slate-700">
                     <TableRow>
                       <TableHead className="w-12 text-center">No</TableHead>
                       <TableHead className="min-w-[190px]">Description</TableHead>
@@ -1203,21 +1291,23 @@ function CreateOrEditWoDialog({
                   <TableBody className="divide-y divide-slate-100">
                     {serviceItems.map((item, idx) => (
                       <TableRow key={item.id} className="hover:bg-slate-50/60">
-                        <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
+                        <TableCell className="text-center font-semibold text-slate-500">
+                          {idx + 1}
+                        </TableCell>
                         <TableCell>
                           <Input
                             value={item.description}
-                            onChange={(e) => updateServiceRow(idx, "description", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'description', e.target.value)}
                             placeholder="e.g. Labour Service"
-                            className="h-9 text-xs border-slate-200 w-full"
+                            className="h-9 w-full border-slate-200 text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.job}
-                            onChange={(e) => updateServiceRow(idx, "job", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'job', e.target.value)}
                             placeholder="e.g. Software License Install & Local Support"
-                            className="h-9 text-xs border-slate-200 w-full"
+                            className="h-9 w-full border-slate-200 text-xs"
                           />
                         </TableCell>
 
@@ -1225,7 +1315,7 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <TableCustomerCell
                             value={item.customer}
-                            onChange={(val) => updateServiceRow(idx, "customer", val)}
+                            onChange={(val) => updateServiceRow(idx, 'customer', val)}
                             customerOptions={allCustomerOptions}
                           />
                         </TableCell>
@@ -1233,57 +1323,57 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <Input
                             value={item.site}
-                            onChange={(e) => updateServiceRow(idx, "site", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'site', e.target.value)}
                             placeholder="e.g. Sangatta"
-                            className="h-9 text-xs border-slate-200 w-full"
+                            className="h-9 w-full border-slate-200 text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.serialNo}
-                            onChange={(e) => updateServiceRow(idx, "serialNo", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'serialNo', e.target.value)}
                             placeholder="Serial No"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.refNo}
-                            onChange={(e) => updateServiceRow(idx, "refNo", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'refNo', e.target.value)}
                             placeholder="e.g. 1011957695"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
-                            value={item.noPo || ""}
-                            onChange={(e) => updateServiceRow(idx, "noPo", e.target.value)}
+                            value={item.noPo || ''}
+                            onChange={(e) => updateServiceRow(idx, 'noPo', e.target.value)}
                             placeholder="No PO"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             type="date"
-                            value={item.tanggalPo || ""}
-                            onChange={(e) => updateServiceRow(idx, "tanggalPo", e.target.value)}
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            value={item.tanggalPo || ''}
+                            onChange={(e) => updateServiceRow(idx, 'tanggalPo', e.target.value)}
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.noWoCp}
-                            onChange={(e) => updateServiceRow(idx, "noWoCp", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'noWoCp', e.target.value)}
                             placeholder="No WO CP"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.price}
-                            onChange={(e) => updateServiceRow(idx, "price", e.target.value)}
+                            onChange={(e) => updateServiceRow(idx, 'price', e.target.value)}
                             placeholder="0"
-                            className="h-9 text-xs border-slate-200 text-right font-mono w-full"
+                            className="h-9 w-full border-slate-200 text-right font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -1301,12 +1391,15 @@ function CreateOrEditWoDialog({
                       </TableRow>
                     ))}
                     {/* Yellow Total Amount Footer */}
-                    <TableRow className="bg-yellow-300/90 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <TableCell colSpan={10} className="text-center py-2.5 uppercase tracking-wider text-xs">
+                    <TableRow className="border-t-2 border-slate-300 bg-yellow-300/90 font-bold text-slate-900">
+                      <TableCell
+                        colSpan={10}
+                        className="py-2.5 text-center text-xs tracking-wider uppercase"
+                      >
                         Total Amount
                       </TableCell>
-                      <TableCell className="text-right py-2.5 font-mono text-xs">
-                        {totalServiceAmount > 0 ? formatCurrency(totalServiceAmount) : "-"}
+                      <TableCell className="py-2.5 text-right font-mono text-xs">
+                        {totalServiceAmount > 0 ? formatCurrency(totalServiceAmount) : '-'}
                       </TableCell>
                       <TableCell></TableCell>
                     </TableRow>
@@ -1316,10 +1409,10 @@ function CreateOrEditWoDialog({
             )}
 
             {/* Table Spreadsheet Editor for REPAIR & RETREAD */}
-            {(jenisPengajuan === "repair" || jenisPengajuan === "retread") && (
-              <div className="rounded-xl border border-slate-200 overflow-x-auto bg-white shadow-sm">
-                <Table className="text-xs w-full min-w-[1750px]">
-                  <TableHeader className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold">
+            {(jenisPengajuan === 'repair' || jenisPengajuan === 'retread') && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <Table className="w-full min-w-[1750px] text-xs">
+                  <TableHeader className="border-b border-slate-200 bg-slate-100/80 font-bold text-slate-700">
                     <TableRow>
                       <TableHead className="w-10 text-center">No</TableHead>
                       <TableHead className="min-w-[180px]">Description (Tire SN)</TableHead>
@@ -1339,29 +1432,31 @@ function CreateOrEditWoDialog({
                   <TableBody className="divide-y divide-slate-100">
                     {repairItems.map((item, idx) => (
                       <TableRow key={item.id} className="hover:bg-slate-50/60">
-                        <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
+                        <TableCell className="text-center font-semibold text-slate-500">
+                          {idx + 1}
+                        </TableCell>
                         <TableCell>
                           <Input
                             value={item.description}
-                            onChange={(e) => updateRepairRow(idx, "description", e.target.value)}
+                            onChange={(e) => updateRepairRow(idx, 'description', e.target.value)}
                             placeholder="e.g. VCJO256S8A"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.noUnit}
-                            onChange={(e) => updateRepairRow(idx, "noUnit", e.target.value)}
+                            onChange={(e) => updateRepairRow(idx, 'noUnit', e.target.value)}
                             placeholder="e.g. CO4205"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.pos}
-                            onChange={(e) => updateRepairRow(idx, "pos", e.target.value)}
+                            onChange={(e) => updateRepairRow(idx, 'pos', e.target.value)}
                             placeholder="1-6"
-                            className="h-9 text-xs border-slate-200 text-center w-full"
+                            className="h-9 w-full border-slate-200 text-center text-xs"
                           />
                         </TableCell>
 
@@ -1369,7 +1464,7 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <TableCustomerCell
                             value={item.customer}
-                            onChange={(val) => updateRepairRow(idx, "customer", val)}
+                            onChange={(val) => updateRepairRow(idx, 'customer', val)}
                             customerOptions={allCustomerOptions}
                           />
                         </TableCell>
@@ -1378,9 +1473,9 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <Input
                             value={item.site}
-                            onChange={(e) => updateRepairRow(idx, "site", e.target.value)}
+                            onChange={(e) => updateRepairRow(idx, 'site', e.target.value)}
                             placeholder="e.g. BIB Sebamban"
-                            className="h-9 text-xs border-slate-200 w-full"
+                            className="h-9 w-full border-slate-200 text-xs"
                           />
                         </TableCell>
 
@@ -1388,7 +1483,7 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <TableSizeCell
                             value={item.size}
-                            onChange={(val) => updateRepairRow(idx, "size", val)}
+                            onChange={(val) => updateRepairRow(idx, 'size', val)}
                           />
                         </TableCell>
 
@@ -1396,17 +1491,17 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <TableCategoryCell
                             value={item.category}
-                            onChange={(val) => updateRepairRow(idx, "category", val)}
+                            onChange={(val) => updateRepairRow(idx, 'category', val)}
                           />
                         </TableCell>
 
                         {/* 5. Nested Nomor PO */}
                         <TableCell>
                           <Input
-                            value={item.noPo || ""}
-                            onChange={(e) => updateRepairRow(idx, "noPo", e.target.value)}
+                            value={item.noPo || ''}
+                            onChange={(e) => updateRepairRow(idx, 'noPo', e.target.value)}
                             placeholder="No PO"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
 
@@ -1414,9 +1509,9 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <Input
                             type="date"
-                            value={item.tanggalPo || ""}
-                            onChange={(e) => updateRepairRow(idx, "tanggalPo", e.target.value)}
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            value={item.tanggalPo || ''}
+                            onChange={(e) => updateRepairRow(idx, 'tanggalPo', e.target.value)}
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
 
@@ -1424,9 +1519,9 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <Input
                             value={item.noWoCp}
-                            onChange={(e) => updateRepairRow(idx, "noWoCp", e.target.value)}
+                            onChange={(e) => updateRepairRow(idx, 'noWoCp', e.target.value)}
                             placeholder="No WO CP"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                            className="h-9 w-full border-slate-200 font-mono text-xs"
                           />
                         </TableCell>
 
@@ -1434,7 +1529,7 @@ function CreateOrEditWoDialog({
                         <TableCell>
                           <TablePriceCell
                             value={item.price}
-                            onChange={(val) => updateRepairRow(idx, "price", val)}
+                            onChange={(val) => updateRepairRow(idx, 'price', val)}
                             customer={item.customer}
                             site={item.site}
                             size={item.size}
@@ -1459,12 +1554,15 @@ function CreateOrEditWoDialog({
                       </TableRow>
                     ))}
                     {/* Yellow Total Amount Footer */}
-                    <TableRow className="bg-yellow-300/90 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <TableCell colSpan={10} className="text-center py-2.5 uppercase tracking-wider text-xs">
+                    <TableRow className="border-t-2 border-slate-300 bg-yellow-300/90 font-bold text-slate-900">
+                      <TableCell
+                        colSpan={10}
+                        className="py-2.5 text-center text-xs tracking-wider uppercase"
+                      >
                         Total Amount
                       </TableCell>
-                      <TableCell className="text-right py-2.5 font-mono text-xs">
-                        {totalRepairAmount > 0 ? formatCurrency(totalRepairAmount) : "-"}
+                      <TableCell className="py-2.5 text-right font-mono text-xs">
+                        {totalRepairAmount > 0 ? formatCurrency(totalRepairAmount) : '-'}
                       </TableCell>
                       <TableCell colSpan={2}></TableCell>
                     </TableRow>
@@ -1475,23 +1573,35 @@ function CreateOrEditWoDialog({
           </div>
 
           <div className="flex flex-col gap-2 pt-2">
-            <Label className="text-xs font-semibold text-slate-500">Catatan Pengajuan (Optional)</Label>
+            <Label className="text-xs font-semibold text-slate-500">
+              Catatan Pengajuan (Optional)
+            </Label>
             <Textarea
               value={catatanPengajuan}
               onChange={(e) => setCatatanPengajuan(e.target.value)}
               placeholder="Catatan tambahan untuk tim operasional atau invoice..."
               rows={2}
-              className="text-xs bg-white"
+              className="bg-white text-xs"
             />
           </div>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             Batal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
-            {isPending ? "Menyimpan..." : editItem ? "Simpan Perubahan WO" : "Simpan Form WO"}
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isPending}
+            className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700"
+          >
+            {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan WO' : 'Simpan Form WO'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1515,138 +1625,234 @@ function ViewDetailDialog({
   canEdit?: boolean
 }) {
   const printRef = useRef<HTMLDivElement>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   if (!item) return null
 
-  const isService = item.jenisPengajuan === "service"
+  const isService = item.jenisPengajuan === 'service'
   const serviceItemsList = parseItems<ServiceItemRow>(item.items, [
     {
-      id: "1",
-      description: item.deskripsiPekerjaan || "Labour Service",
-      job: item.jobType || "",
-      customer: item.customer || "",
-      site: item.site || "",
-      serialNo: item.tireSn || "",
-      refNo: item.storeLoc || "",
-      noWoCp: item.noWoTerbit || "",
-      price: item.totalAmount || "",
+      id: '1',
+      description: item.deskripsiPekerjaan || 'Labour Service',
+      job: item.jobType || '',
+      customer: item.customer || '',
+      site: item.site || '',
+      serialNo: item.tireSn || '',
+      refNo: item.storeLoc || '',
+      noWoCp: item.noWoTerbit || '',
+      price: item.totalAmount || '',
     },
   ])
 
   const repairItemsList = parseItems<RepairItemRow>(item.items, [
     {
-      id: "1",
-      description: item.tireSn || item.deskripsiPekerjaan || "",
-      noUnit: item.storeLoc || "",
-      pos: item.pattern || "",
-      size: item.size || "",
-      site: item.site || "",
-      customer: item.customer || "",
-      category: item.brand || "R1",
-      price: item.totalAmount || "",
-      noWoCp: item.noWoTerbit || "",
+      id: '1',
+      description: item.tireSn || item.deskripsiPekerjaan || '',
+      noUnit: item.storeLoc || '',
+      pos: item.pattern || '',
+      size: item.size || '',
+      site: item.site || '',
+      customer: item.customer || '',
+      category: item.brand || 'R1',
+      price: item.totalAmount || '',
+      noWoCp: item.noWoTerbit || '',
     },
   ])
 
-  const serviceTotal = serviceItemsList.reduce((sum, r) => sum + (parseFloat((r.price || "").replace(/[^0-9.-]+/g, "")) || 0), 0)
-  const repairTotal = repairItemsList.reduce((sum, r) => sum + (parseFloat((r.price || "").replace(/[^0-9.-]+/g, "")) || 0), 0)
+  const serviceTotal = serviceItemsList.reduce(
+    (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),
+    0
+  )
+  const repairTotal = repairItemsList.reduce(
+    (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),
+    0
+  )
 
   const handlePrint = () => {
-    window.print()
+    if (!printRef.current) return
+
+    setIsExporting(true)
+
+    try {
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      document.body.appendChild(iframe)
+
+      const iframeDoc = iframe.contentWindow?.document
+      if (!iframeDoc) return
+
+      // Ambil semua stylesheet dari halaman utama agar styling identik
+      const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map((node) => node.outerHTML)
+        .join('\n')
+
+      iframeDoc.open()
+      iframeDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>WO-${item.wo_number || item.id}</title>
+            ${styles}
+            <style>
+              @page { size: landscape A4; margin: 10mm; }
+              body { 
+                background: white !important; 
+                margin: 0; 
+                padding: 10px;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .no-print { display: none !important; }
+            </style>
+          </head>
+          <body>
+            ${printRef.current.outerHTML}
+            <script>
+              window.onload = () => {
+                setTimeout(() => {
+                  window.focus();
+                  window.print();
+                }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `)
+      iframeDoc.close()
+
+      // Hapus iframe setelah dialog print ditutup (estimasi)
+      setTimeout(() => {
+        document.body.removeChild(iframe)
+      }, 5000)
+    } catch (error) {
+      console.error('Error generating Print:', error)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[96vw] lg:max-w-[1400px] w-[96vw] max-h-[92vh] overflow-y-auto p-0 border border-slate-300 rounded-2xl shadow-xl">
+      <DialogContent className="max-h-[92vh] w-[96vw] overflow-y-auto rounded-2xl border border-slate-300 p-0 shadow-xl sm:max-w-[96vw] lg:max-w-[1400px]">
         {/* Printable WYSIWYG Wrapper */}
-        <div ref={printRef} className="pdf-wrapper bg-white p-6 sm:p-10 space-y-6 text-slate-900 font-sans">
+        <div
+          ref={printRef}
+          className="pdf-wrapper space-y-6 bg-white p-6 font-sans text-slate-900 sm:p-10"
+        >
           {/* Top Document Header matching Excel Screenshots */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-6 gap-4">
+          <div className="flex flex-col items-start justify-between gap-4 border-b pb-6 sm:flex-row sm:items-center">
             {/* Chitra Paratama Logo */}
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-600 text-white font-bold text-xl shadow-md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-600 text-xl font-bold text-white shadow-md">
                 CP
               </div>
               <div>
-                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Chitra Paratama</h2>
-                <p className="text-xs font-semibold text-teal-700 tracking-wide">Total Tire Solution</p>
+                <h2 className="text-xl font-bold tracking-tight text-slate-900">Chitra Paratama</h2>
+                <p className="text-xs font-semibold tracking-wide text-teal-700">
+                  Total Tire Solution
+                </p>
               </div>
             </div>
 
             {/* Document Title */}
             <div className="text-center sm:text-right">
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight uppercase">
+              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 uppercase">
                 Form Permintaan Work Order
               </h1>
-              <p className="text-xs font-mono text-slate-500 mt-1">
-                No. Pengajuan: <strong className="text-slate-900">{item.noPengajuan || "-"}</strong>
+              <p className="mt-1 font-mono text-xs text-slate-500">
+                No. Pengajuan: <strong className="text-slate-900">{item.noPengajuan || '-'}</strong>
               </p>
             </div>
           </div>
 
           {/* Document Sub-Header: Hari & Tanggal */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-4">
             <div>
-              <span className="text-slate-500 font-medium block">Hari</span>
-              <strong className="text-slate-900 text-sm">{item.hari || getTodayHari()}</strong>
+              <span className="block font-medium text-slate-500">Hari</span>
+              <strong className="text-sm text-slate-900">{item.hari || getTodayHari()}</strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block">Tanggal</span>
-              <strong className="text-slate-900 text-sm">{item.tanggal || formatDate(item.tanggalPengajuan)}</strong>
+              <span className="block font-medium text-slate-500">Tanggal</span>
+              <strong className="text-sm text-slate-900">
+                {item.tanggal || formatDate(item.tanggalPengajuan)}
+              </strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block">Jenis Form</span>
-              <Badge variant="outline" className={cn("text-xs font-bold mt-0.5", JENIS_CONFIG[item.jenisPengajuan]?.cls)}>
+              <span className="block font-medium text-slate-500">Jenis Form</span>
+              <Badge
+                variant="outline"
+                className={cn('mt-0.5 text-xs font-bold', JENIS_CONFIG[item.jenisPengajuan]?.cls)}
+              >
                 {JENIS_CONFIG[item.jenisPengajuan]?.label ?? item.jenisPengajuan}
               </Badge>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block">Pemohon</span>
-              <strong className="text-slate-900 text-sm">{item.pemohon || "-"}</strong>
+              <span className="block font-medium text-slate-500">Pemohon</span>
+              <strong className="text-sm text-slate-900">{item.pemohon || '-'}</strong>
             </div>
           </div>
 
           {/* WO SERVICE TABLE matching Screenshot 1 */}
           {isService ? (
-            <div className="border border-slate-300 rounded-lg overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-hidden rounded-lg border border-slate-300">
+              <table className="w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                    <th className="py-2.5 px-3 border-r border-slate-300 w-10 text-center">No</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Decription</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Job</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Customer</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Site</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Serial No</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">No Surat Jalan / WO Customer / No PR / No PO</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">No WO CP</th>
-                    <th className="py-2.5 px-3 text-right">Price / Amount</th>
+                  <tr className="border-b border-slate-300 bg-slate-100 font-bold text-slate-800">
+                    <th className="w-10 border-r border-slate-300 px-3 py-2.5 text-center">No</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Decription</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Job</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Customer</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Site</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Serial No</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">
+                      No Surat Jalan / WO Customer / No PR / No PO
+                    </th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">No WO CP</th>
+                    <th className="px-3 py-2.5 text-right">Price / Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {serviceItemsList.map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.description || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.job || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.customer || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.site || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono">{row.serialNo || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono">{row.refNo || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono">{row.noWoCp || "-"}</td>
-                      <td className="py-2 px-3 text-right font-mono">
-                        {row.price ? formatCurrency(row.price) : "-"}
+                      <td className="border-r border-slate-200 px-3 py-2 text-center font-medium">
+                        {idx + 1}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        {row.description || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.job || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.customer || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.site || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.serialNo || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.refNo || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.noWoCp || '-'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {row.price ? formatCurrency(row.price) : '-'}
                       </td>
                     </tr>
                   ))}
 
                   {/* Yellow Total Amount Footer matching Screenshot 1 */}
-                  <tr className="bg-yellow-300 font-bold text-slate-900 border-t-2 border-slate-400">
-                    <td colSpan={8} className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400">
+                  <tr className="border-t-2 border-slate-400 bg-yellow-300 font-bold text-slate-900">
+                    <td
+                      colSpan={8}
+                      className="border-r border-slate-400 px-4 py-2.5 text-center text-xs tracking-wider uppercase"
+                    >
                       Total Amount
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-xs">
-                      {serviceTotal > 0 ? formatCurrency(serviceTotal) : "-"}
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">
+                      {serviceTotal > 0 ? formatCurrency(serviceTotal) : '-'}
                     </td>
                   </tr>
                 </tbody>
@@ -1654,49 +1860,60 @@ function ViewDetailDialog({
             </div>
           ) : (
             /* WO REPAIR TABLE matching Screenshot 2 */
-            <div className="border border-slate-300 rounded-lg overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-hidden rounded-lg border border-slate-300">
+              <table className="w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
-                    <th className="py-2.5 px-3 border-r border-slate-300 w-10 text-center">No</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Decription</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">No Unit</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300 text-center w-12">Pos</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Size</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Site</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Customer</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Category</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300 text-right">Price</th>
-                    <th className="py-2.5 px-3 text-center">No WO CP</th>
+                  <tr className="border-b border-slate-300 bg-slate-100 font-bold text-slate-800">
+                    <th className="w-10 border-r border-slate-300 px-3 py-2.5 text-center">No</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Decription</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">No Unit</th>
+                    <th className="w-12 border-r border-slate-300 px-3 py-2.5 text-center">Pos</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Size</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Site</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Customer</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Category</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5 text-right">Price</th>
+                    <th className="px-3 py-2.5 text-center">No WO CP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {repairItemsList.map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono font-medium">{row.description || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono">{row.noUnit || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 text-center">{row.pos || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.size || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.site || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.customer || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.category || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">
-                        {row.price ? formatCurrency(row.price) : "-"}
+                      <td className="border-r border-slate-200 px-3 py-2 text-center font-medium">
+                        {idx + 1}
                       </td>
-                      <td className="py-2 px-3 font-mono text-center">{row.noWoCp || "-"}</td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono font-medium">
+                        {row.description || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.noUnit || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 text-center">
+                        {row.pos || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.size || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.site || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.customer || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.category || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2 text-right font-mono">
+                        {row.price ? formatCurrency(row.price) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono">{row.noWoCp || '-'}</td>
                     </tr>
                   ))}
 
                   {/* Yellow Total Amount Footer matching Screenshot 2 */}
-                  <tr className="bg-yellow-300 font-bold text-slate-900 border-t-2 border-slate-400">
-                    <td colSpan={8} className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400">
+                  <tr className="border-t-2 border-slate-400 bg-yellow-300 font-bold text-slate-900">
+                    <td
+                      colSpan={8}
+                      className="border-r border-slate-400 px-4 py-2.5 text-center text-xs tracking-wider uppercase"
+                    >
                       Total Amount
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-xs border-r border-slate-400">
-                      {repairTotal > 0 ? formatCurrency(repairTotal) : "-"}
+                    <td className="border-r border-slate-400 px-3 py-2.5 text-right font-mono text-xs">
+                      {repairTotal > 0 ? formatCurrency(repairTotal) : '-'}
                     </td>
-                    <td className="py-2.5 px-3"></td>
+                    <td className="px-3 py-2.5"></td>
                   </tr>
                 </tbody>
               </table>
@@ -1704,25 +1921,34 @@ function ViewDetailDialog({
           )}
 
           {item.catatanPengajuan && (
-            <div className="text-xs bg-slate-50 p-3 rounded-lg border border-slate-200">
-              <span className="font-semibold text-slate-500 uppercase tracking-wider block mb-1">Catatan Pengajuan:</span>
-              <p className="text-slate-700 leading-relaxed">{item.catatanPengajuan}</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+              <span className="mb-1 block font-semibold tracking-wider text-slate-500 uppercase">
+                Catatan Pengajuan:
+              </span>
+              <p className="leading-relaxed text-slate-700">{item.catatanPengajuan}</p>
             </div>
           )}
         </div>
 
         {/* Modal Action Footer */}
-        <div className="border-t border-slate-200 p-4 bg-slate-50 flex items-center justify-between no-print">
-          <Button variant="outline" onClick={handlePrint} className="gap-2">
-            <Printer className="h-4 w-4" />
-            Cetak / Export Document
+        <div className="no-print flex items-center justify-between border-t border-slate-200 bg-slate-50 p-4">
+          <Button variant="outline" onClick={handlePrint} className="gap-2" disabled={isExporting}>
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            {isExporting ? 'Mengekspor PDF...' : 'Cetak / Export Document'}
           </Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Tutup
             </Button>
             {canEdit && (
-              <Button onClick={onEdit} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+              <Button
+                onClick={onEdit}
+                className="gap-2 bg-indigo-600 text-white hover:bg-indigo-700"
+              >
                 <Pencil className="h-4 w-4" />
                 Edit Form WO
               </Button>
@@ -1754,11 +1980,11 @@ function DeleteConfirmDialog({
     startTransition(async () => {
       const result = await deleteFormWo(item.id)
       if (result.success) {
-        toast.success("Pengajuan berhasil dihapus")
+        toast.success('Pengajuan berhasil dihapus')
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(result.error ?? "Gagal menghapus pengajuan")
+        toast.error(result.error ?? 'Gagal menghapus pengajuan')
       }
     })
   }
@@ -1769,15 +1995,21 @@ function DeleteConfirmDialog({
         <DialogHeader>
           <DialogTitle>Hapus Pengajuan WO?</DialogTitle>
           <DialogDescription>
-            Pengajuan <span className="font-semibold">{nv(item?.noPengajuan)}</span> akan dihapus permanen.
+            Pengajuan <span className="font-semibold">{nv(item?.noPengajuan)}</span> akan dihapus
+            permanen.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             Batal
           </Button>
           <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
-            {isPending ? "Menghapus..." : "Hapus"}
+            {isPending ? 'Menghapus...' : 'Hapus'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1794,20 +2026,20 @@ function buildOrderDesc(
   sn: string | null | undefined,
   brand: string | null | undefined
 ): string {
-  const custUpper = (customer || "").toUpperCase()
-  const isKpc = custUpper.includes("KPC") || custUpper.includes("KALTIM PRIMA COAL")
+  const custUpper = (customer || '').toUpperCase()
+  const isKpc = custUpper.includes('KPC') || custUpper.includes('KALTIM PRIMA COAL')
 
-  const cleanSz = (size || "").trim()
-  const cleanSn = (sn || "").trim()
-  const cleanBr = (brand || "").trim()
-  const cleanCust = (customer || site || "").trim()
+  const cleanSz = (size || '').trim()
+  const cleanSn = (sn || '').trim()
+  const cleanBr = (brand || '').trim()
+  const cleanCust = (customer || site || '').trim()
 
   if (isKpc) {
     // ORDER KPC : DESC GABUNGAN ANTARA SIZE SN DAN BRAND (Repair 53/80R63 S4LSC0326 BRIDGESTONE)
-    return `Repair ${cleanSz} ${cleanSn} ${cleanBr}`.replace(/\s+/g, " ").trim()
+    return `Repair ${cleanSz} ${cleanSn} ${cleanBr}`.replace(/\s+/g, ' ').trim()
   } else {
     // ORDER OTHER CUSTOMER : DESC GABUNGAN ANTARA CUSTOMER SIZE SN (Repair PPA BIB 27.00R49 S4LSC0326)
-    return `Repair ${cleanCust} ${cleanSz} ${cleanSn}`.replace(/\s+/g, " ").trim()
+    return `Repair ${cleanCust} ${cleanSz} ${cleanSn}`.replace(/\s+/g, ' ').trim()
   }
 }
 
@@ -1817,53 +2049,69 @@ function findCaiCode(
   brand: string | null | undefined,
   caiList: MasterCaiRow[]
 ): string {
-  const cust = (customer || "").trim().toLowerCase()
-  const sz = (size || "").replace(/\s+/g, "").toLowerCase()
-  const br = (brand || "").replace(/\s+/g, "").toLowerCase()
+  const cust = (customer || '').trim().toLowerCase()
+  const sz = (size || '').replace(/\s+/g, '').toLowerCase()
+  const br = (brand || '').replace(/\s+/g, '').toLowerCase()
 
-  if (!sz) return ""
+  if (!sz) return ''
 
   const activeList =
     caiList.length > 0
       ? caiList
       : [
-          ...INITIAL_KPC_CAI.map((x, i) => ({ id: i, customer: x.customer, size: x.size, brand: x.brand, cai: x.cai, type: "Tire Repair" })),
-          ...INITIAL_OTHER_CAI.map((x, i) => ({ id: i + 100, customer: x.customer, size: x.size, brand: x.brand, cai: x.cai, type: "Tire Repair" })),
+          ...INITIAL_KPC_CAI.map((x, i) => ({
+            id: i,
+            customer: x.customer,
+            size: x.size,
+            brand: x.brand,
+            cai: x.cai,
+            type: 'Tire Repair',
+          })),
+          ...INITIAL_OTHER_CAI.map((x, i) => ({
+            id: i + 100,
+            customer: x.customer,
+            size: x.size,
+            brand: x.brand,
+            cai: x.cai,
+            type: 'Tire Repair',
+          })),
         ]
 
-  if (cust.includes("kaltim prima coal") || cust.includes("kpc")) {
+  if (cust.includes('kaltim prima coal') || cust.includes('kpc')) {
     const found = activeList.find((item) => {
-      const isKpc = item.customer.toLowerCase().includes("kpc") || item.customer.toLowerCase().includes("kaltim prima coal")
+      const isKpc =
+        item.customer.toLowerCase().includes('kpc') ||
+        item.customer.toLowerCase().includes('kaltim prima coal')
       if (!isKpc) return false
-      const itemSz = item.size.replace(/\s+/g, "").toLowerCase()
-      const itemBr = (item.brand || "").replace(/\s+/g, "").toLowerCase()
+      const itemSz = item.size.replace(/\s+/g, '').toLowerCase()
+      const itemBr = (item.brand || '').replace(/\s+/g, '').toLowerCase()
       return itemSz === sz && (itemBr === br || !br || !itemBr)
     })
     if (found) return found.cai
   }
 
   const foundOther = activeList.find((item) => {
-    const itemSz = item.size.replace(/\s+/g, "").toLowerCase()
+    const itemSz = item.size.replace(/\s+/g, '').toLowerCase()
     return itemSz === sz
   })
   if (foundOther) return foundOther.cai
 
-  return ""
+  return ''
 }
 
 function normalizeCustomerName(str: string): string {
   return str
     .toLowerCase()
-    .replace(/^pt\.?\s*/i, "")
-    .replace(/^cv\.?\s*/i, "")
-    .replace(/[^a-z0-9]/g, "")
+    .replace(/^pt\.?\s*/i, '')
+    .replace(/^cv\.?\s*/i, '')
+    .replace(/[^a-z0-9]/g, '')
 }
 
 function findCustomerMatchFuzzy(
   searchName: string | null | undefined,
   customerList: CustomerRecord[] = []
 ): { idCode: string; name: string } {
-  if (!searchName || !searchName.trim()) return { idCode: "", name: "" }
+  if (!searchName || !searchName.trim()) return { idCode: '', name: '' }
   const target = searchName.trim()
   const normTarget = normalizeCustomerName(target)
 
@@ -1908,21 +2156,21 @@ function findCustomerMatchFuzzy(
 function formatDateDot(dateStr: string | Date | null | undefined): string {
   if (!dateStr) {
     const d = new Date()
-    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`
+    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
   }
-  if (typeof dateStr === "string") {
-    if (dateStr.includes(".")) return dateStr
+  if (typeof dateStr === 'string') {
+    if (dateStr.includes('.')) return dateStr
     const parts = dateStr.split(/[-/]/)
     if (parts.length === 3) {
       if (parts[0].length === 4) {
-        return `${parts[2].padStart(2, "0")}.${parts[1].padStart(2, "0")}.${parts[0]}`
+        return `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`
       }
-      return `${parts[0].padStart(2, "0")}.${parts[1].padStart(2, "0")}.${parts[2]}`
+      return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2]}`
     }
   }
-  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr
+  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
   if (isNaN(d.getTime())) return String(dateStr)
-  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
 }
 
 function WaitingWoTab({
@@ -1940,7 +2188,7 @@ function WaitingWoTab({
   customerList?: CustomerRecord[]
   canEdit?: boolean
 }) {
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState('')
   const [poMap, setPoMap] = useState<Record<string, { noPo: string; poDate: string }>>({})
   const [selectedWipIds, setSelectedWipIds] = useState<string[]>([])
 
@@ -1949,31 +2197,34 @@ function WaitingWoTab({
     data.forEach((item) => {
       if (item.id_wo) {
         map[item.id_wo] = {
-          noPo: item.po ?? "",
-          poDate: item.po_date !== null && item.po_date !== undefined ? item.po_date : (item.inspect_date || ""),
+          noPo: item.po ?? '',
+          poDate:
+            item.po_date !== null && item.po_date !== undefined
+              ? item.po_date
+              : item.inspect_date || '',
         }
       }
     })
     setPoMap(map)
   }, [data])
 
-  const handlePoChange = (idWo: string, field: "noPo" | "poDate", val: string) => {
+  const handlePoChange = (idWo: string, field: 'noPo' | 'poDate', val: string) => {
     setPoMap((prev) => ({
       ...prev,
       [idWo]: {
-        noPo: field === "noPo" ? val : (prev[idWo]?.noPo ?? ""),
-        poDate: field === "poDate" ? val : (prev[idWo]?.poDate ?? ""),
+        noPo: field === 'noPo' ? val : (prev[idWo]?.noPo ?? ''),
+        poDate: field === 'poDate' ? val : (prev[idWo]?.poDate ?? ''),
       },
     }))
   }
 
   const handlePoBlur = async (idWo: string) => {
-    const entry = poMap[idWo] || { noPo: "", poDate: "" }
+    const entry = poMap[idWo] || { noPo: '', poDate: '' }
     const res = await saveWipPo(idWo, entry.noPo, entry.poDate)
     if (res.success) {
       toast.success(`Nomor & Date PO untuk ID WO '${idWo}' tersimpan!`, { duration: 1500 })
     } else {
-      toast.error(res.error || "Gagal menyimpan Nomor/Date PO")
+      toast.error(res.error || 'Gagal menyimpan Nomor/Date PO')
     }
   }
 
@@ -1982,9 +2233,19 @@ function WaitingWoTab({
     if (!q) return data
     return data.filter((item) => {
       const entry = poMap[item.id_wo]
-      const currentPo = entry?.noPo ?? item.po ?? ""
-      const currentPoDate = entry?.poDate ?? item.po_date ?? item.inspect_date ?? ""
-      return [item.id_wo, item.tire_sn, item.customer, item.site, item.brand, item.size, item.inspector, currentPo, currentPoDate]
+      const currentPo = entry?.noPo ?? item.po ?? ''
+      const currentPoDate = entry?.poDate ?? item.po_date ?? item.inspect_date ?? ''
+      return [
+        item.id_wo,
+        item.tire_sn,
+        item.customer,
+        item.site,
+        item.brand,
+        item.size,
+        item.inspector,
+        currentPo,
+        currentPoDate,
+      ]
         .map((v) => nv(v).toLowerCase())
         .some((v) => v.includes(q))
     })
@@ -2041,21 +2302,28 @@ function WaitingWoTab({
 
   async function handleExportPowerAutomate() {
     if (filtered.length === 0) {
-      toast.error("Tidak ada data Waiting WO untuk diekspor")
+      toast.error('Tidak ada data Waiting WO untuk diekspor')
       return
     }
 
     const todayDot = formatDateDot(new Date())
 
     const rows = filtered.map((item) => {
-      const orderDesc = buildOrderDesc(item.customer, item.site, item.size, item.tire_sn, item.brand)
+      const orderDesc = buildOrderDesc(
+        item.customer,
+        item.site,
+        item.size,
+        item.tire_sn,
+        item.brand
+      )
       const caiCode = findCaiCode(item.customer, item.size, item.brand, caiList)
 
       const entry = poMap[item.id_wo]
-      const rawPo = entry?.noPo !== undefined ? entry.noPo : (item.po || "")
+      const rawPo = entry?.noPo !== undefined ? entry.noPo : item.po || ''
       const userPo = rawPo.trim()
 
-      const rawPoDate = entry?.poDate !== undefined ? entry.poDate : (item.po_date || item.inspect_date || "")
+      const rawPoDate =
+        entry?.poDate !== undefined ? entry.poDate : item.po_date || item.inspect_date || ''
       const poDateDot = formatDateDot(rawPoDate || item.inspect_date)
 
       const custMatch = findCustomerMatchFuzzy(item.customer, customerList)
@@ -2063,31 +2331,34 @@ function WaitingWoTab({
       return {
         order: orderDesc,
         cai: caiCode,
-        sn: item.tire_sn || "",
+        sn: item.tire_sn || '',
         po: userPo,
-        "po date": poDateDot,
-        "Sold-to party": custMatch.idCode,
-        "Sort Field": todayDot,
-        "Customer Name": custMatch.name,
+        'po date': poDateDot,
+        'Sold-to party': custMatch.idCode,
+        'Sort Field': todayDot,
+        'Customer Name': custMatch.name,
       }
     })
 
-    const XLSX = await import("xlsx")
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Power Automate WO")
-    XLSX.writeFile(wb, `Waiting_WO_Power_Automate_${new Date().toISOString().split("T")[0]}.xlsx`)
-    toast.success("File Excel Power Automate berhasil di-export!")
+    XLSX.utils.book_append_sheet(wb, ws, 'Power Automate WO')
+    XLSX.writeFile(wb, `Waiting_WO_Power_Automate_${new Date().toISOString().split('T')[0]}.xlsx`)
+    toast.success('File Excel Power Automate berhasil di-export!')
   }
 
   return (
-    <Card className="rounded-2xl border-border/60 shadow-sm">
-      <CardContent className="p-4 md:p-6 space-y-4">
+    <Card className="border-border/60 rounded-2xl shadow-sm">
+      <CardContent className="space-y-4 p-4 md:p-6">
         {/* Bulk Action Toolbar Bar */}
         {selectedWipIds.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-gradient-to-r from-violet-50 via-indigo-50 to-purple-50 p-3.5 shadow-sm">
             <div className="flex items-center gap-2.5">
-              <Badge variant="secondary" className="bg-violet-600 text-white font-bold text-xs px-3 py-1">
+              <Badge
+                variant="secondary"
+                className="bg-violet-600 px-3 py-1 text-xs font-bold text-white"
+              >
                 {selectedWipIds.length} Unit Dipilih
               </Badge>
               <div className="text-xs font-medium text-slate-700">
@@ -2100,7 +2371,7 @@ function WaitingWoTab({
                   type="button"
                   size="sm"
                   onClick={() => onCreateBulkWo(selectedRecords)}
-                  className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-lg h-9 text-xs font-bold shadow-sm"
+                  className="h-9 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-xs font-bold text-white shadow-sm hover:from-violet-700 hover:to-indigo-700"
                 >
                   <Plus className="mr-1.5 h-4 w-4" />
                   BUAT WO TERGABUNG ({selectedWipIds.length} Unit)
@@ -2111,7 +2382,7 @@ function WaitingWoTab({
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedWipIds([])}
-                className="h-9 text-xs font-semibold rounded-lg border-slate-300 text-slate-600 hover:bg-white"
+                className="h-9 rounded-lg border-slate-300 text-xs font-semibold text-slate-600 hover:bg-white"
               >
                 Batal Seleksi
               </Button>
@@ -2121,7 +2392,7 @@ function WaitingWoTab({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -2133,7 +2404,7 @@ function WaitingWoTab({
             type="button"
             variant="outline"
             onClick={() => void handleExportPowerAutomate()}
-            className="h-10 rounded-xl border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-semibold text-xs shrink-0 shadow-xs"
+            className="h-10 shrink-0 rounded-xl border-emerald-300 bg-emerald-50 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-100"
           >
             <Download className="mr-1.5 h-4 w-4 text-emerald-600" />
             Export Excel (Power Automate)
@@ -2156,8 +2427,8 @@ function WaitingWoTab({
                 <TableHead className="px-4 py-3">Tire SN</TableHead>
                 <TableHead className="px-4 py-3">Customer / Site</TableHead>
                 <TableHead className="px-4 py-3">Brand / Size</TableHead>
-                <TableHead className="px-4 py-3 min-w-[180px]">Nomor PO (Editable)</TableHead>
-                <TableHead className="px-4 py-3 min-w-[150px]">Date PO (Editable)</TableHead>
+                <TableHead className="min-w-[180px] px-4 py-3">Nomor PO (Editable)</TableHead>
+                <TableHead className="min-w-[150px] px-4 py-3">Date PO (Editable)</TableHead>
                 <TableHead className="px-4 py-3">Job Type</TableHead>
                 <TableHead className="px-4 py-3">Inspect Date</TableHead>
               </TableRow>
@@ -2165,23 +2436,32 @@ function WaitingWoTab({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="text-muted-foreground h-32 text-center">
                     Tidak ada unit Waiting WO yang ditemukan.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((item, idx) => {
                   const isChecked = selectedWipIds.includes(item.id_wo)
-                  const isDiffCustomer = selectedCustomer !== null && item.customer !== selectedCustomer
+                  const isDiffCustomer =
+                    selectedCustomer !== null && item.customer !== selectedCustomer
 
                   return (
-                    <TableRow key={item.id_wo || idx} className={cn("hover:bg-muted/30 transition-colors", isChecked && "bg-violet-50/70")}>
+                    <TableRow
+                      key={item.id_wo || idx}
+                      className={cn(
+                        'hover:bg-muted/30 transition-colors',
+                        isChecked && 'bg-violet-50/70'
+                      )}
+                    >
                       <TableCell className="w-10 px-3 text-center">
                         <Checkbox
                           checked={isChecked}
                           onCheckedChange={() => handleToggleRow(item)}
-                          className={cn(isDiffCustomer && "opacity-40 cursor-not-allowed")}
-                          title={isDiffCustomer ? `Customer berbeda (${item.customer})` : "Pilih unit"}
+                          className={cn(isDiffCustomer && 'cursor-not-allowed opacity-40')}
+                          title={
+                            isDiffCustomer ? `Customer berbeda (${item.customer})` : 'Pilih unit'
+                          }
                         />
                       </TableCell>
                       <TableCell className="px-4 py-3">
@@ -2190,7 +2470,7 @@ function WaitingWoTab({
                             type="button"
                             size="sm"
                             onClick={() => onCreateWo(item)}
-                            className="bg-violet-600 hover:bg-violet-700 text-white rounded-lg h-8 text-xs font-semibold"
+                            className="h-8 rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-700"
                           >
                             <Plus className="mr-1 h-3.5 w-3.5" />
                             Buat WO
@@ -2209,40 +2489,44 @@ function WaitingWoTab({
                       </TableCell>
                       <TableCell className="px-4 py-3 text-xs">
                         <div>{nv(item.brand)}</div>
-                        <div className="text-slate-500 font-mono">{nv(item.size)}</div>
+                        <div className="font-mono text-slate-500">{nv(item.size)}</div>
                       </TableCell>
-                      <TableCell className="px-4 py-3 min-w-[180px]">
+                      <TableCell className="min-w-[180px] px-4 py-3">
                         <Input
-                          value={poMap[item.id_wo]?.noPo ?? item.po ?? ""}
-                          onChange={(e) => handlePoChange(item.id_wo, "noPo", e.target.value)}
+                          value={poMap[item.id_wo]?.noPo ?? item.po ?? ''}
+                          onChange={(e) => handlePoChange(item.id_wo, 'noPo', e.target.value)}
                           onBlur={() => void handlePoBlur(item.id_wo)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (e.key === 'Enter') {
                               void handlePoBlur(item.id_wo)
                               ;(e.target as HTMLInputElement).blur()
                             }
                           }}
                           placeholder="Ketik Nomor PO..."
-                          className="h-8 text-xs font-mono border-slate-200 bg-white"
+                          className="h-8 border-slate-200 bg-white font-mono text-xs"
                         />
                       </TableCell>
-                      <TableCell className="px-4 py-3 min-w-[150px]">
+                      <TableCell className="min-w-[150px] px-4 py-3">
                         <Input
-                          value={poMap[item.id_wo]?.poDate ?? item.po_date ?? item.inspect_date ?? ""}
-                          onChange={(e) => handlePoChange(item.id_wo, "poDate", e.target.value)}
+                          value={
+                            poMap[item.id_wo]?.poDate ?? item.po_date ?? item.inspect_date ?? ''
+                          }
+                          onChange={(e) => handlePoChange(item.id_wo, 'poDate', e.target.value)}
                           onBlur={() => void handlePoBlur(item.id_wo)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
+                            if (e.key === 'Enter') {
                               void handlePoBlur(item.id_wo)
                               ;(e.target as HTMLInputElement).blur()
                             }
                           }}
                           placeholder="e.g. 10.08.2026"
-                          className="h-8 text-xs font-mono border-slate-200 bg-white"
+                          className="h-8 border-slate-200 bg-white font-mono text-xs"
                         />
                       </TableCell>
                       <TableCell className="px-4 py-3 text-xs">{nv(item.job_type)}</TableCell>
-                      <TableCell className="px-4 py-3 text-xs text-slate-500">{nv(item.inspect_date)}</TableCell>
+                      <TableCell className="px-4 py-3 text-xs text-slate-500">
+                        {nv(item.inspect_date)}
+                      </TableCell>
                     </TableRow>
                   )
                 })
@@ -2274,7 +2558,7 @@ function DaftarPengajuanTab({
   canEdit?: boolean
   canDelete?: boolean
 }) {
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL_FILTER)
   const [jenisFilter, setJenisFilter] = useState(initialJenisFilter)
   const [currentPage, setCurrentPage] = useState(1)
@@ -2308,23 +2592,34 @@ function DaftarPengajuanTab({
       ]
 
       // 2. Nested line items fields (Tire SN, Serial No, Unit, Size, PO, Ref No, Job)
-      let itemsText = ""
+      let itemsText = ''
       if (item.items) {
         try {
-          const parsed = typeof item.items === "string" ? JSON.parse(item.items) : item.items
+          const parsed = typeof item.items === 'string' ? JSON.parse(item.items) : item.items
           if (Array.isArray(parsed)) {
             itemsText = parsed
               .map((sub: any) =>
-                [sub.description, sub.serialNo, sub.noUnit, sub.pos, sub.size, sub.category, sub.noPo, sub.noWoCp, sub.refNo, sub.job]
+                [
+                  sub.description,
+                  sub.serialNo,
+                  sub.noUnit,
+                  sub.pos,
+                  sub.size,
+                  sub.category,
+                  sub.noPo,
+                  sub.noWoCp,
+                  sub.refNo,
+                  sub.job,
+                ]
                   .filter(Boolean)
-                  .join(" ")
+                  .join(' ')
               )
-              .join(" ")
+              .join(' ')
           }
         } catch {}
       }
 
-      const fullSearchable = [...rootText.map((v) => nv(v)), itemsText].join(" ").toLowerCase()
+      const fullSearchable = [...rootText.map((v) => nv(v)), itemsText].join(' ').toLowerCase()
       const matchesQuery = !q || fullSearchable.includes(q)
 
       const matchesStatus = statusFilter === ALL_FILTER || item.statusPengajuan === statusFilter
@@ -2354,28 +2649,36 @@ function DaftarPengajuanTab({
   }, [query, statusFilter, jenisFilter, pageSize])
 
   // Inline Server Actions
-  async function handleInlineStatusChange(id: number, status: "pending" | "diproses" | "approved" | "rejected") {
+  async function handleInlineStatusChange(
+    id: number,
+    status: 'pending' | 'diproses' | 'approved' | 'rejected'
+  ) {
     const res = await updateFormWoStatus(id, status)
     if (res.success) {
       toast.success(`Status pengajuan diperbarui ke ${STATUS_CONFIG[status]?.label || status}`)
     } else {
-      toast.error(res.error || "Gagal memperbarui status")
+      toast.error(res.error || 'Gagal memperbarui status')
     }
   }
 
   async function handleInlineNoWoTerbit(id: number, noWoTerbit: string) {
     const res = await updateFormWo(id, { noWoTerbit })
     if (res.success) {
-      toast.success("No WO Terbit berhasil diperbarui")
+      toast.success('No WO Terbit berhasil diperbarui')
     } else {
-      toast.error(res.error || "Gagal memperbarui No WO Terbit")
+      toast.error(res.error || 'Gagal memperbarui No WO Terbit')
     }
   }
 
-  async function handleInlineSubItemUpdate(item: FormWoRow, subIdx: number, field: string, val: string) {
+  async function handleInlineSubItemUpdate(
+    item: FormWoRow,
+    subIdx: number,
+    field: string,
+    val: string
+  ) {
     let parsed: any[] = []
     try {
-      parsed = typeof item.items === "string" ? JSON.parse(item.items) : item.items || []
+      parsed = typeof item.items === 'string' ? JSON.parse(item.items) : item.items || []
     } catch {}
 
     if (!parsed[subIdx]) return
@@ -2384,7 +2687,7 @@ function DaftarPengajuanTab({
     let newTotal = 0
     parsed.forEach((r: any) => {
       if (r.price) {
-        const clean = String(r.price).replace(/,/g, "")
+        const clean = String(r.price).replace(/,/g, '')
         const num = parseFloat(clean)
         if (!isNaN(num)) newTotal += num
       }
@@ -2394,50 +2697,50 @@ function DaftarPengajuanTab({
     const res = await updateFormWo(item.id, {
       items: JSON.stringify(parsed),
       totalAmount: newTotal > 0 ? String(newTotal) : item.totalAmount,
-      noPo: field === "noPo" ? val : (firstSub?.noPo || item.noPo || undefined),
+      noPo: field === 'noPo' ? val : firstSub?.noPo || item.noPo || undefined,
     })
 
     if (res.success) {
-      toast.success("Item berhasil diperbarui")
+      toast.success('Item berhasil diperbarui')
     } else {
-      toast.error("Gagal memperbarui item")
+      toast.error('Gagal memperbarui item')
     }
   }
 
   async function handleExport() {
     if (filtered.length === 0) {
-      toast.error("Tidak ada data untuk diekspor")
+      toast.error('Tidak ada data untuk diekspor')
       return
     }
     const rows = filtered.map((item) => ({
-      "No. Pengajuan": nv(item.noPengajuan),
+      'No. Pengajuan': nv(item.noPengajuan),
       Jenis: JENIS_CONFIG[item.jenisPengajuan]?.label ?? item.jenisPengajuan,
       Hari: nv(item.hari),
       Tanggal: nv(item.tanggal) || formatDate(item.tanggalPengajuan),
       Status: STATUS_CONFIG[item.statusPengajuan]?.label ?? item.statusPengajuan,
       Customer: nv(item.customer),
       Site: nv(item.site),
-      "Nomor PO": nv(item.noPo),
-      "Date PO": nv(item.tanggalPo),
+      'Nomor PO': nv(item.noPo),
+      'Date PO': nv(item.tanggalPo),
       Pemohon: nv(item.pemohon),
-      "Total Amount": item.totalAmount ? formatCurrency(item.totalAmount) : "-",
-      "No WO Terbit": nv(item.noWoTerbit),
+      'Total Amount': item.totalAmount ? formatCurrency(item.totalAmount) : '-',
+      'No WO Terbit': nv(item.noWoTerbit),
     }))
-    const XLSX = await import("xlsx")
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Form WO")
-    XLSX.writeFile(wb, `Form_WO_${new Date().toISOString().split("T")[0]}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Form WO')
+    XLSX.writeFile(wb, `Form_WO_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
 
-  const countService = data.filter((i) => i.jenisPengajuan === "service").length
-  const countRepair = data.filter((i) => i.jenisPengajuan === "repair").length
-  const countRetread = data.filter((i) => i.jenisPengajuan === "retread").length
-  const countNonRepair = data.filter((i) => i.jenisPengajuan === "non_repair").length
+  const countService = data.filter((i) => i.jenisPengajuan === 'service').length
+  const countRepair = data.filter((i) => i.jenisPengajuan === 'repair').length
+  const countRetread = data.filter((i) => i.jenisPengajuan === 'retread').length
+  const countNonRepair = data.filter((i) => i.jenisPengajuan === 'non_repair').length
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 rounded-2xl py-0 shadow-sm">
         <CardContent className="px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4">
             {/* Top Quick Filter Tabs */}
@@ -2446,38 +2749,46 @@ function DaftarPengajuanTab({
                 type="button"
                 onClick={() => setJenisFilter(ALL_FILTER)}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                  jenisFilter === ALL_FILTER ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-600 hover:text-slate-900"
+                  'rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                  jenisFilter === ALL_FILTER
+                    ? 'border border-slate-200 bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
                 )}
               >
                 Semua List WO ({data.length})
               </button>
               <button
                 type="button"
-                onClick={() => setJenisFilter("service")}
+                onClick={() => setJenisFilter('service')}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5",
-                  jenisFilter === "service" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-700"
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                  jenisFilter === 'service'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
                 )}
               >
                 🛠️ WO Service ({countService})
               </button>
               <button
                 type="button"
-                onClick={() => setJenisFilter("repair")}
+                onClick={() => setJenisFilter('repair')}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5",
-                  jenisFilter === "repair" ? "bg-violet-600 text-white shadow-sm" : "text-slate-600 hover:bg-violet-50 hover:text-violet-700"
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                  jenisFilter === 'repair'
+                    ? 'bg-violet-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-violet-50 hover:text-violet-700'
                 )}
               >
                 🔧 WO Repair ({countRepair})
               </button>
               <button
                 type="button"
-                onClick={() => setJenisFilter("retread")}
+                onClick={() => setJenisFilter('retread')}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5",
-                  jenisFilter === "retread" ? "bg-amber-600 text-white shadow-sm" : "text-slate-600 hover:bg-amber-50 hover:text-amber-700"
+                  'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                  jenisFilter === 'retread'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-amber-50 hover:text-amber-700'
                 )}
               >
                 ⚙️ WO Retread ({countRetread})
@@ -2485,10 +2796,12 @@ function DaftarPengajuanTab({
               {countNonRepair > 0 && (
                 <button
                   type="button"
-                  onClick={() => setJenisFilter("non_repair")}
+                  onClick={() => setJenisFilter('non_repair')}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5",
-                    jenisFilter === "non_repair" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
+                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition',
+                    jenisFilter === 'non_repair'
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-cyan-50 hover:text-cyan-700'
                   )}
                 >
                   📄 Non-Repair ({countNonRepair})
@@ -2498,7 +2811,7 @@ function DaftarPengajuanTab({
 
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -2506,7 +2819,12 @@ function DaftarPengajuanTab({
                   className="h-10 rounded-xl pl-9"
                 />
               </div>
-              <Button type="button" variant="outline" className="h-10 rounded-xl shrink-0" onClick={() => void handleExport()}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 shrink-0 rounded-xl"
+                onClick={() => void handleExport()}
+              >
                 <Download className="mr-2 h-4 w-4" />
                 Export Excel
               </Button>
@@ -2542,12 +2860,12 @@ function DaftarPengajuanTab({
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 overflow-hidden rounded-2xl py-0 shadow-sm">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
-                <TableHead className="px-4 py-3 w-32">Aksi</TableHead>
+                <TableHead className="w-32 px-4 py-3">Aksi</TableHead>
                 <TableHead className="px-4 py-3">No. Pengajuan</TableHead>
                 <TableHead className="px-4 py-3">Jenis Form</TableHead>
                 <TableHead className="px-4 py-3 text-center">QTY</TableHead>
@@ -2564,21 +2882,29 @@ function DaftarPengajuanTab({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
-                    {data.length === 0 ? "Belum ada pengajuan Form WO." : "Tidak ada data yang cocok dengan filter."}
+                  <TableCell colSpan={12} className="text-muted-foreground h-32 text-center">
+                    {data.length === 0
+                      ? 'Belum ada pengajuan Form WO.'
+                      : 'Tidak ada data yang cocok dengan filter.'}
                   </TableCell>
                 </TableRow>
               ) : (
                 pageData.map((item) => {
-                  const statusCfg = STATUS_CONFIG[item.statusPengajuan] ?? { label: item.statusPengajuan, cls: "" }
-                  const jenisCfg = JENIS_CONFIG[item.jenisPengajuan] ?? { label: item.jenisPengajuan, cls: "" }
+                  const statusCfg = STATUS_CONFIG[item.statusPengajuan] ?? {
+                    label: item.statusPengajuan,
+                    cls: '',
+                  }
+                  const jenisCfg = JENIS_CONFIG[item.jenisPengajuan] ?? {
+                    label: item.jenisPengajuan,
+                    cls: '',
+                  }
                   const isExpanded = !!expandedRows[item.id]
 
                   // Parse items safely for row expansion detail
                   let parsedItems: any[] = []
                   if (item.items) {
                     try {
-                      const p = typeof item.items === "string" ? JSON.parse(item.items) : item.items
+                      const p = typeof item.items === 'string' ? JSON.parse(item.items) : item.items
                       if (Array.isArray(p)) parsedItems = p
                     } catch {}
                   }
@@ -2587,7 +2913,12 @@ function DaftarPengajuanTab({
 
                   return (
                     <Fragment key={item.id}>
-                      <TableRow className={cn("group hover:bg-muted/30 transition-colors", isExpanded && "bg-slate-50/90")}>
+                      <TableRow
+                        className={cn(
+                          'group hover:bg-muted/30 transition-colors',
+                          isExpanded && 'bg-slate-50/90'
+                        )}
+                      >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <Button
@@ -2595,10 +2926,14 @@ function DaftarPengajuanTab({
                               variant="ghost"
                               size="sm"
                               className={cn(
-                                "h-8 w-8 rounded-lg p-0 text-slate-500 hover:text-indigo-600 transition-transform duration-200",
-                                isExpanded && "rotate-90 text-indigo-600 bg-indigo-50"
+                                'h-8 w-8 rounded-lg p-0 text-slate-500 transition-transform duration-200 hover:text-indigo-600',
+                                isExpanded && 'rotate-90 bg-indigo-50 text-indigo-600'
                               )}
-                              title={isExpanded ? "Sembunyikan rincian item" : "Tampilkan detail rincian item"}
+                              title={
+                                isExpanded
+                                  ? 'Sembunyikan rincian item'
+                                  : 'Tampilkan detail rincian item'
+                              }
                               onClick={() => toggleExpand(item.id)}
                             >
                               <ChevronRight className="h-4 w-4" />
@@ -2643,37 +2978,61 @@ function DaftarPengajuanTab({
                           <HighlightText value={item.noPengajuan} query={query} />
                         </TableCell>
                         <TableCell className="px-4 py-3">
-                          <Badge variant="outline" className={cn("text-xs font-semibold", jenisCfg.cls)}>
+                          <Badge
+                            variant="outline"
+                            className={cn('text-xs font-semibold', jenisCfg.cls)}
+                          >
                             {jenisCfg.label}
                           </Badge>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          <Badge variant="secondary" className="font-mono text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-100">
+                          <Badge
+                            variant="secondary"
+                            className="border border-indigo-100 bg-indigo-50 font-mono text-xs font-bold text-indigo-900"
+                          >
                             {itemQty} Item
                           </Badge>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
-                          <div className="font-semibold text-slate-900">{item.hari || "-"}</div>
-                          <div className="text-slate-500">{item.tanggal || formatDate(item.tanggalPengajuan)}</div>
+                          <div className="font-semibold text-slate-900">{item.hari || '-'}</div>
+                          <div className="text-slate-500">
+                            {item.tanggal || formatDate(item.tanggalPengajuan)}
+                          </div>
                         </TableCell>
 
                         {/* INLINE EDIT STATUS BADGE */}
                         <TableCell className="px-4 py-3">
                           <Select
                             value={item.statusPengajuan}
-                            onValueChange={(val: any) => void handleInlineStatusChange(item.id, val)}
+                            onValueChange={(val: any) =>
+                              void handleInlineStatusChange(item.id, val)
+                            }
                           >
-                            <SelectTrigger className="h-7 border-none bg-transparent p-0 focus:ring-0 shadow-none w-auto">
-                              <Badge variant="outline" className={cn("text-xs font-medium cursor-pointer hover:opacity-80 transition flex items-center gap-1", statusCfg.cls)}>
+                            <SelectTrigger className="h-7 w-auto border-none bg-transparent p-0 shadow-none focus:ring-0">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'flex cursor-pointer items-center gap-1 text-xs font-medium transition hover:opacity-80',
+                                  statusCfg.cls
+                                )}
+                              >
                                 {statusCfg.label}
                                 <ChevronDown className="h-3 w-3 opacity-60" />
                               </Badge>
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="pending" className="text-xs">Pending</SelectItem>
-                              <SelectItem value="diproses" className="text-xs">Diproses</SelectItem>
-                              <SelectItem value="approved" className="text-xs">Approved</SelectItem>
-                              <SelectItem value="rejected" className="text-xs">Rejected</SelectItem>
+                              <SelectItem value="pending" className="text-xs">
+                                Pending
+                              </SelectItem>
+                              <SelectItem value="diproses" className="text-xs">
+                                Diproses
+                              </SelectItem>
+                              <SelectItem value="approved" className="text-xs">
+                                Approved
+                              </SelectItem>
+                              <SelectItem value="rejected" className="text-xs">
+                                Rejected
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -2693,156 +3052,225 @@ function DaftarPengajuanTab({
                         <TableCell className="px-4 py-3 text-xs">
                           <HighlightText value={item.pemohon} query={query} />
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-xs font-mono font-semibold text-right text-slate-900">
-                          {item.totalAmount ? formatCurrency(item.totalAmount) : "-"}
+                        <TableCell className="px-4 py-3 text-right font-mono text-xs font-semibold text-slate-900">
+                          {item.totalAmount ? formatCurrency(item.totalAmount) : '-'}
                         </TableCell>
 
                         {/* INLINE EDIT NO WO TERBIT */}
                         <TableCell className="px-4 py-3 font-mono text-xs">
                           <Input
-                            defaultValue={item.noWoTerbit || ""}
+                            defaultValue={item.noWoTerbit || ''}
                             placeholder="Ketik No WO..."
                             onBlur={(e) => {
                               const val = e.target.value.trim()
-                              if (val !== (item.noWoTerbit || "")) {
+                              if (val !== (item.noWoTerbit || '')) {
                                 void handleInlineNoWoTerbit(item.id, val)
                               }
                             }}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") {
+                              if (e.key === 'Enter') {
                                 const val = (e.target as HTMLInputElement).value.trim()
-                                if (val !== (item.noWoTerbit || "")) {
+                                if (val !== (item.noWoTerbit || '')) {
                                   void handleInlineNoWoTerbit(item.id, val)
                                 }
                               }
                             }}
-                            className="h-8 text-xs border-slate-200 focus:border-indigo-500 font-mono w-28 bg-white"
+                            className="h-8 w-28 border-slate-200 bg-white font-mono text-xs focus:border-indigo-500"
                           />
                         </TableCell>
                       </TableRow>
 
                       {/* Collapsible Expanded Detail Sub-row with Inline Editing */}
                       {isExpanded && (
-                        <TableRow className="bg-slate-50/90 border-b border-slate-200">
+                        <TableRow className="border-b border-slate-200 bg-slate-50/90">
                           <TableCell colSpan={12} className="p-3 pl-10">
-                            <div className="rounded-xl border border-indigo-100 bg-white p-3 shadow-inner space-y-2">
-                              <div className="flex items-center justify-between text-xs border-b border-slate-100 pb-2">
-                                <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <div className="space-y-2 rounded-xl border border-indigo-100 bg-white p-3 shadow-inner">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-2 text-xs">
+                                <span className="flex items-center gap-1.5 font-bold text-slate-800">
                                   <Layers className="h-3.5 w-3.5 text-indigo-600" />
-                                  Rincian Pekerjaan ({parsedItems.length > 0 ? parsedItems.length : 1} Baris Item - Bisa Edit Inline)
+                                  Rincian Pekerjaan (
+                                  {parsedItems.length > 0 ? parsedItems.length : 1} Baris Item -
+                                  Bisa Edit Inline)
                                 </span>
-                                <Badge variant="outline" className="text-[10px] font-mono text-indigo-700 bg-indigo-50/50">
+                                <Badge
+                                  variant="outline"
+                                  className="bg-indigo-50/50 font-mono text-[10px] text-indigo-700"
+                                >
                                   {item.noPengajuan}
                                 </Badge>
                               </div>
 
                               {parsedItems.length > 0 ? (
                                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                                  <Table className="text-xs w-full bg-white">
-                                    <TableHeader className="bg-slate-100/90 text-slate-700 font-semibold">
+                                  <Table className="w-full bg-white text-xs">
+                                    <TableHeader className="bg-slate-100/90 font-semibold text-slate-700">
                                       <TableRow className="h-8">
-                                        <TableHead className="h-8 px-2 text-center w-8">#</TableHead>
-                                        {item.jenisPengajuan === "service" ? (
+                                        <TableHead className="h-8 w-8 px-2 text-center">
+                                          #
+                                        </TableHead>
+                                        {item.jenisPengajuan === 'service' ? (
                                           <>
                                             <TableHead className="h-8 px-2">Description</TableHead>
                                             <TableHead className="h-8 px-2">Job</TableHead>
                                             <TableHead className="h-8 px-2">Serial No</TableHead>
-                                            <TableHead className="h-8 px-2">Customer / Site</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Nomor PO</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Date PO</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Nomor WO</TableHead>
-                                            <TableHead className="h-8 px-2 text-right">Price</TableHead>
+                                            <TableHead className="h-8 px-2">
+                                              Customer / Site
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Nomor PO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Date PO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Nomor WO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 text-right">
+                                              Price
+                                            </TableHead>
                                           </>
                                         ) : (
                                           <>
-                                            <TableHead className="h-8 px-2">Description (Tire SN)</TableHead>
+                                            <TableHead className="h-8 px-2">
+                                              Description (Tire SN)
+                                            </TableHead>
                                             <TableHead className="h-8 px-2">Unit / Pos</TableHead>
-                                            <TableHead className="h-8 px-2">Customer / Site</TableHead>
+                                            <TableHead className="h-8 px-2">
+                                              Customer / Site
+                                            </TableHead>
                                             <TableHead className="h-8 px-2">Size</TableHead>
                                             <TableHead className="h-8 px-2">Category</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Nomor PO</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Date PO</TableHead>
-                                            <TableHead className="h-8 px-2 font-mono">Nomor WO</TableHead>
-                                            <TableHead className="h-8 px-2 text-right">Price</TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Nomor PO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Date PO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 font-mono">
+                                              Nomor WO
+                                            </TableHead>
+                                            <TableHead className="h-8 px-2 text-right">
+                                              Price
+                                            </TableHead>
                                           </>
                                         )}
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody className="divide-y divide-slate-100">
                                       {parsedItems.map((sub: any, subIdx: number) => (
-                                        <TableRow key={subIdx} className="h-9 hover:bg-slate-50/80 font-mono text-xs">
-                                          <TableCell className="px-2 text-center font-sans text-slate-400 font-semibold">{subIdx + 1}</TableCell>
-                                          {item.jenisPengajuan === "service" ? (
+                                        <TableRow
+                                          key={subIdx}
+                                          className="h-9 font-mono text-xs hover:bg-slate-50/80"
+                                        >
+                                          <TableCell className="px-2 text-center font-sans font-semibold text-slate-400">
+                                            {subIdx + 1}
+                                          </TableCell>
+                                          {item.jenisPengajuan === 'service' ? (
                                             <>
                                               <TableCell className="px-2 font-sans font-medium text-slate-900">
                                                 <Input
-                                                  defaultValue={sub.description || ""}
+                                                  defaultValue={sub.description || ''}
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.description || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "description", val)
+                                                    if (val !== (sub.description || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'description',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-sans font-medium bg-white w-36"
+                                                  className="h-7 w-36 border-slate-200 bg-white font-sans text-xs font-medium"
                                                 />
                                               </TableCell>
-                                              <TableCell className="px-2 font-sans text-slate-600">{sub.job || "-"}</TableCell>
-                                              <TableCell className="px-2 font-mono text-indigo-700 font-bold">
+                                              <TableCell className="px-2 font-sans text-slate-600">
+                                                {sub.job || '-'}
+                                              </TableCell>
+                                              <TableCell className="px-2 font-mono font-bold text-indigo-700">
                                                 <Input
-                                                  defaultValue={sub.serialNo || ""}
+                                                  defaultValue={sub.serialNo || ''}
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.serialNo || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "serialNo", val)
+                                                    if (val !== (sub.serialNo || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'serialNo',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono font-bold text-indigo-700 bg-white w-32"
+                                                  className="h-7 w-32 border-slate-200 bg-white font-mono text-xs font-bold text-indigo-700"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
-                                                {sub.customer || item.customer} {sub.site ? `(${sub.site})` : ""}
+                                                {sub.customer || item.customer}{' '}
+                                                {sub.site ? `(${sub.site})` : ''}
                                               </TableCell>
                                               <TableCell className="px-2 font-mono text-slate-600">
                                                 <Input
-                                                  defaultValue={sub.noPo || item.noPo || ""}
+                                                  defaultValue={sub.noPo || item.noPo || ''}
                                                   placeholder="No PO"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.noPo || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "noPo", val)
+                                                    if (val !== (sub.noPo || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'noPo',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-28"
+                                                  className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-mono text-slate-600">
                                                 <Input
                                                   type="date"
-                                                  defaultValue={sub.tanggalPo || item.tanggalPo || ""}
+                                                  defaultValue={
+                                                    sub.tanggalPo || item.tanggalPo || ''
+                                                  }
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.tanggalPo || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "tanggalPo", val)
+                                                    if (val !== (sub.tanggalPo || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'tanggalPo',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-32"
+                                                  className="h-7 w-32 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-mono font-semibold text-slate-800">
                                                 <Input
-                                                  defaultValue={sub.noWoCp || item.noWoCp || item.noWoTerbit || ""}
+                                                  defaultValue={
+                                                    sub.noWoCp ||
+                                                    item.noWoCp ||
+                                                    item.noWoTerbit ||
+                                                    ''
+                                                  }
                                                   placeholder="No WO"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.noWoCp || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "noWoCp", val)
+                                                    if (val !== (sub.noWoCp || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'noWoCp',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-28"
+                                                  className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
-                                              <TableCell className="px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                                                {sub.price ? formatCurrency(sub.price) : "-"}
+                                              <TableCell className="px-2 text-right font-mono font-bold whitespace-nowrap text-slate-900">
+                                                {sub.price ? formatCurrency(sub.price) : '-'}
                                               </TableCell>
                                             </>
                                           ) : (
@@ -2850,79 +3278,119 @@ function DaftarPengajuanTab({
                                               {/* TIRE SN / DESCRIPTION INLINE EDIT */}
                                               <TableCell className="px-2 font-mono font-bold text-indigo-700">
                                                 <Input
-                                                  defaultValue={sub.description || item.tireSn || ""}
+                                                  defaultValue={
+                                                    sub.description || item.tireSn || ''
+                                                  }
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.description || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "description", val)
+                                                    if (val !== (sub.description || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'description',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono font-bold text-indigo-700 bg-white w-36"
+                                                  className="h-7 w-36 border-slate-200 bg-white font-mono text-xs font-bold text-indigo-700"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
                                                 <Input
-                                                  defaultValue={sub.noUnit || ""}
+                                                  defaultValue={sub.noUnit || ''}
                                                   placeholder="Unit"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.noUnit || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "noUnit", val)
+                                                    if (val !== (sub.noUnit || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'noUnit',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-sans bg-white w-20"
+                                                  className="h-7 w-20 border-slate-200 bg-white font-sans text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
-                                                {sub.customer || item.customer} {sub.site ? `(${sub.site})` : ""}
+                                                {sub.customer || item.customer}{' '}
+                                                {sub.site ? `(${sub.site})` : ''}
                                               </TableCell>
-                                              <TableCell className="px-2 font-mono font-semibold text-slate-800">{sub.size || "-"}</TableCell>
+                                              <TableCell className="px-2 font-mono font-semibold text-slate-800">
+                                                {sub.size || '-'}
+                                              </TableCell>
                                               <TableCell className="px-2">
-                                                <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-medium bg-slate-100 text-slate-800">
-                                                  {sub.category || "R1"}
+                                                <Badge
+                                                  variant="secondary"
+                                                  className="bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-800"
+                                                >
+                                                  {sub.category || 'R1'}
                                                 </Badge>
                                               </TableCell>
                                               <TableCell className="px-2 font-mono text-slate-600">
                                                 <Input
-                                                  defaultValue={sub.noPo || item.noPo || ""}
+                                                  defaultValue={sub.noPo || item.noPo || ''}
                                                   placeholder="No PO"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.noPo || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "noPo", val)
+                                                    if (val !== (sub.noPo || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'noPo',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-28"
+                                                  className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-mono text-slate-600">
                                                 <Input
                                                   type="date"
-                                                  defaultValue={sub.tanggalPo || item.tanggalPo || ""}
+                                                  defaultValue={
+                                                    sub.tanggalPo || item.tanggalPo || ''
+                                                  }
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.tanggalPo || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "tanggalPo", val)
+                                                    if (val !== (sub.tanggalPo || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'tanggalPo',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-32"
+                                                  className="h-7 w-32 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-mono font-semibold text-slate-800">
                                                 <Input
-                                                  defaultValue={sub.noWoCp || item.noWoCp || item.noWoTerbit || ""}
+                                                  defaultValue={
+                                                    sub.noWoCp ||
+                                                    item.noWoCp ||
+                                                    item.noWoTerbit ||
+                                                    ''
+                                                  }
                                                   placeholder="No WO"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
-                                                    if (val !== (sub.noWoCp || "")) {
-                                                      void handleInlineSubItemUpdate(item, subIdx, "noWoCp", val)
+                                                    if (val !== (sub.noWoCp || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'noWoCp',
+                                                        val
+                                                      )
                                                     }
                                                   }}
-                                                  className="h-7 text-xs border-slate-200 font-mono bg-white w-28"
+                                                  className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
-                                              <TableCell className="px-2 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
-                                                {sub.price ? formatCurrency(sub.price) : "-"}
+                                              <TableCell className="px-2 text-right font-mono font-bold whitespace-nowrap text-emerald-700">
+                                                {sub.price ? formatCurrency(sub.price) : '-'}
                                               </TableCell>
                                             </>
                                           )}
@@ -2932,8 +3400,13 @@ function DaftarPengajuanTab({
                                   </Table>
                                 </div>
                               ) : (
-                                <div className="text-xs text-slate-500 italic py-1">
-                                  Tire SN / Serial No: <span className="font-mono font-bold text-indigo-700">{item.tireSn || "-"}</span> | Customer: {item.customer} | Site: {item.site || "-"} | PO: {item.noPo || "-"}
+                                <div className="py-1 text-xs text-slate-500 italic">
+                                  Tire SN / Serial No:{' '}
+                                  <span className="font-mono font-bold text-indigo-700">
+                                    {item.tireSn || '-'}
+                                  </span>{' '}
+                                  | Customer: {item.customer} | Site: {item.site || '-'} | PO:{' '}
+                                  {item.noPo || '-'}
                                 </div>
                               )}
                             </div>
@@ -2965,8 +3438,8 @@ function MasterDataCaiTab({
   canEdit?: boolean
   canDelete?: boolean
 }) {
-  const [query, setQuery] = useState("")
-  const [customerFilter, setCustomerFilter] = useState("all")
+  const [query, setQuery] = useState('')
+  const [customerFilter, setCustomerFilter] = useState('all')
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
   // Dialog states
@@ -2984,7 +3457,7 @@ function MasterDataCaiTab({
       size: item.size,
       brand: item.brand,
       cai: item.cai,
-      type: "Tire Repair",
+      type: 'Tire Repair',
     }))
     const fallbackOther = INITIAL_OTHER_CAI.map((item, idx) => ({
       id: idx + 100,
@@ -2992,7 +3465,7 @@ function MasterDataCaiTab({
       size: item.size,
       brand: item.brand,
       cai: item.cai,
-      type: "Tire Repair",
+      type: 'Tire Repair',
     }))
     return [...fallbackKpc, ...fallbackOther]
   }, [data])
@@ -3001,12 +3474,12 @@ function MasterDataCaiTab({
     const q = query.trim().toLowerCase()
     return listData.filter((item) => {
       const matchesCustomer =
-        customerFilter === "all" ||
-        (customerFilter === "kpc" && item.customer === "PT Kaltim Prima Coal") ||
-        (customerFilter === "other" && item.customer === "OTHER CUSTOMER")
+        customerFilter === 'all' ||
+        (customerFilter === 'kpc' && item.customer === 'PT Kaltim Prima Coal') ||
+        (customerFilter === 'other' && item.customer === 'OTHER CUSTOMER')
       const matchesQuery =
         !q ||
-        [item.customer, item.size, item.brand, item.cai, `${item.size}${item.brand || ""}`]
+        [item.customer, item.size, item.brand, item.cai, `${item.size}${item.brand || ''}`]
           .map((v) => nv(v).toLowerCase())
           .some((v) => v.includes(q))
       return matchesCustomer && matchesQuery
@@ -3022,22 +3495,22 @@ function MasterDataCaiTab({
 
   async function handleExport() {
     if (filtered.length === 0) {
-      toast.error("Tidak ada data CAI untuk diekspor")
+      toast.error('Tidak ada data CAI untuk diekspor')
       return
     }
     const rows = filtered.map((item) => ({
       Customer: item.customer,
       Type: item.type,
       SIZE: item.size,
-      BRAND: item.brand || "-",
-      Merge: `${item.size}${item.brand || ""}`,
+      BRAND: item.brand || '-',
+      Merge: `${item.size}${item.brand || ''}`,
       CAI: item.cai,
     }))
-    const XLSX = await import("xlsx")
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Master CAI")
-    XLSX.writeFile(wb, `Master_Data_CAI_${new Date().toISOString().split("T")[0]}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Master CAI')
+    XLSX.writeFile(wb, `Master_Data_CAI_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
 
   function handleOpenAdd() {
@@ -3057,12 +3530,12 @@ function MasterDataCaiTab({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 rounded-2xl py-0 shadow-sm">
         <CardContent className="px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 flex-1 max-w-lg">
+            <div className="flex max-w-lg flex-1 items-center gap-2">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -3083,12 +3556,21 @@ function MasterDataCaiTab({
             </div>
 
             <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" className="h-10 rounded-xl shrink-0 text-xs" onClick={() => void handleExport()}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 shrink-0 rounded-xl text-xs"
+                onClick={() => void handleExport()}
+              >
                 <Download className="mr-1.5 h-4 w-4" />
                 Export Excel
               </Button>
               {canEdit && (
-                <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
+                <Button
+                  type="button"
+                  onClick={handleOpenAdd}
+                  className="h-10 rounded-xl bg-violet-600 text-xs font-semibold text-white shadow-sm hover:bg-violet-700"
+                >
                   <Plus className="mr-1.5 h-4 w-4" />
                   Tambah CAI
                 </Button>
@@ -3098,12 +3580,12 @@ function MasterDataCaiTab({
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 overflow-hidden rounded-2xl py-0 shadow-sm">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
-                <TableHead className="px-4 py-3 w-28">Aksi</TableHead>
+                <TableHead className="w-28 px-4 py-3">Aksi</TableHead>
                 <TableHead className="px-4 py-3">Customer</TableHead>
                 <TableHead className="px-4 py-3">Type</TableHead>
                 <TableHead className="px-4 py-3">SIZE</TableHead>
@@ -3115,7 +3597,7 @@ function MasterDataCaiTab({
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-muted-foreground h-32 text-center">
                     Tidak ada data Master Data CAI yang cocok.
                   </TableCell>
                 </TableRow>
@@ -3132,7 +3614,11 @@ function MasterDataCaiTab({
                           title="Salin Kode CAI"
                           onClick={() => handleCopyCai(item.cai)}
                         >
-                          {copiedCode === item.cai ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                          {copiedCode === item.cai ? (
+                            <Check className="h-4 w-4 text-emerald-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
                         </Button>
                         {canEdit && (
                           <Button
@@ -3161,13 +3647,23 @@ function MasterDataCaiTab({
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs font-semibold text-slate-900">
-                      <Badge variant="outline" className={item.customer === "PT Kaltim Prima Coal" ? "border-purple-200 bg-purple-50 text-purple-700 font-bold" : "border-slate-200 bg-slate-100 text-slate-700 font-bold"}>
+                      <Badge
+                        variant="outline"
+                        className={
+                          item.customer === 'PT Kaltim Prima Coal'
+                            ? 'border-purple-200 bg-purple-50 font-bold text-purple-700'
+                            : 'border-slate-200 bg-slate-100 font-bold text-slate-700'
+                        }
+                      >
                         {item.customer}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs">
-                      <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700 font-semibold text-xs">
-                        {item.type || "Tire Repair"}
+                      <Badge
+                        variant="outline"
+                        className="border-violet-200 bg-violet-50 text-xs font-semibold text-violet-700"
+                      >
+                        {item.type || 'Tire Repair'}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 py-3 font-mono text-xs font-bold text-slate-900">
@@ -3175,7 +3671,10 @@ function MasterDataCaiTab({
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs">
                       {item.brand ? (
-                        <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-xs">
+                        <Badge
+                          variant="outline"
+                          className="border-indigo-200 bg-indigo-50 text-xs font-semibold text-indigo-700"
+                        >
                           <HighlightText value={item.brand} query={query} />
                         </Badge>
                       ) : (
@@ -3183,10 +3682,10 @@ function MasterDataCaiTab({
                       )}
                     </TableCell>
                     <TableCell className="px-4 py-3 font-mono text-xs text-slate-500">
-                      {`${item.size}${item.brand || ""}`}
+                      {`${item.size}${item.brand || ''}`}
                     </TableCell>
                     <TableCell className="px-4 py-3">
-                      <span className="font-mono font-extrabold text-violet-700 bg-violet-50 px-2.5 py-1 rounded-lg border border-violet-200 text-xs inline-block shadow-xs">
+                      <span className="inline-block rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 font-mono text-xs font-extrabold text-violet-700 shadow-xs">
                         <HighlightText value={item.cai} query={query} />
                       </span>
                     </TableCell>
@@ -3231,26 +3730,26 @@ function CreateOrEditCaiModal({
   onSuccess: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const [customer, setCustomer] = useState("OTHER CUSTOMER")
-  const [size, setSize] = useState("")
-  const [brand, setBrand] = useState("")
-  const [cai, setCai] = useState("")
-  const [type, setType] = useState("Tire Repair")
+  const [customer, setCustomer] = useState('OTHER CUSTOMER')
+  const [size, setSize] = useState('')
+  const [brand, setBrand] = useState('')
+  const [cai, setCai] = useState('')
+  const [type, setType] = useState('Tire Repair')
 
   useEffect(() => {
     if (open) {
       if (editItem) {
-        setCustomer(editItem.customer || "OTHER CUSTOMER")
-        setSize(editItem.size || "")
-        setBrand(editItem.brand || "")
-        setCai(editItem.cai || "")
-        setType(editItem.type || "Tire Repair")
+        setCustomer(editItem.customer || 'OTHER CUSTOMER')
+        setSize(editItem.size || '')
+        setBrand(editItem.brand || '')
+        setCai(editItem.cai || '')
+        setType(editItem.type || 'Tire Repair')
       } else {
-        setCustomer("OTHER CUSTOMER")
-        setSize("")
-        setBrand("")
-        setCai("")
-        setType("Tire Repair")
+        setCustomer('OTHER CUSTOMER')
+        setSize('')
+        setBrand('')
+        setCai('')
+        setType('Tire Repair')
       }
     }
   }, [open, editItem])
@@ -3258,11 +3757,11 @@ function CreateOrEditCaiModal({
   const handleSubmit = () => {
     startTransition(async () => {
       const payload = {
-        customer: customer || "OTHER CUSTOMER",
-        size: size || "-",
+        customer: customer || 'OTHER CUSTOMER',
+        size: size || '-',
         brand: brand || undefined,
-        cai: cai || "-",
-        type: type || "Tire Repair",
+        cai: cai || '-',
+        type: type || 'Tire Repair',
       }
 
       let result
@@ -3273,11 +3772,15 @@ function CreateOrEditCaiModal({
       }
 
       if (result.success) {
-        toast.success(editItem ? "Master Data CAI berhasil diperbarui!" : "Master Data CAI berhasil ditambahkan!")
+        toast.success(
+          editItem
+            ? 'Master Data CAI berhasil diperbarui!'
+            : 'Master Data CAI berhasil ditambahkan!'
+        )
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(result.error ?? "Gagal menyimpan Master Data CAI")
+        toast.error(result.error ?? 'Gagal menyimpan Master Data CAI')
       }
     })
   }
@@ -3288,10 +3791,11 @@ function CreateOrEditCaiModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Database className="h-5 w-5 text-violet-600" />
-            {editItem ? "Edit Master Data CAI" : "Tambah Master Data CAI Baru"}
+            {editItem ? 'Edit Master Data CAI' : 'Tambah Master Data CAI Baru'}
           </DialogTitle>
           <DialogDescription>
-            Isi atau ubah informasi referensi Kode CAI. Seluruh kolom bersifat opsional (tidak ada yang wajib).
+            Isi atau ubah informasi referensi Kode CAI. Seluruh kolom bersifat opsional (tidak ada
+            yang wajib).
           </DialogDescription>
         </DialogHeader>
 
@@ -3316,7 +3820,7 @@ function CreateOrEditCaiModal({
                 value={size}
                 onChange={(e) => setSize(e.target.value)}
                 placeholder="e.g. 53/80R63 / 27.00 R 49"
-                className="h-9 bg-white text-xs font-mono"
+                className="h-9 bg-white font-mono text-xs"
               />
             </div>
 
@@ -3338,7 +3842,7 @@ function CreateOrEditCaiModal({
                 value={cai}
                 onChange={(e) => setCai(e.target.value)}
                 placeholder="e.g. 615163A101 / 699149C101"
-                className="h-9 bg-white text-xs font-mono font-bold text-violet-700"
+                className="h-9 bg-white font-mono text-xs font-bold text-violet-700"
               />
             </div>
 
@@ -3355,11 +3859,21 @@ function CreateOrEditCaiModal({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             Batal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={isPending} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold">
-            {isPending ? "Menyimpan..." : editItem ? "Simpan Perubahan" : "Tambah CAI"}
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isPending}
+            className="bg-violet-600 font-semibold text-white hover:bg-violet-700"
+          >
+            {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan' : 'Tambah CAI'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -3387,11 +3901,11 @@ function DeleteCaiModal({
     startTransition(async () => {
       const result = await deleteMasterDataCai(item.id)
       if (result.success) {
-        toast.success("Master Data CAI berhasil dihapus")
+        toast.success('Master Data CAI berhasil dihapus')
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(result.error ?? "Gagal menghapus Master Data CAI")
+        toast.error(result.error ?? 'Gagal menghapus Master Data CAI')
       }
     })
   }
@@ -3402,15 +3916,22 @@ function DeleteCaiModal({
         <DialogHeader>
           <DialogTitle>Hapus Master Data CAI?</DialogTitle>
           <DialogDescription>
-            Master Data CAI Kode <span className="font-semibold font-mono text-violet-700">{item?.cai}</span> ({item?.customer} - {item?.size}) akan dihapus.
+            Master Data CAI Kode{' '}
+            <span className="font-mono font-semibold text-violet-700">{item?.cai}</span> (
+            {item?.customer} - {item?.size}) akan dihapus.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             Batal
           </Button>
           <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
-            {isPending ? "Menghapus..." : "Hapus CAI"}
+            {isPending ? 'Menghapus...' : 'Hapus CAI'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -3421,21 +3942,21 @@ function DeleteCaiModal({
 // ─── Master Price Repair & Retread Tab Components ───────────────────────────────
 
 const PRESET_TIRE_SIZES = [
-  "27.00R49",
-  "12.00R24",
-  "11.00R20",
-  "13.00R22.5",
-  "16.00R25",
-  "18.00R33",
-  "20.50R25",
-  "24.00R35",
-  "23.50R35",
-  "26.5R25",
-  "29.50R25",
-  "325/95R24",
-  "33.R51",
-  "37R57",
-  "35/65R33",
+  '27.00R49',
+  '12.00R24',
+  '11.00R20',
+  '13.00R22.5',
+  '16.00R25',
+  '18.00R33',
+  '20.50R25',
+  '24.00R35',
+  '23.50R35',
+  '26.5R25',
+  '29.50R25',
+  '325/95R24',
+  '33.R51',
+  '37R57',
+  '35/65R33',
 ] as const
 
 function CreateOrEditPriceDialog({
@@ -3452,14 +3973,14 @@ function CreateOrEditPriceDialog({
   onSuccess: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const [category, setCategory] = useState<"Repair" | "Retread">("Repair")
-  const [selectedCustomer, setSelectedCustomer] = useState("OTHER CUSTOMER")
-  const [customCustomer, setCustomCustomer] = useState("")
-  const [selectedSize, setSelectedSize] = useState("27.00R49")
-  const [customSize, setCustomSize] = useState("")
-  const [damageType, setDamageType] = useState<"R1" | "R2" | "R3">("R1")
-  const [site, setSite] = useState("")
-  const [price, setPrice] = useState("")
+  const [category, setCategory] = useState<'Repair' | 'Retread'>('Repair')
+  const [selectedCustomer, setSelectedCustomer] = useState('OTHER CUSTOMER')
+  const [customCustomer, setCustomCustomer] = useState('')
+  const [selectedSize, setSelectedSize] = useState('27.00R49')
+  const [customSize, setCustomSize] = useState('')
+  const [damageType, setDamageType] = useState<'R1' | 'R2' | 'R3'>('R1')
+  const [site, setSite] = useState('')
+  const [price, setPrice] = useState('')
 
   const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
 
@@ -3469,7 +3990,8 @@ function CreateOrEditPriceDialog({
 
     const addCust = (name: string, code?: string) => {
       const trimmed = name.trim()
-      if (!trimmed || trimmed.toUpperCase() === "OTHER CUSTOMER" || seen.has(trimmed.toLowerCase())) return
+      if (!trimmed || trimmed.toUpperCase() === 'OTHER CUSTOMER' || seen.has(trimmed.toLowerCase()))
+        return
       seen.add(trimmed.toLowerCase())
       list.push({ name: trimmed, code })
     }
@@ -3479,21 +4001,21 @@ function CreateOrEditPriceDialog({
     }
 
     const PRESETS = [
-      "PT Kaltim Prima Coal",
-      "PT Berau Coal",
-      "PT Adaro Indonesia",
-      "PT Bukit Asam Tbk",
-      "PT Freeport Indonesia",
-      "PT Arutmin Indonesia",
-      "PT Saptaindra Sejati",
-      "PT Pamapersada Nusantara",
-      "PT Putra Perkasa Abadi",
-      "PT Darma Henwa Tbk",
-      "PT Delta Dunia Makmur Tbk (BUMA)",
-      "PT Vale Indonesia Tbk",
-      "PT Amman Mineral Nusa Tenggara",
-      "PT Borneo Indobara",
-      "PT Kideco Jaya Agung",
+      'PT Kaltim Prima Coal',
+      'PT Berau Coal',
+      'PT Adaro Indonesia',
+      'PT Bukit Asam Tbk',
+      'PT Freeport Indonesia',
+      'PT Arutmin Indonesia',
+      'PT Saptaindra Sejati',
+      'PT Pamapersada Nusantara',
+      'PT Putra Perkasa Abadi',
+      'PT Darma Henwa Tbk',
+      'PT Delta Dunia Makmur Tbk (BUMA)',
+      'PT Vale Indonesia Tbk',
+      'PT Amman Mineral Nusa Tenggara',
+      'PT Borneo Indobara',
+      'PT Kideco Jaya Agung',
     ]
     PRESETS.forEach((p) => addCust(p))
 
@@ -3503,57 +4025,56 @@ function CreateOrEditPriceDialog({
   useEffect(() => {
     if (open) {
       if (editItem) {
-        setCategory((editItem.category as any) || "Repair")
-        const cust = editItem.customer || "OTHER CUSTOMER"
+        setCategory((editItem.category as any) || 'Repair')
+        const cust = editItem.customer || 'OTHER CUSTOMER'
         const foundCust = allCustomerOptions.find((c) => c.name === cust || c.code === cust)
         if (foundCust) {
           setSelectedCustomer(foundCust.name)
-          setCustomCustomer("")
-        } else if (cust === "OTHER CUSTOMER") {
-          setSelectedCustomer("OTHER CUSTOMER")
-          setCustomCustomer("")
+          setCustomCustomer('')
+        } else if (cust === 'OTHER CUSTOMER') {
+          setSelectedCustomer('OTHER CUSTOMER')
+          setCustomCustomer('')
         } else {
-          setSelectedCustomer("OTHER CUSTOMER")
+          setSelectedCustomer('OTHER CUSTOMER')
           setCustomCustomer(cust)
         }
 
-        const sz = editItem.size || ""
+        const sz = editItem.size || ''
         if (PRESET_TIRE_SIZES.includes(sz as any)) {
           setSelectedSize(sz)
-          setCustomSize("")
+          setCustomSize('')
         } else {
-          setSelectedSize("__custom__")
+          setSelectedSize('__custom__')
           setCustomSize(sz)
         }
 
-        setDamageType((editItem.damageType as any) || "R1")
-        setSite(editItem.site || "")
-        setPrice(editItem.price ? String(editItem.price) : "")
+        setDamageType((editItem.damageType as any) || 'R1')
+        setSite(editItem.site || '')
+        setPrice(editItem.price ? String(editItem.price) : '')
       } else {
-        setCategory("Repair")
-        setSelectedCustomer("OTHER CUSTOMER")
-        setCustomCustomer("")
-        setSelectedSize("27.00R49")
-        setCustomSize("")
-        setDamageType("R1")
-        setSite("")
-        setPrice("")
+        setCategory('Repair')
+        setSelectedCustomer('OTHER CUSTOMER')
+        setCustomCustomer('')
+        setSelectedSize('27.00R49')
+        setCustomSize('')
+        setDamageType('R1')
+        setSite('')
+        setPrice('')
       }
     }
   }, [open, editItem, allCustomerOptions])
 
   const finalCustomerName =
-    selectedCustomer === "OTHER CUSTOMER"
-      ? customCustomer.trim() || "OTHER CUSTOMER"
+    selectedCustomer === 'OTHER CUSTOMER'
+      ? customCustomer.trim() || 'OTHER CUSTOMER'
       : selectedCustomer.trim()
 
-  const finalSizeName =
-    selectedSize === "__custom__" ? customSize.trim() : selectedSize.trim()
+  const finalSizeName = selectedSize === '__custom__' ? customSize.trim() : selectedSize.trim()
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!finalSizeName) {
-      toast.error("Size Tire wajib diisi")
+      toast.error('Size Tire wajib diisi')
       return
     }
 
@@ -3576,14 +4097,12 @@ function CreateOrEditPriceDialog({
 
       if (res.success) {
         toast.success(
-          editItem
-            ? "Master Price berhasil diperbarui"
-            : "Master Price berhasil ditambahkan"
+          editItem ? 'Master Price berhasil diperbarui' : 'Master Price berhasil ditambahkan'
         )
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(res.error ?? "Gagal menyimpan Master Price")
+        toast.error(res.error ?? 'Gagal menyimpan Master Price')
       }
     })
   }
@@ -3592,9 +4111,7 @@ function CreateOrEditPriceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {editItem ? "Edit Master Price" : "Tambah Master Price Baru"}
-          </DialogTitle>
+          <DialogTitle>{editItem ? 'Edit Master Price' : 'Tambah Master Price Baru'}</DialogTitle>
           <DialogDescription>
             Isi detail kategori, customer, ukuran ban, tingkat kerusakan, dan harga.
           </DialogDescription>
@@ -3606,22 +4123,22 @@ function CreateOrEditPriceDialog({
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
-                variant={category === "Repair" ? "default" : "outline"}
-                onClick={() => setCategory("Repair")}
+                variant={category === 'Repair' ? 'default' : 'outline'}
+                onClick={() => setCategory('Repair')}
                 className={cn(
-                  "h-10 text-xs font-semibold rounded-xl",
-                  category === "Repair" && "bg-violet-600 hover:bg-violet-700 text-white"
+                  'h-10 rounded-xl text-xs font-semibold',
+                  category === 'Repair' && 'bg-violet-600 text-white hover:bg-violet-700'
                 )}
               >
                 Repair
               </Button>
               <Button
                 type="button"
-                variant={category === "Retread" ? "default" : "outline"}
-                onClick={() => setCategory("Retread")}
+                variant={category === 'Retread' ? 'default' : 'outline'}
+                onClick={() => setCategory('Retread')}
                 className={cn(
-                  "h-10 text-xs font-semibold rounded-xl",
-                  category === "Retread" && "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  'h-10 rounded-xl text-xs font-semibold',
+                  category === 'Retread' && 'bg-emerald-600 text-white hover:bg-emerald-700'
                 )}
               >
                 Retread
@@ -3641,8 +4158,8 @@ function CreateOrEditPriceDialog({
                   className="h-10 w-full justify-between rounded-xl text-xs font-normal"
                 >
                   <span className="truncate">
-                    {selectedCustomer === "OTHER CUSTOMER"
-                      ? "OTHER CUSTOMER (Input Manual / Lainnya)"
+                    {selectedCustomer === 'OTHER CUSTOMER'
+                      ? 'OTHER CUSTOMER (Input Manual / Lainnya)'
                       : selectedCustomer}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -3652,22 +4169,22 @@ function CreateOrEditPriceDialog({
                 <Command>
                   <CommandInput placeholder="Cari nama customer..." className="h-9 text-xs" />
                   <CommandList>
-                    <CommandEmpty className="py-2 text-center text-xs text-muted-foreground">
+                    <CommandEmpty className="text-muted-foreground py-2 text-center text-xs">
                       Customer tidak ditemukan.
                     </CommandEmpty>
                     <CommandGroup heading="Preset Master Customer">
                       <CommandItem
                         value="OTHER CUSTOMER"
                         onSelect={() => {
-                          setSelectedCustomer("OTHER CUSTOMER")
+                          setSelectedCustomer('OTHER CUSTOMER')
                           setCustomerPopoverOpen(false)
                         }}
-                        className="text-xs font-medium cursor-pointer"
+                        className="cursor-pointer text-xs font-medium"
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-3.5 w-3.5",
-                            selectedCustomer === "OTHER CUSTOMER" ? "opacity-100" : "opacity-0"
+                            'mr-2 h-3.5 w-3.5',
+                            selectedCustomer === 'OTHER CUSTOMER' ? 'opacity-100' : 'opacity-0'
                           )}
                         />
                         OTHER CUSTOMER (Opsi Custom)
@@ -3680,15 +4197,15 @@ function CreateOrEditPriceDialog({
                             setSelectedCustomer(c.name)
                             setCustomerPopoverOpen(false)
                           }}
-                          className="text-xs cursor-pointer"
+                          className="cursor-pointer text-xs"
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-3.5 w-3.5",
-                              selectedCustomer === c.name ? "opacity-100" : "opacity-0"
+                              'mr-2 h-3.5 w-3.5',
+                              selectedCustomer === c.name ? 'opacity-100' : 'opacity-0'
                             )}
                           />
-                          {c.name} {c.code ? `(${c.code})` : ""}
+                          {c.name} {c.code ? `(${c.code})` : ''}
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -3697,7 +4214,7 @@ function CreateOrEditPriceDialog({
               </PopoverContent>
             </Popover>
 
-            {selectedCustomer === "OTHER CUSTOMER" && (
+            {selectedCustomer === 'OTHER CUSTOMER' && (
               <div className="pt-1">
                 <Input
                   value={customCustomer}
@@ -3722,13 +4239,13 @@ function CreateOrEditPriceDialog({
                     {sz}
                   </SelectItem>
                 ))}
-                <SelectItem value="__custom__" className="text-xs font-semibold text-primary">
+                <SelectItem value="__custom__" className="text-primary text-xs font-semibold">
                   + Input Size Manual / Custom
                 </SelectItem>
               </SelectContent>
             </Select>
 
-            {selectedSize === "__custom__" && (
+            {selectedSize === '__custom__' && (
               <div className="pt-1">
                 <Input
                   value={customSize}
@@ -3749,9 +4266,15 @@ function CreateOrEditPriceDialog({
                 <SelectValue placeholder="Pilih Kerusakan" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="R1" className="text-xs">R1 (Minor Repair)</SelectItem>
-                <SelectItem value="R2" className="text-xs">R2 (Medium Repair)</SelectItem>
-                <SelectItem value="R3" className="text-xs">R3 (Major Repair / Complex)</SelectItem>
+                <SelectItem value="R1" className="text-xs">
+                  R1 (Minor Repair)
+                </SelectItem>
+                <SelectItem value="R2" className="text-xs">
+                  R2 (Medium Repair)
+                </SelectItem>
+                <SelectItem value="R3" className="text-xs">
+                  R3 (Major Repair / Complex)
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -3775,13 +4298,11 @@ function CreateOrEditPriceDialog({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="Misal: 5.000.000"
-              className="h-10 rounded-xl text-xs font-mono"
+              className="h-10 rounded-xl font-mono text-xs"
               required
             />
-            {price && !isNaN(parseFloat(price.replace(/[^0-9.-]+/g, ""))) && (
-              <p className="text-xs text-muted-foreground">
-                Preview: {formatCurrency(price)}
-              </p>
+            {price && !isNaN(parseFloat(price.replace(/[^0-9.-]+/g, ''))) && (
+              <p className="text-muted-foreground text-xs">Preview: {formatCurrency(price)}</p>
             )}
           </div>
 
@@ -3798,9 +4319,9 @@ function CreateOrEditPriceDialog({
             <Button
               type="submit"
               disabled={isPending}
-              className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold"
+              className="rounded-xl bg-violet-600 text-xs font-semibold text-white hover:bg-violet-700"
             >
-              {isPending ? "Menyimpan..." : editItem ? "Simpan Perubahan" : "Tambah Price"}
+              {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan' : 'Tambah Price'}
             </Button>
           </DialogFooter>
         </form>
@@ -3827,11 +4348,11 @@ function DeletePriceConfirmDialog({
     startTransition(async () => {
       const res = await deleteRepairMasterPrice(item.id)
       if (res.success) {
-        toast.success("Master Price berhasil dihapus")
+        toast.success('Master Price berhasil dihapus')
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(res.error ?? "Gagal menghapus Master Price")
+        toast.error(res.error ?? 'Gagal menghapus Master Price')
       }
     })
   }
@@ -3842,17 +4363,32 @@ function DeletePriceConfirmDialog({
         <DialogHeader>
           <DialogTitle>Hapus Master Price?</DialogTitle>
           <DialogDescription>
-            Master Price untuk <span className="font-semibold text-foreground">{item?.customer}</span> -{" "}
-            <span className="font-semibold text-foreground">{item?.size}</span> ({item?.damageType}) sebesar{" "}
-            <span className="font-semibold text-emerald-600">{formatCurrency(item?.price)}</span> akan dihapus permanen.
+            Master Price untuk{' '}
+            <span className="text-foreground font-semibold">{item?.customer}</span> -{' '}
+            <span className="text-foreground font-semibold">{item?.size}</span> ({item?.damageType})
+            sebesar{' '}
+            <span className="font-semibold text-emerald-600">{formatCurrency(item?.price)}</span>{' '}
+            akan dihapus permanen.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending} className="rounded-xl text-xs">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+            className="rounded-xl text-xs"
+          >
             Batal
           </Button>
-          <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending} className="rounded-xl text-xs">
-            {isPending ? "Menghapus..." : "Hapus Permanen"}
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={isPending}
+            className="rounded-xl text-xs"
+          >
+            {isPending ? 'Menghapus...' : 'Hapus Permanen'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -3887,36 +4423,36 @@ function ImportPriceCsvDialog({
   const [step, setStep] = useState<1 | 2>(1)
 
   // File & Excel state
-  const [fileName, setFileName] = useState<string>("")
+  const [fileName, setFileName] = useState<string>('')
   const [sheetNames, setSheetNames] = useState<string[]>([])
-  const [selectedSheet, setSelectedSheet] = useState<string>("")
+  const [selectedSheet, setSelectedSheet] = useState<string>('')
   const [workbookRef, setWorkbookRef] = useState<any>(null)
   const [rawRows, setRawRows] = useState<any[][]>([])
   const [headers, setHeaders] = useState<string[]>([])
 
   // Column Mapping
   const [mapping, setMapping] = useState({
-    category: "",
-    customer: "",
-    site: "",
-    size: "",
-    damageType: "",
-    price: "",
+    category: '',
+    customer: '',
+    site: '',
+    size: '',
+    damageType: '',
+    price: '',
   })
 
   // Parsed Items in Step 2
   const [parsedItems, setParsedItems] = useState<ImportedPriceRow[]>([])
 
   // Step 2 Filters & Batch Match State
-  const [filterMode, setFilterMode] = useState<"all" | "unmatched" | "matched">("all")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedUnmatched, setSelectedUnmatched] = useState<string>("")
-  const [batchTargetCustomer, setBatchTargetCustomer] = useState<string>("")
+  const [filterMode, setFilterMode] = useState<'all' | 'unmatched' | 'matched'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedUnmatched, setSelectedUnmatched] = useState<string>('')
+  const [batchTargetCustomer, setBatchTargetCustomer] = useState<string>('')
 
   // All Customer Options for Combobox/Select dropdown
   const allCustomerOptions = useMemo(() => {
     const set = new Set<string>()
-    set.add("OTHER CUSTOMER")
+    set.add('OTHER CUSTOMER')
     customerList.forEach((c) => {
       if (c.name?.trim()) set.add(c.name.trim())
     })
@@ -3927,31 +4463,31 @@ function ImportPriceCsvDialog({
   useEffect(() => {
     if (!open) {
       setStep(1)
-      setFileName("")
+      setFileName('')
       setSheetNames([])
-      setSelectedSheet("")
+      setSelectedSheet('')
       setWorkbookRef(null)
       setRawRows([])
       setHeaders([])
       setParsedItems([])
-      setMapping({ category: "", customer: "", site: "", size: "", damageType: "", price: "" })
-      setFilterMode("all")
-      setSearchQuery("")
-      setSelectedUnmatched("")
-      setBatchTargetCustomer("")
+      setMapping({ category: '', customer: '', site: '', size: '', damageType: '', price: '' })
+      setFilterMode('all')
+      setSearchQuery('')
+      setSelectedUnmatched('')
+      setBatchTargetCustomer('')
     }
   }, [open])
 
   function handleDownloadTemplate() {
     const csvContent =
-      "Category,Customer,Site,Size,DamageType,Price\n" +
-      "Repair,PT Kaltim Prima Coal,Sangatta,27.00R49,R1,5000000\n" +
-      "Retread,PT Berau Coal,Batu Hijau,12.00R24,R2,3500000\n"
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      'Category,Customer,Site,Size,DamageType,Price\n' +
+      'Repair,PT Kaltim Prima Coal,Sangatta,27.00R49,R1,5000000\n' +
+      'Retread,PT Berau Coal,Batu Hijau,12.00R24,R2,3500000\n'
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
+    const a = document.createElement('a')
     a.href = url
-    a.download = "Template_Master_Price_Repair_Retread.csv"
+    a.download = 'Template_Master_Price_Repair_Retread.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -3963,22 +4499,22 @@ function ImportPriceCsvDialog({
 
     try {
       const buffer = await file.arrayBuffer()
-      const XLSX = await import("xlsx")
-      const wb = XLSX.read(buffer, { type: "array" })
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(buffer, { type: 'array' })
       setWorkbookRef(wb)
       setSheetNames(wb.SheetNames)
-      const firstSheet = wb.SheetNames[0] || ""
+      const firstSheet = wb.SheetNames[0] || ''
       setSelectedSheet(firstSheet)
       loadSheetData(XLSX, wb, firstSheet)
     } catch (err) {
-      toast.error("Gagal membaca file Excel/CSV")
+      toast.error('Gagal membaca file Excel/CSV')
     }
   }
 
   function loadSheetData(XLSX: any, wb: any, sheetName: string) {
     const sheet = wb.Sheets[sheetName]
     if (!sheet) return
-    const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })
+    const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
     if (data.length === 0) {
       setRawRows([])
       setHeaders([])
@@ -3991,38 +4527,55 @@ function ImportPriceCsvDialog({
 
     // Auto-detect columns
     const lowerHeaders = headerRow.map((h) => h.toLowerCase())
-    const catIdx = lowerHeaders.findIndex((h) => h.includes("category") || h.includes("kategori") || h.includes("jenis"))
-    const custIdx = lowerHeaders.findIndex((h) => h.includes("customer") || h.includes("pelanggan") || h.includes("client") || h.includes("nama"))
-    const siteIdx = lowerHeaders.findIndex((h) => h.includes("site") || h.includes("lokasi") || h.includes("cabang"))
-    const sizeIdx = lowerHeaders.findIndex((h) => h.includes("size") || h.includes("ukuran") || h.includes("dimensi"))
-    const damIdx = lowerHeaders.findIndex((h) => h.includes("damage") || h.includes("kerusakan") || h.includes("r1") || h.includes("r2"))
-    const priceIdx = lowerHeaders.findIndex((h) => h.includes("price") || h.includes("harga") || h.includes("nominal") || h.includes("tarif"))
+    const catIdx = lowerHeaders.findIndex(
+      (h) => h.includes('category') || h.includes('kategori') || h.includes('jenis')
+    )
+    const custIdx = lowerHeaders.findIndex(
+      (h) =>
+        h.includes('customer') ||
+        h.includes('pelanggan') ||
+        h.includes('client') ||
+        h.includes('nama')
+    )
+    const siteIdx = lowerHeaders.findIndex(
+      (h) => h.includes('site') || h.includes('lokasi') || h.includes('cabang')
+    )
+    const sizeIdx = lowerHeaders.findIndex(
+      (h) => h.includes('size') || h.includes('ukuran') || h.includes('dimensi')
+    )
+    const damIdx = lowerHeaders.findIndex(
+      (h) => h.includes('damage') || h.includes('kerusakan') || h.includes('r1') || h.includes('r2')
+    )
+    const priceIdx = lowerHeaders.findIndex(
+      (h) =>
+        h.includes('price') || h.includes('harga') || h.includes('nominal') || h.includes('tarif')
+    )
 
     setMapping({
-      category: catIdx >= 0 ? headerRow[catIdx] : "",
-      customer: custIdx >= 0 ? headerRow[custIdx] : "",
-      site: siteIdx >= 0 ? headerRow[siteIdx] : "",
-      size: sizeIdx >= 0 ? headerRow[sizeIdx] : "",
-      damageType: damIdx >= 0 ? headerRow[damIdx] : "",
-      price: priceIdx >= 0 ? headerRow[priceIdx] : "",
+      category: catIdx >= 0 ? headerRow[catIdx] : '',
+      customer: custIdx >= 0 ? headerRow[custIdx] : '',
+      site: siteIdx >= 0 ? headerRow[siteIdx] : '',
+      size: sizeIdx >= 0 ? headerRow[sizeIdx] : '',
+      damageType: damIdx >= 0 ? headerRow[damIdx] : '',
+      price: priceIdx >= 0 ? headerRow[priceIdx] : '',
     })
   }
 
   async function handleSheetChange(sheetName: string) {
     setSelectedSheet(sheetName)
     if (workbookRef) {
-      const XLSX = await import("xlsx")
+      const XLSX = await import('xlsx')
       loadSheetData(XLSX, workbookRef, sheetName)
     }
   }
 
   function handleProceedToReview() {
     if (!mapping.customer) {
-      toast.error("Wajib memilih pemetaan kolom untuk Customer Name")
+      toast.error('Wajib memilih pemetaan kolom untuk Customer Name')
       return
     }
     if (!mapping.size) {
-      toast.error("Wajib memilih pemetaan kolom untuk Size Tire")
+      toast.error('Wajib memilih pemetaan kolom untuk Size Tire')
       return
     }
 
@@ -4036,10 +4589,10 @@ function ImportPriceCsvDialog({
     const items: ImportedPriceRow[] = []
 
     rawRows.forEach((row, idx) => {
-      const sizeVal = sizeIdx >= 0 ? String(row[sizeIdx] || "").trim() : ""
+      const sizeVal = sizeIdx >= 0 ? String(row[sizeIdx] || '').trim() : ''
       if (!sizeVal) return // skip empty rows
 
-      const rawCust = custIdx >= 0 ? String(row[custIdx] || "").trim() : "OTHER CUSTOMER"
+      const rawCust = custIdx >= 0 ? String(row[custIdx] || '').trim() : 'OTHER CUSTOMER'
 
       // Match against DB customer list
       let mappedCustomer = rawCust
@@ -4051,26 +4604,28 @@ function ImportPriceCsvDialog({
           mappedCustomer = matchResult.name
           isMatched = true
         } else if (matchResult && matchResult.name === rawCust) {
-          const exactExists = customerList.some((c) => c.name.trim().toLowerCase() === rawCust.toLowerCase())
+          const exactExists = customerList.some(
+            (c) => c.name.trim().toLowerCase() === rawCust.toLowerCase()
+          )
           isMatched = exactExists
         }
       }
 
       items.push({
         id: `row-${idx}-${Math.random().toString(36).slice(2, 7)}`,
-        category: catIdx >= 0 ? String(row[catIdx] || "").trim() || "Repair" : "Repair",
+        category: catIdx >= 0 ? String(row[catIdx] || '').trim() || 'Repair' : 'Repair',
         customer: mappedCustomer,
         originalCustomer: rawCust,
-        site: siteIdx >= 0 ? String(row[siteIdx] || "").trim() : "",
+        site: siteIdx >= 0 ? String(row[siteIdx] || '').trim() : '',
         size: sizeVal,
-        damageType: damIdx >= 0 ? String(row[damIdx] || "").trim() || "R1" : "R1",
-        price: priceIdx >= 0 ? String(row[priceIdx] || "").trim() || "0" : "0",
+        damageType: damIdx >= 0 ? String(row[damIdx] || '').trim() || 'R1' : 'R1',
+        price: priceIdx >= 0 ? String(row[priceIdx] || '').trim() || '0' : '0',
         isMatched,
       })
     })
 
     if (items.length === 0) {
-      toast.error("Tidak ada data valid yang bisa dibaca. Pastikan kolom Size Tire terisi.")
+      toast.error('Tidak ada data valid yang bisa dibaca. Pastikan kolom Size Tire terisi.')
       return
     }
 
@@ -4095,7 +4650,7 @@ function ImportPriceCsvDialog({
 
   function handleBatchApplyCustomer() {
     if (!selectedUnmatched || !batchTargetCustomer) {
-      toast.error("Pilih Nama Customer dari File dan Customer Tujuan DB")
+      toast.error('Pilih Nama Customer dari File dan Customer Tujuan DB')
       return
     }
 
@@ -4113,15 +4668,17 @@ function ImportPriceCsvDialog({
     )
 
     toast.success(`Berhasil mengubah semua "${selectedUnmatched}" menjadi "${batchTargetCustomer}"`)
-    setSelectedUnmatched("")
-    setBatchTargetCustomer("")
+    setSelectedUnmatched('')
+    setBatchTargetCustomer('')
   }
 
   function handleUpdateRowCustomer(rowId: string, newCustName: string) {
     setParsedItems((prev) =>
       prev.map((item) => {
         if (item.id === rowId) {
-          const exactExists = customerList.some((c) => c.name.trim().toLowerCase() === newCustName.toLowerCase()) || newCustName === "OTHER CUSTOMER"
+          const exactExists =
+            customerList.some((c) => c.name.trim().toLowerCase() === newCustName.toLowerCase()) ||
+            newCustName === 'OTHER CUSTOMER'
           return {
             ...item,
             customer: newCustName,
@@ -4136,11 +4693,12 @@ function ImportPriceCsvDialog({
   // Filter items for review table
   const filteredPreviewItems = useMemo(() => {
     return parsedItems.filter((item) => {
-      if (filterMode === "unmatched" && item.isMatched) return false
-      if (filterMode === "matched" && !item.isMatched) return false
+      if (filterMode === 'unmatched' && item.isMatched) return false
+      if (filterMode === 'matched' && !item.isMatched) return false
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
-        const text = `${item.category} ${item.customer} ${item.originalCustomer} ${item.size} ${item.site} ${item.damageType}`.toLowerCase()
+        const text =
+          `${item.category} ${item.customer} ${item.originalCustomer} ${item.size} ${item.site} ${item.damageType}`.toLowerCase()
         if (!text.includes(q)) return false
       }
       return true
@@ -4149,7 +4707,7 @@ function ImportPriceCsvDialog({
 
   function handleImportSubmit() {
     if (!parsedItems.length) {
-      toast.error("Tidak ada data untuk diimpor")
+      toast.error('Tidak ada data untuk diimpor')
       return
     }
 
@@ -4169,14 +4727,16 @@ function ImportPriceCsvDialog({
         onOpenChange(false)
         onSuccess()
       } else {
-        toast.error(res.error ?? "Gagal mengimpor data")
+        toast.error(res.error ?? 'Gagal mengimpor data')
       }
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={step === 1 ? "sm:max-w-xl" : "sm:max-w-5xl max-h-[90vh] flex flex-col"}>
+      <DialogContent
+        className={step === 1 ? 'sm:max-w-xl' : 'flex max-h-[90vh] flex-col sm:max-w-5xl'}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
@@ -4184,8 +4744,8 @@ function ImportPriceCsvDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 1
-              ? "Unggah file Excel (.xlsx, .xls) atau CSV, lalu tentukan pemetaan kolomnya."
-              : "Review hasil pemetaan dan sesuaikan Nama Customer agar sinkron dengan Database Customer."}
+              ? 'Unggah file Excel (.xlsx, .xls) atau CSV, lalu tentukan pemetaan kolomnya.'
+              : 'Review hasil pemetaan dan sesuaikan Nama Customer agar sinkron dengan Database Customer.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -4194,7 +4754,13 @@ function ImportPriceCsvDialog({
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-900">
               <span>Format file didukung: .xlsx, .xls, .csv</span>
-              <Button type="button" variant="outline" size="sm" onClick={handleDownloadTemplate} className="h-7 text-xs bg-white border-blue-200">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadTemplate}
+                className="h-7 border-blue-200 bg-white text-xs"
+              >
                 <Download className="mr-1 h-3.5 w-3.5" />
                 Download Template CSV
               </Button>
@@ -4202,15 +4768,22 @@ function ImportPriceCsvDialog({
 
             <div className="grid w-full items-center gap-1.5">
               <Label className="text-xs font-semibold">1. Pilih File Excel / CSV</Label>
-              <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} className="h-10 rounded-xl text-xs" />
-              {fileName && <p className="text-xs text-emerald-600 font-medium">Terpilih: {fileName}</p>}
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileChange}
+                className="h-10 rounded-xl text-xs"
+              />
+              {fileName && (
+                <p className="text-xs font-medium text-emerald-600">Terpilih: {fileName}</p>
+              )}
             </div>
 
             {sheetNames.length > 1 && (
               <div className="space-y-1">
                 <Label className="text-xs font-semibold">Pilih Sheet Excel</Label>
                 <Select value={selectedSheet} onValueChange={handleSheetChange}>
-                  <SelectTrigger className="h-9 text-xs rounded-lg">
+                  <SelectTrigger className="h-9 rounded-lg text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -4227,21 +4800,32 @@ function ImportPriceCsvDialog({
             {headers.length > 0 && (
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between border-b pb-1">
-                  <span className="text-xs font-bold text-foreground">2. Pemetaan Kolom ({rawRows.length} Baris Data)</span>
-                  <span className="text-[11px] text-muted-foreground">Sesuaikan header file dengan kolom target</span>
+                  <span className="text-foreground text-xs font-bold">
+                    2. Pemetaan Kolom ({rawRows.length} Baris Data)
+                  </span>
+                  <span className="text-muted-foreground text-[11px]">
+                    Sesuaikan header file dengan kolom target
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="space-y-1">
                     <Label className="text-xs">Category (Kategori)</Label>
-                    <Select value={mapping.category} onValueChange={(val) => setMapping({ ...mapping, category: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <Select
+                      value={mapping.category}
+                      onValueChange={(val) => setMapping({ ...mapping, category: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg text-xs">
                         <SelectValue placeholder="(Default: Repair)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" className="text-xs text-muted-foreground">(Tanpa Kolom / Default Repair)</SelectItem>
+                        <SelectItem value="" className="text-muted-foreground text-xs">
+                          (Tanpa Kolom / Default Repair)
+                        </SelectItem>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4249,13 +4833,18 @@ function ImportPriceCsvDialog({
 
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-rose-600">Customer Name *</Label>
-                    <Select value={mapping.customer} onValueChange={(val) => setMapping({ ...mapping, customer: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg border-rose-200">
+                    <Select
+                      value={mapping.customer}
+                      onValueChange={(val) => setMapping({ ...mapping, customer: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg border-rose-200 text-xs">
                         <SelectValue placeholder="Pilih Header Customer" />
                       </SelectTrigger>
                       <SelectContent>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4263,13 +4852,18 @@ function ImportPriceCsvDialog({
 
                   <div className="space-y-1">
                     <Label className="text-xs font-semibold text-rose-600">Size Tire *</Label>
-                    <Select value={mapping.size} onValueChange={(val) => setMapping({ ...mapping, size: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg border-rose-200">
+                    <Select
+                      value={mapping.size}
+                      onValueChange={(val) => setMapping({ ...mapping, size: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg border-rose-200 text-xs">
                         <SelectValue placeholder="Pilih Header Size" />
                       </SelectTrigger>
                       <SelectContent>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4277,14 +4871,21 @@ function ImportPriceCsvDialog({
 
                   <div className="space-y-1">
                     <Label className="text-xs">Kerusakan (Damage Type)</Label>
-                    <Select value={mapping.damageType} onValueChange={(val) => setMapping({ ...mapping, damageType: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <Select
+                      value={mapping.damageType}
+                      onValueChange={(val) => setMapping({ ...mapping, damageType: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg text-xs">
                         <SelectValue placeholder="(Default: R1)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" className="text-xs text-muted-foreground">(Tanpa Kolom / Default R1)</SelectItem>
+                        <SelectItem value="" className="text-muted-foreground text-xs">
+                          (Tanpa Kolom / Default R1)
+                        </SelectItem>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4292,14 +4893,21 @@ function ImportPriceCsvDialog({
 
                   <div className="space-y-1">
                     <Label className="text-xs">Site Customer</Label>
-                    <Select value={mapping.site} onValueChange={(val) => setMapping({ ...mapping, site: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <Select
+                      value={mapping.site}
+                      onValueChange={(val) => setMapping({ ...mapping, site: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg text-xs">
                         <SelectValue placeholder="(Opsional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" className="text-xs text-muted-foreground">(Tanpa Kolom)</SelectItem>
+                        <SelectItem value="" className="text-muted-foreground text-xs">
+                          (Tanpa Kolom)
+                        </SelectItem>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4307,14 +4915,21 @@ function ImportPriceCsvDialog({
 
                   <div className="space-y-1">
                     <Label className="text-xs">Price (Harga)</Label>
-                    <Select value={mapping.price} onValueChange={(val) => setMapping({ ...mapping, price: val })}>
-                      <SelectTrigger className="h-9 text-xs rounded-lg">
+                    <Select
+                      value={mapping.price}
+                      onValueChange={(val) => setMapping({ ...mapping, price: val })}
+                    >
+                      <SelectTrigger className="h-9 rounded-lg text-xs">
                         <SelectValue placeholder="(Default: 0)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" className="text-xs text-muted-foreground">(Tanpa Kolom / Default 0)</SelectItem>
+                        <SelectItem value="" className="text-muted-foreground text-xs">
+                          (Tanpa Kolom / Default 0)
+                        </SelectItem>
                         {headers.map((h) => (
-                          <SelectItem key={h} value={h} className="text-xs">{h}</SelectItem>
+                          <SelectItem key={h} value={h} className="text-xs">
+                            {h}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -4325,19 +4940,25 @@ function ImportPriceCsvDialog({
           </div>
         ) : (
           /* ──────── STEP 2: Customer Alignment & Review Table ──────── */
-          <div className="flex-1 overflow-hidden space-y-3 py-2 flex flex-col">
+          <div className="flex flex-1 flex-col space-y-3 overflow-hidden py-2">
             {/* Header Stats & Filter */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 p-3">
+            <div className="bg-muted/30 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
               <div className="flex items-center gap-3">
                 <Badge variant="outline" className="bg-white font-mono text-xs">
                   Total: <strong>{parsedItems.length}</strong> Baris
                 </Badge>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-mono text-xs">
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 font-mono text-xs text-emerald-700"
+                >
                   <CheckCircle2 className="mr-1 h-3 w-3" />
                   Sesuai DB: <strong>{matchedCount}</strong>
                 </Badge>
                 {unmatchedCount > 0 && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 font-mono text-xs">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-200 bg-amber-50 font-mono text-xs text-amber-700"
+                  >
                     <AlertTriangle className="mr-1 h-3 w-3" />
                     Tidak Sesuai: <strong>{unmatchedCount}</strong>
                   </Badge>
@@ -4346,23 +4967,29 @@ function ImportPriceCsvDialog({
 
               <div className="flex items-center gap-2">
                 <Select value={filterMode} onValueChange={(v) => setFilterMode(v as any)}>
-                  <SelectTrigger className="h-8 w-44 text-xs bg-white">
+                  <SelectTrigger className="h-8 w-44 bg-white text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all" className="text-xs">Tampilkan Semua ({parsedItems.length})</SelectItem>
-                    <SelectItem value="unmatched" className="text-xs font-semibold text-amber-700">Hanya Tidak Sesuai ({unmatchedCount})</SelectItem>
-                    <SelectItem value="matched" className="text-xs text-emerald-700">Hanya Sesuai DB ({matchedCount})</SelectItem>
+                    <SelectItem value="all" className="text-xs">
+                      Tampilkan Semua ({parsedItems.length})
+                    </SelectItem>
+                    <SelectItem value="unmatched" className="text-xs font-semibold text-amber-700">
+                      Hanya Tidak Sesuai ({unmatchedCount})
+                    </SelectItem>
+                    <SelectItem value="matched" className="text-xs text-emerald-700">
+                      Hanya Sesuai DB ({matchedCount})
+                    </SelectItem>
                   </SelectContent>
                 </Select>
 
                 <div className="relative w-44">
-                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
                   <Input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Cari..."
-                    className="h-8 pl-8 text-xs bg-white"
+                    className="h-8 bg-white pl-8 text-xs"
                   />
                 </div>
               </div>
@@ -4370,23 +4997,26 @@ function ImportPriceCsvDialog({
 
             {/* Batch Alignment Tool (Baris Ganti Masal) */}
             {uniqueUnmatchedNames.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2">
+              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
                 <div className="flex items-center justify-between text-xs font-semibold text-amber-900">
                   <span className="flex items-center gap-1.5">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    Pengeditan Massal Nama Customer Tidak Sesuai ({uniqueUnmatchedNames.length} nama berbeda di file):
+                    Pengeditan Massal Nama Customer Tidak Sesuai ({uniqueUnmatchedNames.length} nama
+                    berbeda di file):
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Select Unmatched from File */}
                   <Select value={selectedUnmatched} onValueChange={setSelectedUnmatched}>
-                    <SelectTrigger className="h-8 flex-1 min-w-[200px] text-xs bg-white border-amber-300">
+                    <SelectTrigger className="h-8 min-w-[200px] flex-1 border-amber-300 bg-white text-xs">
                       <SelectValue placeholder="Pilih Nama dari File..." />
                     </SelectTrigger>
                     <SelectContent>
                       {uniqueUnmatchedNames.map((name) => {
-                        const count = parsedItems.filter((i) => i.originalCustomer === name || i.customer === name).length
+                        const count = parsedItems.filter(
+                          (i) => i.originalCustomer === name || i.customer === name
+                        ).length
                         return (
                           <SelectItem key={name} value={name} className="text-xs">
                             {name} ({count} baris)
@@ -4396,11 +5026,11 @@ function ImportPriceCsvDialog({
                     </SelectContent>
                   </Select>
 
-                  <ArrowRight className="h-4 w-4 text-amber-600 shrink-0" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-amber-600" />
 
                   {/* Target DB Customer Dropdown */}
                   <Select value={batchTargetCustomer} onValueChange={setBatchTargetCustomer}>
-                    <SelectTrigger className="h-8 flex-1 min-w-[220px] text-xs bg-white border-amber-300">
+                    <SelectTrigger className="h-8 min-w-[220px] flex-1 border-amber-300 bg-white text-xs">
                       <SelectValue placeholder="Pilih Customer Database..." />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
@@ -4417,7 +5047,7 @@ function ImportPriceCsvDialog({
                     size="sm"
                     onClick={handleBatchApplyCustomer}
                     disabled={!selectedUnmatched || !batchTargetCustomer}
-                    className="h-8 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg px-3"
+                    className="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700"
                   >
                     Terapkan Ke Semua
                   </Button>
@@ -4426,7 +5056,7 @@ function ImportPriceCsvDialog({
             )}
 
             {/* Preview Data Table */}
-            <div className="flex-1 overflow-auto rounded-xl border bg-white min-h-[250px] max-h-[400px]">
+            <div className="max-h-[400px] min-h-[250px] flex-1 overflow-auto rounded-xl border bg-white">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-slate-50 text-xs">
                   <TableRow>
@@ -4443,32 +5073,48 @@ function ImportPriceCsvDialog({
                 <TableBody className="text-xs">
                   {filteredPreviewItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="text-muted-foreground py-8 text-center">
                         Tidak ada data yang cocok dengan filter.
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredPreviewItems.map((item, idx) => (
-                      <TableRow key={item.id} className={item.isMatched ? "hover:bg-emerald-50/30" : "bg-amber-50/30 hover:bg-amber-50/60"}>
-                        <TableCell className="font-mono text-muted-foreground">{idx + 1}</TableCell>
+                      <TableRow
+                        key={item.id}
+                        className={
+                          item.isMatched
+                            ? 'hover:bg-emerald-50/30'
+                            : 'bg-amber-50/30 hover:bg-amber-50/60'
+                        }
+                      >
+                        <TableCell className="text-muted-foreground font-mono">{idx + 1}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          <Badge variant="outline" className="font-mono text-[10px] uppercase">
                             {item.category}
                           </Badge>
                         </TableCell>
 
                         {/* Editable / Selectable Customer Name */}
                         <TableCell className="space-y-1">
-                          <Select value={item.customer} onValueChange={(val) => handleUpdateRowCustomer(item.id, val)}>
-                            <SelectTrigger className={`h-8 text-xs ${item.isMatched ? "bg-white border-slate-200" : "bg-white border-amber-400 font-semibold text-amber-950"}`}>
+                          <Select
+                            value={item.customer}
+                            onValueChange={(val) => handleUpdateRowCustomer(item.id, val)}
+                          >
+                            <SelectTrigger
+                              className={`h-8 text-xs ${item.isMatched ? 'border-slate-200 bg-white' : 'border-amber-400 bg-white font-semibold text-amber-950'}`}
+                            >
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="max-h-60">
-                              {item.originalCustomer && !allCustomerOptions.includes(item.originalCustomer) && (
-                                <SelectItem value={item.originalCustomer} className="text-xs font-mono text-amber-700">
-                                  {item.originalCustomer} (Asli File)
-                                </SelectItem>
-                              )}
+                              {item.originalCustomer &&
+                                !allCustomerOptions.includes(item.originalCustomer) && (
+                                  <SelectItem
+                                    value={item.originalCustomer}
+                                    className="font-mono text-xs text-amber-700"
+                                  >
+                                    {item.originalCustomer} (Asli File)
+                                  </SelectItem>
+                                )}
                               {allCustomerOptions.map((name) => (
                                 <SelectItem key={name} value={name} className="text-xs">
                                   {name}
@@ -4478,7 +5124,7 @@ function ImportPriceCsvDialog({
                           </Select>
 
                           {item.originalCustomer && item.originalCustomer !== item.customer && (
-                            <p className="text-[10px] text-muted-foreground italic pl-1">
+                            <p className="text-muted-foreground pl-1 text-[10px] italic">
                               Asli File: &quot;{item.originalCustomer}&quot;
                             </p>
                           )}
@@ -4490,17 +5136,23 @@ function ImportPriceCsvDialog({
                             {item.damageType}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{item.site || "-"}</TableCell>
+                        <TableCell className="text-muted-foreground">{item.site || '-'}</TableCell>
                         <TableCell className="text-right font-mono font-semibold text-emerald-700">
                           {formatCurrency(item.price)}
                         </TableCell>
                         <TableCell className="text-center">
                           {item.isMatched ? (
-                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700"
+                            >
                               <CheckCircle2 className="mr-1 h-3 w-3" /> Sesuai DB
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] font-semibold">
+                            <Badge
+                              variant="outline"
+                              className="border-amber-300 bg-amber-100 text-[10px] font-semibold text-amber-900"
+                            >
                               <AlertTriangle className="mr-1 h-3 w-3" /> Tidak Sesuai
                             </Badge>
                           )}
@@ -4514,33 +5166,45 @@ function ImportPriceCsvDialog({
           </div>
         )}
 
-        <DialogFooter className="pt-2 gap-2">
+        <DialogFooter className="gap-2 pt-2">
           {step === 1 ? (
             <>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending} className="rounded-xl text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isPending}
+                className="rounded-xl text-xs"
+              >
                 Batal
               </Button>
               <Button
                 type="button"
                 onClick={handleProceedToReview}
                 disabled={!mapping.customer || !mapping.size || rawRows.length === 0}
-                className="rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs"
+                className="rounded-xl bg-violet-600 text-xs font-semibold text-white hover:bg-violet-700"
               >
                 Lanjut ke Review & Customer Mapping →
               </Button>
             </>
           ) : (
             <>
-              <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={isPending} className="rounded-xl text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(1)}
+                disabled={isPending}
+                className="rounded-xl text-xs"
+              >
                 ← Kembali ke Pemetaan Kolom
               </Button>
               <Button
                 type="button"
                 onClick={handleImportSubmit}
                 disabled={isPending || parsedItems.length === 0}
-                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+                className="rounded-xl bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
               >
-                {isPending ? "Mengimpor Data..." : `Jalankan Import (${parsedItems.length} Data)`}
+                {isPending ? 'Mengimpor Data...' : `Jalankan Import (${parsedItems.length} Data)`}
               </Button>
             </>
           )}
@@ -4563,9 +5227,9 @@ function MasterPriceRepairRetreadTab({
   canEdit?: boolean
   canDelete?: boolean
 }) {
-  const [query, setQuery] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("all")
-  const [damageFilter, setDamageFilter] = useState("all")
+  const [query, setQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [damageFilter, setDamageFilter] = useState('all')
 
   // Pagination states
   const [pageSize, setPageSize] = useState<number>(25)
@@ -4581,8 +5245,10 @@ function MasterPriceRepairRetreadTab({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return data.filter((item) => {
-      const matchCat = categoryFilter === "all" || item.category.toLowerCase() === categoryFilter.toLowerCase()
-      const matchDam = damageFilter === "all" || item.damageType.toLowerCase() === damageFilter.toLowerCase()
+      const matchCat =
+        categoryFilter === 'all' || item.category.toLowerCase() === categoryFilter.toLowerCase()
+      const matchDam =
+        damageFilter === 'all' || item.damageType.toLowerCase() === damageFilter.toLowerCase()
 
       const matchQ =
         !q ||
@@ -4607,24 +5273,24 @@ function MasterPriceRepairRetreadTab({
 
   async function handleExport() {
     if (filtered.length === 0) {
-      toast.error("Tidak ada data Master Price untuk diekspor")
+      toast.error('Tidak ada data Master Price untuk diekspor')
       return
     }
     const rows = filtered.map((item, idx) => ({
       No: idx + 1,
       Category: item.category,
       Customer: item.customer,
-      Site: item.site || "-",
-      "Size Tire": item.size,
+      Site: item.site || '-',
+      'Size Tire': item.size,
       Kerusakan: item.damageType,
       Price: Number(item.price),
-      "Formatted Price": formatCurrency(item.price),
+      'Formatted Price': formatCurrency(item.price),
     }))
-    const XLSX = await import("xlsx")
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Master Price")
-    XLSX.writeFile(wb, `Master_Price_Repair_Retread_${new Date().toISOString().split("T")[0]}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, 'Master Price')
+    XLSX.writeFile(wb, `Master_Price_Repair_Retread_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
 
   function handleOpenAdd() {
@@ -4645,12 +5311,12 @@ function MasterPriceRepairRetreadTab({
   return (
     <div className="flex flex-col gap-4">
       {/* Search & Filter Header Card */}
-      <Card className="rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 rounded-2xl py-0 shadow-sm">
         <CardContent className="px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-2xl">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <div className="flex max-w-2xl flex-1 flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px] flex-1">
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -4688,17 +5354,31 @@ function MasterPriceRepairRetreadTab({
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-2">
               {canEdit && (
-                <Button type="button" variant="outline" onClick={() => setImportOpen(true)} className="h-10 rounded-xl shrink-0 text-xs">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setImportOpen(true)}
+                  className="h-10 shrink-0 rounded-xl text-xs"
+                >
                   <Upload className="mr-1.5 h-4 w-4" />
                   Import CSV
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={() => void handleExport()} className="h-10 rounded-xl shrink-0 text-xs">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleExport()}
+                className="h-10 shrink-0 rounded-xl text-xs"
+              >
                 <Download className="mr-1.5 h-4 w-4" />
                 Export Excel
               </Button>
               {canEdit && (
-                <Button type="button" onClick={handleOpenAdd} className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-sm">
+                <Button
+                  type="button"
+                  onClick={handleOpenAdd}
+                  className="h-10 rounded-xl bg-violet-600 text-xs font-semibold text-white shadow-sm hover:bg-violet-700"
+                >
                   <Plus className="mr-1.5 h-4 w-4" />
                   Tambah Master Price
                 </Button>
@@ -4709,7 +5389,7 @@ function MasterPriceRepairRetreadTab({
       </Card>
 
       {/* Main Table Card */}
-      <Card className="overflow-hidden rounded-2xl border-border/60 py-0 shadow-sm">
+      <Card className="border-border/60 overflow-hidden rounded-2xl py-0 shadow-sm">
         <CardContent className="p-0">
           <div className="relative overflow-x-auto">
             <Table>
@@ -4728,9 +5408,12 @@ function MasterPriceRepairRetreadTab({
               <TableBody>
                 {paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center text-xs text-muted-foreground">
-                      {query || categoryFilter !== "all" || damageFilter !== "all"
-                        ? "Tidak ada data Master Price yang sesuai filter"
+                    <TableCell
+                      colSpan={8}
+                      className="text-muted-foreground h-32 text-center text-xs"
+                    >
+                      {query || categoryFilter !== 'all' || damageFilter !== 'all'
+                        ? 'Tidak ada data Master Price yang sesuai filter'
                         : "Belum ada data Master Price Repair & Retread. Klik 'Tambah Master Price' untuk menambahkan."}
                     </TableCell>
                   </TableRow>
@@ -4739,17 +5422,17 @@ function MasterPriceRepairRetreadTab({
                     const rowNo = (currentPage - 1) * pageSize + idx + 1
                     return (
                       <TableRow key={item.id} className="hover:bg-muted/30">
-                        <TableCell className="text-center text-xs text-muted-foreground font-mono">
+                        <TableCell className="text-muted-foreground text-center font-mono text-xs">
                           {rowNo}
                         </TableCell>
                         <TableCell className="text-xs">
                           <Badge
                             variant="outline"
                             className={cn(
-                              "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
-                              item.category === "Retread"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                : "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                              'rounded-full px-2.5 py-0.5 text-[11px] font-semibold',
+                              item.category === 'Retread'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                : 'border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
                             )}
                           >
                             {item.category}
@@ -4758,26 +5441,29 @@ function MasterPriceRepairRetreadTab({
                         <TableCell className="text-xs font-medium">
                           <HighlightText value={item.customer} query={query} />
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          <HighlightText value={item.site || "-"} query={query} />
+                        <TableCell className="text-muted-foreground text-xs">
+                          <HighlightText value={item.site || '-'} query={query} />
                         </TableCell>
-                        <TableCell className="text-xs font-mono font-semibold text-foreground">
+                        <TableCell className="text-foreground font-mono text-xs font-semibold">
                           <HighlightText value={item.size} query={query} />
                         </TableCell>
                         <TableCell className="text-xs">
                           <Badge
                             variant="secondary"
                             className={cn(
-                              "rounded-lg px-2 py-0.5 text-[11px] font-bold font-mono",
-                              item.damageType === "R1" && "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200",
-                              item.damageType === "R2" && "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
-                              item.damageType === "R3" && "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200"
+                              'rounded-lg px-2 py-0.5 font-mono text-[11px] font-bold',
+                              item.damageType === 'R1' &&
+                                'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+                              item.damageType === 'R2' &&
+                                'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+                              item.damageType === 'R3' &&
+                                'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200'
                             )}
                           >
                             {item.damageType}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right text-xs font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                        <TableCell className="text-right font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                           {formatCurrency(item.price)}
                         </TableCell>
                         <TableCell className="text-center text-xs">
@@ -4788,7 +5474,7 @@ function MasterPriceRepairRetreadTab({
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleOpenEdit(item)}
-                                className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground"
+                                className="text-muted-foreground hover:text-foreground h-7 w-7 rounded-lg"
                                 title="Edit Master Price"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -4818,7 +5504,7 @@ function MasterPriceRepairRetreadTab({
 
           {/* Pagination Controls Footer */}
           {filtered.length > 0 && (
-            <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex flex-col gap-3 border-t p-4 text-xs sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <span>Tampilkan</span>
                 <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
@@ -4907,10 +5593,12 @@ export function FormWoClient({
   canEdit = true,
   canDelete = true,
 }: FormWoClientProps) {
-  const [activeTab, setActiveTab] = useState("waiting")
+  const [activeTab, setActiveTab] = useState('waiting')
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [createJenis, setCreateJenis] = useState<"service" | "repair" | "retread" | "non_repair">("service")
+  const [createJenis, setCreateJenis] = useState<'service' | 'repair' | 'retread' | 'non_repair'>(
+    'service'
+  )
   const [selectedWipItem, setSelectedWipItem] = useState<WipRepairRecord | null>(null)
   const [selectedWipList, setSelectedWipList] = useState<WipRepairRecord[] | null>(null)
 
@@ -4923,7 +5611,7 @@ export function FormWoClient({
     setSelectedWipItem(item)
     setSelectedWipList(null)
     setSelectedFormWo(null)
-    setCreateJenis("repair")
+    setCreateJenis('repair')
     setCreateDialogOpen(true)
   }
 
@@ -4931,11 +5619,11 @@ export function FormWoClient({
     setSelectedWipItem(null)
     setSelectedWipList(items)
     setSelectedFormWo(null)
-    setCreateJenis("repair")
+    setCreateJenis('repair')
     setCreateDialogOpen(true)
   }
 
-  function handleOpenNewWo(jenis: "service" | "repair" | "retread") {
+  function handleOpenNewWo(jenis: 'service' | 'repair' | 'retread') {
     setSelectedWipItem(null)
     setSelectedWipList(null)
     setSelectedFormWo(null)
@@ -4965,13 +5653,16 @@ export function FormWoClient({
     window.location.reload()
   }
 
-  const totalCaiCount = masterCaiList.length > 0 ? masterCaiList.length : INITIAL_KPC_CAI.length + INITIAL_OTHER_CAI.length
+  const totalCaiCount =
+    masterCaiList.length > 0
+      ? masterCaiList.length
+      : INITIAL_KPC_CAI.length + INITIAL_OTHER_CAI.length
 
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TabsList className="h-10 rounded-xl bg-muted/50">
+          <TabsList className="bg-muted/50 h-10 rounded-xl">
             <TabsTrigger value="waiting" className="rounded-lg px-5 text-sm font-medium">
               <ClipboardList className="mr-2 h-4 w-4" />
               Waiting WO
@@ -5011,24 +5702,24 @@ export function FormWoClient({
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
-                onClick={() => handleOpenNewWo("service")}
-                className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm text-xs"
+                onClick={() => handleOpenNewWo('service')}
+                className="h-10 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
               >
                 <Plus className="mr-1.5 h-4 w-4" />
                 Buat WO Service
               </Button>
               <Button
                 type="button"
-                onClick={() => handleOpenNewWo("repair")}
-                className="h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-sm text-xs"
+                onClick={() => handleOpenNewWo('repair')}
+                className="h-10 rounded-xl bg-violet-600 text-xs font-semibold text-white shadow-sm hover:bg-violet-700"
               >
                 <Plus className="mr-1.5 h-4 w-4" />
                 Buat WO Repair
               </Button>
               <Button
                 type="button"
-                onClick={() => handleOpenNewWo("retread")}
-                className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm text-xs"
+                onClick={() => handleOpenNewWo('retread')}
+                className="h-10 rounded-xl bg-amber-600 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
               >
                 <Plus className="mr-1.5 h-4 w-4" />
                 Buat WO Retread
