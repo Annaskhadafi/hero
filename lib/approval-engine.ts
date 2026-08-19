@@ -1,5 +1,5 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   approvalMatrices,
   approvalMatrixSteps,
@@ -10,179 +10,179 @@ import {
   orgChartStructures,
   orgNodeAssignments,
   sites,
-} from "@/db/schema/hero";
+} from '@/db/schema/hero'
 
 type ApprovalContext = {
-  employeeId: number;
-  employeeName: string;
-  siteId: number;
-  siteName: string;
-  siteLocation: string;
-  siteHeadEmployeeId: number | null;
-  departmentId: number | null;
-  departmentName: string | null;
-  sectionId: number | null;
-  positionId: number | null;
-  directManagerId: number | null;
-  activityType: string;
-  priority: string;
-  overtimeMinutes: number;
-  transactionType: string;
-  at: Date;
-};
+  employeeId: number
+  employeeName: string
+  siteId: number
+  siteName: string
+  siteLocation: string
+  siteHeadEmployeeId: number | null
+  departmentId: number | null
+  departmentName: string | null
+  sectionId: number | null
+  positionId: number | null
+  directManagerId: number | null
+  activityType: string
+  priority: string
+  overtimeMinutes: number
+  transactionType: string
+  at: Date
+}
 
 export type ResolvedApprovalStep = {
-  stepOrder: number;
-  label: string;
-  approverName: string;
-  approverEmployeeId: number | null;
-  approverNodeId: number | null;
-  approvalMatrixStepId: number | null;
-  approvalMode: string;
+  stepOrder: number
+  label: string
+  approverName: string
+  approverEmployeeId: number | null
+  approverNodeId: number | null
+  approvalMatrixStepId: number | null
+  approvalMode: string
   resolutionSource:
-    | "matrix"
-    | "delegate"
-    | "fallback_node"
-    | "escalation"
-    | "legacy_manager"
-    | "legacy_site_pjo"
-    | "legacy_site_foreman"
-    | "apd_site_pjo"
-    | "apd_head_section"
-    | "vacant";
-  canDelegate: boolean;
-  slaHours: number;
-  nodeLabel: string | null;
-  fallbackLabel: string | null;
-  escalationLabel: string | null;
-};
+    | 'matrix'
+    | 'delegate'
+    | 'fallback_node'
+    | 'escalation'
+    | 'legacy_manager'
+    | 'legacy_site_pjo'
+    | 'legacy_site_foreman'
+    | 'apd_site_pjo'
+    | 'apd_head_section'
+    | 'vacant'
+  canDelegate: boolean
+  slaHours: number
+  nodeLabel: string | null
+  fallbackLabel: string | null
+  escalationLabel: string | null
+}
 
 export type ApprovalRouteResolution = {
-  matrixId: number | null;
-  matrixName: string | null;
-  structureId: number | null;
-  structureName: string | null;
-  transactionType: string;
-  warnings: string[];
-  steps: ResolvedApprovalStep[];
-};
+  matrixId: number | null
+  matrixName: string | null
+  structureId: number | null
+  structureName: string | null
+  transactionType: string
+  warnings: string[]
+  steps: ResolvedApprovalStep[]
+}
 
 type ResolveApprovalRouteInput = {
-  employeeId: number;
-  activityType: string;
-  priority: string;
-  overtimeMinutes: number;
-  transactionType?: string;
-  at?: Date;
-};
+  employeeId: number
+  activityType: string
+  priority: string
+  overtimeMinutes: number
+  transactionType?: string
+  at?: Date
+}
 
 function normalizeValue(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
+  return (value ?? '').trim().toLowerCase()
 }
 
 function isCentralServiceDepartment(departmentName: string | null) {
-  return normalizeValue(departmentName).replace(/s$/, "") === "central service";
+  return normalizeValue(departmentName).replace(/s$/, '') === 'central service'
 }
 
 function isJakartaOrBalikpapanSite(siteName: string, siteLocation: string) {
-  const source = `${siteName} ${siteLocation}`.toLowerCase();
-  return source.includes("jakarta") || source.includes("balikpapan");
+  const source = `${siteName} ${siteLocation}`.toLowerCase()
+  return source.includes('jakarta') || source.includes('balikpapan')
 }
 
 function isBetweenWindow(target: Date, start: Date | null, end: Date | null) {
   if (start && target < start) {
-    return false;
+    return false
   }
 
   if (end && target > end) {
-    return false;
+    return false
   }
 
-  return true;
+  return true
 }
 
 function buildVacantApproverLabel(nodeLabel: string | null, fallbackLabel: string) {
-  return nodeLabel?.trim() ? `${nodeLabel} (vacant)` : fallbackLabel;
+  return nodeLabel?.trim() ? `${nodeLabel} (vacant)` : fallbackLabel
 }
 
 function getMatrixSpecificityScore(
   matrix: {
-    siteId: number | null;
-    departmentId: number | null;
-    sectionId: number | null;
-    requesterPositionId: number | null;
-    activityType: string;
-    priority: string;
-    minOvertimeMinutes: number;
-    maxOvertimeMinutes: number | null;
+    siteId: number | null
+    departmentId: number | null
+    sectionId: number | null
+    requesterPositionId: number | null
+    activityType: string
+    priority: string
+    minOvertimeMinutes: number
+    maxOvertimeMinutes: number | null
   },
-  context: ApprovalContext,
+  context: ApprovalContext
 ) {
-  let score = 0;
+  let score = 0
 
   if (matrix.siteId != null) {
     if (matrix.siteId !== context.siteId) {
-      return -1;
+      return -1
     }
 
-    score += 64;
+    score += 64
   }
 
   if (matrix.departmentId != null) {
     if (matrix.departmentId !== context.departmentId) {
-      return -1;
+      return -1
     }
 
-    score += 32;
+    score += 32
   }
 
   if (matrix.sectionId != null) {
     if (matrix.sectionId !== context.sectionId) {
-      return -1;
+      return -1
     }
 
-    score += 16;
+    score += 16
   }
 
   if (matrix.requesterPositionId != null) {
     if (matrix.requesterPositionId !== context.positionId) {
-      return -1;
+      return -1
     }
 
-    score += 8;
+    score += 8
   }
 
-  const matrixActivityType = normalizeValue(matrix.activityType);
+  const matrixActivityType = normalizeValue(matrix.activityType)
   if (matrixActivityType) {
     if (matrixActivityType !== normalizeValue(context.activityType)) {
-      return -1;
+      return -1
     }
 
-    score += 4;
+    score += 4
   }
 
-  const matrixPriority = normalizeValue(matrix.priority);
-  if (matrixPriority && matrixPriority !== "any") {
+  const matrixPriority = normalizeValue(matrix.priority)
+  if (matrixPriority && matrixPriority !== 'any') {
     if (matrixPriority !== normalizeValue(context.priority)) {
-      return -1;
+      return -1
     }
 
-    score += 2;
+    score += 2
   }
 
   if (context.overtimeMinutes < matrix.minOvertimeMinutes) {
-    return -1;
+    return -1
   }
 
   if (matrix.maxOvertimeMinutes != null && context.overtimeMinutes > matrix.maxOvertimeMinutes) {
-    return -1;
+    return -1
   }
 
   if (matrix.maxOvertimeMinutes != null) {
-    score += 1;
+    score += 1
   }
 
-  return score;
+  return score
 }
 
 async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<ApprovalContext> {
@@ -204,18 +204,18 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
     .leftJoin(sites, eq(employees.siteId, sites.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .where(eq(employees.id, input.employeeId))
-    .limit(1);
+    .limit(1)
 
   if (!employee) {
-    throw new Error("Employee approval context tidak ditemukan.");
+    throw new Error('Employee approval context tidak ditemukan.')
   }
 
   return {
     employeeId: employee.id,
     employeeName: employee.name,
     siteId: employee.siteId,
-    siteName: employee.siteName ?? "",
-    siteLocation: employee.siteLocation ?? "",
+    siteName: employee.siteName ?? '',
+    siteLocation: employee.siteLocation ?? '',
     siteHeadEmployeeId: employee.siteHeadEmployeeId ?? null,
     departmentId: employee.departmentId ?? null,
     departmentName: employee.departmentName ?? null,
@@ -225,28 +225,30 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
     activityType: input.activityType,
     priority: input.priority,
     overtimeMinutes: input.overtimeMinutes,
-    transactionType: input.transactionType ?? "activity",
+    transactionType: input.transactionType ?? 'activity',
     at: input.at ?? new Date(),
-  };
+  }
 }
 
 async function resolveLegacyFallbackRoute(
-  context: ApprovalContext,
+  context: ApprovalContext
 ): Promise<ApprovalRouteResolution> {
   const warnings = [
-    "Approval matrix aktif tidak ditemukan. Sistem memakai fallback legacy approver.",
-  ];
+    'Approval matrix aktif tidak ditemukan. Sistem memakai fallback legacy approver.',
+  ]
 
-  const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, warnings);
+  const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, warnings)
   if (centralServiceSitePjoRoute) {
-    return centralServiceSitePjoRoute;
+    return centralServiceSitePjoRoute
   }
 
   if (
     isCentralServiceDepartment(context.departmentName) &&
     !isJakartaOrBalikpapanSite(context.siteName, context.siteLocation)
   ) {
-    warnings.push("Head Area/PJO Site aktif belum diset di master Lokasi Site untuk Central Service site ini.");
+    warnings.push(
+      'Head Area/PJO Site aktif belum diset di master Lokasi Site untuk Central Service site ini.'
+    )
   }
 
   if (context.directManagerId) {
@@ -257,7 +259,7 @@ async function resolveLegacyFallbackRoute(
       })
       .from(employees)
       .where(and(eq(employees.id, context.directManagerId), eq(employees.isActive, true)))
-      .limit(1);
+      .limit(1)
 
     if (manager) {
       return {
@@ -270,13 +272,13 @@ async function resolveLegacyFallbackRoute(
         steps: [
           {
             stepOrder: 1,
-            label: "Direct Manager",
+            label: 'Direct Manager',
             approverName: manager.name,
             approverEmployeeId: manager.id,
             approverNodeId: null,
             approvalMatrixStepId: null,
-            approvalMode: "sequential",
-            resolutionSource: "legacy_manager",
+            approvalMode: 'sequential',
+            resolutionSource: 'legacy_manager',
             canDelegate: true,
             slaHours: 24,
             nodeLabel: null,
@@ -284,7 +286,7 @@ async function resolveLegacyFallbackRoute(
             escalationLabel: null,
           },
         ],
-      };
+      }
     }
   }
 
@@ -298,11 +300,11 @@ async function resolveLegacyFallbackRoute(
       and(
         eq(employees.siteId, context.siteId),
         eq(employees.isActive, true),
-        eq(employees.jobTitle, "Foreman"),
-      ),
+        eq(employees.jobTitle, 'Foreman')
+      )
     )
     .orderBy(asc(employees.name))
-    .limit(1);
+    .limit(1)
 
   if (siteForeman) {
     return {
@@ -315,13 +317,13 @@ async function resolveLegacyFallbackRoute(
       steps: [
         {
           stepOrder: 1,
-          label: "Site Approver",
+          label: 'Site Approver',
           approverName: siteForeman.name,
           approverEmployeeId: siteForeman.id,
           approverNodeId: null,
           approvalMatrixStepId: null,
-          approvalMode: "sequential",
-          resolutionSource: "legacy_site_foreman",
+          approvalMode: 'sequential',
+          resolutionSource: 'legacy_site_foreman',
           canDelegate: true,
           slaHours: 24,
           nodeLabel: null,
@@ -329,7 +331,7 @@ async function resolveLegacyFallbackRoute(
           escalationLabel: null,
         },
       ],
-    };
+    }
   }
 
   return {
@@ -338,17 +340,17 @@ async function resolveLegacyFallbackRoute(
     structureId: null,
     structureName: null,
     transactionType: context.transactionType,
-    warnings: [...warnings, "Belum ada approver aktif untuk fallback legacy."],
+    warnings: [...warnings, 'Belum ada approver aktif untuk fallback legacy.'],
     steps: [
       {
         stepOrder: 1,
-        label: "Unassigned Approver",
-        approverName: "Unassigned Approver",
+        label: 'Unassigned Approver',
+        approverName: 'Unassigned Approver',
         approverEmployeeId: null,
         approverNodeId: null,
         approvalMatrixStepId: null,
-        approvalMode: "sequential",
-        resolutionSource: "vacant",
+        approvalMode: 'sequential',
+        resolutionSource: 'vacant',
         canDelegate: false,
         slaHours: 24,
         nodeLabel: null,
@@ -356,19 +358,19 @@ async function resolveLegacyFallbackRoute(
         escalationLabel: null,
       },
     ],
-  };
+  }
 }
 
 async function resolveCentralServiceSitePjoRoute(
   context: ApprovalContext,
-  warnings: string[],
+  warnings: string[]
 ): Promise<ApprovalRouteResolution | null> {
   const centralServiceOutsideMainSite =
     isCentralServiceDepartment(context.departmentName) &&
-    !isJakartaOrBalikpapanSite(context.siteName, context.siteLocation);
+    !isJakartaOrBalikpapanSite(context.siteName, context.siteLocation)
 
   if (!centralServiceOutsideMainSite) {
-    return null;
+    return null
   }
 
   const siteApprovers = await db
@@ -381,14 +383,14 @@ async function resolveCentralServiceSitePjoRoute(
       and(
         eq(employees.id, context.siteHeadEmployeeId ?? 0),
         eq(employees.siteId, context.siteId),
-        eq(employees.isActive, true),
-      ),
+        eq(employees.isActive, true)
+      )
     )
-    .limit(1);
-  const pjo = siteApprovers[0] ?? null;
+    .limit(1)
+  const pjo = siteApprovers[0] ?? null
 
   if (!pjo) {
-    return null;
+    return null
   }
 
   return {
@@ -399,18 +401,18 @@ async function resolveCentralServiceSitePjoRoute(
     transactionType: context.transactionType,
     warnings: [
       ...warnings,
-      "Central Service di site luar Jakarta/Balikpapan diarahkan langsung ke Head Area/PJO Site dari master Lokasi Site.",
+      'Central Service di site luar Jakarta/Balikpapan diarahkan langsung ke Head Area/PJO Site dari master Lokasi Site.',
     ],
     steps: [
       {
         stepOrder: 1,
-        label: "PJO Site",
+        label: 'PJO Site',
         approverName: pjo.name,
         approverEmployeeId: pjo.id,
         approverNodeId: null,
         approvalMatrixStepId: null,
-        approvalMode: "sequential",
-        resolutionSource: "legacy_site_pjo",
+        approvalMode: 'sequential',
+        resolutionSource: 'legacy_site_pjo',
         canDelegate: true,
         slaHours: 24,
         nodeLabel: null,
@@ -418,14 +420,12 @@ async function resolveCentralServiceSitePjoRoute(
         escalationLabel: null,
       },
     ],
-  };
+  }
 }
 
-async function resolveApdApprovalRoute(
-  context: ApprovalContext,
-): Promise<ApprovalRouteResolution> {
-  const steps: ResolvedApprovalStep[] = [];
-  let stepOrder = 1;
+async function resolveApdApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = []
+  let stepOrder = 1
 
   // Step 1: PJO Site / Technical Engineer
   const siteApprovers = await db
@@ -438,28 +438,28 @@ async function resolveApdApprovalRoute(
       and(
         eq(employees.id, context.siteHeadEmployeeId ?? 0),
         eq(employees.siteId, context.siteId),
-        eq(employees.isActive, true),
-      ),
+        eq(employees.isActive, true)
+      )
     )
-    .limit(1);
-  const pjo = siteApprovers[0];
+    .limit(1)
+  const pjo = siteApprovers[0]
 
   if (pjo) {
     steps.push({
       stepOrder: stepOrder++,
-      label: "Atasan Di Site (PJO)",
+      label: 'Atasan Di Site (PJO)',
       approverName: pjo.name,
       approverEmployeeId: pjo.id,
       approverNodeId: null,
       approvalMatrixStepId: null,
-      approvalMode: "sequential",
-      resolutionSource: "apd_site_pjo",
+      approvalMode: 'sequential',
+      resolutionSource: 'apd_site_pjo',
       canDelegate: true,
       slaHours: 24,
       nodeLabel: null,
       fallbackLabel: null,
       escalationLabel: null,
-    });
+    })
   }
 
   // Step 2: Head Section
@@ -470,7 +470,7 @@ async function resolveApdApprovalRoute(
       })
       .from(masterSections)
       .where(eq(masterSections.id, context.sectionId))
-      .limit(1);
+      .limit(1)
 
     if (sections[0]?.headId) {
       const headSection = await db
@@ -480,25 +480,61 @@ async function resolveApdApprovalRoute(
         })
         .from(employees)
         .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
-        .limit(1);
+        .limit(1)
 
       if (headSection[0]) {
         steps.push({
           stepOrder: stepOrder++,
-          label: "Head Section",
+          label: 'Head Section',
           approverName: headSection[0].name,
           approverEmployeeId: headSection[0].id,
           approverNodeId: null,
           approvalMatrixStepId: null,
-          approvalMode: "sequential",
-          resolutionSource: "apd_head_section",
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_head_section',
           canDelegate: true,
           slaHours: 24,
           nodeLabel: null,
           fallbackLabel: null,
           escalationLabel: null,
-        });
+        })
       }
+    }
+  }
+
+  // Step 3: HSE Admin (Hanya untuk APD, bukan material/tools)
+  if (context.transactionType === 'apd-request-apd') {
+    const hseApprovers = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+      })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.accessRole, 'HSE'),
+          eq(employees.siteId, context.siteId),
+          eq(employees.isActive, true)
+        )
+      )
+      .limit(1)
+
+    if (hseApprovers[0]) {
+      steps.push({
+        stepOrder: stepOrder++,
+        label: 'HSE Admin',
+        approverName: hseApprovers[0].name,
+        approverEmployeeId: hseApprovers[0].id,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: 'sequential',
+        resolutionSource: 'apd_hse_admin',
+        canDelegate: true,
+        slaHours: 24,
+        nodeLabel: null,
+        fallbackLabel: null,
+        escalationLabel: null,
+      })
     }
   }
 
@@ -511,24 +547,24 @@ async function resolveApdApprovalRoute(
       })
       .from(employees)
       .where(and(eq(employees.id, context.directManagerId), eq(employees.isActive, true)))
-      .limit(1);
+      .limit(1)
 
     if (manager) {
       steps.push({
         stepOrder: 1,
-        label: "Direct Manager",
+        label: 'Direct Manager',
         approverName: manager.name,
         approverEmployeeId: manager.id,
         approverNodeId: null,
         approvalMatrixStepId: null,
-        approvalMode: "sequential",
-        resolutionSource: "legacy_manager",
+        approvalMode: 'sequential',
+        resolutionSource: 'legacy_manager',
         canDelegate: true,
         slaHours: 24,
         nodeLabel: null,
         fallbackLabel: null,
         escalationLabel: null,
-      });
+      })
     }
   }
 
@@ -538,80 +574,85 @@ async function resolveApdApprovalRoute(
     structureId: null,
     structureName: null,
     transactionType: context.transactionType,
-    warnings: ["Menggunakan custom route untuk APD Request (PJO -> Head Section)"],
+    warnings: ['Menggunakan custom route untuk APD Request (PJO -> Head Section)'],
     steps,
-  };
+  }
 }
 type NodeRow = {
-  id: number;
-  label: string;
-  approvalRole: string;
-  canDelegate: boolean;
-  isEscalationTarget: boolean;
-  slaHours: number;
-  employeeId: number | null;
-  employeeName: string | null;
-};
+  id: number
+  label: string
+  approvalRole: string
+  canDelegate: boolean
+  isEscalationTarget: boolean
+  slaHours: number
+  employeeId: number | null
+  employeeName: string | null
+}
 
 type AssignmentRow = {
-  id: number;
-  nodeId: number;
-  employeeId: number | null;
-  employeeName: string | null;
-  employeeIsActive: boolean | null;
-  assignmentType: string;
-  effectiveFrom: Date;
-  effectiveTo: Date | null;
-  isActive: boolean;
-};
+  id: number
+  nodeId: number
+  employeeId: number | null
+  employeeName: string | null
+  employeeIsActive: boolean | null
+  assignmentType: string
+  effectiveFrom: Date
+  effectiveTo: Date | null
+  isActive: boolean
+}
 
 function pickAssignment(
   assignments: AssignmentRow[],
-  options: { at: Date; includeDelegate: boolean },
+  options: { at: Date; includeDelegate: boolean }
 ) {
   const activeAssignments = assignments
     .filter((assignment) => assignment.isActive)
-    .filter((assignment) => isBetweenWindow(options.at, assignment.effectiveFrom, assignment.effectiveTo))
+    .filter((assignment) =>
+      isBetweenWindow(options.at, assignment.effectiveFrom, assignment.effectiveTo)
+    )
     .filter((assignment) => assignment.employeeId != null && assignment.employeeName != null)
     .filter((assignment) => assignment.employeeIsActive !== false)
     .sort((left, right) => {
       const leftPriority =
-        left.assignmentType === "primary" ? 0 : left.assignmentType === "acting" ? 1 : 2;
+        left.assignmentType === 'primary' ? 0 : left.assignmentType === 'acting' ? 1 : 2
       const rightPriority =
-        right.assignmentType === "primary" ? 0 : right.assignmentType === "acting" ? 1 : 2;
+        right.assignmentType === 'primary' ? 0 : right.assignmentType === 'acting' ? 1 : 2
 
       if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
+        return leftPriority - rightPriority
       }
 
-      return right.effectiveFrom.getTime() - left.effectiveFrom.getTime();
-    });
+      return right.effectiveFrom.getTime() - left.effectiveFrom.getTime()
+    })
 
   const primaryOrActing = activeAssignments.find(
-    (assignment) => assignment.assignmentType === "primary" || assignment.assignmentType === "acting",
-  );
+    (assignment) =>
+      assignment.assignmentType === 'primary' || assignment.assignmentType === 'acting'
+  )
 
   if (primaryOrActing) {
     return {
       employeeId: primaryOrActing.employeeId,
       employeeName: primaryOrActing.employeeName,
-      resolutionSource: "matrix" as const,
-    };
+      resolutionSource: 'matrix' as const,
+    }
   }
 
   if (options.includeDelegate) {
-    const delegate = activeAssignments.find((assignment) => assignment.assignmentType === "delegate");
+    const delegate = activeAssignments.find(
+      (assignment) => assignment.assignmentType === 'delegate'
+    )
 
     if (delegate) {
       return {
         employeeId: delegate.employeeId,
         employeeName: delegate.employeeName,
-        resolutionSource: "delegate" as const,
-      };
+        resolutionSource: 'delegate' as const,
+      }
     }
   }
 
-  return null;
+  return null
 }
 
 function resolveNodeStep(
@@ -625,28 +666,29 @@ function resolveNodeStep(
   nodeById: Map<number, NodeRow>,
   assignmentsByNodeId: Map<number, AssignmentRow[]>,
   options: {
-    at: Date;
-    fallbackNodeId: number | null;
-    escalationNodeId: number | null;
-  },
+    at: Date
+    fallbackNodeId: number | null
+    escalationNodeId: number | null
+  }
 ) {
-  const node = nodeId != null ? nodeById.get(nodeId) ?? null : null;
+  const node = nodeId != null ? (nodeById.get(nodeId) ?? null) : null
   const fallbackNode =
-    options.fallbackNodeId != null ? nodeById.get(options.fallbackNodeId) ?? null : null;
+    options.fallbackNodeId != null ? (nodeById.get(options.fallbackNodeId) ?? null) : null
   const escalationNode =
-    options.escalationNodeId != null ? nodeById.get(options.escalationNodeId) ?? null : null;
+    options.escalationNodeId != null ? (nodeById.get(options.escalationNodeId) ?? null) : null
 
   if (nodeId != null && node) {
     const assignment = pickAssignment(assignmentsByNodeId.get(nodeId) ?? [], {
       at: options.at,
       includeDelegate: canDelegate || node.canDelegate,
-    });
+    })
 
     if (assignment) {
       return {
         stepOrder,
         label: label || node.approvalRole || node.label,
-        approverName: assignment.employeeName ?? buildVacantApproverLabel(node.label, "Vacant approver"),
+        approverName:
+          assignment.employeeName ?? buildVacantApproverLabel(node.label, 'Vacant approver'),
         approverEmployeeId: assignment.employeeId ?? null,
         approverNodeId: node.id,
         approvalMatrixStepId,
@@ -657,7 +699,7 @@ function resolveNodeStep(
         nodeLabel: node.label,
         fallbackLabel: fallbackNode?.label ?? null,
         escalationLabel: escalationNode?.label ?? null,
-      } satisfies ResolvedApprovalStep;
+      } satisfies ResolvedApprovalStep
     }
 
     if (node.employeeId != null && node.employeeName) {
@@ -669,13 +711,13 @@ function resolveNodeStep(
         approverNodeId: node.id,
         approvalMatrixStepId,
         approvalMode,
-        resolutionSource: "matrix",
+        resolutionSource: 'matrix',
         canDelegate,
         slaHours: slaHours || node.slaHours,
         nodeLabel: node.label,
         fallbackLabel: fallbackNode?.label ?? null,
         escalationLabel: escalationNode?.label ?? null,
-      } satisfies ResolvedApprovalStep;
+      } satisfies ResolvedApprovalStep
     }
   }
 
@@ -683,7 +725,7 @@ function resolveNodeStep(
     const fallbackAssignment = pickAssignment(assignmentsByNodeId.get(fallbackNode.id) ?? [], {
       at: options.at,
       includeDelegate: true,
-    });
+    })
 
     if (fallbackAssignment) {
       return {
@@ -691,18 +733,18 @@ function resolveNodeStep(
         label: label || fallbackNode.approvalRole || fallbackNode.label,
         approverName:
           fallbackAssignment.employeeName ??
-          buildVacantApproverLabel(fallbackNode.label, "Fallback approver"),
+          buildVacantApproverLabel(fallbackNode.label, 'Fallback approver'),
         approverEmployeeId: fallbackAssignment.employeeId ?? null,
         approverNodeId: fallbackNode.id,
         approvalMatrixStepId,
         approvalMode,
-        resolutionSource: "fallback_node",
+        resolutionSource: 'fallback_node',
         canDelegate,
         slaHours: slaHours || fallbackNode.slaHours,
         nodeLabel: node?.label ?? null,
         fallbackLabel: fallbackNode.label,
         escalationLabel: escalationNode?.label ?? null,
-      } satisfies ResolvedApprovalStep;
+      } satisfies ResolvedApprovalStep
     }
   }
 
@@ -710,7 +752,7 @@ function resolveNodeStep(
     const escalationAssignment = pickAssignment(assignmentsByNodeId.get(escalationNode.id) ?? [], {
       at: options.at,
       includeDelegate: true,
-    });
+    })
 
     if (escalationAssignment) {
       return {
@@ -718,42 +760,42 @@ function resolveNodeStep(
         label: label || escalationNode.approvalRole || escalationNode.label,
         approverName:
           escalationAssignment.employeeName ??
-          buildVacantApproverLabel(escalationNode.label, "Escalation approver"),
+          buildVacantApproverLabel(escalationNode.label, 'Escalation approver'),
         approverEmployeeId: escalationAssignment.employeeId ?? null,
         approverNodeId: escalationNode.id,
         approvalMatrixStepId,
         approvalMode,
-        resolutionSource: "escalation",
+        resolutionSource: 'escalation',
         canDelegate,
         slaHours: slaHours || escalationNode.slaHours,
         nodeLabel: node?.label ?? null,
         fallbackLabel: fallbackNode?.label ?? null,
         escalationLabel: escalationNode.label,
-      } satisfies ResolvedApprovalStep;
+      } satisfies ResolvedApprovalStep
     }
   }
 
   return {
     stepOrder,
-    label: label || node?.approvalRole || node?.label || "Unassigned Approver",
-    approverName: buildVacantApproverLabel(node?.label ?? null, "Unassigned Approver"),
+    label: label || node?.approvalRole || node?.label || 'Unassigned Approver',
+    approverName: buildVacantApproverLabel(node?.label ?? null, 'Unassigned Approver'),
     approverEmployeeId: null,
     approverNodeId: node?.id ?? null,
     approvalMatrixStepId,
     approvalMode,
-    resolutionSource: "vacant",
+    resolutionSource: 'vacant',
     canDelegate,
     slaHours: slaHours || node?.slaHours || 24,
     nodeLabel: node?.label ?? null,
     fallbackLabel: fallbackNode?.label ?? null,
     escalationLabel: escalationNode?.label ?? null,
-  } satisfies ResolvedApprovalStep;
+  } satisfies ResolvedApprovalStep
 }
 
 export async function resolveApprovalRouteForActivity(
-  input: ResolveApprovalRouteInput,
+  input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
-  const context = await getApprovalContext(input);
+  const context = await getApprovalContext(input)
 
   const matrixCandidates = await db
     .select({
@@ -779,17 +821,19 @@ export async function resolveApprovalRouteForActivity(
     })
     .from(approvalMatrices)
     .leftJoin(orgChartStructures, eq(approvalMatrices.structureId, orgChartStructures.id))
-    .where(eq(approvalMatrices.isActive, true));
+    .where(eq(approvalMatrices.isActive, true))
 
   const rankedCandidates = matrixCandidates
-    .filter((matrix) => normalizeValue(matrix.transactionType) === normalizeValue(context.transactionType))
+    .filter(
+      (matrix) => normalizeValue(matrix.transactionType) === normalizeValue(context.transactionType)
+    )
     .filter((matrix) => isBetweenWindow(context.at, matrix.effectiveFrom, matrix.effectiveTo))
     .filter((matrix) =>
       isBetweenWindow(
         context.at,
         matrix.structureEffectiveFrom ?? context.at,
-        matrix.structureEffectiveTo ?? null,
-      ),
+        matrix.structureEffectiveTo ?? null
+      )
     )
     .filter((matrix) => matrix.structureId == null || matrix.structureIsActive)
     .map((matrix) => ({
@@ -799,27 +843,27 @@ export async function resolveApprovalRouteForActivity(
     .filter((matrix) => matrix.score >= 0)
     .sort((left, right) => {
       if (left.score !== right.score) {
-        return right.score - left.score;
+        return right.score - left.score
       }
 
-      return right.effectiveFrom.getTime() - left.effectiveFrom.getTime();
-    });
+      return right.effectiveFrom.getTime() - left.effectiveFrom.getTime()
+    })
 
-  const selectedMatrix = rankedCandidates[0];
+  const selectedMatrix = rankedCandidates[0]
   if (!selectedMatrix) {
-    if (context.transactionType === "apd-request") {
-      return resolveApdApprovalRoute(context);
+    if (context.transactionType.startsWith('apd-request')) {
+      return resolveApdApprovalRoute(context)
     }
 
     const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
-      "Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.",
-    ]);
+      'Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.',
+    ])
 
     if (centralServiceSitePjoRoute) {
-      return centralServiceSitePjoRoute;
+      return centralServiceSitePjoRoute
     }
 
-    return resolveLegacyFallbackRoute(context);
+    return resolveLegacyFallbackRoute(context)
   }
 
   const matrixSteps = await db
@@ -836,7 +880,7 @@ export async function resolveApprovalRouteForActivity(
     })
     .from(approvalMatrixSteps)
     .where(eq(approvalMatrixSteps.matrixId, selectedMatrix.id))
-    .orderBy(asc(approvalMatrixSteps.stepOrder), asc(approvalMatrixSteps.id));
+    .orderBy(asc(approvalMatrixSteps.stepOrder), asc(approvalMatrixSteps.id))
 
   if (matrixSteps.length === 0) {
     return {
@@ -848,16 +892,16 @@ export async function resolveApprovalRouteForActivity(
       warnings: [
         `Approval matrix "${selectedMatrix.name}" tidak memiliki step aktif. Fallback legacy dipakai.`,
       ],
-    };
+    }
   }
 
   const nodeIds = Array.from(
     new Set(
       matrixSteps
         .flatMap((step) => [step.nodeId, step.fallbackNodeId, step.escalationNodeId])
-        .filter((value): value is number => value != null),
-    ),
-  );
+        .filter((value): value is number => value != null)
+    )
+  )
 
   const [nodes, assignments] = await Promise.all([
     nodeIds.length === 0
@@ -893,21 +937,21 @@ export async function resolveApprovalRouteForActivity(
           .from(orgNodeAssignments)
           .leftJoin(employees, eq(orgNodeAssignments.employeeId, employees.id))
           .where(inArray(orgNodeAssignments.nodeId, nodeIds)),
-  ]);
+  ])
 
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const assignmentsByNodeId = new Map<number, AssignmentRow[]>();
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const assignmentsByNodeId = new Map<number, AssignmentRow[]>()
 
   for (const assignment of assignments) {
-    const list = assignmentsByNodeId.get(assignment.nodeId) ?? [];
+    const list = assignmentsByNodeId.get(assignment.nodeId) ?? []
     list.push({
       ...assignment,
       employeeId: assignment.employeeId ?? null,
       employeeName: assignment.employeeName ?? null,
       employeeIsActive: assignment.employeeIsActive ?? null,
       effectiveTo: assignment.effectiveTo ?? null,
-    });
-    assignmentsByNodeId.set(assignment.nodeId, list);
+    })
+    assignmentsByNodeId.set(assignment.nodeId, list)
   }
 
   const steps = matrixSteps.map((step) =>
@@ -925,16 +969,16 @@ export async function resolveApprovalRouteForActivity(
         at: context.at,
         fallbackNodeId: step.fallbackNodeId ?? null,
         escalationNodeId: step.escalationNodeId ?? null,
-      },
-    ),
-  );
+      }
+    )
+  )
 
   const warnings = steps
-    .filter((step) => step.resolutionSource === "vacant")
+    .filter((step) => step.resolutionSource === 'vacant')
     .map(
       (step) =>
-        `Step ${step.stepOrder} (${step.label}) belum punya assignee aktif dan akan tampil sebagai vacant approver.`,
-    );
+        `Step ${step.stepOrder} (${step.label}) belum punya assignee aktif dan akan tampil sebagai vacant approver.`
+    )
 
   return {
     matrixId: selectedMatrix.id,
@@ -944,7 +988,7 @@ export async function resolveApprovalRouteForActivity(
     transactionType: selectedMatrix.transactionType,
     warnings,
     steps,
-  };
+  }
 }
 
 export function serializeApprovalRoute(route: ApprovalRouteResolution) {
@@ -970,7 +1014,5 @@ export function serializeApprovalRoute(route: ApprovalRouteResolution) {
       fallbackLabel: step.fallbackLabel,
       escalationLabel: step.escalationLabel,
     })),
-  });
+  })
 }
-
-

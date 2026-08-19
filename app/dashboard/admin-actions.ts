@@ -4378,7 +4378,8 @@ async function applyApprovalDecision(params: {
         const reqInfo = await tx.select({
           requestNumber: apdRequests.requestNumber,
           requesterName: employees.name,
-          requesterEmail: employees.email
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
         }).from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
@@ -4402,7 +4403,33 @@ async function applyApprovalDecision(params: {
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,
             approverName: actorName,
+            requestType: reqInfo.requestCategory,
             ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+          }).catch(console.error);
+        }
+      }
+
+      if (params.decision === 'rejected' && approval.apdRequestId != null) {
+        const reqInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (reqInfo?.requesterEmail) {
+          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
+          sendApdRequestRejectedEmail({
+            requesterEmail: reqInfo.requesterEmail,
+            requesterName: reqInfo.requesterName,
+            requestNumber: reqInfo.requestNumber,
+            approverName: actorName,
+            reason: trimmedNote || 'Tidak ada alasan yang diberikan',
+            requestType: reqInfo.requestCategory
           }).catch(console.error);
         }
       }

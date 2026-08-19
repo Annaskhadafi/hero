@@ -2808,15 +2808,16 @@ Tim Human Capital`,
     deliveryChannel: 'email,bell',
     recipientScope: 'approver',
     ccEmail: '',
-    subject: 'Permohonan APD Baru: {{requestNumber}}',
+    subject: 'Permohonan {{requestType}} Baru: {{requestNumber}}',
     htmlContent: 'Silakan merujuk pada format email standar APD.',
     textContent: 'Silakan merujuk pada format email standar APD.',
-    description: 'Notifikasi saat permohonan APD baru diajukan',
-    variables: ['employeeName', 'requestNumber', 'approverName'],
+    description: 'Notifikasi saat permohonan item HSE baru diajukan',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
-      approverName: 'Agus Subiyanto'
+      approverName: 'Agus Subiyanto',
+      requestType: 'APD'
     }
   },
   {
@@ -2826,15 +2827,16 @@ Tim Human Capital`,
     deliveryChannel: 'email,bell',
     recipientScope: 'requester',
     ccEmail: '',
-    subject: 'Permohonan APD Disetujui: {{requestNumber}}',
+    subject: 'Permohonan {{requestType}} Disetujui: {{requestNumber}}',
     htmlContent: 'Silakan merujuk pada format email standar APD.',
     textContent: 'Silakan merujuk pada format email standar APD.',
-    description: 'Notifikasi saat permohonan APD disetujui',
-    variables: ['employeeName', 'requestNumber', 'approverName'],
+    description: 'Notifikasi saat permohonan item HSE disetujui',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
-      approverName: 'Agus Subiyanto'
+      approverName: 'Agus Subiyanto',
+      requestType: 'APD'
     }
   },
   {
@@ -2844,16 +2846,17 @@ Tim Human Capital`,
     deliveryChannel: 'email,bell',
     recipientScope: 'requester',
     ccEmail: '',
-    subject: 'Permohonan APD Ditolak: {{requestNumber}}',
+    subject: 'Permohonan {{requestType}} Ditolak: {{requestNumber}}',
     htmlContent: 'Silakan merujuk pada format email standar APD.',
     textContent: 'Silakan merujuk pada format email standar APD.',
-    description: 'Notifikasi saat permohonan APD ditolak',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'reason'],
+    description: 'Notifikasi saat permohonan item HSE ditolak',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
-      reason: 'Barang sedang tidak tersedia'
+      reason: 'Barang sedang tidak tersedia',
+      requestType: 'APD'
     }
   },
   {
