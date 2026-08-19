@@ -284,7 +284,6 @@ export function PdfCanvasViewer({
   };
 
   return (
-  return (
     <div className={`flex flex-col h-full w-full bg-white dark:bg-slate-900 select-none overflow-hidden ${className}`}>
       {/* Floating / Sticky Control Bar */}
       <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 shrink-0 z-20 gap-2 text-xs">
