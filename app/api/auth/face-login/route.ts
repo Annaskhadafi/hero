@@ -108,6 +108,8 @@ export async function POST(request: NextRequest) {
       try {
         const verifyRes = await rarayVerifyFace({
           employeeId: emp.id,
+          employeeSn: emp.employeeSn || undefined,
+          faceRarayId: emp.faceRarayId || undefined,
           imageBuffer,
           mimeType,
         });
@@ -170,20 +172,58 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:N result:", JSON.stringify(rarayResult));
 
-        if (rarayResult.status === "success" && rarayResult.recognized && rarayResult.employee_id) {
-          const empId = Number(rarayResult.employee_id);
-          if (Number.isFinite(empId) && empId > 0) {
-            const [foundEmp] = await db
+        if (rarayResult.status === "success" && rarayResult.recognized && (rarayResult.employee_id || rarayResult.face_id)) {
+          const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
+          const numericId = Number(rawIdOrSn);
+
+          let foundEmp: typeof employees.$inferSelect | null = null;
+
+          // 2a. Try lookup by DB Primary Key ID (if numeric)
+          if (!isNaN(numericId) && numericId > 0) {
+            const [byPk] = await db
               .select()
               .from(employees)
-              .where(and(eq(employees.id, empId), eq(employees.isActive, true)))
+              .where(and(eq(employees.id, numericId), eq(employees.isActive, true)))
               .limit(1);
+            if (byPk) foundEmp = byPk;
+          }
 
-            if (foundEmp) {
-              matchedEmployee = foundEmp;
-              confidenceScore = rarayResult.confidence || 0.85;
-              console.log("[face-login] 1:N recognition matched active employee:", foundEmp.name);
-            }
+          // 2b. Try lookup by employeeSn (e.g., "71261" or stripped "emp-71261")
+          if (!foundEmp && rawIdOrSn) {
+            const cleanSn = rawIdOrSn.replace(/^emp-/, "").trim();
+            const [bySn] = await db
+              .select()
+              .from(employees)
+              .where(and(eq(employees.employeeSn, cleanSn), eq(employees.isActive, true)))
+              .limit(1);
+            if (bySn) foundEmp = bySn;
+          }
+
+          // 2c. Try lookup by faceRarayId
+          if (!foundEmp && rawIdOrSn) {
+            const cleanFaceId = rawIdOrSn.replace(/^emp-/, "").trim();
+            const [byFaceId] = await db
+              .select()
+              .from(employees)
+              .where(
+                and(
+                  or(
+                    eq(employees.faceRarayId, rawIdOrSn),
+                    eq(employees.faceRarayId, cleanFaceId)
+                  ),
+                  eq(employees.isActive, true)
+                )
+              )
+              .limit(1);
+            if (byFaceId) foundEmp = byFaceId;
+          }
+
+          if (foundEmp) {
+            matchedEmployee = foundEmp;
+            confidenceScore = rarayResult.confidence || 0.85;
+            console.log("[face-login] 1:N recognition matched active employee:", foundEmp.name, "ID:", foundEmp.id, "SN:", foundEmp.employeeSn);
+          } else {
+            console.warn("[face-login] 1:N recognition matched face ID/SN", rawIdOrSn, "but no active employee found in HERO DB.");
           }
         }
       } catch (err) {

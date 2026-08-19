@@ -286,14 +286,23 @@ export async function rarayRecognizeFace(params: {
 export async function rarayVerifyFace(params: {
   employeeId: number
   employeeSn?: string
+  faceRarayId?: string
   imageBuffer: Buffer
   mimeType?: string
 }): Promise<RarayVerifyResult> {
-  const { employeeId, employeeSn, imageBuffer, mimeType = 'image/jpeg' } = params
+  const { employeeId, employeeSn, faceRarayId, imageBuffer, mimeType = 'image/jpeg' } = params
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
   const candidateIds = Array.from(
-    new Set([`emp-${employeeId}`, employeeSn?.trim(), String(employeeId)].filter(Boolean) as string[])
+    new Set(
+      [
+        employeeSn?.trim(),
+        faceRarayId?.trim(),
+        faceRarayId ? faceRarayId.replace(/^emp-/, '').trim() : '',
+        `emp-${employeeId}`,
+        String(employeeId),
+      ].filter(Boolean) as string[]
+    )
   )
 
   // 1. Try HERO endpoint first
@@ -529,7 +538,8 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
     const data = await res.json()
     const rawConf = typeof data.confidence === 'number' ? data.confidence : 0
     const confidence = rawConf > 1 ? rawConf : rawConf * 100
-    const isReal = Boolean(data.is_real) && confidence >= 90
+    // UniFace-v2 verdict threshold: trust model's is_real flag with rational >= 60% confidence floor
+    const isReal = Boolean(data.is_real) && confidence >= 60
 
     if (data.status === 'success' || data.is_real !== undefined) {
       if (isReal) {
