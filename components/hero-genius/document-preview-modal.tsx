@@ -74,7 +74,7 @@ export function DocumentPreviewModal({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         onContextMenu={(e) => e.preventDefault()}
-        className="dark w-full max-w-[96vw] sm:max-w-4xl lg:max-w-5xl h-[94dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-2xl sm:rounded-3xl border-slate-800 select-none z-[9999] bg-slate-950 text-slate-100"
+        className="w-full max-w-[96vw] sm:max-w-4xl lg:max-w-5xl h-[94dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 select-none z-[9999] bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 shadow-2xl"
       >
         {/* Top Header Bar */}
         <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-800 bg-[#003461] px-3 sm:px-6 py-2.5 sm:py-3 text-white shrink-0">
@@ -126,11 +126,11 @@ export function DocumentPreviewModal({
 
         {/* Preview Content Area */}
         <div
-          className="relative flex-1 w-full h-full bg-slate-900 overflow-hidden"
+          className="relative flex-1 w-full h-full bg-white dark:bg-slate-900 overflow-hidden"
           onContextMenu={(e) => e.preventDefault()}
         >
           {isImage ? (
-            <div className="flex h-full w-full items-center justify-center p-4 overflow-auto">
+            <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-50 dark:bg-slate-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={streamUrl}
@@ -155,16 +155,16 @@ export function DocumentPreviewModal({
         </div>
 
         {/* Security Footer */}
-        <div className="border-t border-slate-800 bg-slate-950 px-4 py-2 text-[10px] sm:text-xs text-slate-400 flex items-center justify-between shrink-0">
-          <span className="flex items-center gap-1 text-slate-400">
-            <Eye className="size-3 text-emerald-400" />
+        <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 py-2 text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between shrink-0">
+          <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400 font-medium">
+            <Eye className="size-3 text-emerald-500" />
             {isMarkdown
               ? "Markdown Document Viewer (HERO Systems)"
               : isImage
               ? "Image Document Viewer (HERO Systems)"
               : "PDF Canvas Reader (HERO Systems)"}
           </span>
-          <span className="font-semibold text-slate-500">HERO Systems</span>
+          <span className="font-semibold text-slate-400 dark:text-slate-500">HERO Systems</span>
         </div>
       </DialogContent>
     </Dialog>

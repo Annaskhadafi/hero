@@ -854,12 +854,12 @@ export function SopWinExplorerWorkspace({
 
           {/* Balanced Side PDF Previewer */}
           <div
-            className="relative flex-1 min-h-0 w-full bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
+            className="relative flex-1 min-h-0 w-full bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
             onContextMenu={(e) => e.preventDefault()}
           >
             {activeDoc.pdfFileUrl ? (
               /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(activeDoc.pdfFileUrl) ? (
-                <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-950">
+                <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-50 dark:bg-slate-900">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
@@ -880,12 +880,12 @@ export function SopWinExplorerWorkspace({
                 />
               )
             ) : (
-              <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-center p-6 text-slate-400 bg-slate-950">
-                <FileText className="size-12 text-slate-500 mb-3" />
-                <p className="font-semibold text-sm text-slate-200">
+              <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-center p-6 text-slate-400 bg-white dark:bg-slate-900">
+                <FileText className="size-12 text-slate-400 mb-3" />
+                <p className="font-semibold text-sm text-slate-700 dark:text-slate-200">
                   Dokumen PDF Belum Tersedia
                 </p>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
                   File PDF untuk dokumen ini belum diunggah atau masih dalam proses pembaruan.
                 </p>
                 {canEdit && (
@@ -897,7 +897,7 @@ export function SopWinExplorerWorkspace({
                       setEditingDoc(activeDoc);
                       setEditDialogOpen(true);
                     }}
-                    className="mt-4 text-xs border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
+                    className="mt-4 text-xs border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
                   >
                     <Edit3 className="size-3.5 mr-1.5" />
                     Unggah / Edit Dokumen
