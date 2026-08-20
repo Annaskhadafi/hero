@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { apdRequests, apdRequestItems, employees, masterDepartments, sites, approvals } from "@/db/schema/hero";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, asc, sql } from "drizzle-orm";
 import type { ApdRequestCategory } from "@/lib/apd-status";
 
 let apdSchemaReady: Promise<void> | null = null;
@@ -88,7 +88,7 @@ export async function fetchApdRequestById(id: number) {
     .select()
     .from(approvals)
     .where(eq(approvals.apdRequestId, id))
-    .orderBy(desc(approvals.level));
+    .orderBy(asc(approvals.level));
 
   return { ...request, items, approvalHistory };
 }

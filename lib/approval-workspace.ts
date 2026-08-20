@@ -276,6 +276,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             requestDate: apdRequests.requestDate,
             employeeId: apdRequests.employeeId,
             siteId: apdRequests.siteId,
+            requestCategory: apdRequests.requestCategory,
           })
           .from(apdRequests)
           .where(inArray(apdRequests.id, apdIds))
@@ -534,13 +535,13 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         : row.submissionId != null
           ? (row.templateName ?? 'Workflow')
           : row.apdRequestId != null
-            ? 'Request APD'
+            ? `Request ${apd?.requestCategory ?? 'APD'}`
             : 'Unknown'
     const title =
       spl?.title ??
       titleFromSnapshot ??
       (row.apdRequestId != null
-        ? `Request APD - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
+        ? `Request ${apd?.requestCategory ?? 'APD'} - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
         : row.approvalActivityId != null
           ? `Daily Activity - ${row.activityCode ?? ''}`
           : `Workflow - ${row.templateName ?? ''}`)

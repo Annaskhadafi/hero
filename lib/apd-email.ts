@@ -22,6 +22,62 @@ export async function sendApdRequestSubmittedEmail(params: {
   })
 }
 
+export async function sendApdLevelApprovedEmail(params: {
+  requesterEmail: string
+  requesterName: string
+  requestNumber: string
+  approverName: string
+  requestType: string
+  currentLevelLabel: string
+  nextLevelLabel: string | null
+}) {
+  const isFinal = !params.nextLevelLabel
+  const statusText = isFinal
+    ? `telah <b>DISETUJUI SEPENUHNYA</b> oleh ${params.approverName} pada tahap <b>${params.currentLevelLabel}</b>.`
+    : `telah disetujui pada tahap <b>${params.currentLevelLabel}</b> oleh ${params.approverName} dan sedang menunggu persetujuan pada tahap <b>${params.nextLevelLabel}</b>.`
+
+  return sendWorkflowEmail({
+    to: params.requesterEmail,
+    templateCode: "apd_request_approved",
+    variables: {
+      employeeName: params.requesterName,
+      requestNumber: params.requestNumber,
+      approverName: params.approverName,
+      requestType: params.requestType,
+      currentLevelLabel: params.currentLevelLabel,
+      nextLevelLabel: params.nextLevelLabel ?? '',
+      isFinal: String(isFinal),
+    },
+    fallbackSubject: `[${params.requestType}] Tahap ${params.currentLevelLabel} Disetujui: ${params.requestNumber}`,
+    fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> ${statusText}<br><br>Terima kasih.`,
+    fallbackText: `Halo ${params.requesterName},\n\nPermohonan ${params.requestType} Anda dengan nomor tiket ${params.requestNumber} ${statusText.replace(/<[^>]*>/g, '')}\n\nTerima kasih.`,
+  })
+}
+
+export async function sendApdNextApproverEmail(params: {
+  nextApproverEmail: string
+  nextApproverName: string
+  requesterName: string
+  requestNumber: string
+  requestType: string
+  currentLevelLabel: string
+}) {
+  return sendWorkflowEmail({
+    to: params.nextApproverEmail,
+    templateCode: "apd_request_submitted",
+    variables: {
+      nextApproverName: params.nextApproverName,
+      employeeName: params.requesterName,
+      requestNumber: params.requestNumber,
+      requestType: params.requestType,
+      currentLevelLabel: params.currentLevelLabel,
+    },
+    fallbackSubject: `[${params.requestType}] Review Diperlukan: ${params.requestNumber}`,
+    fallbackHtml: `Halo ${params.nextApproverName},<br><br>Permohonan ${params.requestType} dari <b>${params.requesterName}</b> dengan nomor tiket <b>${params.requestNumber}</b> telah disetujui pada tahap sebelumnya dan memerlukan persetujuan Anda pada tahap <b>${params.currentLevelLabel}</b>.<br><br>Silakan login ke dashboard untuk melakukan review.<br><br>Terima kasih.`,
+    fallbackText: `Halo ${params.nextApproverName},\n\nPermohonan ${params.requestType} dari ${params.requesterName} dengan nomor tiket ${params.requestNumber} telah disetujui pada tahap sebelumnya dan memerlukan persetujuan Anda pada tahap ${params.currentLevelLabel}.\n\nSilakan login ke dashboard untuk melakukan review.\n\nTerima kasih.`,
+  })
+}
+
 export async function sendApdRequestApprovedEmail(params: {
   requesterEmail: string
   requesterName: string

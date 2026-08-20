@@ -6,6 +6,7 @@ import {
   notifyRoleChanged,
   notifyAccountBanned,
 } from '@/lib/user-notifications'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import Fuse from 'fuse.js'
@@ -4371,6 +4372,76 @@ async function applyApprovalDecision(params: {
           submittedAt: now,
           routeSnapshot: approval.routeSnapshot,
         })
+
+        // Notify requester (progress update) + next approver + bell notifications
+        const notifInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory,
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (notifInfo) {
+          const currentStepLabel = approvalRoute?.steps?.find((s: any) => s.stepOrder === approval.level)?.label ?? `Tahap ${approval.level}`
+
+          // 1. Email + bell ke requester (progress update)
+          if (notifInfo.requesterEmail) {
+            const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email');
+            sendApdLevelApprovedEmail({
+              requesterEmail: notifInfo.requesterEmail,
+              requesterName: notifInfo.requesterName,
+              requestNumber: notifInfo.requestNumber,
+              approverName: actorName,
+              requestType: notifInfo.requestCategory,
+              currentLevelLabel: currentStepLabel,
+              nextLevelLabel: nextStep.label,
+            }).catch(console.error);
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [notifInfo.requesterEmail],
+              eventType: 'apd_request_progress',
+              category: 'approval_requests',
+              title: `${notifInfo.requestCategory} Tahap Disetujui`,
+              body: `Permintaan ${notifInfo.requestCategory} Anda (${notifInfo.requestNumber}) telah disetujui pada tahap ${currentStepLabel} dan menunggu tahap berikutnya.`,
+              url: '/dashboard/approval',
+              tagPrefix: 'apd',
+            }).catch(console.error);
+          }
+
+          // 2. Email + bell ke next approver
+          if (nextStep.approverEmployeeId) {
+            const [nextApproverEmail] = await tx.select({ email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, nextStep.approverEmployeeId))
+              .limit(1);
+
+            if (nextApproverEmail?.email) {
+              const { sendApdNextApproverEmail } = await import('@/lib/apd-email');
+              sendApdNextApproverEmail({
+                nextApproverEmail: nextApproverEmail.email,
+                nextApproverName: nextStep.approverName,
+                requesterName: notifInfo.requesterName,
+                requestNumber: notifInfo.requestNumber,
+                requestType: notifInfo.requestCategory,
+                currentLevelLabel: nextStep.label,
+              }).catch(console.error);
+
+              notifyWorkflowBellRecipients({
+                recipientEmails: [nextApproverEmail.email],
+                eventType: 'apd_request_review',
+                category: 'approval_requests',
+                title: `Review ${notifInfo.requestCategory}`,
+                body: `${notifInfo.requesterName} mengajukan permintaan ${notifInfo.requestCategory} (${notifInfo.requestNumber}) yang membutuhkan persetujuan Anda pada tahap ${nextStep.label}.`,
+                url: '/dashboard/approval',
+                tagPrefix: 'apd',
+              }).catch(console.error);
+            }
+          }
+        }
       }
 
       if (decisionStatus === 'proses_order' && approval.apdRequestId != null && !nextStep) {
@@ -4430,6 +4501,51 @@ async function applyApprovalDecision(params: {
             approverName: actorName,
             reason: trimmedNote || 'Tidak ada alasan yang diberikan',
             requestType: reqInfo.requestCategory
+          }).catch(console.error);
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [reqInfo.requesterEmail],
+            eventType: 'apd_request_rejected',
+            category: 'approval_requests',
+            title: `${reqInfo.requestCategory} Ditolak`,
+            body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) telah ditolak oleh ${actorName}.`,
+            url: '/dashboard/apd',
+            tagPrefix: 'apd',
+          }).catch(console.error);
+        }
+      }
+
+      if (params.decision === 'needs_correction' && approval.apdRequestId != null) {
+        const reqInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (reqInfo?.requesterEmail) {
+          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
+          sendApdRequestRejectedEmail({
+            requesterEmail: reqInfo.requesterEmail,
+            requesterName: reqInfo.requesterName,
+            requestNumber: reqInfo.requestNumber,
+            approverName: actorName,
+            reason: trimmedNote || 'Dikembalikan untuk revisi',
+            requestType: reqInfo.requestCategory
+          }).catch(console.error);
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [reqInfo.requesterEmail],
+            eventType: 'apd_request_revision',
+            category: 'approval_requests',
+            title: `${reqInfo.requestCategory} Perlu Revisi`,
+            body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) dikembalikan untuk revisi oleh ${actorName}.`,
+            url: '/dashboard/apd',
+            tagPrefix: 'apd',
           }).catch(console.error);
         }
       }

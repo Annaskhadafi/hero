@@ -12,6 +12,7 @@ import { toast } from "sonner"
 export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [note, setNote] = useState('')
   const sigCanvas = useRef<SignatureCanvas>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   
@@ -44,11 +45,7 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
       formData.append('approvalId', item.approvalId.toString())
       formData.append('decision', selectedDecision)
       
-      // Get the note from textarea safely
-      const noteElement = document.getElementById(`note-${item.approvalId}`) as HTMLTextAreaElement
-      if (noteElement) {
-        formData.append('note', noteElement.value)
-      }
+      formData.append('note', note || '')
 
       // If approved, require signature
       if (selectedDecision === 'approved') {
@@ -85,48 +82,48 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
           Review APD
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-6xl w-[95vw] h-[90vh] flex flex-col p-6 gap-6 bg-surface-container-lowest">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Review Permintaan APD - {item.title}</DialogTitle>
+      <DialogContent className="sm:max-w-7xl w-[95vw] h-[92vh] flex flex-col p-4 gap-4 bg-surface-container-lowest">
+        <DialogHeader className="pb-2 border-b">
+          <DialogTitle className="text-lg">Review Permintaan APD - {item.title}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 min-h-0">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4 min-h-0">
           
           {/* Document Preview (Left) */}
-          <div className="rounded-xl border bg-card overflow-hidden shadow-sm flex flex-col h-full">
-            <div className="bg-surface-container-low px-4 py-2 border-b font-medium text-sm text-muted-foreground flex justify-between">
+          <div className="rounded-lg border bg-card overflow-hidden shadow-sm flex flex-col h-full">
+            <div className="bg-surface-container-low px-3 py-1.5 border-b font-medium text-xs text-muted-foreground flex justify-between">
               <span>Preview Dokumen</span>
               <span>{new Date().toLocaleString('id-ID')}</span>
             </div>
             <iframe 
               ref={iframeRef}
               src={`/print/apd/${item.activityId}`}
-              className="w-full flex-1 bg-white"
+              className="w-full flex-1 bg-white border-0"
               title="Preview Dokumen"
             />
           </div>
 
           {/* Form & Signature (Right) */}
-          <div className="flex flex-col gap-4 overflow-y-auto pr-2">
+          <div className="flex flex-col gap-3 overflow-y-auto pr-1">
             
-            <div className="rounded-xl bg-surface-container-low p-4 text-sm text-foreground space-y-2 border">
-              <p className="font-semibold text-primary">Informasi Request</p>
-              <div className="grid grid-cols-[100px_1fr] gap-1 text-muted-foreground">
+            <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground space-y-1.5 border">
+              <p className="font-semibold text-primary text-xs uppercase tracking-wide">Informasi Request</p>
+              <div className="grid grid-cols-[80px_1fr] gap-0.5 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">Pemohon:</span> <span>{group.requesterName}</span>
                 <span className="font-medium text-foreground">Site:</span> <span>{group.siteName}</span>
                 <span className="font-medium text-foreground">Status:</span> <span>{item.currentStepLabel}</span>
               </div>
             </div>
 
-            <div className="flex flex-col gap-4 flex-1">
-              <div className="flex-1 min-h-[220px] rounded-xl border border-outline-ghost overflow-hidden bg-white shadow-sm flex flex-col">
-                <div className="bg-surface-container-low px-4 py-2 text-sm font-semibold border-b flex justify-between items-center">
+            <div className="flex flex-col gap-3 flex-1">
+              <div className="flex-1 min-h-[180px] rounded-lg border border-outline-ghost overflow-hidden bg-white shadow-sm flex flex-col">
+                <div className="bg-surface-container-low px-3 py-1.5 text-xs font-semibold border-b flex justify-between items-center">
                   Tanda Tangan Digital
                   <div className="flex gap-1">
-                    <Button type="button" variant="ghost" size="sm" onClick={previewSignature} className="h-7 text-xs px-2 text-primary">
+                    <Button type="button" variant="ghost" size="sm" onClick={previewSignature} className="h-6 text-[10px] px-2 text-primary">
                       Pratinjau
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={clearSignature} className="h-7 text-xs px-2 text-destructive">
+                    <Button type="button" variant="ghost" size="sm" onClick={clearSignature} className="h-6 text-[10px] px-2 text-destructive">
                       Hapus
                     </Button>
                   </div>
@@ -139,14 +136,16 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-semibold">Komentar / Catatan</p>
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold">Komentar / Catatan</p>
                 <Textarea
                   id={`note-${item.approvalId}`}
                   name="note"
-                  rows={3}
-                  className="resize-none"
-                  placeholder="Isi komentar bila reject atau revisi. Approve boleh kosong atau beri konteks singkat."
+                  rows={2}
+                  className="resize-none text-xs"
+                  placeholder="Isi komentar bila reject atau revisi. Approve boleh kosong."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
                 />
               </div>
 

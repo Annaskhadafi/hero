@@ -149,7 +149,7 @@ export async function submitApdRequest(formData: FormData) {
           notifyWorkflowBellRecipients({
             recipientEmails: [approverEmailRec.email],
             eventType: 'apd_request_review',
-            category: 'approval',
+            category: 'approval_requests',
             title: `Review Permintaan ${requestCategory}`,
             body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
             url: `/dashboard/approval`,
