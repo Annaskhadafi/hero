@@ -78,19 +78,25 @@ export async function POST(request: NextRequest) {
     if (identifier && typeof identifier === "string" && identifier.trim()) {
       const cleanIdentifier = identifier.trim().toLowerCase();
       
-      const [emp] = await db
-        .select()
+      const [row] = await db
+        .select({
+          employee: employees,
+        })
         .from(employees)
+        .leftJoin(user, eq(employees.authUserId, user.id))
         .where(
           and(
             eq(employees.isActive, true),
             or(
               eq(employees.email, cleanIdentifier),
-              eq(employees.employeeSn, identifier.trim())
+              eq(employees.employeeSn, identifier.trim()),
+              eq(user.email, cleanIdentifier)
             )
           )
         )
         .limit(1);
+
+      const emp = row?.employee;
 
       if (!emp) {
         console.log("[face-login] Identifier provided but employee not found in active database:", cleanIdentifier);
@@ -287,18 +293,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Check if user has login account
+    // 5. Check if user has login account and get their registered email
     let targetAuthUserId = matchedEmployee.authUserId;
+    let targetUserEmail = "";
 
-    if (!targetAuthUserId && matchedEmployee.email) {
+    if (targetAuthUserId) {
       const [foundUser] = await db
-        .select({ id: user.id })
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.id, targetAuthUserId))
+        .limit(1);
+      if (foundUser) {
+        targetUserEmail = foundUser.email;
+      }
+    } else if (matchedEmployee.email) {
+      const [foundUser] = await db
+        .select({ id: user.id, email: user.email })
         .from(user)
         .where(eq(user.email, matchedEmployee.email.toLowerCase().trim()))
         .limit(1);
 
       if (foundUser) {
         targetAuthUserId = foundUser.id;
+        targetUserEmail = foundUser.email;
         await db
           .update(employees)
           .set({ authUserId: foundUser.id })
@@ -306,23 +323,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!targetAuthUserId) {
+    if (!targetAuthUserId || !targetUserEmail) {
       return NextResponse.json(
         {
           success: false,
           error: `Wajah dikenali sebagai ${matchedEmployee.name}, tetapi akun login belum dibuat. Silakan hubungi Administrator.`,
         },
         { status: 404 }
-      );
-    }
-
-    if (!matchedEmployee.email) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Wajah dikenali sebagai ${matchedEmployee.name}, tetapi email tidak terdaftar di data karyawan.`,
-        },
-        { status: 400 }
       );
     }
 
@@ -333,7 +340,7 @@ export async function POST(request: NextRequest) {
     await db.insert(verification).values({
       id: crypto.randomBytes(16).toString("hex"),
       identifier: magicToken,
-      value: JSON.stringify({ email: matchedEmployee.email.toLowerCase().trim(), name: matchedEmployee.name }),
+      value: JSON.stringify({ email: targetUserEmail.toLowerCase().trim(), name: matchedEmployee.name }),
       expiresAt: expiresAt,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -349,7 +356,7 @@ export async function POST(request: NextRequest) {
       token: magicToken,
       user: {
         name: matchedEmployee.name,
-        email: matchedEmployee.email,
+        email: targetUserEmail,
         employeeSn: matchedEmployee.employeeSn,
         employeeId: matchedEmployee.id,
       },

@@ -71,6 +71,18 @@ function SignInContent() {
         if (searchParams.get("reset") === "success") {
             setMessage("Password updated successfully. Please log in with the new password.");
         }
+        const errorType = searchParams.get("error");
+        if (errorType) {
+            if (errorType === "new_user_signup_disabled") {
+                setError("Akun user Anda tidak ditemukan. Harap pastikan email Anda sudah terdaftar.");
+            } else if (errorType === "INVALID_TOKEN") {
+                setError("Token login biometrik tidak valid atau sudah digunakan.");
+            } else if (errorType === "EXPIRED_TOKEN") {
+                setError("Token login biometrik telah kedaluwarsa.");
+            } else {
+                setError(`Gagal login biometrik: ${errorType}`);
+            }
+        }
     }, [searchParams]);
 
     const handleSubmit = async (e: React.FormEvent) => {
