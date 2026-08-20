@@ -49,6 +49,8 @@ export type ResolvedApprovalStep = {
     | 'legacy_site_foreman'
     | 'apd_site_pjo'
     | 'apd_head_section'
+    | 'apd_hse_site'
+    | 'apd_specific_approver'
     | 'vacant'
   canDelegate: boolean
   slaHours: number
@@ -427,71 +429,103 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
   const steps: ResolvedApprovalStep[] = []
   let stepOrder = 1
 
-  // Step 1: PJO Site / Technical Engineer
-  const siteApprovers = await db
-    .select({
-      id: employees.id,
-      name: employees.name,
-    })
-    .from(employees)
-    .where(
-      and(
-        eq(employees.id, context.siteHeadEmployeeId ?? 0),
-        eq(employees.siteId, context.siteId),
-        eq(employees.isActive, true)
-      )
-    )
-    .limit(1)
-  const pjo = siteApprovers[0]
+  // For APD requests: site-based single-step routing
+  if (context.transactionType === 'apd-request-apd') {
+    const siteName = context.siteName?.trim().toUpperCase() ?? ''
 
-  if (pjo) {
-    steps.push({
-      stepOrder: stepOrder++,
-      label: 'Atasan Di Site (PJO)',
-      approverName: pjo.name,
-      approverEmployeeId: pjo.id,
-      approverNodeId: null,
-      approvalMatrixStepId: null,
-      approvalMode: 'sequential',
-      resolutionSource: 'apd_site_pjo',
-      canDelegate: true,
-      slaHours: 24,
-      nodeLabel: null,
-      fallbackLabel: null,
-      escalationLabel: null,
-    })
-  }
+    // Sites with dedicated HSE: User → HSE
+    const HSE_SITES = ['CK MHU', 'CK BMB', 'CK BIB', 'CK KIM', 'VALE']
+    const hasHse = HSE_SITES.some(s => siteName.includes(s))
 
-  // Step 2: Head Section
-  if (context.sectionId) {
-    const sections = await db
-      .select({
-        headId: masterSections.headEmployeeId,
-      })
-      .from(masterSections)
-      .where(eq(masterSections.id, context.sectionId))
-      .limit(1)
+    // Sites with specific approver (Muhammad As'ar Fauzan)
+    const SPECIFIC_SITES = ['CK NCN', 'GRESIK', 'BATU HIJAU', 'BALIKPAPAN']
+    const hasSpecificApprover = SPECIFIC_SITES.some(s => siteName.includes(s))
 
-    if (sections[0]?.headId) {
-      const headSection = await db
-        .select({
-          id: employees.id,
-          name: employees.name,
-        })
+    if (hasHse) {
+      // Route to HSE at this site
+      const hseApprover = await db
+        .select({ id: employees.id, name: employees.name })
         .from(employees)
-        .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
+        .where(
+          and(
+            eq(employees.accessRole, 'HSE'),
+            eq(employees.siteId, context.siteId),
+            eq(employees.isActive, true)
+          )
+        )
         .limit(1)
 
-      if (headSection[0]) {
+      if (hseApprover[0]) {
         steps.push({
           stepOrder: stepOrder++,
-          label: 'Head Section',
-          approverName: headSection[0].name,
-          approverEmployeeId: headSection[0].id,
+          label: 'HSE',
+          approverName: hseApprover[0].name,
+          approverEmployeeId: hseApprover[0].id,
           approverNodeId: null,
           approvalMatrixStepId: null,
           approvalMode: 'sequential',
-          resolutionSource: 'apd_head_section',
+          resolutionSource: 'apd_hse_site',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: null,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    } else if (hasSpecificApprover) {
+      // Route to Muhammad As'ar Fauzan
+      const specificApprover = await db
+        .select({ id: employees.id, name: employees.name })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.name, "Muhammad As'ar Fauzan"),
+            eq(employees.isActive, true)
+          )
+        )
+        .limit(1)
+
+      if (specificApprover[0]) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: 'Atasan Site',
+          approverName: specificApprover[0].name,
+          approverEmployeeId: specificApprover[0].id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_specific_approver',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: null,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    } else {
+      // Other sites: Route to PJO Site
+      const pjoApprover = await db
+        .select({ id: employees.id, name: employees.name })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.id, context.siteHeadEmployeeId ?? 0),
+            eq(employees.siteId, context.siteId),
+            eq(employees.isActive, true)
+          )
+        )
+        .limit(1)
+
+      if (pjoApprover[0]) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: 'Atasan Di Site (PJO)',
+          approverName: pjoApprover[0].name,
+          approverEmployeeId: pjoApprover[0].id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_site_pjo',
           canDelegate: true,
           slaHours: 24,
           nodeLabel: null,
@@ -500,41 +534,73 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         })
       }
     }
-  }
-
-  // Step 3: HSE Admin (Hanya untuk APD, bukan material/tools)
-  if (context.transactionType === 'apd-request-apd') {
-    const hseApprovers = await db
-      .select({
-        id: employees.id,
-        name: employees.name,
-      })
+  } else {
+    // For Material/Tools: PJO → Section Head
+    // Step 1: PJO Site
+    const siteApprovers = await db
+      .select({ id: employees.id, name: employees.name })
       .from(employees)
       .where(
         and(
-          eq(employees.accessRole, 'HSE'),
+          eq(employees.id, context.siteHeadEmployeeId ?? 0),
           eq(employees.siteId, context.siteId),
           eq(employees.isActive, true)
         )
       )
       .limit(1)
+    const pjo = siteApprovers[0]
 
-    if (hseApprovers[0]) {
+    if (pjo) {
       steps.push({
         stepOrder: stepOrder++,
-        label: 'HSE Admin',
-        approverName: hseApprovers[0].name,
-        approverEmployeeId: hseApprovers[0].id,
+        label: 'Atasan Di Site (PJO)',
+        approverName: pjo.name,
+        approverEmployeeId: pjo.id,
         approverNodeId: null,
         approvalMatrixStepId: null,
         approvalMode: 'sequential',
-        resolutionSource: 'apd_hse_admin',
+        resolutionSource: 'apd_site_pjo',
         canDelegate: true,
         slaHours: 24,
         nodeLabel: null,
         fallbackLabel: null,
         escalationLabel: null,
       })
+    }
+
+    // Step 2: Head Section
+    if (context.sectionId) {
+      const sections = await db
+        .select({ headId: masterSections.headEmployeeId })
+        .from(masterSections)
+        .where(eq(masterSections.id, context.sectionId))
+        .limit(1)
+
+      if (sections[0]?.headId) {
+        const headSection = await db
+          .select({ id: employees.id, name: employees.name })
+          .from(employees)
+          .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
+          .limit(1)
+
+        if (headSection[0]) {
+          steps.push({
+            stepOrder: stepOrder++,
+            label: 'Head Section',
+            approverName: headSection[0].name,
+            approverEmployeeId: headSection[0].id,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: 'sequential',
+            resolutionSource: 'apd_head_section',
+            canDelegate: true,
+            slaHours: 24,
+            nodeLabel: null,
+            fallbackLabel: null,
+            escalationLabel: null,
+          })
+        }
+      }
     }
   }
 

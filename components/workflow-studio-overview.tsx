@@ -219,6 +219,14 @@ function SearchableSelect({
     }
   }, [])
 
+  // Focus search input when popup opens
+  useEffect(() => {
+    if (open && popupRef.current) {
+      const input = popupRef.current.querySelector('input') as HTMLInputElement | null
+      if (input) requestAnimationFrame(() => input.focus())
+    }
+  }, [open])
+
   // Catat tinggi asli popup setelah dirender untuk keputusan flip.
   useLayoutEffect(() => {
     if (open && popupRef.current) popupHeightRef.current = popupRef.current.offsetHeight
@@ -268,6 +276,7 @@ function SearchableSelect({
   const popup = open && popupPos ? (
     <div
       ref={popupRef}
+      onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
         top: popupPos.top,
@@ -275,17 +284,17 @@ function SearchableSelect({
         width: popupPos.width,
         maxHeight: popupPos.maxHeight,
       }}
-      className="pointer-events-auto z-[60] flex flex-col overflow-hidden rounded-md border bg-white shadow-lg"
+      className="pointer-events-auto z-[60] flex flex-col rounded-md border bg-white shadow-lg"
     >
       <input
         type="text"
         placeholder={searchPlaceholder ?? 'Cari karyawan...'}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.stopPropagation()}
         className="border-border/70 h-8 w-full shrink-0 border-b px-2 text-xs outline-none"
-        autoFocus
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: '240px' }}>
         <button
           type="button"
           onClick={() => { onChange(''); setOpen(false); setQuery('') }}

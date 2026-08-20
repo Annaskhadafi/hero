@@ -19,19 +19,21 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
     }))
   );
 
-  // Get approval history steps
-  const firstApprover = approvalHistory?.[0]; // Usually Level 1 / Site Manager
-  const secondApprover = approvalHistory?.[1]; // Usually Section Head if any
-
-  // Parse approval notes
-  const firstNote = firstApprover?.decisionNote ? parseApprovalNoteEntries(firstApprover.decisionNote, firstApprover.approverName || 'System') : [];
-  const secondNote = secondApprover?.decisionNote ? parseApprovalNoteEntries(secondApprover.decisionNote, secondApprover.approverName || 'System') : [];
-  const thirdApprover = approvalHistory?.[2];
-  const thirdNote = thirdApprover?.decisionNote ? parseApprovalNoteEntries(thirdApprover.decisionNote, thirdApprover.approverName || 'System') : [];
-  const firstLastNote = firstNote[firstNote.length - 1];
-  const secondLastNote = secondNote[secondNote.length - 1];
-  const thirdLastNote = thirdNote[thirdNote.length - 1];
   const isApd = data.requestCategory === 'APD';
+
+  // Parse step labels from routeSnapshot of the first approval
+  const routeSnapshot = approvalHistory?.[0]?.routeSnapshot ? (() => {
+    try { return JSON.parse(approvalHistory[0].routeSnapshot) as { steps?: Array<{ stepOrder: number; label: string }> } } catch { return null }
+  })() : null;
+  const stepLabelByOrder = new Map<number, string>()
+  if (routeSnapshot?.steps) {
+    for (const s of routeSnapshot.steps) stepLabelByOrder.set(s.stepOrder, s.label)
+  }
+
+  // Default labels based on category
+  function getStepLabel(level: number) {
+    return stepLabelByOrder.get(level) ?? (isApd ? 'Approver' : level === 1 ? 'PJO / Atasan Site' : 'Section Head')
+  }
 
   return (
     <div className="bg-gray-100 min-h-screen py-8 print:py-0 print:bg-white flex justify-center overflow-x-auto">
@@ -154,110 +156,78 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
           </ul>
         </div>
 
-        {/* Signatures */}
-        <div className="break-inside-avoid">
-          <table className="w-full border-collapse border border-black text-center mt-0">
-            <thead>
-              <tr>
-                <th className={`border border-black p-1 text-[8pt] ${isApd ? 'w-1/4' : 'w-1/3'}`}>Pemohon</th>
-                <th className={`border border-black p-1 text-[8pt] ${isApd ? 'w-1/4' : 'w-1/3'}`}>Disetujui Oleh</th>
-                <th className={`border border-black p-1 text-[8pt] ${isApd ? 'w-1/4' : 'w-1/3'}`}>Diketahui Oleh</th>
-                {isApd && <th className="border border-black p-1 w-1/4 text-[8pt]">Diketahui Oleh (HSE)</th>}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                {/* Pemohon cell */}
-                <td className="border border-black p-2 h-[140px] relative">
-                  {data.signatureUrl && (
-                    <div className="absolute inset-x-0 top-1 flex justify-center">
-                      <img src={data.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
-                    </div>
-                  )}
-                  <div className="absolute bottom-1 inset-x-1 text-center">
-                    <div className="font-bold underline text-[8pt]">{data.employeeName}</div>
-                    <div className="text-[6pt] text-gray-600">Karyawan</div>
-                    <div className="text-[6pt] text-gray-500">Waktu TTD: {data.requestDate ? new Date(data.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(data.requestDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
-                  </div>
-                </td>
-                {/* Disetujui Oleh - PJO */}
-                <td className="border border-black p-2 h-[140px] relative" id="approver-cell-1">
-                  {firstApprover && (firstApprover.status === 'approved' || firstApprover.status === 'proses_order') && (
-                    firstApprover.signatureUrl ? (
-                      <div className="absolute inset-x-0 top-1 flex justify-center">
-                        <img src={firstApprover.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
-                      </div>
-                    ) : (
-                      <div className="absolute inset-x-0 top-4 flex justify-center">
-                        <span className="text-green-600/20 text-xl font-bold -rotate-12 border-2 border-green-600/20 rounded p-1">APPROVED</span>
-                      </div>
-                    )
-                  )}
-                  <div className="absolute bottom-1 inset-x-1 text-center">
-                    <div className="font-bold underline text-[8pt]">{firstApprover ? firstApprover.approverName : "_______________________"}</div>
-                    <div className="text-[6pt] text-gray-600">PJO / Atasan Site</div>
-                    {firstApprover?.reviewedAt && (
-                      <div className="text-[6pt] text-gray-500">Waktu TTD: {firstApprover.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {firstApprover.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                    )}
-                    {firstLastNote?.message && (
-                      <div className="text-[6pt] text-gray-600 italic">Catatan: {firstLastNote.message}</div>
-                    )}
-                  </div>
-                </td>
-                {/* Diketahui Oleh - Section Head */}
-                <td className="border border-black p-2 h-[140px] relative" id="approver-cell-2">
-                  {secondApprover && (secondApprover.status === 'approved' || secondApprover.status === 'proses_order') && (
-                    secondApprover.signatureUrl ? (
-                      <div className="absolute inset-x-0 top-1 flex justify-center">
-                        <img src={secondApprover.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
-                      </div>
-                    ) : (
-                      <div className="absolute inset-x-0 top-4 flex justify-center">
-                        <span className="text-green-600/20 text-xl font-bold -rotate-12 border-2 border-green-600/20 rounded p-1">APPROVED</span>
-                      </div>
-                    )
-                  )}
-                  <div className="absolute bottom-1 inset-x-1 text-center">
-                    <div className="font-bold underline text-[8pt]">{secondApprover ? secondApprover.approverName : "_______________________"}</div>
-                    <div className="text-[6pt] text-gray-600">Section Head</div>
-                    {secondApprover?.reviewedAt && (
-                      <div className="text-[7pt] text-gray-500">Waktu TTD: {secondApprover.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {secondApprover.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                    )}
-                    {secondLastNote?.message && (
-                      <div className="text-[6pt] text-gray-600 italic">Catatan: {secondLastNote.message}</div>
-                    )}
-                  </div>
-                </td>
-                {/* Diketahui Oleh - HSE (APD only) */}
-                {isApd && (
-                  <td className="border border-black p-2 h-[140px] relative" id="approver-cell-3">
-                    {thirdApprover && (thirdApprover.status === 'approved' || thirdApprover.status === 'proses_order') && (
-                      thirdApprover.signatureUrl ? (
+        {/* Signatures - Dynamic based on approval history */}
+        {(() => {
+          const approverCount = approvalHistory.length
+          const totalCols = 1 + approverCount // Pemohon + approvers
+          const colWidth = `${100 / totalCols}%`
+          const notesMap = new Map<number, ReturnType<typeof parseApprovalNoteEntries>>()
+          for (const step of approvalHistory) {
+            notesMap.set(step.id, step.decisionNote ? parseApprovalNoteEntries(step.decisionNote, step.approverName || 'System') : [])
+          }
+          return (
+            <div className="break-inside-avoid">
+              <table className="w-full border-collapse border border-black text-center mt-0">
+                <thead>
+                  <tr>
+                    <th className="border border-black p-1 text-[8pt]" style={{ width: colWidth }}>Pemohon</th>
+                    {approvalHistory.map((step, i) => (
+                      <th key={step.id} className="border border-black p-1 text-[8pt]" style={{ width: colWidth }}>{getStepLabel(step.level)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {/* Pemohon cell */}
+                    <td className="border border-black p-2 h-[140px] relative">
+                      {data.signatureUrl && (
                         <div className="absolute inset-x-0 top-1 flex justify-center">
-                          <img src={thirdApprover.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
+                          <img src={data.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
                         </div>
-                      ) : (
-                        <div className="absolute inset-x-0 top-4 flex justify-center">
-                          <span className="text-green-600/20 text-xl font-bold -rotate-12 border-2 border-green-600/20 rounded p-1">APPROVED</span>
-                        </div>
+                      )}
+                      <div className="absolute bottom-1 inset-x-1 text-center">
+                        <div className="font-bold underline text-[8pt]">{data.employeeName}</div>
+                        <div className="text-[6pt] text-gray-600">Karyawan</div>
+                        <div className="text-[6pt] text-gray-500">Waktu TTD: {data.requestDate ? new Date(data.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(data.requestDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                      </div>
+                    </td>
+                    {/* Dynamic approver cells */}
+                    {approvalHistory.map((step, i) => {
+                      const notes = notesMap.get(step.id) ?? []
+                      const lastNote = notes[notes.length - 1]
+                      const isResolved = step.status === 'approved' || step.status === 'proses_order'
+                      return (
+                        <td key={step.id} className="border border-black p-2 h-[140px] relative" id={`approver-cell-${i + 1}`}>
+                          {isResolved && (
+                            step.signatureUrl ? (
+                              <div className="absolute inset-x-0 top-1 flex justify-center">
+                                <img src={step.signatureUrl} alt="Signature" className="object-contain h-[55px] w-auto" />
+                              </div>
+                            ) : (
+                              <div className="absolute inset-x-0 top-4 flex justify-center">
+                                <span className="text-green-600/20 text-xl font-bold -rotate-12 border-2 border-green-600/20 rounded p-1">APPROVED</span>
+                              </div>
+                            )
+                          )}
+                          <div className="absolute bottom-1 inset-x-1 text-center">
+                            <div className="font-bold underline text-[8pt]">{step.approverName || "_______________________"}</div>
+                            <div className="text-[6pt] text-gray-600">{getStepLabel(step.level)}</div>
+                            {step.reviewedAt && (
+                              <div className="text-[6pt] text-gray-500">Waktu TTD: {step.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {step.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                            )}
+                            {lastNote?.message && (
+                              <div className="text-[6pt] text-gray-600 italic">Catatan: {lastNote.message}</div>
+                            )}
+                          </div>
+                        </td>
                       )
-                    )}
-                    <div className="absolute bottom-1 inset-x-1 text-center">
-                      <div className="font-bold underline text-[8pt]">{thirdApprover ? thirdApprover.approverName : "_______________________"}</div>
-                      <div className="text-[6pt] text-gray-600">HSE</div>
-                      {thirdApprover?.reviewedAt && (
-                        <div className="text-[6pt] text-gray-500">Waktu TTD: {thirdApprover.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {thirdApprover.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
-                      )}
-                      {thirdLastNote?.message && (
-                        <div className="text-[6pt] text-gray-600 italic">Catatan: {thirdLastNote.message}</div>
-                      )}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
         
         <div className="text-right text-gray-500 text-[8pt] mt-2">
           F.HSE.APD-01.00|1
@@ -268,19 +238,14 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
         window.addEventListener('message', function(event) {
           if (event.data && event.data.type === 'previewSignature') {
             const dataUrl = event.data.dataUrl;
-            // Target the correct cell based on the pending level. We'll just target cell 1 for now if it's empty, or cell 2.
-            // Since we know the admin page only previews the CURRENT pending approval, we can just find the first cell without an APPROVED stamp.
-            const cell1 = document.getElementById('approver-cell-1');
-            const cell2 = document.getElementById('approver-cell-2');
-            const cell3 = document.getElementById('approver-cell-3');
-            
+            // Find first approver cell without APPROVED stamp or signature image
             let targetCell = null;
-            if (cell1 && !cell1.innerHTML.includes('APPROVED') && !cell1.innerHTML.includes('img')) {
-              targetCell = cell1;
-            } else if (cell2 && !cell2.innerHTML.includes('APPROVED') && !cell2.innerHTML.includes('img')) {
-              targetCell = cell2;
-            } else if (cell3 && !cell3.innerHTML.includes('APPROVED') && !cell3.innerHTML.includes('img')) {
-              targetCell = cell3;
+            for (let i = 1; i <= 10; i++) {
+              const cell = document.getElementById('approver-cell-' + i);
+              if (cell && !cell.innerHTML.includes('APPROVED') && !cell.querySelector('img')) {
+                targetCell = cell;
+                break;
+              }
             }
             
             if (targetCell) {

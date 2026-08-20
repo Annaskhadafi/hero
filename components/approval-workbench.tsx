@@ -195,7 +195,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      {item.activityType.startsWith('Request ') && (item.activityType.includes('APD') || item.activityType.includes('Material') || item.activityType.includes('Tools')) ? (
+                      {item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS')) ? (
                         <ApdApprovalDialog item={item} group={group} />
                       ) : (
                         <AdminDetailDrawer

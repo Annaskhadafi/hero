@@ -3204,7 +3204,7 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     pageUrl: '/dashboard/apd',
     templateKey: 'apd-request-apd',
     transactionType: 'apd-request-apd',
-    sourceType: 'Hardcode',
+    sourceType: 'Matrix',
   },
   {
     key: 'apd-request-material',
@@ -3213,7 +3213,7 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     pageUrl: '/dashboard/apd',
     templateKey: 'apd-request-material',
     transactionType: 'apd-request-material',
-    sourceType: 'Hardcode',
+    sourceType: 'Matrix',
   },
   {
     key: 'apd-request-tools',
@@ -3222,7 +3222,7 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     pageUrl: '/dashboard/apd',
     templateKey: 'apd-request-tools',
     transactionType: 'apd-request-tools',
-    sourceType: 'Hardcode',
+    sourceType: 'Matrix',
   },
   {
     key: 'central-service-pjo',
