@@ -4137,6 +4137,25 @@ const OWN_SCOPE_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
+  // Always permit core resources for all roles
+  if (
+    [
+      'attendance',
+      'scheduling_timesheet_attendance',
+      'tire_service',
+      'overtime_requests',
+      'approval_inbox',
+    ].includes(resource)
+  ) {
+    return {
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'global',
+    }
+  }
+
   if (roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi') {
     return {
       canView: true,
@@ -5231,6 +5250,25 @@ export async function ensureHeroGovernanceSeedData() {
 
     if (missingRoleMenuPermissions.length > 0) {
       await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
+    }
+
+    // Ensure all existing roles have access to the core resources
+    const coreResources = [
+      'attendance',
+      'scheduling_timesheet_attendance',
+      'tire_service',
+      'overtime_requests',
+      'approval_inbox',
+    ]
+    const coreMenuItems = menuItemsForRole.filter(
+      (item) => item.resource && coreResources.includes(item.resource)
+    )
+    if (coreMenuItems.length > 0) {
+      const coreMenuItemIds = coreMenuItems.map((item) => item.id)
+      await db
+        .update(roleMenuPermissions)
+        .set({ canView: true, canEdit: true })
+        .where(inArray(roleMenuPermissions.menuItemId, coreMenuItemIds))
     }
   })().catch((error) => {
     governanceSeedPromise = null
@@ -7447,6 +7485,22 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
   const visibleItems = dedupeMenuItemsByPage(
     permittedMenuItems
+      .map((item) => {
+        // Force core items to be always visible for all roles
+        if (
+          item.resource &&
+          [
+            'attendance',
+            'scheduling_timesheet_attendance',
+            'tire_service',
+            'overtime_requests',
+            'approval_inbox',
+          ].includes(item.resource)
+        ) {
+          return { ...item, canView: true }
+        }
+        return item
+      })
       .filter((item) => item.isVisible && item.canView)
       .map((item) => ({
         ...item,
