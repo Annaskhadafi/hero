@@ -1290,6 +1290,18 @@ export async function getApprovalCenterData(email: string) {
       siteName: item.siteName,
       notes,
       lastNote: notes[0] ?? null,
+      steps: item.route?.steps.map((step) => {
+        const isCurrent = step.stepOrder === item.level;
+        const isPast = step.stepOrder < item.level;
+        return {
+          approvalId: item.approvalId,
+          approverName: step.approverName,
+          level: step.stepOrder,
+          label: step.label,
+          status: isCurrent ? 'pending' : (isPast ? 'approved' : 'waiting'),
+          reviewedAt: null,
+        };
+      }) ?? [],
       photoUrl: item.photoUrl,
       requestKindLabel: item.requestKindLabel,
       description: item.description,

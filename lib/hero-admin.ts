@@ -4109,6 +4109,8 @@ const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
 const HSE_ROLE_FULL_ACCESS_RESOURCES = new Set([
   ...HSE_MANAGED_RESOURCES,
   ...WELLNESS_MANAGED_RESOURCES,
+  'hero-genius',
+  'sop-win',
 ])
 
 const OWN_SCOPE_RESOURCES = new Set([
@@ -4822,6 +4824,25 @@ async function ensureHeroGovernanceTables() {
   `)
 }
 
+export async function ensureVirtualRelativeEmployees() {
+  const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
+  if (!firstSite) {
+    console.warn("Skipping virtual employees seeding: no sites found.")
+    return
+  }
+
+  const virtuals = [
+    { id: 990001, name: " [Atasan Langsung (Direct Manager)]", email: "direct_manager@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990002, name: " [Kepala Departemen (Department Head)]", email: "department_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990003, name: " [Kepala Seksi (Section Head)]", email: "section_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990004, name: " [Kepala Site (Site Head)]", email: "site_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+  ]
+
+  for (const v of virtuals) {
+    await db.insert(employees).values(v).onConflictDoNothing()
+  }
+}
+
 export async function ensureHeroSeedData() {
   if (seedPromise) {
     return seedPromise
@@ -4834,6 +4855,7 @@ export async function ensureHeroSeedData() {
     await ensureTrainingRecordHistoryColumns()
     await ensureApprovalBlueprintSeedData()
     await ensureDepartmentSectionSeedData()
+    await ensureVirtualRelativeEmployees()
   })().catch((error) => {
     seedPromise = null
     throw error

@@ -81,6 +81,9 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
   const [open, setOpen] = useState(false);
   const allowedResources = new Set(sidebarItems.map((item) => item.resource).filter(Boolean));
   const isServiceAllowed = (service: { href: string; resource?: string }) => {
+    if (service.resource === "hero-genius" || service.resource === "sop-win") {
+      return true;
+    }
     if (service.resource) {
       return allowedResources.has(service.resource);
     }

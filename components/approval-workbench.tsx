@@ -198,83 +198,143 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                       {item.activityType === 'Request APD' ? (
                         <ApdApprovalDialog item={item} group={group} />
                       ) : (
-                        <AdminDetailDrawer
-                          title={`Review ${item.title}`}
-                          description={`${group.requesterName} • ${group.siteName} • ${item.currentStepLabel}`}
-                          width="wide"
-                          trigger={
+                        <Dialog>
+                          <DialogTrigger asChild>
                             <Button type="button" variant="outline" size="dense">
                               Review
                             </Button>
-                          }
-                        >
-                          <form action={reviewApprovalAction} className="space-y-3">
-                            <input type="hidden" name="approvalId" value={item.approvalId} />
-                            <ApprovalRequestDetails item={item} />
-                            <div className="bg-surface-container-low text-foreground rounded-lg p-3 text-sm">
-                              <p className="font-semibold">Catatan terakhir</p>
-                              <p className="text-muted-foreground mt-1">
-                                {item.lastNote
-                                  ? item.lastNote.message
-                                  : 'Belum ada komentar approval sebelumnya.'}
-                              </p>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden rounded-xl border border-outline-ghost bg-background">
+                            <DialogHeader className="px-6 py-4 border-b border-outline-ghost/70 bg-surface-container-lowest">
+                              <DialogTitle className="text-base flex items-center justify-between">
+                                <span>Review Pengajuan: {item.title}</span>
+                                <span className="text-xs font-normal text-muted-foreground mr-6">
+                                  Request No: {item.requestNumber || "-"}
+                                </span>
+                              </DialogTitle>
+                            </DialogHeader>
+                            
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden bg-background">
+                              {/* GRID KIRI (col-span-7): Preview Form & Audit Trail */}
+                              <div className="md:col-span-7 flex flex-col h-full border-r border-outline-ghost overflow-y-auto p-6 space-y-6">
+                                <div className="space-y-4">
+                                  <h3 className="text-sm font-bold text-foreground">Dokumen Pengajuan</h3>
+                                  <ApprovalRequestDetails item={item} />
+                                </div>
+                                
+                                <div className="border-t border-outline-ghost/60 pt-6 space-y-4">
+                                  <h3 className="text-sm font-bold text-foreground">Jejak Keputusan & Timeline</h3>
+                                  <div className="space-y-2">
+                                    {(item as any).steps && (item as any).steps.length > 0 ? (
+                                      (item as any).steps.map((step: any) => (
+                                        <div key={step.approvalId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-xs">
+                                          <div>
+                                            <p className="font-semibold">Level {step.level}: {step.label}</p>
+                                            <p className="text-muted-foreground mt-0.5">{step.approverName}</p>
+                                          </div>
+                                          <AdminStatusBadge value={step.status} />
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground italic">Belum ada jejak step.</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* GRID KANAN (col-span-5): Comments & Approval Action */}
+                              <div className="md:col-span-5 flex flex-col h-full overflow-hidden">
+                                {/* Top: Comment Thread */}
+                                <div className="flex-1 overflow-y-auto p-6 border-b border-outline-ghost space-y-4">
+                                  <h3 className="text-sm font-bold text-foreground">Diskusi & Catatan</h3>
+                                  <div className="space-y-3">
+                                    {item.notes && item.notes.length > 0 ? (
+                                      item.notes.map((note: any) => (
+                                        <div key={note.id} className="p-3 rounded-lg bg-surface-container-low border border-outline-ghost/30 text-xs">
+                                          <div className="flex items-center justify-between">
+                                            <span className="font-semibold text-foreground">{note.actor}</span>
+                                            <AdminStatusBadge value={note.kind} />
+                                          </div>
+                                          <p className="mt-1.5 text-muted-foreground">{note.message}</p>
+                                          <p className="mt-1 text-[10px] text-right text-muted-foreground/80">
+                                            {note.at.toLocaleString("id-ID")}
+                                          </p>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground italic">Belum ada diskusi.</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Bottom: Action Box */}
+                                <div className="p-6 bg-surface-container-lowest space-y-4">
+                                  <form action={reviewApprovalAction} className="space-y-4">
+                                    <input type="hidden" name="approvalId" value={item.approvalId} />
+                                    
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-semibold text-foreground">Catatan Keputusan</label>
+                                      <Textarea
+                                        name="note"
+                                        rows={3}
+                                        placeholder="Tulis alasan jika menolak/revisi, atau beri catatan persetujuan..."
+                                        className="text-xs resize-none"
+                                      />
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <Button
+                                        type="submit"
+                                        name="decision"
+                                        value="approved"
+                                        className="w-full bg-[#087f73] hover:bg-[#06635a] text-white text-xs h-9"
+                                      >
+                                        Setujui
+                                      </Button>
+                                      <Button
+                                        type="submit"
+                                        name="decision"
+                                        value="rejected"
+                                        variant="destructive"
+                                        className="w-full text-xs h-9"
+                                      >
+                                        Tolak
+                                      </Button>
+                                      <Button
+                                        type="submit"
+                                        name="decision"
+                                        value="needs_correction"
+                                        variant="outline"
+                                        className="w-full border-amber-500 text-amber-600 hover:bg-amber-50 text-xs h-9"
+                                      >
+                                        Minta revisi
+                                      </Button>
+                                    </div>
+                                  </form>
+                                  {group.items.length > 1 ? (
+                                    <form
+                                      action={approveApprovalGroupAction}
+                                      className="border-outline-ghost/70 mt-3 border-t pt-3"
+                                    >
+                                      {group.items.map((approvalItem) => (
+                                        <input
+                                          key={approvalItem.approvalId}
+                                          type="hidden"
+                                          name="approvalIds"
+                                          value={approvalItem.approvalId}
+                                        />
+                                      ))}
+                                      <Button type="submit" variant="outline" size="dense" className="w-full text-xs">
+                                        Setujui semua milik {group.requesterName}
+                                      </Button>
+                                    </form>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
-                            <Textarea
-                              name="note"
-                              rows={3}
-                              required
-                              minLength={3}
-                              placeholder="Alasan revisi atau tolak minimal 3 karakter. Setujui boleh tanpa catatan."
-                            />
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="approved"
-                                formNoValidate
-                                size="dense"
-                              >
-                                Setujui
-                              </Button>
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="needs_correction"
-                                variant="outline"
-                                size="dense"
-                              >
-                                Minta revisi
-                              </Button>
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="rejected"
-                                variant="secondary"
-                                size="dense"
-                              >
-                                Tolak
-                              </Button>
-                            </div>
-                          </form>
-                          {group.items.length > 1 ? (
-                            <form
-                              action={approveApprovalGroupAction}
-                              className="border-outline-ghost/70 mt-3 border-t pt-3"
-                            >
-                              {group.items.map((approvalItem) => (
-                                <input
-                                  key={approvalItem.approvalId}
-                                  type="hidden"
-                                  name="approvalIds"
-                                  value={approvalItem.approvalId}
-                                />
-                              ))}
-                              <Button type="submit" variant="outline" size="dense">
-                                Setujui semua milik {group.requesterName}
-                              </Button>
-                            </form>
-                          ) : null}
-                        </AdminDetailDrawer>
+                          </DialogContent>
+                        </Dialog>
+
                       )}
                     </TableCell>
                   </TableRow>
