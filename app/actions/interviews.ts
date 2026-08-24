@@ -475,6 +475,13 @@ export async function getCandidatePanelEvaluations(candidateId: number) {
     .orderBy(desc(hcCandidatePanelEvaluations.submittedAt));
 }
 
+export async function getCandidateInterviews(candidateId: number) {
+  return await db.select()
+    .from(hcCandidateInterviews)
+    .where(eq(hcCandidateInterviews.candidateId, candidateId))
+    .orderBy(desc(hcCandidateInterviews.scheduledAt));
+}
+
 export async function scheduleCandidateInterview(candidateId: number, data: {
   scheduledAt: Date;
   durationMinutes: number;

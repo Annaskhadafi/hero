@@ -363,6 +363,12 @@ function WorkflowBuilderDialog({
     return norm === 'section'
   }
 
+  // Cek apakah menu ini adalah Material atau Tools (butuh Step 2 Head Section otomatis)
+  function isMaterialOrToolsMenu(): boolean {
+    const txType = selectedMenu?.transactionType ?? ''
+    return txType === 'apd-request-material' || txType === 'apd-request-tools'
+  }
+
   // Section selalu menjadi langkah pertama secara default di setiap aktivitas —
   // tidak perlu ditambahkan manual di "Langkah Approval".
   function buildInitialSteps(): ApprovalStep[] {
@@ -373,7 +379,17 @@ function WorkflowBuilderDialog({
       { id: 'step-3', label: 'Section Head', type: 'employee' },
       { id: 'step-4', label: 'Department Head', type: 'employee' },
     ]
-    if (!initial?.globalSteps || initial.globalSteps.length === 0) return defaults
+    if (!initial?.globalSteps || initial.globalSteps.length === 0) {
+      // Material & Tools: otomatis set 2 step saja (PJO + Head Section)
+      if (isMaterialOrToolsMenu()) {
+        return [
+          { id: 'step-0', label: 'Section', type: 'section' },
+          { id: 'step-1', label: 'PJO (Head Lokasi)', type: 'employee' },
+          { id: 'step-2', label: 'Head Section', type: 'employee' },
+        ]
+      }
+      return defaults
+    }
     // Workflow lama mungkin belum punya langkah Section — sisipkan di depan,
     // dan buang langkah Section lama agar tidak dobel.
     const existing = initial.globalSteps
@@ -428,6 +444,25 @@ function WorkflowBuilderDialog({
     }
   }, [initial])
 
+  // Untuk Material/Tools: otomatis tambahkan Step 2 (Head Section) jika belum ada
+  useEffect(() => {
+    const txType = selectedMenu?.transactionType ?? ''
+    const isMatOrTools = txType === 'apd-request-material' || txType === 'apd-request-tools'
+    if (!isMatOrTools) return
+
+    setApprovalSteps((prev) => {
+      const hasSection = prev.some((s) => s.type === 'section')
+      const hasHeadSection = prev.some((s) => s.label === 'Head Section')
+      if (hasHeadSection) return prev
+
+      // Tambahkan Head Section setelah step terakhir (sebelum section jika ada)
+      const sectionSteps = prev.filter((s) => s.type === 'section')
+      const nonSectionSteps = prev.filter((s) => s.type !== 'section')
+      const newStep: ApprovalStep = { id: `step-${Date.now()}`, label: 'Head Section', type: 'employee' }
+      return [...nonSectionSteps, newStep, ...sectionSteps]
+    })
+  }, [selectedMenu])
+
   const usedSiteIds = new Set(siteData.map((s) => s.siteId))
   const availableSites = allSites.filter((site) => !usedSiteIds.has(site.id.toString()))
 
@@ -436,10 +471,11 @@ function WorkflowBuilderDialog({
   }
 
   function removeStep(id: string) {
-    // Langkah Section adalah default yang selalu ada — tidak bisa dihapus.
+    // Langkah Section & Head Section (untuk Material/Tools) adalah default yang tidak bisa dihapus.
     setApprovalSteps((prev) => {
       const target = prev.find((s) => s.id === id)
       if (target?.type === 'section') return prev
+      if (isMaterialOrToolsMenu() && target?.label === 'Head Section') return prev
       return prev.filter((s) => s.id !== id)
     })
     setSiteData((prev) =>
@@ -598,14 +634,15 @@ function WorkflowBuilderDialog({
                             value={step.label}
                             onChange={(e) => updateStepLabel(step.id, e.target.value)}
                             className="h-8 flex-1 text-xs"
+                            readOnly={isMaterialOrToolsMenu() && step.label === 'Head Section'}
                           />
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
                             <ArrowUp className="size-3" />
                           </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
                             <ArrowDown className="size-3" />
                           </Button>
-                          <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
+                          <button type="button" onClick={() => removeStep(step.id)} disabled={isMaterialOrToolsMenu() && step.label === 'Head Section'} className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed">
                             <X className="size-3.5" />
                           </button>
                         </div>

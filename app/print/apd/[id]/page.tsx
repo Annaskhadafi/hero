@@ -20,6 +20,38 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
   );
 
   const isApd = data.requestCategory === 'APD';
+  const isMaterial = data.requestCategory === 'MATERIAL';
+  const isTools = data.requestCategory === 'TOOLS';
+
+  // Dynamic title based on category
+  const formTitle = isApd
+    ? 'FORM PERMINTAAN ALAT PELINDUNG DIRI (APD)'
+    : isMaterial
+      ? 'FORM PERMINTAAN MATERIAL'
+      : 'FORM PERMINTAAN TOOLS'
+
+  // Dynamic table headers based on category
+  const tableHeaders = isApd
+    ? ['Jenis Item', 'Permintaan', 'Qty', 'Keterangan']
+    : isMaterial
+      ? ['Nama Material', 'Spesifikasi', 'Qty', 'Keterangan']
+      : ['Nama Tools', 'Merek/Type', 'Qty', 'Keterangan']
+
+  // Dynamic notes based on category
+  const notes = isApd
+    ? [
+        'Bagi Karyawan yang akan menukar APD diwajibkan membawa bukti fisik APD yang rusak.',
+        'Kehilangan APD yang disebabkan oleh kelalaian pekerja, menjadi tanggung jawab sepenuhnya karyawan yang bersangkutan.',
+      ]
+    : isMaterial
+      ? [
+          'Pengajuan material harus sesuai dengan kebutuhan proyek.',
+          'Material yang sudah dikeluarkan tidak dapat dikembalikan tanpa persetujuan atasan.',
+        ]
+      : [
+          'Pengajuan tools harus sesuai dengan kebutuhan pekerjaan.',
+          'Tools yang sudah dikeluarkan menjadi tanggung jawab karyawan yang bersangkutan.',
+        ]
 
   // Parse step labels from routeSnapshot of the first approval
   const routeSnapshot = approvalHistory?.[0]?.routeSnapshot ? (() => {
@@ -69,7 +101,7 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
             <Image src="/cp_logo-removebg-preview.png" alt="Logo" width={180} height={60} className="object-contain" />
           </div>
           <div className="w-3/4 text-center pr-12">
-            <h1 className="text-lg font-bold tracking-wider">FORM PERMINTAAN ALAT PELINDUNG DIRI (APD)</h1>
+            <h1 className="text-lg font-bold tracking-wider">{formTitle}</h1>
             <p className="text-sm font-semibold">PT. CHITRA PARATAMA</p>
           </div>
         </div>
@@ -111,10 +143,9 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
           <thead>
             <tr className="bg-gray-200">
               <th className="border border-black p-2 w-10 text-center">No</th>
-              <th className="border border-black p-2 text-left">Jenis Item</th>
-              <th className="border border-black p-2 text-left">Permintaan</th>
-              <th className="border border-black p-2 w-16 text-center">Qty</th>
-              <th className="border border-black p-2 text-left">Keterangan</th>
+              {tableHeaders.map((header, i) => (
+                <th key={i} className="border border-black p-2 text-left">{header}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -151,8 +182,9 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
         <div className="mt-2 mb-auto">
           <p className="text-[8pt] italic mb-1 font-semibold">Catatan:</p>
           <ul className="list-disc pl-5 text-[8pt] italic">
-            <li>Bagi Karyawan yang akan menukar APD diwajibkan membawa bukti fisik APD yang rusak.</li>
-            <li>Kehilangan APD yang disebabkan oleh kelalaian pekerja, menjadi tanggung jawab sepenuhnya karyawan yang bersangkutan.</li>
+            {notes.map((note, i) => (
+              <li key={i}>{note}</li>
+            ))}
           </ul>
         </div>
 
@@ -230,7 +262,7 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
         })()}
         
         <div className="text-right text-gray-500 text-[8pt] mt-2">
-          F.HSE.APD-01.00|1
+          {isApd ? 'F.HSE.APD-01.00|1' : isMaterial ? 'F.HSE.MAT-01.00|1' : 'F.HSE.TLS-01.00|1'}
         </div>
 
       </div>
