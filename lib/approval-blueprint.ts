@@ -3225,6 +3225,15 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     sourceType: 'Matrix',
   },
   {
+    key: 'apd-summary',
+    name: 'Summary Permintaan Barang',
+    pageTitle: 'Summary APD',
+    pageUrl: '/dashboard/summary',
+    templateKey: 'apd-summary',
+    transactionType: 'apd-summary',
+    sourceType: 'Matrix',
+  },
+  {
     key: 'central-service-pjo',
     name: 'Central Service PJO Route',
     pageTitle: 'Central Service',

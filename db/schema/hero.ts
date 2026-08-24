@@ -556,6 +556,7 @@ export const approvals = pgTable('hero_approvals', {
   apdRequestId: integer('apd_request_id').references(() => apdRequests.id, {
     onDelete: 'cascade',
   }),
+  apdSummaryId: integer('apd_summary_id'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),

@@ -19,7 +19,9 @@ import {
   overtimeCommandLetters,
   sites,
   apdRequests,
+  masterSections,
 } from '@/db/schema/hero'
+import { apdSummaries } from '@/db/schema/apd-summary'
 import type { ApprovalRouteResolution } from '@/lib/approval-engine'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
@@ -121,6 +123,7 @@ type RawApprovalRecordRow = {
   templateName: string | null
   templateKey: string | null
   apdRequestId?: number | null
+  apdSummaryId?: number | null
   photoUrl?: string | null
 }
 
@@ -265,6 +268,25 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       rawRows.map((row) => row.apdRequestId).filter((value): value is number => value != null)
     )
   )
+  const summaryIds = Array.from(
+    new Set(
+      rawRows.map((row) => row.apdSummaryId).filter((value): value is number => value != null)
+    )
+  )
+  const summaryRows =
+    summaryIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: apdSummaries.id,
+            summaryNumber: apdSummaries.summaryNumber,
+            sectionId: apdSummaries.sectionId,
+            status: apdSummaries.status,
+            generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
+          })
+          .from(apdSummaries)
+          .where(inArray(apdSummaries.id, summaryIds))
+  const summaryMap = new Map(summaryRows.map((row) => [row.id, row]))
   const apdRows =
     apdIds.length === 0
       ? []
@@ -436,6 +458,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const splId = snapshotSplId(payload)
     const spl = splId == null ? null : (splMap.get(splId) ?? null)
     const apd = row.apdRequestId == null ? null : (apdMap.get(row.apdRequestId) ?? null)
+    const summary = row.apdSummaryId == null ? null : (summaryMap.get(row.apdSummaryId) ?? null)
     const plannedItems =
       splId == null ? [] : splItemRows.filter((item) => item.overtimeCommandLetterId === splId)
     const sessionItems =
@@ -478,7 +501,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     )
     const requester =
       requesterMap.get(
-        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? -1
+        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? summary?.generatedByEmployeeId ?? -1
       ) ?? null
     const site =
       siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? apd?.siteId ?? -1) ?? null
@@ -505,7 +528,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       row.submissionSubmittedAt ??
       row.submittedAt
     const requestId =
-      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.approvalId
+      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.approvalId
     const titleFromSnapshot =
       typeof preview.title === 'string'
         ? preview.title
@@ -534,17 +557,21 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         ? (row.activityType ?? 'Daily Activity')
         : row.submissionId != null
           ? (row.templateName ?? 'Workflow')
-          : row.apdRequestId != null
-            ? `Request ${apd?.requestCategory ?? 'APD'}`
-            : 'Unknown'
+          : row.apdSummaryId != null
+            ? 'Summary APD'
+            : row.apdRequestId != null
+              ? `Request ${apd?.requestCategory ?? 'APD'}`
+              : 'Unknown'
     const title =
       spl?.title ??
       titleFromSnapshot ??
-      (row.apdRequestId != null
-        ? `Request ${apd?.requestCategory ?? 'APD'} - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
-        : row.approvalActivityId != null
-          ? `Daily Activity - ${row.activityCode ?? ''}`
-          : `Workflow - ${row.templateName ?? ''}`)
+      (row.apdSummaryId != null
+        ? `Summary Permintaan Barang - ${summary?.summaryNumber ?? ''}`
+        : row.apdRequestId != null
+          ? `Request ${apd?.requestCategory ?? 'APD'} - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
+          : row.approvalActivityId != null
+            ? `Daily Activity - ${row.activityCode ?? ''}`
+            : `Workflow - ${row.templateName ?? ''}`)
 
     return {
       approvalId: row.approvalId,
@@ -869,6 +896,7 @@ async function fetchApprovalRows() {
       templateName: formTemplates.name,
       templateKey: formTemplates.templateKey,
       apdRequestId: approvals.apdRequestId,
+      apdSummaryId: (approvals as any).apdSummaryId ?? null,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))

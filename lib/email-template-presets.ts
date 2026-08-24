@@ -2877,6 +2877,25 @@ Tim Human Capital`,
     }
   },
   {
+    name: 'Summary Permintaan Barang Approved',
+    templateCode: 'apd_summary_approved',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO] Summary {{summaryNumber}} - {{sectionName}} Sudah Disetujui',
+    htmlContent: 'Summary Permintaan Barang Safety ({{summaryNumber}}) untuk section {{sectionName}} ({{departmentName}}) sudah disetujui. Silakan login HERO untuk melihat detail dan melakukan pemesanan barang ke vendor.',
+    textContent: 'Summary Permintaan Barang Safety ({{summaryNumber}}) untuk section {{sectionName}} ({{departmentName}}) sudah disetujui. Silakan login HERO untuk melihat detail dan melakukan pemesanan barang ke vendor.',
+    description: 'Notifikasi ke HSE saat summary permintaan barang sudah disetujui oleh Dept Head',
+    variables: ['summaryNumber', 'sectionName', 'departmentName', 'generatedByName'],
+    sampleValues: {
+      summaryNumber: 'SUM-001',
+      sectionName: 'Repair / Retread Operation',
+      departmentName: 'Operation',
+      generatedByName: 'Admin Repair Retread',
+    }
+  },
+  {
     name: 'Form WO Approval Request',
     templateCode: 'form_wo_approval_request',
     templateType: 'Notification',
@@ -3114,6 +3133,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["mcu_", "HC Recruitment"],
   ["hr_counseling_", "HR Counseling"],
   ["apd_request_", "HSE Safety"],
+  ["apd_summary_", "HSE Safety"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

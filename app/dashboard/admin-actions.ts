@@ -139,6 +139,7 @@ import {
   hcOffboardingRequests,
   apdRequests,
 } from '@/db/schema/hero'
+import { apdSummaries } from '@/db/schema/apd-summary'
 import {
   indonesiaHolidays,
   attendancePermissionRequests,
@@ -4204,6 +4205,7 @@ async function applyApprovalDecision(params: {
   approvalId: number
   decision: 'approved' | 'rejected' | 'needs_correction'
   note: string
+  signatureUrl?: string
 }) {
   const trimmedNote = params.note.trim()
   const [actor, approvalPermission] = await Promise.all([
@@ -4258,6 +4260,7 @@ async function applyApprovalDecision(params: {
       templateName: formTemplates.name,
       requesterName: employees.name,
       apdSiteId: apdRequests.siteId,
+      apdSummaryId: (approvals as any).apdSummaryId ?? null,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -4305,18 +4308,88 @@ async function applyApprovalDecision(params: {
         templateName: approval.templateName ?? 'Workflow Request',
         requesterEmployeeId: approval.requesterEmployeeId ?? 0,
         requesterName: approval.requesterName ?? 'Requester',
-      },
-      actorEmployeeId: actor.employeeId,
+      },      actorEmployeeId: actor.employeeId,
       actorName,
       decision: params.decision,
       note: params.note,
     })
   }
 
+  // Summary APD approval handling
   if (
-    approval.activityId == null &&
-    approval.submissionId == null &&
-    approval.apdRequestId != null
+    approval.activityId == null && approval.submissionId == null &&
+    approval.apdRequestId == null && (approval as any).apdSummaryId != null
+  ) {
+    const summaryId = (approval as any).apdSummaryId as number
+    const now = new Date()
+
+    if (params.decision === 'approved') {
+      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine');
+      const { sendSummaryApprovedEmail } = await import('@/lib/summary-email');
+      const sigUrl = params.signatureUrl || ''
+      const result = await approveSummaryStep(summaryId, approval.level, actor.employeeId, sigUrl, trimmedNote)
+
+      // approveSummaryStep already updated hero_approvals with signatureUrl
+      // No overwrite needed — it would erase the signature
+
+      // Bell notification to summary generator
+      const summaryDetails = await getSummaryDetails(summaryId)
+      if (summaryDetails) {
+        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        if (generatorEmail[0]?.email) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [generatorEmail[0].email],
+            eventType: 'summary_progress',
+            category: 'approval_requests',
+            title: `Summary Tahap Disetujui`,
+            body: `Summary ${summaryDetails.summaryNumber} telah disetujui pada tahap ${approval.level === 1 ? 'Section Head' : 'Department Head'}.`,
+            url: '/dashboard/summary',
+            tagPrefix: 'summary',
+          }).catch(console.error)
+        }
+      }
+
+      if (result.allApproved) {
+        // Notify HSE
+        if (summaryDetails) {
+          await sendSummaryApprovedEmail(summaryDetails).catch(console.error)
+        }
+      }
+    } else {
+      // Rejected or needs correction
+      await db.update(approvals).set({
+        status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
+        reviewedAt: now,
+        decisionNote: trimmedNote || '',
+      }).where(eq(approvals.id, approval.approvalId))
+
+      await db.update(apdSummaries).set({
+        status: params.decision === 'rejected' ? 'rejected' : 'pending',
+      }).where(eq(apdSummaries.id, summaryId))
+
+      // Notify requester
+      const summaryDetails = await getSummaryDetails(summaryId)
+      if (summaryDetails) {
+        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        if (generatorEmail[0]?.email) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [generatorEmail[0].email],
+            eventType: 'summary_rejected',
+            category: 'approval_requests',
+            title: `Summary Ditolak`,
+            body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${actorName}.`,
+            url: '/dashboard/summary',
+            tagPrefix: 'summary',
+          }).catch(console.error)
+        }
+      }
+    }
+
+    return true
+  }
+
+  if (
+    approval.activityId == null && approval.submissionId == null && approval.apdRequestId != null
   ) {
     const now = new Date()
     const decisionStatus =
@@ -5818,15 +5891,18 @@ export async function reviewApprovalAction(formData: FormData) {
     }
   }
 
+  // Save signature to approvals BEFORE running approval decision
+  // so the summary handler can read it
+  if (signatureUrl) {
+    await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
+  }
+
   await applyApprovalDecision({
     approvalId: payload.approvalId,
     decision: payload.decision,
     note: payload.note,
+    signatureUrl,
   })
-
-  if (signatureUrl) {
-    await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
-  }
 
   revalidateAdminSurfaces()
 }

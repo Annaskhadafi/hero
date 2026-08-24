@@ -1214,6 +1214,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Summary',
+    title: 'Summary APD',
+    url: '/dashboard/summary',
+    iconName: 'file-text',
+    resource: 'hse_summary_apd',
+    sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
     groupLabel: 'Safety Tools & Compliance',
     title: 'Safety Induction',
     url: '/dashboard/safety-induction',

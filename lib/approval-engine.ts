@@ -1020,7 +1020,7 @@ export async function resolveApprovalRouteForActivity(
     assignmentsByNodeId.set(assignment.nodeId, list)
   }
 
-  const steps = matrixSteps.map((step) =>
+  const steps: ResolvedApprovalStep[] = matrixSteps.map((step) =>
     resolveNodeStep(
       step.nodeId,
       step.stepOrder,
@@ -1038,6 +1038,45 @@ export async function resolveApprovalRouteForActivity(
       }
     )
   )
+
+  // For Material/Tools: if only 1 step from matrix, append dynamic Head Section step
+  if (
+    (selectedMatrix.transactionType === 'apd-request-material' || selectedMatrix.transactionType === 'apd-request-tools') &&
+    steps.length === 1 &&
+    context.sectionId
+  ) {
+    const sections = await db
+      .select({ headId: masterSections.headEmployeeId })
+      .from(masterSections)
+      .where(eq(masterSections.id, context.sectionId))
+      .limit(1)
+
+    if (sections[0]?.headId) {
+      const headSection = await db
+        .select({ id: employees.id, name: employees.name })
+        .from(employees)
+        .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (headSection[0]) {
+        steps.push({
+          stepOrder: 2,
+          label: 'Head Section',
+          approverName: headSection[0].name,
+          approverEmployeeId: headSection[0].id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_head_section',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: null,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    }
+  }
 
   const warnings = steps
     .filter((step) => step.resolutionSource === 'vacant')

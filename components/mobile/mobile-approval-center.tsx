@@ -2,6 +2,7 @@
 
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
+import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -114,7 +115,7 @@ function MobileInbox({
                 </span>
               </div>
             </div>
-            {group.items.length > 1 ? (
+            {group.items.length > 1 && !group.items.some((item: any) => (item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD') ? (
               <form
                 action={(formData) => submitReview(formData, `group-${group.id}`, true)}
                 className="mt-3"
@@ -144,62 +145,67 @@ function MobileInbox({
           <div className="divide-y divide-[#e6f0f7]">
             {group.items.map((item) => (
               <article key={item.approvalId} className="space-y-4 px-4 py-5">
-                <ApprovalRequestDetails item={item} />
-
-                <section className="rounded-2xl bg-[#f7fbfe] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#486275]">
-                    <span>{item.currentStepLabel}</span>
-                    <span>Due {item.dueAt.toLocaleString('id-ID')}</span>
-                  </div>
-                  <form
-                    action={(formData) =>
-                      submitReview(formData, `approval-${item.approvalId}`)
-                    }
-                    className="mt-3 space-y-3"
-                  >
-                    <input type="hidden" name="approvalId" value={item.approvalId} />
-                    <Textarea
-                      name="note"
-                      rows={3}
-                      required
-                      minLength={3}
-                      placeholder="Alasan revisi atau tolak, minimal 3 karakter."
-                      className="bg-white"
-                    />
-                    <div className="grid grid-cols-3 gap-2">
-                      <Button
-                        type="submit"
-                        name="decision"
-                        value="approved"
-                        formNoValidate
-                        className="h-11 rounded-xl px-2"
-                        disabled={Boolean(submittingKey)}
+                {(item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (
+                  <ApdApprovalDialog item={item} group={group} />
+                ) : (
+                  <>
+                    <ApprovalRequestDetails item={item} />
+                    <section className="rounded-2xl bg-[#f7fbfe] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#486275]">
+                        <span>{item.currentStepLabel}</span>
+                        <span>Due {item.dueAt.toLocaleString('id-ID')}</span>
+                      </div>
+                      <form
+                        action={(formData) =>
+                          submitReview(formData, `approval-${item.approvalId}`)
+                        }
+                        className="mt-3 space-y-3"
                       >
-                        Setujui
-                      </Button>
-                      <Button
-                        type="submit"
-                        name="decision"
-                        value="needs_correction"
-                        variant="outline"
-                        className="h-11 rounded-xl px-2"
-                        disabled={Boolean(submittingKey)}
-                      >
-                        Revisi
-                      </Button>
-                      <Button
-                        type="submit"
-                        name="decision"
-                        value="rejected"
-                        variant="secondary"
-                        className="h-11 rounded-xl px-2"
-                        disabled={Boolean(submittingKey)}
-                      >
-                        Tolak
-                      </Button>
-                    </div>
-                  </form>
-                </section>
+                        <input type="hidden" name="approvalId" value={item.approvalId} />
+                        <Textarea
+                          name="note"
+                          rows={3}
+                          required
+                          minLength={3}
+                          placeholder="Alasan revisi atau tolak, minimal 3 karakter."
+                          className="bg-white"
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <Button
+                            type="submit"
+                            name="decision"
+                            value="approved"
+                            formNoValidate
+                            className="h-11 rounded-xl px-2"
+                            disabled={Boolean(submittingKey)}
+                          >
+                            Setujui
+                          </Button>
+                          <Button
+                            type="submit"
+                            name="decision"
+                            value="needs_correction"
+                            variant="outline"
+                            className="h-11 rounded-xl px-2"
+                            disabled={Boolean(submittingKey)}
+                          >
+                            Revisi
+                          </Button>
+                          <Button
+                            type="submit"
+                            name="decision"
+                            value="rejected"
+                            variant="secondary"
+                            className="h-11 rounded-xl px-2"
+                            disabled={Boolean(submittingKey)}
+                          >
+                            Tolak
+                          </Button>
+                        </div>
+                      </form>
+                    </section>
+                  </>
+                )}
               </article>
             ))}
           </div>
