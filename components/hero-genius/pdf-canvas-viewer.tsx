@@ -468,7 +468,7 @@ export function PdfCanvasViewer({
           useNativeViewer ? (
             <div className="w-full h-full flex-grow flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
               <iframe
-                src={`${url}#toolbar=1&navpanes=0&statusbar=0`}
+                src={`${url}#toolbar=0&navpanes=0&statusbar=0`}
                 className="w-full h-full border-0 flex-grow"
                 title={filename}
               />
