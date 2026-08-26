@@ -9,6 +9,10 @@ export const dynamic = "force-dynamic";
 function extractLocalUploadPath(targetUrl: string): string | null {
   try {
     let clean = targetUrl.trim();
+    try {
+      clean = decodeURIComponent(clean);
+    } catch (_) {}
+
     if (clean.startsWith("http://") || clean.startsWith("https://")) {
       try {
         const parsed = new URL(clean);
@@ -42,8 +46,14 @@ function extractLocalUploadPath(targetUrl: string): string | null {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const targetUrl = searchParams.get("url") || searchParams.get("file");
-    const requestedFilename = searchParams.get("filename") || "document.pdf";
+    let targetUrl = searchParams.get("url") || searchParams.get("file") || "";
+    try {
+      targetUrl = decodeURIComponent(targetUrl);
+    } catch (_) {}
+    let requestedFilename = searchParams.get("filename") || "document.pdf";
+    try {
+      requestedFilename = decodeURIComponent(requestedFilename);
+    } catch (_) {}
     const requestedFormat = searchParams.get("format") || "";
 
     if (!targetUrl) {
@@ -51,7 +61,10 @@ export async function GET(req: NextRequest) {
     }
 
     let buffer: Buffer | null = null;
-    const filename = targetUrl.split("/").pop() || requestedFilename;
+    let filename = targetUrl.split("/").pop() || requestedFilename;
+    try {
+      filename = decodeURIComponent(filename);
+    } catch (_) {}
 
     // 1. Try S3 storage proxy first if configured
     if (isS3UploadConfigured()) {
@@ -168,7 +181,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Fallback: If targetUrl is an internal relative URL, try fetching via Next.js host
-      if (!buffer && targetUrl.startsWith("/")) {
+      // Skip loopback fetches for known upload paths if local resolution already failed
+      if (!buffer && targetUrl.startsWith("/") && !targetUrl.startsWith("/api/uploads/") && !targetUrl.startsWith("/uploads/")) {
         try {
           const fullInternalUrl = new URL(targetUrl, req.url).toString();
           const internalRes = await fetch(fullInternalUrl, {

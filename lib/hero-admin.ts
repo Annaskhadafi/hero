@@ -5096,6 +5096,8 @@ export async function ensureHeroGovernanceSeedData() {
     const menuItemByResource = new Map(canonicalMenuItems.map((item) => [item.resource, item]))
     const menuItemByUrl = new Map(canonicalMenuItems.map((item) => [item.url, item]))
 
+    // Commented out to prevent overwriting user modifications to existing menu items
+    /*
     for (const menuSeed of SIDEBAR_MENU_SEEDS) {
       const existingMenuItem =
         menuItemByResource.get(menuSeed.resource) ?? menuItemByUrl.get(menuSeed.url)
@@ -5122,6 +5124,7 @@ export async function ensureHeroGovernanceSeedData() {
           .where(eq(navbarMenuItems.id, existingMenuItem.id))
       }
     }
+    */
 
     const refreshedMenuItems = await db
       .select()
@@ -5144,6 +5147,8 @@ export async function ensureHeroGovernanceSeedData() {
 
     const portalAppBySlug = new Map(existingPortalApps.map((item) => [item.slug, item]))
 
+    // Commented out to prevent overwriting user modifications to existing portal apps
+    /*
     for (const portalSeed of PORTAL_CHITRA_APP_SEEDS) {
       const existingPortalApp = portalAppBySlug.get(portalSeed.slug)
 
@@ -5171,6 +5176,7 @@ export async function ensureHeroGovernanceSeedData() {
           .where(eq(portalChitraApps.id, existingPortalApp.id))
       }
     }
+    */
 
     const missingPortalApps = PORTAL_CHITRA_APP_SEEDS.filter(
       (item) => !portalAppBySlug.has(item.slug)
