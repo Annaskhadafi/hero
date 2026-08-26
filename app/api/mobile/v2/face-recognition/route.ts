@@ -13,7 +13,7 @@ import path from 'path'
 
 
 // --- Constants ---
-const CONFIDENCE_THRESHOLD = 0.65
+const CONFIDENCE_THRESHOLD = 0.45
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out', 'auto'] as const
 type EventType = (typeof ALLOWED_EVENT_TYPES)[number]
 

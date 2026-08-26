@@ -88,10 +88,10 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     }
 
     const confidence = rvResult.confidence || 0
-    if (!rvResult.verified || confidence < 0.65) {
+    if (!rvResult.verified || confidence < 0.45) {
       return {
         success: false,
-        error: `Wajah tidak cocok dengan data biometrik ${currentEmp.name} (Kecocokan: ${(confidence * 100).toFixed(0)}%, minimal 65%).`,
+        error: `Wajah tidak cocok dengan data biometrik ${currentEmp.name} (Kecocokan: ${(confidence * 100).toFixed(0)}%, minimal 45%).`,
       }
     }
 

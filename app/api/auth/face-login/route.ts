@@ -122,12 +122,12 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
 
-        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.65) {
+        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.45) {
           matchedEmployee = emp;
           confidenceScore = verifyRes.confidence || 0.85;
           console.log("[face-login] 1:1 verification succeeded for:", emp.name, "Confidence:", confidenceScore);
         } else {
-          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.65:", verifyRes.confidence);
+          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.45:", verifyRes.confidence);
         }
       } catch (err) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
           rarayResult.status === "success" &&
           rarayResult.recognized &&
           (rarayResult.employee_id || rarayResult.face_id) &&
-          (rarayResult.confidence ?? 0) >= 0.65
+          (rarayResult.confidence ?? 0) >= 0.45
         ) {
           const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
           const numericId = Number(rawIdOrSn);
