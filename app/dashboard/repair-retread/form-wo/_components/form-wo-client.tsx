@@ -113,6 +113,8 @@ export type ServiceItemRow = {
   refNo: string // No Surat Jalan / WO Customer / No PR / No PO
   noWoCp: string
   price: string
+  noPo?: string
+  tanggalPo?: string
 }
 
 export type RepairItemRow = {
@@ -126,6 +128,8 @@ export type RepairItemRow = {
   category: string // R1, R2, R3
   price: string
   noWoCp: string
+  noPo?: string
+  tanggalPo?: string
 }
 
 export type MasterCaiRow = {
@@ -1641,6 +1645,8 @@ function ViewDetailDialog({
       refNo: item.storeLoc || '',
       noWoCp: item.noWoTerbit || '',
       price: item.totalAmount || '',
+      noPo: item.noPo || '',
+      tanggalPo: item.tanggalPo || '',
     },
   ])
 
@@ -1656,6 +1662,8 @@ function ViewDetailDialog({
       category: item.brand || 'R1',
       price: item.totalAmount || '',
       noWoCp: item.noWoTerbit || '',
+      noPo: item.noPo || '',
+      tanggalPo: item.tanggalPo || '',
     },
   ])
 
@@ -1667,6 +1675,18 @@ function ViewDetailDialog({
     (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),
     0
   )
+
+  const headerNoPo =
+    item.noPo ||
+    serviceItemsList.map((s) => s.noPo).filter(Boolean).join(', ') ||
+    repairItemsList.map((r) => r.noPo).filter(Boolean).join(', ') ||
+    '-'
+
+  const headerTanggalPo =
+    item.tanggalPo ||
+    serviceItemsList.map((s) => s.tanggalPo).filter(Boolean)[0] ||
+    repairItemsList.map((r) => r.tanggalPo).filter(Boolean)[0] ||
+    '-'
 
   const handlePrint = () => {
     if (!printRef.current) return
@@ -1770,8 +1790,8 @@ function ViewDetailDialog({
             </div>
           </div>
 
-          {/* Document Sub-Header: Hari & Tanggal */}
-          <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-4">
+          {/* Document Sub-Header: Hari, Tanggal, Jenis Form, Pemohon, Nomor PO, Tanggal PO */}
+          <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-3 lg:grid-cols-6">
             <div>
               <span className="block font-medium text-slate-500">Hari</span>
               <strong className="text-sm text-slate-900">{item.hari || getTodayHari()}</strong>
@@ -1795,6 +1815,18 @@ function ViewDetailDialog({
               <span className="block font-medium text-slate-500">Pemohon</span>
               <strong className="text-sm text-slate-900">{item.pemohon || '-'}</strong>
             </div>
+            <div>
+              <span className="block font-medium text-slate-500">Nomor PO</span>
+              <strong className="text-sm font-mono font-semibold text-violet-700">
+                {headerNoPo}
+              </strong>
+            </div>
+            <div>
+              <span className="block font-medium text-slate-500">Tanggal PO</span>
+              <strong className="text-sm font-mono text-slate-800">
+                {headerTanggalPo}
+              </strong>
+            </div>
           </div>
 
           {/* WO SERVICE TABLE matching Screenshot 1 */}
@@ -1804,14 +1836,16 @@ function ViewDetailDialog({
                 <thead>
                   <tr className="border-b border-slate-300 bg-slate-100 font-bold text-slate-800">
                     <th className="w-10 border-r border-slate-300 px-3 py-2.5 text-center">No</th>
-                    <th className="border-r border-slate-300 px-3 py-2.5">Decription</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Description</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Job</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Customer</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Site</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Serial No</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">
-                      No Surat Jalan / WO Customer / No PR / No PO
+                      No Surat Jalan / Ref
                     </th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Nomor PO</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Date PO</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">No WO CP</th>
                     <th className="px-3 py-2.5 text-right">Price / Amount</th>
                   </tr>
@@ -1834,6 +1868,12 @@ function ViewDetailDialog({
                       <td className="border-r border-slate-200 px-3 py-2 font-mono">
                         {row.refNo || '-'}
                       </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono font-semibold text-violet-700">
+                        {row.noPo || item.noPo || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.tanggalPo || item.tanggalPo || '-'}
+                      </td>
                       <td className="border-r border-slate-200 px-3 py-2 font-mono">
                         {row.noWoCp || '-'}
                       </td>
@@ -1846,7 +1886,7 @@ function ViewDetailDialog({
                   {/* Yellow Total Amount Footer matching Screenshot 1 */}
                   <tr className="border-t-2 border-slate-400 bg-yellow-300 font-bold text-slate-900">
                     <td
-                      colSpan={8}
+                      colSpan={10}
                       className="border-r border-slate-400 px-4 py-2.5 text-center text-xs tracking-wider uppercase"
                     >
                       Total Amount
@@ -1859,21 +1899,23 @@ function ViewDetailDialog({
               </table>
             </div>
           ) : (
-            /* WO REPAIR TABLE matching Screenshot 2 */
+            /* WO REPAIR & RETREAD TABLE matching Screenshot 2 */
             <div className="overflow-hidden rounded-lg border border-slate-300">
               <table className="w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-300 bg-slate-100 font-bold text-slate-800">
                     <th className="w-10 border-r border-slate-300 px-3 py-2.5 text-center">No</th>
-                    <th className="border-r border-slate-300 px-3 py-2.5">Decription</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Description (Tire SN)</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">No Unit</th>
                     <th className="w-12 border-r border-slate-300 px-3 py-2.5 text-center">Pos</th>
-                    <th className="border-r border-slate-300 px-3 py-2.5">Size</th>
-                    <th className="border-r border-slate-300 px-3 py-2.5">Site</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Customer</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Site</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Size</th>
                     <th className="border-r border-slate-300 px-3 py-2.5">Category</th>
-                    <th className="border-r border-slate-300 px-3 py-2.5 text-right">Price</th>
-                    <th className="px-3 py-2.5 text-center">No WO CP</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Nomor PO</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5">Date PO</th>
+                    <th className="border-r border-slate-300 px-3 py-2.5 text-center">No WO CP</th>
+                    <th className="px-3 py-2.5 text-right">Price</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1891,29 +1933,36 @@ function ViewDetailDialog({
                       <td className="border-r border-slate-200 px-3 py-2 text-center">
                         {row.pos || '-'}
                       </td>
-                      <td className="border-r border-slate-200 px-3 py-2">{row.size || '-'}</td>
-                      <td className="border-r border-slate-200 px-3 py-2">{row.site || '-'}</td>
                       <td className="border-r border-slate-200 px-3 py-2">{row.customer || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.site || '-'}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.size || '-'}</td>
                       <td className="border-r border-slate-200 px-3 py-2">{row.category || '-'}</td>
-                      <td className="border-r border-slate-200 px-3 py-2 text-right font-mono">
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono font-semibold text-violet-700">
+                        {row.noPo || item.noPo || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-mono">
+                        {row.tanggalPo || item.tanggalPo || '-'}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 text-center font-mono">
+                        {row.noWoCp || '-'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">
                         {row.price ? formatCurrency(row.price) : '-'}
                       </td>
-                      <td className="px-3 py-2 text-center font-mono">{row.noWoCp || '-'}</td>
                     </tr>
                   ))}
 
                   {/* Yellow Total Amount Footer matching Screenshot 2 */}
                   <tr className="border-t-2 border-slate-400 bg-yellow-300 font-bold text-slate-900">
                     <td
-                      colSpan={8}
+                      colSpan={11}
                       className="border-r border-slate-400 px-4 py-2.5 text-center text-xs tracking-wider uppercase"
                     >
                       Total Amount
                     </td>
-                    <td className="border-r border-slate-400 px-3 py-2.5 text-right font-mono text-xs">
+                    <td className="px-3 py-2.5 text-right font-mono text-xs">
                       {repairTotal > 0 ? formatCurrency(repairTotal) : '-'}
                     </td>
-                    <td className="px-3 py-2.5"></td>
                   </tr>
                 </tbody>
               </table>
