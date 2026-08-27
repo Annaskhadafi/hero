@@ -26,7 +26,7 @@ async function testDirectVision() {
   // 2. Test Get Learned Facts
   console.log("\n2. Mengambil daftar fakta memori (GET /api/v1/rag/memory/facts)...");
   const factsRes = await getRagMemoryFacts();
-  console.log(`✅ Get Facts Result: ${factsRes.total} facts found:`, factsRes.facts.slice(0, 2));
+  console.log(`✅ Get Facts Result: ${factsRes.total} facts found:`, factsRes.facts?.slice(0, 2));
 
   // 3. Test Get Sessions
   console.log("\n3. Mengambil daftar sesi chat (GET /api/v1/rag/sessions)...");

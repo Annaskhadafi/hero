@@ -3341,6 +3341,7 @@ export async function getWorkflowStudioConsoleData() {
     reminderRows,
     notificationRows,
     deliveryRows,
+    auditRows,
     siteRows,
     employeeRows,
     presetsRows,

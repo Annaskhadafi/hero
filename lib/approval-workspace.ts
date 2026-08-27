@@ -151,15 +151,23 @@ type ApprovalTimelineItem = {
   tone: string
 }
 
-function parseApprovalRouteSnapshot(routeSnapshot: string) {
-  const trimmedSnapshot = routeSnapshot.trim()
+function parseApprovalRouteSnapshot(routeSnapshot: string): ApprovalRouteResolution | null {
+  const trimmedSnapshot = routeSnapshot ? routeSnapshot.trim() : ''
 
   if (!trimmedSnapshot) {
     return null
   }
 
   try {
-    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution
+    const parsed = JSON.parse(trimmedSnapshot)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    return {
+      ...parsed,
+      steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    } as ApprovalRouteResolution
   } catch {
     return null
   }
@@ -621,7 +629,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
 
 function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
   const matchedStep =
-    route?.steps.find(
+    route?.steps?.find(
       (step) =>
         step.stepOrder === row.level &&
         (row.approvalStepId == null || step.approvalMatrixStepId === row.approvalStepId)
@@ -632,7 +640,7 @@ function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | nu
 
 function getCurrentStepLabel(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
   const matchedStep =
-    route?.steps.find(
+    route?.steps?.find(
       (step) =>
         step.stepOrder === row.level &&
         (row.approvalStepId == null || step.approvalMatrixStepId === row.approvalStepId)
@@ -804,7 +812,7 @@ function buildWorkflowPreview(rows: ApprovalQueueItem[]) {
     matrixName: route.matrixName,
     structureName: route.structureName,
     warnings: route.warnings,
-    steps: route.steps.map((step) => {
+    steps: (route.steps ?? []).map((step) => {
       const matchedApproval =
         rows.find(
           (row) =>
@@ -1290,7 +1298,7 @@ export async function getApprovalCenterData(email: string) {
       siteName: item.siteName,
       notes,
       lastNote: notes[0] ?? null,
-      steps: item.route?.steps.map((step) => {
+      steps: item.route?.steps?.map((step) => {
         const isCurrent = step.stepOrder === item.level;
         const isPast = step.stepOrder < item.level;
         return {
@@ -1547,7 +1555,7 @@ export async function getRequestCenterData(email?: string) {
       pendingWith: currentPending?.approverName ?? '-',
       currentStepLabel: currentPending?.currentStepLabel ?? latestApproval?.currentStepLabel ?? '-',
       progressLabel: route
-        ? `${relatedApprovals.filter((item) => item.status === 'approved').length}/${route.steps.length} step`
+        ? `${relatedApprovals.filter((item) => item.status === 'approved').length}/${route.steps?.length ?? 0} step`
         : `${relatedApprovals.filter((item) => item.status === 'approved').length} step`,
       workflowLabel: route?.matrixName ?? 'Legacy fallback',
       canCancel: false,

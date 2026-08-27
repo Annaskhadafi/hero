@@ -18,7 +18,7 @@ import {
 } from '@/lib/workflow-email'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
-import { getCurrentEmployeeAccessRole } from '@/lib/get-current-employee'
+import { getCurrentEmployeeAccessRole, requireAdminOrHcManagerRole } from '@/lib/get-current-employee'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -4185,15 +4185,23 @@ async function applyLegacySubmissionDecision(params: {
   return true
 }
 
-function parseApprovalRouteSnapshot(routeSnapshot: string) {
-  const trimmedSnapshot = routeSnapshot.trim()
+function parseApprovalRouteSnapshot(routeSnapshot: string): ApprovalRouteResolution | null {
+  const trimmedSnapshot = routeSnapshot ? routeSnapshot.trim() : ''
 
   if (!trimmedSnapshot) {
     return null
   }
 
   try {
-    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution
+    const parsed = JSON.parse(trimmedSnapshot)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    return {
+      ...parsed,
+      steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    } as ApprovalRouteResolution
   } catch {
     return null
   }
@@ -4428,21 +4436,21 @@ async function applyApprovalDecision(params: {
   const now = new Date()
   const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
   const currentStepIndex =
-    approvalRoute?.steps.findIndex(
+    approvalRoute?.steps?.findIndex(
       (step) =>
         step.stepOrder === approval.level &&
         (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId)
     ) ?? -1
   const currentStep =
-    approvalRoute != null && currentStepIndex >= 0
+    approvalRoute != null && currentStepIndex >= 0 && Array.isArray(approvalRoute.steps)
       ? (approvalRoute.steps[currentStepIndex] ?? null)
       : null
   const currentStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
   const nextStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
 
@@ -6388,6 +6396,7 @@ export async function manageSecurityUserAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityUserSchema.parse({
@@ -7064,6 +7073,7 @@ export async function manageSecurityRoleAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityRoleSchema.parse({
