@@ -557,6 +557,7 @@ export const approvals = pgTable('hero_approvals', {
     onDelete: 'cascade',
   }),
   repairFormWoId: integer('repair_form_wo_id'),
+  apdSummaryId: integer('apd_summary_id'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),

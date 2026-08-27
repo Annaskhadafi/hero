@@ -15,13 +15,17 @@ import {
   formTemplates,
   hcContractReviewApprovals,
   hcEmployeeContractReviews,
+  hcRfrApprovals,
+  hcRfrRequests,
   orgChartStructures,
   orgChartNodes,
   overtimeCommandLetterItems,
   overtimeCommandLetters,
   sites,
   apdRequests,
+  masterSections,
 } from '@/db/schema/hero'
+import { apdSummaries } from '@/db/schema/apd-summary'
 import type { ApprovalRouteResolution } from '@/lib/approval-engine'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
@@ -125,6 +129,14 @@ type RawApprovalRecordRow = {
   templateName: string | null
   templateKey: string | null
   apdRequestId?: number | null
+  repairFormWoId?: number | null
+  apdSummaryId?: number | null
+  photoUrl?: string | null
+}
+
+type ApprovalQueueItem = ApprovalRecordRow & {
+  dueAt: Date
+  dueState: 'closed' | 'overdue' | 'due_soon' | 'on_track'
   slaHours: number
   route: ApprovalRouteResolution | null
   currentStepLabel: string
@@ -442,6 +454,25 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       rawRows.map((row) => row.apdRequestId).filter((value): value is number => value != null)
     )
   )
+  const summaryIds = Array.from(
+    new Set(
+      rawRows.map((row) => row.apdSummaryId).filter((value): value is number => value != null)
+    )
+  )
+  const summaryRows =
+    summaryIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: apdSummaries.id,
+            summaryNumber: apdSummaries.summaryNumber,
+            sectionId: apdSummaries.sectionId,
+            status: apdSummaries.status,
+            generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
+          })
+          .from(apdSummaries)
+          .where(inArray(apdSummaries.id, summaryIds))
+  const summaryMap = new Map(summaryRows.map((row) => [row.id, row]))
   const apdRows =
     apdIds.length === 0
       ? []
@@ -453,6 +484,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             requestDate: apdRequests.requestDate,
             employeeId: apdRequests.employeeId,
             siteId: apdRequests.siteId,
+            requestCategory: apdRequests.requestCategory,
           })
           .from(apdRequests)
           .where(inArray(apdRequests.id, apdIds))
@@ -612,6 +644,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const splId = snapshotSplId(payload)
     const spl = splId == null ? null : (splMap.get(splId) ?? null)
     const apd = row.apdRequestId == null ? null : (apdMap.get(row.apdRequestId) ?? null)
+    const summary = row.apdSummaryId == null ? null : (summaryMap.get(row.apdSummaryId) ?? null)
     const plannedItems =
       splId == null ? [] : splItemRows.filter((item) => item.overtimeCommandLetterId === splId)
     const sessionItems =
@@ -654,7 +687,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     )
     const requester =
       requesterMap.get(
-        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? -1
+        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? summary?.generatedByEmployeeId ?? -1
       ) ?? null
     const site =
       siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? apd?.siteId ?? -1) ?? null
@@ -681,7 +714,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       row.submissionSubmittedAt ??
       row.submittedAt
     const requestId =
-      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.approvalId
+      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.approvalId
     const titleFromSnapshot =
       typeof preview.title === 'string'
         ? preview.title
@@ -710,18 +743,25 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         ? (row.activityType ?? 'Daily Activity')
         : row.submissionId != null
           ? (row.templateName ?? 'Workflow')
-          : row.apdRequestId != null ? 'Request APD' : row.repairFormWoId != null ? 'Work Order' : 'Unknown'
+          : row.repairFormWoId != null
+            ? 'Work Order'
+            : row.apdSummaryId != null
+              ? 'Summary APD'
+              : row.apdRequestId != null
+                ? `Request ${apd?.requestCategory ?? 'APD'}`
+                : 'Unknown'
     const currentRepairWo = row.repairFormWoId ? (repairWoMap.get(row.repairFormWoId) ?? null) : null
-
     const title =
       spl?.title ??
       (row.repairFormWoId != null ? (currentRepairWo ? `WO ${currentRepairWo.jenisPengajuan ?? 'Unknown'} - ${currentRepairWo.noPengajuan ?? 'Draft'}` : 'WO - Data Hilang') : null) ??
       titleFromSnapshot ??
-      (row.apdRequestId != null
-        ? `Request APD - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
-        : row.approvalActivityId != null
-          ? `Daily Activity - ${row.activityCode ?? ''}`
-          : `Workflow - ${row.templateName ?? ''}`)
+      (row.apdSummaryId != null
+        ? `Summary Permintaan Barang - ${summary?.summaryNumber ?? ''}`
+        : row.apdRequestId != null
+          ? `Request ${apd?.requestCategory ?? 'APD'} - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
+          : row.approvalActivityId != null
+            ? `Daily Activity - ${row.activityCode ?? ''}`
+            : `Workflow - ${row.templateName ?? ''}`)
 
     return {
       approvalId: row.approvalId,
@@ -1065,6 +1105,7 @@ async function fetchApprovalRows() {
       apdRequestId: approvals.apdRequestId,
       repairFormWoId: approvals.repairFormWoId,
       signatureUrl: approvals.signatureUrl,
+      apdSummaryId: approvals.apdSummaryId,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -1383,11 +1424,88 @@ async function getContractReviewInboxItems(
     })
 }
 
+async function getRfrInboxItems(
+  email: string,
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+) {
+  const normalizedEmail = normalizeMatchValue(email)
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
+  const rows = await db
+    .select({
+      approvalId: hcRfrApprovals.id,
+      approvalToken: hcRfrApprovals.approvalToken,
+      approverName: hcRfrApprovals.approverName,
+      approverEmail: hcRfrApprovals.approverEmail,
+      approverEmployeeId: hcRfrApprovals.approverEmployeeId,
+      approverTitle: hcRfrApprovals.approverTitle,
+      stepOrder: hcRfrApprovals.stepOrder,
+      stepKey: hcRfrApprovals.stepKey,
+      roleLabel: hcRfrApprovals.roleLabel,
+      createdAt: hcRfrApprovals.createdAt,
+      rfrId: hcRfrRequests.id,
+      rfrNumber: hcRfrRequests.rfrNumber,
+      requestorName: hcRfrRequests.requestorName,
+      positionTitle: hcRfrRequests.positionTitle,
+      sectionDepartment: hcRfrRequests.sectionDepartment,
+      numberOfPersons: hcRfrRequests.numberOfPersons,
+      currentStepOrder: hcRfrRequests.currentStepOrder,
+      totalSteps: sql<number>`(SELECT count(*)::int FROM hero_hc_rfr_approvals WHERE rfr_id = ${hcRfrRequests.id})`,
+    })
+    .from(hcRfrApprovals)
+    .innerJoin(hcRfrRequests, eq(hcRfrApprovals.rfrId, hcRfrRequests.id))
+    .where(
+      and(
+        eq(hcRfrApprovals.status, 'pending'),
+        eq(hcRfrRequests.status, 'in_progress')
+      )
+    )
+    .orderBy(desc(hcRfrApprovals.createdAt))
+
+  return rows
+    .filter((row) => {
+      const emailMatches = normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
+      const employeeMatches = currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
+      const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
+      return emailMatches || employeeMatches || nameMatches
+    })
+    .map((row) => {
+      const now = new Date()
+      const createdAt = row.createdAt ?? now
+      const dueAt = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000)
+      const timeLeft = dueAt.getTime() - now.getTime()
+      let dueState: 'overdue' | 'due_soon' | 'on_track' | 'open' = 'on_track'
+      if (timeLeft < 0) dueState = 'overdue'
+      else if (timeLeft <= 6 * 60 * 60 * 1000) dueState = 'due_soon'
+
+      return {
+        id: `rfr-${row.approvalId}`,
+        approvalId: row.approvalId,
+        rfrId: row.rfrId,
+        rfrNumber: row.rfrNumber,
+        requestorName: row.requestorName,
+        positionTitle: row.positionTitle,
+        sectionDepartment: row.sectionDepartment,
+        numberOfPersons: row.numberOfPersons,
+        approverName: row.approverName,
+        approverTitle: row.approverTitle,
+        stepOrder: row.stepOrder,
+        stepKey: row.stepKey,
+        roleLabel: row.roleLabel,
+        totalSteps: row.totalSteps,
+        submittedAt: createdAt,
+        dueAt,
+        dueState,
+        url: `/review/rfr/${row.approvalToken}`,
+      }
+    })
+}
+
 export async function getApprovalCenterData(email: string) {
   const now = new Date()
   const currentEmployee = await getEmployeeByEmail(email)
   const approvalRows = await fetchApprovalRowsForUser(email, currentEmployee)
   const contractReviewInboxItems = await getContractReviewInboxItems(email, currentEmployee)
+  const rfrInboxItems = await getRfrInboxItems(email, currentEmployee)
   const queue = approvalRows
     .map((row) => enrichApprovalRow(row, now))
     .sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime())
@@ -1662,14 +1780,16 @@ export async function getApprovalCenterData(email: string) {
   return {
     currentUserName: currentEmployee?.name ?? email,
     inboxMetrics: {
-      pendingGroups: inboxGroups.length + contractReviewInboxItems.length,
-      pendingActivities: inboxRows.length + contractReviewInboxItems.length,
+      pendingGroups: inboxGroups.length + contractReviewInboxItems.length + rfrInboxItems.length,
+      pendingActivities: inboxRows.length + contractReviewInboxItems.length + rfrInboxItems.length,
       dueSoon:
         inboxRows.filter((item) => item.dueState === 'due_soon').length +
-        contractReviewInboxItems.filter((item) => item.dueState === 'due_soon').length,
+        contractReviewInboxItems.filter((item) => item.dueState === 'due_soon').length +
+        rfrInboxItems.filter((item) => item.dueState === 'due_soon').length,
       overdue:
         inboxRows.filter((item) => item.dueState === 'overdue').length +
-        contractReviewInboxItems.filter((item) => item.dueState === 'overdue').length,
+        contractReviewInboxItems.filter((item) => item.dueState === 'overdue').length +
+        rfrInboxItems.filter((item) => item.dueState === 'overdue').length,
     },
     historyMetrics: {
       total: historyItems.length,
@@ -1681,6 +1801,7 @@ export async function getApprovalCenterData(email: string) {
       ).length,
     },
     contractReviewInboxItems,
+    rfrInboxItems,
     inboxGroups,
     historyGroups,
   }

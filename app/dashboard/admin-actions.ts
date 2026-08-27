@@ -6,6 +6,7 @@ import {
   notifyRoleChanged,
   notifyAccountBanned,
 } from '@/lib/user-notifications'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import Fuse from 'fuse.js'
@@ -139,6 +140,7 @@ import {
   apdRequests,
 } from '@/db/schema/hero'
 import { repairFormWo } from '@/db/schema/form-wo'
+import { apdSummaries } from '@/db/schema/apd-summary'
 import {
   indonesiaHolidays,
   attendancePermissionRequests,
@@ -4204,6 +4206,7 @@ async function applyApprovalDecision(params: {
   approvalId: number
   decision: 'approved' | 'rejected' | 'needs_correction'
   note: string
+  signatureUrl?: string
 }) {
   let actor = await getCurrentEmployeeAccessContext()
   const approvalPermission = await getCurrentMenuPermission('approval_inbox')
@@ -4275,6 +4278,7 @@ async function applyApprovalDecision(params: {
       requesterName: employees.name,
       apdSiteId: apdRequests.siteId,
       repairFormWoId: approvals.repairFormWoId,
+      apdSummaryId: approvals.apdSummaryId ?? null,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -4327,14 +4331,14 @@ async function applyApprovalDecision(params: {
         templateName: approval.templateName ?? 'Workflow Request',
         requesterEmployeeId: approval.requesterEmployeeId ?? 0,
         requesterName: approval.requesterName ?? 'Requester',
-      },
-      actorEmployeeId: actor.employeeId,
+      },      actorEmployeeId: actor.employeeId,
       actorName,
       decision: params.decision,
       note: params.note,
     })
   }
 
+  // Summary APD approval handling
   if (
     approval.activityId == null &&
     approval.submissionId == null &&
@@ -4598,6 +4602,40 @@ async function applyApprovalDecision(params: {
             url: `/dashboard/repair-retread/form-wo`,
             tagPrefix: 'form-wo',
           }).catch(console.error)
+
+          // ALSO NOTIFY ADMIN CP SITE (Creator) THAT IT HAS BEEN APPROVED BY INVENTORY (STEP 5)
+          let creatorEmail: string | undefined
+          if (reqInfo.createdBy) {
+            const [creatorEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, reqInfo.createdBy))
+              .limit(1)
+            creatorEmail = creatorEmp?.email
+          }
+          if (creatorEmail) {
+            const { sendFormWoStatusApprovedEmail } = await import('@/lib/form-wo-email')
+            sendFormWoStatusApprovedEmail({
+              requesterEmail: creatorEmail,
+              pemohon: reqInfo.pemohon || 'Pemohon',
+              noPengajuan: reqInfo.noPengajuan,
+              noWoTerbit: '-', // not yet issued
+              customer: reqInfo.customer || '-',
+              site: reqInfo.site || '-',
+              jobType: reqInfo.jobType || '-',
+              totalAmount: reqInfo.totalAmount || '-',
+            }).catch(console.error)
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [creatorEmail],
+              eventType: 'form_wo_approved',
+              category: 'approval',
+              title: 'Form WO Disetujui (Menunggu No. WO)',
+              body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Menunggu Team Billing menerbitkan Nomor WO.`,
+              url: `/dashboard/repair-retread/form-wo`,
+              tagPrefix: 'form-wo',
+            }).catch(console.error)
+          }
         }
       }
 
@@ -4675,13 +4713,83 @@ async function applyApprovalDecision(params: {
         }
       }
     })
+
+    revalidatePath('/dashboard/repair-retread/form-wo')
+    revalidatePath(`/dashboard/repair-retread/form-wo/${approval.repairFormWoId}`)
+    return
+  } else if (
+    approval.activityId == null && approval.submissionId == null &&
+    approval.apdRequestId == null && approval.apdSummaryId != null
+  ) {
+    const summaryId = approval.apdSummaryId as number
+    const now = new Date()
+
+    if (params.decision === 'approved') {
+      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine');
+      const { sendSummaryApprovedEmail } = await import('@/lib/summary-email');
+      const sigUrl = params.signatureUrl || ''
+      const result = await approveSummaryStep(summaryId, approval.level, actor.employeeId, sigUrl, trimmedNote)
+
+      // approveSummaryStep already updated hero_approvals with signatureUrl
+      // No overwrite needed — it would erase the signature
+
+      // Bell notification to summary generator
+      const summaryDetails = await getSummaryDetails(summaryId)
+      if (summaryDetails) {
+        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        if (generatorEmail[0]?.email) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [generatorEmail[0].email],
+            eventType: 'summary_progress',
+            category: 'approval_requests',
+            title: `Summary Tahap Disetujui`,
+            body: `Summary ${summaryDetails.summaryNumber} telah disetujui pada tahap ${approval.level === 1 ? 'Section Head' : 'Department Head'}.`,
+            url: '/dashboard/summary',
+            tagPrefix: 'summary',
+          }).catch(console.error)
+        }
+      }
+    
+    if (result.allApproved) {
+        // Notify HSE
+        if (summaryDetails) {
+          await sendSummaryApprovedEmail(summaryDetails).catch(console.error)
+        }
+      }
+    } else {
+      // Rejected or needs correction
+      await db.update(approvals).set({
+        status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
+        reviewedAt: now,
+        decisionNote: trimmedNote || '',
+      }).where(eq(approvals.id, approval.approvalId))
+
+      await db.update(apdSummaries).set({
+        status: params.decision === 'rejected' ? 'rejected' : 'pending',
+      }).where(eq(apdSummaries.id, summaryId))
+
+      // Notify requester
+      const summaryDetails = await getSummaryDetails(summaryId)
+      if (summaryDetails) {
+        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        if (generatorEmail[0]?.email) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [generatorEmail[0].email],
+            eventType: 'summary_rejected',
+            category: 'approval_requests',
+            title: `Summary Ditolak`,
+            body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${actorName}.`,
+            url: '/dashboard/summary',
+            tagPrefix: 'summary',
+          }).catch(console.error)
+        }
+      }
+    }
     return true
   }
 
   if (
-    approval.activityId == null &&
-    approval.submissionId == null &&
-    approval.apdRequestId != null
+    approval.activityId == null && approval.submissionId == null && approval.apdRequestId != null
   ) {
     const now = new Date()
     const decisionStatus =
@@ -4737,6 +4845,76 @@ async function applyApprovalDecision(params: {
           submittedAt: now,
           routeSnapshot: approval.routeSnapshot,
         })
+
+        // Notify requester (progress update) + next approver + bell notifications
+        const notifInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory,
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (notifInfo) {
+          const currentStepLabel = approvalRoute?.steps?.find((s: any) => s.stepOrder === approval.level)?.label ?? `Tahap ${approval.level}`
+
+          // 1. Email + bell ke requester (progress update)
+          if (notifInfo.requesterEmail) {
+            const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email');
+            sendApdLevelApprovedEmail({
+              requesterEmail: notifInfo.requesterEmail,
+              requesterName: notifInfo.requesterName,
+              requestNumber: notifInfo.requestNumber,
+              approverName: actorName,
+              requestType: notifInfo.requestCategory,
+              currentLevelLabel: currentStepLabel,
+              nextLevelLabel: nextStep.label,
+            }).catch(console.error);
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [notifInfo.requesterEmail],
+              eventType: 'apd_request_progress',
+              category: 'approval_requests',
+              title: `${notifInfo.requestCategory} Tahap Disetujui`,
+              body: `Permintaan ${notifInfo.requestCategory} Anda (${notifInfo.requestNumber}) telah disetujui pada tahap ${currentStepLabel} dan menunggu tahap berikutnya.`,
+              url: '/dashboard/approval',
+              tagPrefix: 'apd',
+            }).catch(console.error);
+          }
+
+          // 2. Email + bell ke next approver
+          if (nextStep.approverEmployeeId) {
+            const [nextApproverEmail] = await tx.select({ email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, nextStep.approverEmployeeId))
+              .limit(1);
+
+            if (nextApproverEmail?.email) {
+              const { sendApdNextApproverEmail } = await import('@/lib/apd-email');
+              sendApdNextApproverEmail({
+                nextApproverEmail: nextApproverEmail.email,
+                nextApproverName: nextStep.approverName,
+                requesterName: notifInfo.requesterName,
+                requestNumber: notifInfo.requestNumber,
+                requestType: notifInfo.requestCategory,
+                currentLevelLabel: nextStep.label,
+              }).catch(console.error);
+
+              notifyWorkflowBellRecipients({
+                recipientEmails: [nextApproverEmail.email],
+                eventType: 'apd_request_review',
+                category: 'approval_requests',
+                title: `Review ${notifInfo.requestCategory}`,
+                body: `${notifInfo.requesterName} mengajukan permintaan ${notifInfo.requestCategory} (${notifInfo.requestNumber}) yang membutuhkan persetujuan Anda pada tahap ${nextStep.label}.`,
+                url: '/dashboard/approval',
+                tagPrefix: 'apd',
+              }).catch(console.error);
+            }
+          }
+        }
       }
 
       if (decisionStatus === 'proses_order' && approval.apdRequestId != null && !nextStep) {
@@ -4744,7 +4922,8 @@ async function applyApprovalDecision(params: {
         const reqInfo = await tx.select({
           requestNumber: apdRequests.requestNumber,
           requesterName: employees.name,
-          requesterEmail: employees.email
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
         }).from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
@@ -4768,7 +4947,78 @@ async function applyApprovalDecision(params: {
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,
             approverName: actorName,
+            requestType: reqInfo.requestCategory,
             ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+          }).catch(console.error);
+        }
+      }
+
+      if (params.decision === 'rejected' && approval.apdRequestId != null) {
+        const reqInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (reqInfo?.requesterEmail) {
+          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
+          sendApdRequestRejectedEmail({
+            requesterEmail: reqInfo.requesterEmail,
+            requesterName: reqInfo.requesterName,
+            requestNumber: reqInfo.requestNumber,
+            approverName: actorName,
+            reason: trimmedNote || 'Tidak ada alasan yang diberikan',
+            requestType: reqInfo.requestCategory
+          }).catch(console.error);
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [reqInfo.requesterEmail],
+            eventType: 'apd_request_rejected',
+            category: 'approval_requests',
+            title: `${reqInfo.requestCategory} Ditolak`,
+            body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) telah ditolak oleh ${actorName}.`,
+            url: '/dashboard/apd',
+            tagPrefix: 'apd',
+          }).catch(console.error);
+        }
+      }
+
+      if (params.decision === 'needs_correction' && approval.apdRequestId != null) {
+        const reqInfo = await tx.select({
+          requestNumber: apdRequests.requestNumber,
+          requesterName: employees.name,
+          requesterEmail: employees.email,
+          requestCategory: apdRequests.requestCategory
+        }).from(apdRequests)
+          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+          .where(eq(apdRequests.id, approval.apdRequestId))
+          .limit(1)
+          .then(res => res[0]);
+
+        if (reqInfo?.requesterEmail) {
+          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
+          sendApdRequestRejectedEmail({
+            requesterEmail: reqInfo.requesterEmail,
+            requesterName: reqInfo.requesterName,
+            requestNumber: reqInfo.requestNumber,
+            approverName: actorName,
+            reason: trimmedNote || 'Dikembalikan untuk revisi',
+            requestType: reqInfo.requestCategory
+          }).catch(console.error);
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [reqInfo.requesterEmail],
+            eventType: 'apd_request_revision',
+            category: 'approval_requests',
+            title: `${reqInfo.requestCategory} Perlu Revisi`,
+            body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) dikembalikan untuk revisi oleh ${actorName}.`,
+            url: '/dashboard/apd',
+            tagPrefix: 'apd',
           }).catch(console.error);
         }
       }
@@ -6052,15 +6302,18 @@ export async function reviewApprovalAction(formData: FormData) {
     }
   }
 
+  // Save signature to approvals BEFORE running approval decision
+  // so the summary handler can read it
+  if (signatureUrl) {
+    await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
+  }
+
   await applyApprovalDecision({
     approvalId: payload.approvalId,
     decision: payload.decision,
     note: payload.note,
+    signatureUrl,
   })
-
-  if (signatureUrl) {
-    await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
-  }
 
   revalidateAdminSurfaces()
 }

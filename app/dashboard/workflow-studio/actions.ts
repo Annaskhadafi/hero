@@ -184,26 +184,28 @@ export async function saveWorkflowStudioApprovalAction(
       const siteRows = await db.select({ id: sites.id, name: sites.name }).from(sites)
       const siteMap = new Map(siteRows.map((s) => [s.id, s.name]))
 
-      for (const entry of parsedSiteEntries) {
-        const duplicates = await db
-          .select({ id: approvalMatrices.id, name: approvalMatrices.name })
-          .from(approvalMatrices)
-          .where(
-            and(
-              eq(approvalMatrices.isActive, true),
-              eq(approvalMatrices.transactionType, payload.transactionType),
-              eq(approvalMatrices.siteId, entry.siteId),
-              eq(approvalMatrices.activityType, '')
+      // When editing (matrixId exists), skip duplicate check since we'll replace all matrices for this transaction type
+      // When creating new, check for duplicates per site
+      if (!payload.matrixId) {
+        for (const entry of parsedSiteEntries) {
+          const duplicates = await db
+            .select({ id: approvalMatrices.id, name: approvalMatrices.name })
+            .from(approvalMatrices)
+            .where(
+              and(
+                eq(approvalMatrices.isActive, true),
+                eq(approvalMatrices.transactionType, payload.transactionType),
+                eq(approvalMatrices.siteId, entry.siteId),
+                eq(approvalMatrices.activityType, '')
+              )
             )
-          )
-        const duplicate = duplicates.find((row) => row.id !== payload.matrixId)
-
-        if (duplicate) {
-          const siteName = siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`
-          return {
-            status: 'error',
-            message: `Workflow aktif sudah ada untuk site ${siteName}: ${duplicate.name}. Edit existing, jangan buat duplikat.`,
-            existingMatrixId: duplicate.id,
+          if (duplicates.length > 0) {
+            const siteName = siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`
+            return {
+              status: 'error',
+              message: `Workflow aktif sudah ada untuk site ${siteName}: ${duplicates[0].name}. Edit existing, jangan buat duplikat.`,
+              existingMatrixId: duplicates[0].id,
+            }
           }
         }
       }
@@ -297,9 +299,26 @@ export async function saveWorkflowStudioApprovalAction(
         })
         .returning()
 
+      // When editing, delete ALL matrices for this transaction type (one per site)
       if (payload.matrixId) {
-        await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, payload.matrixId))
-        await tx.delete(approvalMatrices).where(eq(approvalMatrices.id, payload.matrixId))
+        const matricesToDelete = await tx
+          .select({ id: approvalMatrices.id })
+          .from(approvalMatrices)
+          .where(
+            and(
+              eq(approvalMatrices.transactionType, payload.transactionType),
+              eq(approvalMatrices.activityType, '')
+            )
+          )
+        for (const m of matricesToDelete) {
+          await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, m.id))
+        }
+        await tx.delete(approvalMatrices).where(
+          and(
+            eq(approvalMatrices.transactionType, payload.transactionType),
+            eq(approvalMatrices.activityType, '')
+          )
+        )
       }
 
       for (const entry of parsedSiteEntries) {

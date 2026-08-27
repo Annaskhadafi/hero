@@ -219,6 +219,14 @@ function SearchableSelect({
     }
   }, [])
 
+  // Focus search input when popup opens
+  useEffect(() => {
+    if (open && popupRef.current) {
+      const input = popupRef.current.querySelector('input') as HTMLInputElement | null
+      if (input) requestAnimationFrame(() => input.focus())
+    }
+  }, [open])
+
   // Catat tinggi asli popup setelah dirender untuk keputusan flip.
   useLayoutEffect(() => {
     if (open && popupRef.current) popupHeightRef.current = popupRef.current.offsetHeight
@@ -268,6 +276,7 @@ function SearchableSelect({
   const popup = open && popupPos ? (
     <div
       ref={popupRef}
+      onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
         top: popupPos.top,
@@ -275,17 +284,17 @@ function SearchableSelect({
         width: popupPos.width,
         maxHeight: popupPos.maxHeight,
       }}
-      className="pointer-events-auto z-[60] flex flex-col overflow-hidden rounded-md border bg-white shadow-lg"
+      className="pointer-events-auto z-[60] flex flex-col rounded-md border bg-white shadow-lg"
     >
       <input
         type="text"
         placeholder={searchPlaceholder ?? 'Cari karyawan...'}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.stopPropagation()}
         className="border-border/70 h-8 w-full shrink-0 border-b px-2 text-xs outline-none"
-        autoFocus
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto" style={{ maxHeight: '240px' }}>
         <button
           type="button"
           onClick={() => { onChange(''); setOpen(false); setQuery('') }}
@@ -354,6 +363,12 @@ function WorkflowBuilderDialog({
     return norm === 'section'
   }
 
+  // Cek apakah menu ini adalah Material atau Tools (butuh Step 2 Head Section otomatis)
+  function isMaterialOrToolsMenu(): boolean {
+    const txType = selectedMenu?.transactionType ?? ''
+    return txType === 'apd-request-material' || txType === 'apd-request-tools'
+  }
+
   // Section selalu menjadi langkah pertama secara default di setiap aktivitas —
   // tidak perlu ditambahkan manual di "Langkah Approval".
   function buildInitialSteps(): ApprovalStep[] {
@@ -375,9 +390,19 @@ function WorkflowBuilderDialog({
       { id: 'step-3', label: 'Section Head', type: 'employee' },
       { id: 'step-4', label: 'Department Head', type: 'employee' },
     ]
-
     const defaults = isFormWo ? formWoDefaults : generalDefaults
-    if (!initial?.globalSteps || initial.globalSteps.length === 0) return defaults
+
+    if (!initial?.globalSteps || initial.globalSteps.length === 0) {
+      // Material & Tools: otomatis set 2 step saja (PJO + Head Section)
+      if (isMaterialOrToolsMenu()) {
+        return [
+          { id: 'step-0', label: 'Section', type: 'section' },
+          { id: 'step-1', label: 'PJO (Head Lokasi)', type: 'employee' },
+          { id: 'step-2', label: 'Head Section', type: 'employee' },
+        ]
+      }
+      return defaults
+    }
     // Workflow lama mungkin belum punya langkah Section — sisipkan di depan,
     // dan buang langkah Section lama agar tidak dobel.
     const existing = initial.globalSteps
@@ -424,7 +449,7 @@ function WorkflowBuilderDialog({
           }
         }
         
-        return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '', values }
+        return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '0', values }
       })
     }
     return []
@@ -443,18 +468,38 @@ function WorkflowBuilderDialog({
     }
   }, [initial])
 
+  // Untuk Material/Tools: otomatis tambahkan Step 2 (Head Section) jika belum ada
+  useEffect(() => {
+    const txType = selectedMenu?.transactionType ?? ''
+    const isMatOrTools = txType === 'apd-request-material' || txType === 'apd-request-tools'
+    if (!isMatOrTools) return
+
+    setApprovalSteps((prev) => {
+      const hasSection = prev.some((s) => s.type === 'section')
+      const hasHeadSection = prev.some((s) => s.label === 'Head Section')
+      if (hasHeadSection) return prev
+
+      // Tambahkan Head Section setelah step terakhir (sebelum section jika ada)
+      const sectionSteps = prev.filter((s) => s.type === 'section')
+      const nonSectionSteps = prev.filter((s) => s.type !== 'section')
+      const newStep: ApprovalStep = { id: `step-${Date.now()}`, label: 'Head Section', type: 'employee' }
+      return [...nonSectionSteps, newStep, ...sectionSteps]
+    })
+  }, [selectedMenu])
+
   const usedSiteIds = new Set(siteData.map((s) => s.siteId))
-  const availableSites = allSites.filter((site) => !usedSiteIds.has(site.id.toString()))
+  const availableSites = allSites
 
   function addStep() {
     setApprovalSteps((prev) => [...prev, { id: `step-${Date.now()}`, label: '', type: 'employee' }])
   }
 
   function removeStep(id: string) {
-    // Langkah Section adalah default yang selalu ada — tidak bisa dihapus.
+    // Langkah Section & Head Section (untuk Material/Tools) adalah default yang tidak bisa dihapus.
     setApprovalSteps((prev) => {
       const target = prev.find((s) => s.id === id)
       if (target?.type === 'section') return prev
+      if (isMaterialOrToolsMenu() && target?.label === 'Head Section') return prev
       return prev.filter((s) => s.id !== id)
     })
     setSiteData((prev) =>
@@ -490,20 +535,53 @@ function WorkflowBuilderDialog({
     const firstSite = siteData[0]
     
     if (pendingSiteId === 'all') {
-      const newSites: SiteData[] = []
-      let i = 0
-      for (const site of availableSites) {
-        const pjoStepId = approvalSteps.find((s) => s.label.toLowerCase().includes('pjo'))?.id
-        const values: Record<string, string> = {}
-        for (const step of approvalSteps) {
-          values[step.id] = firstSite?.values[step.id] ?? ''
+      const newRows: any[] = []
+      const csSections = data.builderOptions.csSections ?? []
+      const sectionsToAdd = csSections.length > 0 ? csSections : [null]
+      
+      let index = 0
+      for (const site of allSites) {
+        for (const sec of sectionsToAdd) {
+          const values: Record<string, string> = {}
+          const pjoStepId = approvalSteps.find((s) => s.label.toLowerCase().includes('pjo'))?.id
+          
+          if (sec) {
+            const existing = data.builderOptions.siteSectionApprovers?.[`${site.id}_${sec.id}`]
+            for (const step of approvalSteps) {
+              if (step.type === 'section') {
+                values[step.id] = sec.id.toString()
+                continue
+              }
+              const norm = step.label.toLowerCase().replace(/[^a-z]/g, '')
+              let employeeId: number | null | undefined = null
+              
+              if (norm.includes('leader')) {
+                employeeId = existing?.leaderId ?? sec.leaderEmployeeId
+              } else if (norm.includes('pjo') || norm.includes('headlokasi')) {
+                employeeId = existing?.pjoId ?? sec.pjoEmployeeId ?? (site.headEmployeeId)
+              } else if (norm.includes('sectionhead')) {
+                employeeId = existing?.sectionHeadId ?? sec.sectionHeadEmployeeId
+              } else if (norm.includes('departmenthead')) {
+                employeeId = existing?.departmentHeadId ?? sec.departmentHeadEmployeeId
+              }
+              
+              if (employeeId != null) {
+                values[step.id] = String(employeeId)
+              }
+            }
+          } else {
+            // fallback if no sections are available
+            for (const step of approvalSteps) {
+              values[step.id] = firstSite?.values[step.id] ?? ''
+            }
+            if (pjoStepId && site.headEmployeeId) {
+              values[pjoStepId] = site.headEmployeeId.toString()
+            }
+          }
+          newRows.push({ key: `site-${Date.now()}-${index++}`, siteId: site.id.toString(), values })
         }
-        if (pjoStepId && site?.headEmployeeId) {
-          values[pjoStepId] = site.headEmployeeId.toString()
-        }
-        newSites.push({ key: `site-${Date.now()}-${i++}`, siteId: site.id.toString(), values })
       }
-      setSiteData((prev) => [...prev, ...newSites])
+      setSiteData((prev) => [...prev, ...newRows])
       setPendingSiteId('')
       return
     }
@@ -656,14 +734,15 @@ function WorkflowBuilderDialog({
                             value={step.label}
                             onChange={(e) => updateStepLabel(step.id, e.target.value)}
                             className="h-8 flex-1 text-xs"
+                            readOnly={isMaterialOrToolsMenu() && step.label === 'Head Section'}
                           />
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
                             <ArrowUp className="size-3" />
                           </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
                             <ArrowDown className="size-3" />
                           </Button>
-                          <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
+                          <button type="button" onClick={() => removeStep(step.id)} disabled={isMaterialOrToolsMenu() && step.label === 'Head Section'} className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed">
                             <X className="size-3.5" />
                           </button>
                         </div>
@@ -686,7 +765,7 @@ function WorkflowBuilderDialog({
                   >
                     <option value="">Pilih site...</option>
                     {availableSites.length > 0 && (
-                      <option value="all">-- Pilih Semua Site --</option>
+                      <option value="all">-- Tambahkan Semua Site --</option>
                     )}
                     {availableSites.map((site) => (
                       <option key={site.id} value={site.id.toString()}>{site.name}</option>
@@ -727,9 +806,10 @@ function WorkflowBuilderDialog({
                     <tbody>
                       {siteData.map((siteRow) => {
                         const site = allSites.find((s) => s.id.toString() === siteRow.siteId)
+                        const siteDisplayName = siteRow.siteId === '0' ? 'Semua Site (Global)' : (site?.name ?? siteRow.siteId)
                         return (
                           <tr key={siteRow.key} className="border-b last:border-0">
-                            <td className="py-2 pr-3 font-medium whitespace-nowrap">{site?.name ?? siteRow.siteId}</td>
+                            <td className="py-2 pr-3 font-medium whitespace-nowrap">{siteDisplayName}</td>
                             {approvalSteps.map((step) => (
                               <td key={step.id} className="py-2 pr-3 min-w-[180px]">
                                 <SearchableSelect
@@ -753,14 +833,14 @@ function WorkflowBuilderDialog({
                                               .toLowerCase()
                                               .replace(/[^a-z]/g, '')
                                             let employeeId: number | null = null
-                                            if (norm === 'leader') {
+                                            if (norm.includes('leader')) {
                                               employeeId = existing?.leaderId ?? sec?.leaderEmployeeId ?? null
                                             } else if (norm.includes('pjo') || norm.includes('headlokasi')) {
                                               employeeId = existing?.pjoId ?? sec?.pjoEmployeeId ?? null
-                                            } else if (norm === 'sectionhead') {
+                                            } else if (norm.includes('sectionhead')) {
                                               employeeId =
                                                 existing?.sectionHeadId ?? sec?.sectionHeadEmployeeId ?? null
-                                            } else if (norm === 'departmenthead') {
+                                            } else if (norm.includes('departmenthead')) {
                                               employeeId =
                                                 existing?.departmentHeadId ?? sec?.departmentHeadEmployeeId ?? null
                                             }

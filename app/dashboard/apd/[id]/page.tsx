@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import Image from "next/image";
+import { parseApprovalNoteEntries } from "@/lib/approval-notes";
 
 export default async function ApdRequestDetailPage({ params }: { params: { id: string } }) {
   const id = parseInt(params.id, 10);
@@ -162,11 +163,15 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
                       <div className="text-sm text-muted-foreground capitalize">
                         Status: <strong className={step.status === 'approved' ? 'text-green-600' : step.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}>{step.status}</strong>
                       </div>
-                      {step.decisionNote && (
-                        <div className="mt-2 text-sm italic text-muted-foreground border-l-2 pl-2">
-                          "{step.decisionNote}"
-                        </div>
-                      )}
+                      {step.decisionNote && (() => {
+                        const notes = parseApprovalNoteEntries(step.decisionNote, step.approverName || 'System');
+                        const lastNote = notes[notes.length - 1];
+                        return lastNote?.message ? (
+                          <div className="mt-2 text-sm italic text-muted-foreground border-l-2 pl-2">
+                            "{lastNote.message}"
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 ))}

@@ -22,6 +22,7 @@ import {
   BookOpen,
   TrendingUp,
   Package,
+  Wrench,
   Files,
 } from "lucide-react";
 import {
@@ -152,11 +153,25 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-violet-500/10 text-violet-600",
     },
     {
-      title: "Request Barang",
+      title: "Request APD",
       href: "/mobile/apd",
       resource: "apd-request",
       icon: HardHat,
       bg: "bg-blue-500/10 text-blue-600",
+    },
+    {
+      title: "Request Material",
+      href: "/mobile/material",
+      resource: "apd-request",
+      icon: Package,
+      bg: "bg-amber-500/10 text-amber-600",
+    },
+    {
+      title: "Request Tools",
+      href: "/mobile/tools",
+      resource: "apd-request",
+      icon: Wrench,
+      bg: "bg-emerald-500/10 text-emerald-600",
     },
     {
       title: "Izin & Terlambat",
