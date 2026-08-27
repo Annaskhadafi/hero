@@ -3224,6 +3224,33 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     transactionType: 'activity',
     sourceType: 'Hardcode',
   },
+  {
+    key: 'form-wo-service-mvc',
+    name: 'Form WO Service (MVC - CK / CKB / Trakindo)',
+    pageTitle: 'Form WO',
+    pageUrl: '/dashboard/repair-retread/form-wo',
+    templateKey: 'form-wo-service-mvc',
+    transactionType: 'form_wo_service_mvc',
+    sourceType: 'Hardcode',
+  },
+  {
+    key: 'form-wo-service-other',
+    name: 'Form WO Service (Non-MVC / Others)',
+    pageTitle: 'Form WO',
+    pageUrl: '/dashboard/repair-retread/form-wo',
+    templateKey: 'form-wo-service-other',
+    transactionType: 'form_wo_service_other',
+    sourceType: 'Hardcode',
+  },
+  {
+    key: 'form-wo-repair-retread',
+    name: 'Form WO Repair & Retread',
+    pageTitle: 'Form WO',
+    pageUrl: '/dashboard/repair-retread/form-wo',
+    templateKey: 'form-wo-repair-retread',
+    transactionType: 'form_wo_repair_retread',
+    sourceType: 'Hardcode',
+  },
 ] as const
 
 function dateIso(value: Date | null | undefined) {
@@ -3410,6 +3437,7 @@ export async function getWorkflowStudioConsoleData() {
           pjoId: approversByRole.pjo ?? null,
           sectionHeadId: approversByRole.section_head ?? null,
           departmentHeadId: approversByRole.department_head ?? null,
+          customRoles: approversByRole,
         }
       }),
       globalSteps: (() => {

@@ -6,9 +6,67 @@ import { Trash2 } from 'lucide-react'
 
 interface SignaturePadProps {
   onSignatureChange: (file: File | null) => void
+  onDataUrlChange?: (dataUrl: string | null) => void
 }
 
-export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
+function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+
+  const { width, height } = canvas
+  if (width === 0 || height === 0) return canvas
+
+  try {
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const data = imgData.data
+
+    let minX = width
+    let minY = height
+    let maxX = 0
+    let maxY = 0
+    let found = false
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4
+        const alpha = data[idx + 3]
+        const r = data[idx]
+        const g = data[idx + 1]
+        const b = data[idx + 2]
+        if (alpha > 15 && !(r > 245 && g > 245 && b > 245)) {
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+          found = true
+        }
+      }
+    }
+
+    if (!found || maxX < minX || maxY < minY) return canvas
+
+    const padding = 12
+    minX = Math.max(0, minX - padding)
+    minY = Math.max(0, minY - padding)
+    maxX = Math.min(width - 1, maxX + padding)
+    maxY = Math.min(height - 1, maxY + padding)
+
+    const cropWidth = maxX - minX + 1
+    const cropHeight = maxY - minY + 1
+
+    const cropped = document.createElement('canvas')
+    cropped.width = cropWidth
+    cropped.height = cropHeight
+    const croppedCtx = cropped.getContext('2d')
+    if (croppedCtx) {
+      croppedCtx.drawImage(canvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight)
+      return cropped
+    }
+  } catch {}
+  return canvas
+}
+
+export function SignaturePad({ onSignatureChange, onDataUrlChange }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -103,6 +161,8 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     }
   }
 
+  const rafRef = useRef<number | null>(null)
+
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
     
@@ -119,17 +179,34 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
       
       hasDrawnRef.current = true
       if (!hasSignature) setHasSignature(true)
+
+      if (onDataUrlChange && !rafRef.current) {
+        rafRef.current = requestAnimationFrame(() => {
+          if (canvasRef.current) {
+            onDataUrlChange(canvasRef.current.toDataURL('image/png'))
+          }
+          rafRef.current = null
+        })
+      }
     }
   }
 
   const stopDrawing = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
     if (!isDrawing && !hasDrawnRef.current) return
     setIsDrawing(false)
     
     const canvas = canvasRef.current
     if (canvas && (hasSignature || hasDrawnRef.current)) {
       setHasSignature(true)
-      canvas.toBlob((blob) => {
+      const croppedCanvas = getCroppedCanvas(canvas)
+      const dataUrl = croppedCanvas.toDataURL('image/png')
+      onDataUrlChange?.(dataUrl)
+
+      croppedCanvas.toBlob((blob) => {
         if (blob) {
           let file: File
           try {
@@ -145,6 +222,10 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
   }
 
   const clearSignature = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -154,6 +235,7 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     hasDrawnRef.current = false
     setHasSignature(false)
     onSignatureChange(null)
+    onDataUrlChange?.(null)
   }
 
   return (

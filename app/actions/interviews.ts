@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { hcCandidateInterviews, hcCandidates, hcRecruitments } from "@/db/schema/hero";
+import { hcCandidateInterviews, hcCandidates, hcRecruitments, hcCandidatePanelEvaluations } from "@/db/schema/hero";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
@@ -466,6 +466,14 @@ export async function submitInterviewEvaluation(data: {
   revalidatePath(`/dashboard/hc/recruitment/candidates/${data.candidateId}`);
   revalidatePath("/dashboard/hc/recruitment");
   return created;
+}
+
+export async function getCandidateInterviews(candidateId: number) {
+  return await db
+    .select()
+    .from(hcCandidateInterviews)
+    .where(eq(hcCandidateInterviews.candidateId, candidateId))
+    .orderBy(desc(hcCandidateInterviews.scheduledAt));
 }
 
 export async function getCandidatePanelEvaluations(candidateId: number) {

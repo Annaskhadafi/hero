@@ -31,6 +31,120 @@ function formatTime(value: Date) {
 }
 
 export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
+  const isFormWo = Boolean(
+    item.repairFormWo ||
+      item.activityType === 'Work Order' ||
+      item.requestKindLabel?.toLowerCase().includes('work order') ||
+      item.title?.toLowerCase().includes('wo')
+  )
+
+  const wo = item.repairFormWo
+  let parsedWoItems: Array<{
+    sn?: string
+    size?: string
+    brand?: string
+    pattern?: string
+    kondisi?: string
+    workType?: string
+    harga?: number
+    qty?: number
+    keterangan?: string
+  }> = []
+
+  if (wo?.items) {
+    try {
+      parsedWoItems = JSON.parse(wo.items)
+    } catch {
+      parsedWoItems = []
+    }
+  }
+
+  if (isFormWo && wo) {
+    return (
+      <div className="space-y-4">
+        <section className="rounded-2xl bg-[#eef6fb] p-4 text-[#082033]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold tracking-[0.16em] text-[#486275] uppercase">
+                FORM WORK ORDER • {wo.jenisPengajuan || 'REPAIR'}
+              </p>
+              <h3 className="mt-1 text-lg font-black tracking-tight">{wo.noPengajuan}</h3>
+            </div>
+            <AdminStatusBadge value={wo.status || 'Pending'} />
+          </div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-xs font-semibold text-[#60788a]">Customer</dt>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo.customer || '-'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold text-[#60788a]">Site</dt>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo.site || item.siteName || '-'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold text-[#60788a]">Pemohon</dt>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo.pemohon || item.requesterName || '-'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold text-[#60788a]">Total Amount</dt>
+              <dd className="mt-0.5 font-bold text-emerald-700 tabular-nums">
+                {wo.totalAmount
+                  ? `Rp ${Number(wo.totalAmount).toLocaleString('id-ID')}`
+                  : '-'}
+              </dd>
+            </div>
+            <div className="col-span-2 border-t border-[#d5e5ef] pt-3">
+              <dt className="text-xs font-semibold text-[#60788a]">Tanggal Pengajuan</dt>
+              <dd className="mt-1 text-base font-black">
+                {wo.hari ? `${wo.hari}, ` : ''}{wo.tanggal ? formatDate(new Date(wo.tanggal)) : formatDate(item.startTime)}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        {wo.catatanPengajuan && (
+          <section>
+            <h4 className="text-sm font-black text-[#082033]">Catatan Pengajuan</h4>
+            <p className="mt-2 text-sm leading-6 whitespace-pre-wrap text-[#486275] bg-white rounded-xl p-3 border border-slate-200">
+              {wo.catatanPengajuan}
+            </p>
+          </section>
+        )}
+
+        {parsedWoItems.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-black text-[#082033]">Daftar Item ({parsedWoItems.length})</h4>
+            </div>
+            <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white text-xs">
+              {parsedWoItems.map((it, idx) => (
+                <div key={idx} className="p-3 flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-slate-800">
+                      {idx + 1}. {it.sn ? `SN: ${it.sn}` : `Item ${idx + 1}`}
+                      {it.brand ? ` • ${it.brand}` : ''}
+                      {it.size ? ` (${it.size})` : ''}
+                    </p>
+                    <p className="text-slate-500">
+                      {it.workType ? `Pekerjaan: ${it.workType}` : it.pattern ? `Pattern: ${it.pattern}` : ''}
+                      {it.kondisi ? ` • Kondisi: ${it.kondisi}` : ''}
+                      {it.keterangan ? ` • Ket: ${it.keterangan}` : ''}
+                    </p>
+                  </div>
+                  {it.harga ? (
+                    <div className="text-right font-bold text-slate-800 tabular-nums">
+                      Rp {Number(it.harga).toLocaleString('id-ID')}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl bg-[#eef6fb] p-4 text-[#082033]">

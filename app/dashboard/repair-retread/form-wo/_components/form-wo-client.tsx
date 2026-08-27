@@ -58,6 +58,7 @@ import {
   INITIAL_OTHER_CAI,
 } from "@/lib/constants/master-cai-initial"
 import type { CustomerRecord } from "@/app/actions/customer-management"
+import { SignaturePad } from "@/components/signature-pad"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -117,15 +118,18 @@ export type ServiceItemRow = {
 
 export type RepairItemRow = {
   id: string
-  description: string // Tire Serial No / Description
-  noUnit: string
-  pos: string
-  size: string
-  site: string
   customer: string
-  category: string // R1, R2, R3
+  site: string
+  size: string // Tire Size
+  description: string // SN Tire
+  brand: string // Brand
+  category: string // Category Injury (R1, R2, R3, etc.)
   price: string
-  noWoCp: string
+  noWoCp: string // WO CP
+  noPo: string // Number PO
+  tanggalPo: string // Date PO
+  pos: string // POS
+  noUnit?: string
 }
 
 export type MasterCaiRow = {
@@ -199,6 +203,14 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   pending: {
     label: "Pending",
     cls: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200",
+  },
+  revisi: {
+    label: "Perlu Revisi (Revert)",
+    cls: "border-amber-400 bg-amber-100 text-amber-900 font-bold",
+  },
+  needs_correction: {
+    label: "Perlu Revisi (Revert)",
+    cls: "border-amber-400 bg-amber-100 text-amber-900 font-bold",
   },
   diproses: {
     label: "Diproses",
@@ -749,6 +761,8 @@ function CreateOrEditWoDialog({
   const [noWoTerbit, setNoWoTerbit] = useState("")
   const [noPo, setNoPo] = useState("")
   const [tanggalPo, setTanggalPo] = useState("")
+  const [signatureFile, setSignatureFile] = useState<File | null>(null)
+  const [submitterSignatureUrl, setSubmitterSignatureUrl] = useState<string | null>(null)
 
   // Multi-item tables
   const [serviceItems, setServiceItems] = useState<ServiceItemRow[]>([
@@ -756,7 +770,7 @@ function CreateOrEditWoDialog({
   ])
 
   const [repairItems, setRepairItems] = useState<RepairItemRow[]>([
-    { id: "1", description: "", noUnit: "", pos: "", size: "", site: "", customer: "", category: "R1", price: "", noWoCp: "", noPo: "", tanggalPo: "" },
+    { id: "1", customer: "", site: "", size: "", description: "", brand: "", category: "R1", price: "", noWoCp: "", noPo: "", tanggalPo: "", pos: "", noUnit: "" },
   ])
 
   const allCustomerOptions = useMemo(() => {
@@ -967,17 +981,18 @@ function CreateOrEditWoDialog({
       ...prev,
       {
         id: String(Date.now()),
-        description: "",
-        noUnit: "",
-        pos: "",
-        size: prev[0]?.size || "",
-        site: prev[0]?.site || "",
         customer: prev[0]?.customer || "",
+        site: prev[0]?.site || "",
+        size: prev[0]?.size || "",
+        description: "",
+        brand: prev[0]?.brand || "",
         category: "R1",
         price: "",
         noWoCp: "",
         noPo: noPo || "",
         tanggalPo: tanggalPo || "",
+        pos: "",
+        noUnit: "",
       },
     ])
   }
@@ -1029,6 +1044,22 @@ function CreateOrEditWoDialog({
       const headerNoPo = noPo || (isService ? firstService?.noPo : firstRepair?.noPo)
       const headerTanggalPo = tanggalPo || (isService ? firstService?.tanggalPo : firstRepair?.tanggalPo)
 
+      // Upload signature if provided
+      let sigUrl = submitterSignatureUrl || undefined
+      if (signatureFile && signatureFile.size > 0) {
+        try {
+          const { uploadFile } = await import("@/app/actions/upload")
+          const fd = new FormData()
+          fd.append("file", signatureFile)
+          const uploadResult = await uploadFile(fd)
+          if (uploadResult && uploadResult.success) {
+            sigUrl = uploadResult.url
+          }
+        } catch (err) {
+          console.error("Signature upload error:", err)
+        }
+      }
+
       const payload = {
         jenisPengajuan,
         tanggal: tanggal || undefined,
@@ -1040,6 +1071,7 @@ function CreateOrEditWoDialog({
         tanggalPo: headerTanggalPo || undefined,
         totalAmount: currentTotalAmount > 0 ? String(currentTotalAmount) : undefined,
         items: itemsJson,
+        submitterSignatureUrl: sigUrl,
         // Header summary values
         customer: isService ? firstService?.customer || undefined : firstRepair?.customer || undefined,
         site: isService ? firstService?.site || undefined : firstRepair?.site || undefined,
@@ -1158,6 +1190,20 @@ function CreateOrEditWoDialog({
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Tanda Tangan Pemohon */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+              <Label className="text-xs font-semibold uppercase text-slate-500">
+                Tanda Tangan Digital Pemohon {submitterSignatureUrl && <span className="ml-2 text-emerald-600 normal-case">\u2713 Tersimpan</span>}
+              </Label>
+              <p className="text-[11px] text-slate-500">Bubuhkan tanda tangan sebagai pemohon/penanggung jawab pengajuan ini.</p>
+              <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                <SignaturePad
+                  onSignatureChange={setSignatureFile}
+                  onDataUrlChange={setSubmitterSignatureUrl}
+                />
               </div>
             </div>
           </div>
@@ -1322,17 +1368,17 @@ function CreateOrEditWoDialog({
                   <TableHeader className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-bold">
                     <TableRow>
                       <TableHead className="w-10 text-center">No</TableHead>
-                      <TableHead className="min-w-[180px]">Description (Tire SN)</TableHead>
-                      <TableHead className="min-w-[130px]">No Unit</TableHead>
-                      <TableHead className="min-w-[70px] text-center">Pos</TableHead>
                       <TableHead className="min-w-[200px]">Customer</TableHead>
                       <TableHead className="min-w-[140px]">Site</TableHead>
-                      <TableHead className="min-w-[160px]">Size</TableHead>
-                      <TableHead className="min-w-[140px]">Category</TableHead>
-                      <TableHead className="min-w-[140px]">Nomor PO</TableHead>
-                      <TableHead className="min-w-[140px]">Date PO</TableHead>
-                      <TableHead className="min-w-[140px]">No WO CP</TableHead>
+                      <TableHead className="min-w-[160px]">Tire Size</TableHead>
+                      <TableHead className="min-w-[180px]">SN Tire</TableHead>
+                      <TableHead className="min-w-[140px]">Brand</TableHead>
+                      <TableHead className="min-w-[140px]">Cat. Injury</TableHead>
                       <TableHead className="min-w-[160px] text-right">Price</TableHead>
+                      <TableHead className="min-w-[140px]">WO CP</TableHead>
+                      <TableHead className="min-w-[140px]">Number PO</TableHead>
+                      <TableHead className="min-w-[140px]">Date PO</TableHead>
+                      <TableHead className="min-w-[80px] text-center">POS</TableHead>
                       <TableHead className="w-10 text-center"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1340,30 +1386,6 @@ function CreateOrEditWoDialog({
                     {repairItems.map((item, idx) => (
                       <TableRow key={item.id} className="hover:bg-slate-50/60">
                         <TableCell className="text-center font-semibold text-slate-500">{idx + 1}</TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.description}
-                            onChange={(e) => updateRepairRow(idx, "description", e.target.value)}
-                            placeholder="e.g. VCJO256S8A"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.noUnit}
-                            onChange={(e) => updateRepairRow(idx, "noUnit", e.target.value)}
-                            placeholder="e.g. CO4205"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={item.pos}
-                            onChange={(e) => updateRepairRow(idx, "pos", e.target.value)}
-                            placeholder="1-6"
-                            className="h-9 text-xs border-slate-200 text-center w-full"
-                          />
-                        </TableCell>
 
                         {/* 1. Customer Dropdown (Searchable) */}
                         <TableCell>
@@ -1384,7 +1406,7 @@ function CreateOrEditWoDialog({
                           />
                         </TableCell>
 
-                        {/* 3. Size Dropdown (Searchable) */}
+                        {/* 3. Tire Size Dropdown (Searchable) */}
                         <TableCell>
                           <TableSizeCell
                             value={item.size}
@@ -1392,7 +1414,27 @@ function CreateOrEditWoDialog({
                           />
                         </TableCell>
 
-                        {/* 4. Category Dropdown (R1, R2, R3) */}
+                        {/* 4. SN Tire */}
+                        <TableCell>
+                          <Input
+                            value={item.description}
+                            onChange={(e) => updateRepairRow(idx, "description", e.target.value)}
+                            placeholder="e.g. VCJO256S8A"
+                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                          />
+                        </TableCell>
+
+                        {/* 5. Brand */}
+                        <TableCell>
+                          <Input
+                            value={item.brand || ""}
+                            onChange={(e) => updateRepairRow(idx, "brand", e.target.value)}
+                            placeholder="e.g. Michelin / Bridgestone"
+                            className="h-9 text-xs border-slate-200 w-full"
+                          />
+                        </TableCell>
+
+                        {/* 6. Category Injury Dropdown (R1, R2, R3) */}
                         <TableCell>
                           <TableCategoryCell
                             value={item.category}
@@ -1400,37 +1442,7 @@ function CreateOrEditWoDialog({
                           />
                         </TableCell>
 
-                        {/* 5. Nested Nomor PO */}
-                        <TableCell>
-                          <Input
-                            value={item.noPo || ""}
-                            onChange={(e) => updateRepairRow(idx, "noPo", e.target.value)}
-                            placeholder="No PO"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
-                          />
-                        </TableCell>
-
-                        {/* 6. Nested Date PO (Date Picker) */}
-                        <TableCell>
-                          <Input
-                            type="date"
-                            value={item.tanggalPo || ""}
-                            onChange={(e) => updateRepairRow(idx, "tanggalPo", e.target.value)}
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
-                          />
-                        </TableCell>
-
-                        {/* 7. No WO CP */}
-                        <TableCell>
-                          <Input
-                            value={item.noWoCp}
-                            onChange={(e) => updateRepairRow(idx, "noWoCp", e.target.value)}
-                            placeholder="No WO CP"
-                            className="h-9 text-xs border-slate-200 font-mono w-full"
-                          />
-                        </TableCell>
-
-                        {/* 8. Price Dropdown (Filtered by Customer + Site + Size + Repair/Retread) */}
+                        {/* 7. Price Dropdown (Filtered by Customer + Site + Size + Repair/Retread) */}
                         <TableCell>
                           <TablePriceCell
                             value={item.price}
@@ -1441,6 +1453,46 @@ function CreateOrEditWoDialog({
                             category={item.category}
                             jenisWo={jenisPengajuan}
                             masterPriceList={masterPriceList}
+                          />
+                        </TableCell>
+
+                        {/* 8. WO CP */}
+                        <TableCell>
+                          <Input
+                            value={item.noWoCp}
+                            onChange={(e) => updateRepairRow(idx, "noWoCp", e.target.value)}
+                            placeholder="No WO CP"
+                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                          />
+                        </TableCell>
+
+                        {/* 9. Number PO */}
+                        <TableCell>
+                          <Input
+                            value={item.noPo || ""}
+                            onChange={(e) => updateRepairRow(idx, "noPo", e.target.value)}
+                            placeholder="No PO"
+                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                          />
+                        </TableCell>
+
+                        {/* 10. Date PO (Date Picker) */}
+                        <TableCell>
+                          <Input
+                            type="date"
+                            value={item.tanggalPo || ""}
+                            onChange={(e) => updateRepairRow(idx, "tanggalPo", e.target.value)}
+                            className="h-9 text-xs border-slate-200 font-mono w-full"
+                          />
+                        </TableCell>
+
+                        {/* 11. POS */}
+                        <TableCell>
+                          <Input
+                            value={item.pos}
+                            onChange={(e) => updateRepairRow(idx, "pos", e.target.value)}
+                            placeholder="1-6"
+                            className="h-9 text-xs border-slate-200 text-center w-full"
                           />
                         </TableCell>
 
@@ -1460,13 +1512,13 @@ function CreateOrEditWoDialog({
                     ))}
                     {/* Yellow Total Amount Footer */}
                     <TableRow className="bg-yellow-300/90 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <TableCell colSpan={10} className="text-center py-2.5 uppercase tracking-wider text-xs">
+                      <TableCell colSpan={7} className="text-center py-2.5 uppercase tracking-wider text-xs">
                         Total Amount
                       </TableCell>
                       <TableCell className="text-right py-2.5 font-mono text-xs">
                         {totalRepairAmount > 0 ? formatCurrency(totalRepairAmount) : "-"}
                       </TableCell>
-                      <TableCell colSpan={2}></TableCell>
+                      <TableCell colSpan={5}></TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -1653,50 +1705,54 @@ function ViewDetailDialog({
               </table>
             </div>
           ) : (
-            /* WO REPAIR TABLE matching Screenshot 2 */
-            <div className="border border-slate-300 rounded-lg overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
+            /* WO REPAIR TABLE matching Repair/Retread structure */
+            <div className="border border-slate-300 rounded-lg overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-800">
                     <th className="py-2.5 px-3 border-r border-slate-300 w-10 text-center">No</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Decription</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">No Unit</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300 text-center w-12">Pos</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Size</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Site</th>
                     <th className="py-2.5 px-3 border-r border-slate-300">Customer</th>
-                    <th className="py-2.5 px-3 border-r border-slate-300">Category</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300">Site</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300">Tire Size</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300">SN Tire</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300">Brand</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300">Cat. Injury</th>
                     <th className="py-2.5 px-3 border-r border-slate-300 text-right">Price</th>
-                    <th className="py-2.5 px-3 text-center">No WO CP</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300 text-center">WO CP</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300 text-center">Number PO</th>
+                    <th className="py-2.5 px-3 border-r border-slate-300 text-center">Date PO</th>
+                    <th className="py-2.5 px-3 text-center w-12">POS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {repairItemsList.map((row, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
                       <td className="py-2 px-3 border-r border-slate-200 text-center font-medium">{idx + 1}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono font-medium">{row.description || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 font-mono">{row.noUnit || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200 text-center">{row.pos || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200">{row.customer || item.customer || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200">{row.site || item.site || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200">{row.size || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.site || "-"}</td>
-                      <td className="py-2 px-3 border-r border-slate-200">{row.customer || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200 font-mono font-medium">{row.description || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200">{row.brand || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200">{row.category || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">
                         {row.price ? formatCurrency(row.price) : "-"}
                       </td>
-                      <td className="py-2 px-3 font-mono text-center">{row.noWoCp || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200 font-mono text-center">{row.noWoCp || item.noWoTerbit || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200 font-mono text-center">{row.noPo || item.noPo || "-"}</td>
+                      <td className="py-2 px-3 border-r border-slate-200 font-mono text-center">{row.tanggalPo || item.tanggalPo || "-"}</td>
+                      <td className="py-2 px-3 text-center">{row.pos || "-"}</td>
                     </tr>
                   ))}
 
-                  {/* Yellow Total Amount Footer matching Screenshot 2 */}
+                  {/* Yellow Total Amount Footer */}
                   <tr className="bg-yellow-300 font-bold text-slate-900 border-t-2 border-slate-400">
-                    <td colSpan={8} className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400">
+                    <td colSpan={7} className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400">
                       Total Amount
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-xs border-r border-slate-400">
                       {repairTotal > 0 ? formatCurrency(repairTotal) : "-"}
                     </td>
-                    <td className="py-2.5 px-3"></td>
+                    <td colSpan={4} className="py-2.5 px-3"></td>
                   </tr>
                 </tbody>
               </table>

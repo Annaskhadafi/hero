@@ -1,10 +1,14 @@
+'use client'
+
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
+import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
+import { ApprovalReviewDrawerForm } from '@/components/approval-review-drawer-form'
 import { TableFilterPresets } from '@/components/table-filter-presets'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -160,9 +164,11 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <p className="text-foreground text-sm">{group.siteName}</p>
-                        <p className="text-muted-foreground text-xs">
-                          Overtime {group.totalOvertimeLabel}
-                        </p>
+                        {group.items.some(i => i.activityType === 'Daily Activity') ? (
+                          <p className="text-muted-foreground text-xs">
+                            Overtime {group.totalOvertimeLabel}
+                          </p>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
@@ -197,6 +203,10 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                     <TableCell className="align-top">
                       {item.activityType === 'Request APD' ? (
                         <ApdApprovalDialog item={item} group={group} />
+                      ) : item.activityType === 'Work Order' ||
+                        item.repairFormWo ||
+                        item.title?.toLowerCase().includes('wo') ? (
+                        <FormWoApprovalDialog item={item} group={group} />
                       ) : (
                         <AdminDetailDrawer
                           title={`Review ${item.title}`}
@@ -208,54 +218,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                             </Button>
                           }
                         >
-                          <form action={reviewApprovalAction} className="space-y-3">
-                            <input type="hidden" name="approvalId" value={item.approvalId} />
-                            <ApprovalRequestDetails item={item} />
-                            <div className="bg-surface-container-low text-foreground rounded-lg p-3 text-sm">
-                              <p className="font-semibold">Catatan terakhir</p>
-                              <p className="text-muted-foreground mt-1">
-                                {item.lastNote
-                                  ? item.lastNote.message
-                                  : 'Belum ada komentar approval sebelumnya.'}
-                              </p>
-                            </div>
-                            <Textarea
-                              name="note"
-                              rows={3}
-                              required
-                              minLength={3}
-                              placeholder="Alasan revisi atau tolak minimal 3 karakter. Setujui boleh tanpa catatan."
-                            />
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="approved"
-                                formNoValidate
-                                size="dense"
-                              >
-                                Setujui
-                              </Button>
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="needs_correction"
-                                variant="outline"
-                                size="dense"
-                              >
-                                Minta revisi
-                              </Button>
-                              <Button
-                                type="submit"
-                                name="decision"
-                                value="rejected"
-                                variant="secondary"
-                                size="dense"
-                              >
-                                Tolak
-                              </Button>
-                            </div>
-                          </form>
+                          <ApprovalReviewDrawerForm item={item} group={group} />
                           {group.items.length > 1 ? (
                             <form
                               action={approveApprovalGroupAction}

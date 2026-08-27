@@ -43,6 +43,9 @@ export const repairFormWo = pgTable("repair_form_wo", {
   noPo: varchar("no_po", { length: 255 }),
   tanggalPo: varchar("tanggal_po", { length: 50 }),
 
+  // Submitter signature
+  submitterSignatureUrl: text("submitter_signature_url"),
+
   // Audit
   sortOrder: integer("sort_order").default(0).notNull(),
   createdBy: varchar("created_by", { length: 255 }),

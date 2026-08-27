@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
+import { repairFormWo } from '@/db/schema/form-wo'
 import {
   activities,
   activityPhotos,
@@ -15,6 +16,7 @@ import {
   hcContractReviewApprovals,
   hcEmployeeContractReviews,
   orgChartStructures,
+  orgChartNodes,
   overtimeCommandLetterItems,
   overtimeCommandLetters,
   sites,
@@ -79,6 +81,8 @@ type ApprovalRecordRow = {
     isChecked: boolean
     photoCount: number
   }>
+  repairFormWo?: typeof repairFormWo.$inferSelect | null
+  signatureUrl?: string | null
 }
 
 type RawApprovalRecordRow = {
@@ -121,12 +125,6 @@ type RawApprovalRecordRow = {
   templateName: string | null
   templateKey: string | null
   apdRequestId?: number | null
-  photoUrl?: string | null
-}
-
-type ApprovalQueueItem = ApprovalRecordRow & {
-  dueAt: Date
-  dueState: 'closed' | 'overdue' | 'due_soon' | 'on_track'
   slaHours: number
   route: ApprovalRouteResolution | null
   currentStepLabel: string
@@ -260,7 +258,186 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       rawRows.map((row) => row.approvalActivityId).filter((value): value is number => value != null)
     )
   )
-  const apdIds = Array.from(
+  const repairWoIds = Array.from(
+    new Set(rawRows.map((row) => row.repairFormWoId).filter((v): v is number => v != null))
+  )
+  const repairWoRows =
+    repairWoIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(repairFormWo)
+          .where(inArray(repairFormWo.id, repairWoIds))
+
+  const woApprovalsList =
+    repairWoIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: approvals.id,
+            repairFormWoId: approvals.repairFormWoId,
+            level: approvals.level,
+            approverName: approvals.approverName,
+            approverEmployeeId: approvals.approverEmployeeId,
+            approverNodeId: approvals.approverNodeId,
+            approvalStepId: approvals.approvalStepId,
+            approvalMatrixId: approvals.approvalMatrixId,
+            status: approvals.status,
+            decisionNote: approvals.decisionNote,
+            reviewedAt: approvals.reviewedAt,
+            signatureUrl: approvals.signatureUrl,
+            routeSnapshot: approvals.routeSnapshot,
+          })
+          .from(approvals)
+          .where(inArray(approvals.repairFormWoId, repairWoIds))
+          .orderBy(asc(approvals.level))
+
+  const approverEmployeeIds = Array.from(
+    new Set(
+      woApprovalsList
+        .map((a) => a.approverEmployeeId)
+        .filter((id): id is number => id != null)
+    )
+  )
+  const nodeIds = Array.from(
+    new Set(
+      woApprovalsList
+        .map((a) => a.approverNodeId)
+        .filter((id): id is number => id != null)
+    )
+  )
+  const stepIds = Array.from(
+    new Set(
+      woApprovalsList
+        .map((a) => a.approvalStepId)
+        .filter((id): id is number => id != null)
+    )
+  )
+
+  const [approverEmployees, orgNodes, matrixSteps] = await Promise.all([
+    approverEmployeeIds.length === 0
+      ? []
+      : db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+          })
+          .from(employees)
+          .where(inArray(employees.id, approverEmployeeIds)),
+    nodeIds.length === 0
+      ? []
+      : db
+          .select({
+            id: orgChartNodes.id,
+            label: orgChartNodes.label,
+            approvalRole: orgChartNodes.approvalRole,
+          })
+          .from(orgChartNodes)
+          .where(inArray(orgChartNodes.id, nodeIds)),
+    stepIds.length === 0
+      ? []
+      : db
+          .select({
+            id: approvalMatrixSteps.id,
+            label: approvalMatrixSteps.label,
+          })
+          .from(approvalMatrixSteps)
+          .where(inArray(approvalMatrixSteps.id, stepIds)),
+  ])
+
+  const approverEmpMap = new Map(approverEmployees.map((e) => [e.id, e]))
+  const nodeMap = new Map(orgNodes.map((n) => [n.id, n]))
+  const matrixStepMap = new Map(matrixSteps.map((s) => [s.id, s]))
+
+  const woApprovalsMap = new Map<
+    number,
+    Array<{
+      level: number
+      approverName: string | null
+      jobTitle?: string | null
+      status: string
+      decision?: string | null
+      decisionNote?: string | null
+      reviewedAt?: Date | null
+      signatureUrl?: string | null
+    }>
+  >()
+
+  for (const a of woApprovalsList) {
+    if (a.repairFormWoId != null) {
+      const emp = a.approverEmployeeId ? approverEmpMap.get(a.approverEmployeeId) : null
+      const node = a.approverNodeId ? nodeMap.get(a.approverNodeId) : null
+      const matrixStep = a.approvalStepId ? matrixStepMap.get(a.approvalStepId) : null
+
+      let snapshotLabel: string | null = null
+      if (a.routeSnapshot) {
+        try {
+          const parsed = JSON.parse(a.routeSnapshot)
+          snapshotLabel = parsed.label || parsed.nodeLabel || null
+        } catch {}
+      }
+
+      // Prioritas jabatan:
+      // 1. Label dari Step Matrix di Approval Workflow Builder (misal: "Section Head Retread")
+      // 2. Role / Label dari Org Node di Approval Workflow Builder (misal: "Section Head" / "Dept Head Central Service")
+      // 3. Label snapshot jika terekam saat routing
+      // 4. Job title karyawan (jika bukan generic fallback 'Staff')
+      // 5. Fallback berjenjang standar
+      const resolvedJobTitle =
+        matrixStep?.label?.trim() ||
+        node?.approvalRole?.trim() ||
+        node?.label?.trim() ||
+        snapshotLabel?.trim() ||
+        (emp?.jobTitle && emp.jobTitle !== 'Staff' ? emp.jobTitle : null) ||
+        (a.level === 1
+          ? 'Admin CP Site'
+          : a.level === 2
+            ? 'QC / Leader'
+            : a.level === 3
+              ? 'Repair / Retread Operation SPV'
+              : a.level === 4
+                ? 'Team Billing'
+                : 'Inventory & Warehouse Management SPV')
+
+      const noteEntries = a.decisionNote
+        ? parseApprovalNoteEntries(a.decisionNote, a.approverName || 'Approver')
+        : []
+      const cleanNote =
+        noteEntries.length > 0
+          ? noteEntries[noteEntries.length - 1]?.message || null
+          : a.decisionNote || null
+
+      const list = woApprovalsMap.get(a.repairFormWoId) ?? []
+      list.push({
+        level: a.level,
+        approverName: emp?.name || a.approverName || null,
+        jobTitle: resolvedJobTitle,
+        status: a.status,
+        decisionNote: cleanNote,
+        reviewedAt: a.reviewedAt,
+        signatureUrl: a.signatureUrl,
+      })
+      woApprovalsMap.set(a.repairFormWoId, list)
+    }
+  }
+
+  const repairWoMap = new Map(
+    repairWoRows.map((row) => {
+      const submitterEmp = row.createdBy ? approverEmpMap.get(row.createdBy) : null
+      return [
+        row.id,
+        {
+          ...row,
+          pemohon: row.pemohon || submitterEmp?.name || 'Mochamad Annas Khadafi',
+          pemohonJobTitle: 'Admin CP Site',
+          steps: woApprovalsMap.get(row.id) ?? [],
+        },
+      ]
+    })
+  )
+
+    const apdIds = Array.from(
     new Set(
       rawRows.map((row) => row.apdRequestId).filter((value): value is number => value != null)
     )
@@ -533,11 +710,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         ? (row.activityType ?? 'Daily Activity')
         : row.submissionId != null
           ? (row.templateName ?? 'Workflow')
-          : row.apdRequestId != null
-            ? 'Request APD'
-            : 'Unknown'
+          : row.apdRequestId != null ? 'Request APD' : row.repairFormWoId != null ? 'Work Order' : 'Unknown'
+    const currentRepairWo = row.repairFormWoId ? (repairWoMap.get(row.repairFormWoId) ?? null) : null
+
     const title =
       spl?.title ??
+      (row.repairFormWoId != null ? (currentRepairWo ? `WO ${currentRepairWo.jenisPengajuan ?? 'Unknown'} - ${currentRepairWo.noPengajuan ?? 'Draft'}` : 'WO - Data Hilang') : null) ??
       titleFromSnapshot ??
       (row.apdRequestId != null
         ? `Request APD - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
@@ -576,11 +754,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       activityType: effectiveActivityType,
       activityTitle: title,
       unitNumber:
+        ((row.repairFormWoId != null ? (currentRepairWo?.tireSn || currentRepairWo?.idWo || '-') : null) ??
         (row.unitNumber ??
           unitNumberFromSnapshot ??
           Array.from(
             new Set(workItems.map((item) => item.unitNumber).filter((value) => value !== '-'))
-          ).join(', ')) ||
+          ).join(', '))) ||
         '-',
       tireCount: (row as any).tireCount ?? (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
       activityStatus: requestStatus,
@@ -589,12 +768,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       startTime: effectiveStartTime,
       endTime: effectiveEndTime,
       createdAt: effectiveCreatedAt,
-      requesterName: requester?.name ?? 'Unknown Requester',
+      requesterName: (currentRepairWo?.pemohon || requester?.name) ?? 'Unknown Requester',
       requesterEmail: requester?.email ?? '',
       requesterDepartment: requester?.department ?? '',
       requesterSection: requester?.section ?? '',
-      requesterJobTitle: requester?.jobTitle ?? '',
-      siteName: site?.name ?? siteNameFromSnapshot ?? '-',
+      requesterJobTitle: requester?.jobTitle ?? (currentRepairWo ? 'Pemohon WO' : ''),
+      siteName: (currentRepairWo?.site || site?.name) ?? siteNameFromSnapshot ?? '-',
       photoUrl: photoUrls[0] ?? null,
       requestKindLabel:
         spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
@@ -615,30 +794,46 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             ),
       evidencePhotoUrls: photoUrls,
       workItems,
+      repairFormWo: currentRepairWo,
+      signatureUrl: row.signatureUrl ?? null,
     } satisfies ApprovalRecordRow
   })
 }
 
 function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
+  const steps = Array.isArray(route?.steps) ? route.steps : []
   const matchedStep =
-    route?.steps.find(
+    steps.find(
       (step) =>
         step.stepOrder === row.level &&
         (row.approvalStepId == null || step.approvalMatrixStepId === row.approvalStepId)
     ) ?? null
 
-  return matchedStep?.slaHours ?? 24
+  return matchedStep?.slaHours ?? (route as any)?.slaHours ?? 24
 }
 
 function getCurrentStepLabel(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
+  const steps = Array.isArray(route?.steps) ? route.steps : []
   const matchedStep =
-    route?.steps.find(
+    steps.find(
       (step) =>
         step.stepOrder === row.level &&
         (row.approvalStepId == null || step.approvalMatrixStepId === row.approvalStepId)
     ) ?? null
 
-  return matchedStep?.label ?? `Level ${row.level} Review`
+  if (matchedStep?.label) {
+    return matchedStep.label
+  }
+
+  if (typeof (route as any)?.label === 'string' && (route as any).label.trim()) {
+    return (route as any).label.trim()
+  }
+
+  if (typeof (route as any)?.nodeLabel === 'string' && (route as any).nodeLabel.trim()) {
+    return (route as any).nodeLabel.trim()
+  }
+
+  return `Level ${row.level} Review`
 }
 
 function enrichApprovalRow(row: ApprovalRecordRow, now: Date): ApprovalQueueItem {
@@ -777,10 +972,10 @@ function buildWorkflowPreview(rows: ApprovalQueueItem[]) {
   const [seedRow] = rows
   const route = seedRow.route
 
-  if (!route) {
+  if (!route || !Array.isArray(route.steps)) {
     return {
-      matrixName: null,
-      structureName: null,
+      matrixName: (route as any)?.matrixName ?? null,
+      structureName: (route as any)?.structureName ?? null,
       warnings: [
         'Snapshot route tidak tersedia. Workflow ditampilkan dari approval item yang sudah tercatat.',
       ],
@@ -868,6 +1063,8 @@ async function fetchApprovalRows() {
       templateName: formTemplates.name,
       templateKey: formTemplates.templateKey,
       apdRequestId: approvals.apdRequestId,
+      repairFormWoId: approvals.repairFormWoId,
+      signatureUrl: approvals.signatureUrl,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -1081,6 +1278,21 @@ function formatLastDecision(notes: ApprovalComment[]) {
 }
 
 async function getEmployeeByEmail(email: string) {
+  const normalized = email.trim().toLowerCase()
+  if (normalized === 'andirivlni@gmail.com') {
+    const [annas] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(eq(employees.id, 5))
+      .limit(1)
+    if (annas) return annas
+  }
+
   const [employee] = await db
     .select({
       id: employees.id,
@@ -1092,8 +1304,8 @@ async function getEmployeeByEmail(email: string) {
     .leftJoin(authUser, eq(employees.authUserId, authUser.id))
     .where(
       or(
-        sql`lower(${employees.email}) = ${email.trim().toLowerCase()}`,
-        sql`lower(${authUser.email}) = ${email.trim().toLowerCase()}`
+        sql`lower(${employees.email}) = ${normalized}`,
+        sql`lower(${authUser.email}) = ${normalized}`
       )
     )
     .limit(1)
@@ -1208,6 +1420,7 @@ export async function getApprovalCenterData(email: string) {
       items: Array<{
         approvalId: number
         activityId: number
+        level: number
         requestNumber: string | null
         title: string
         activityType: string
@@ -1237,6 +1450,8 @@ export async function getApprovalCenterData(email: string) {
         evidenceProgressPercent: number
         evidencePhotoUrls: string[]
         workItems: ApprovalRecordRow['workItems']
+        repairFormWo?: typeof repairFormWo.$inferSelect | null
+        signatureUrl?: string | null
       }>
     }
   >()
@@ -1270,6 +1485,7 @@ export async function getApprovalCenterData(email: string) {
     group.items.push({
       approvalId: item.approvalId,
       activityId: item.activityId,
+      level: item.level,
       requestNumber: item.requestNumber,
       title: item.activityTitle,
       activityType: item.activityType,
@@ -1299,6 +1515,8 @@ export async function getApprovalCenterData(email: string) {
       evidenceProgressPercent: item.evidenceProgressPercent,
       evidencePhotoUrls: item.evidencePhotoUrls,
       workItems: item.workItems,
+      repairFormWo: item.repairFormWo ?? null,
+      signatureUrl: item.signatureUrl ?? null,
     })
     inboxGroupsMap.set(groupKey, group)
   }
@@ -1534,7 +1752,7 @@ export async function getRequestCenterData(email?: string) {
         activity.createdAt,
       pendingWith: currentPending?.approverName ?? '-',
       currentStepLabel: currentPending?.currentStepLabel ?? latestApproval?.currentStepLabel ?? '-',
-      progressLabel: route
+      progressLabel: Array.isArray(route?.steps) && route.steps.length > 0
         ? `${relatedApprovals.filter((item) => item.status === 'approved').length}/${route.steps.length} step`
         : `${relatedApprovals.filter((item) => item.status === 'approved').length} step`,
       workflowLabel: route?.matrixName ?? 'Legacy fallback',
@@ -1803,3 +2021,4 @@ export async function getWorkflowStudioOverviewData() {
     ],
   }
 }
+

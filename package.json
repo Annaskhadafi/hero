@@ -123,6 +123,7 @@
     "react-quill-new": "^3.8.3",
     "react-resizable-panels": "^3.0.5",
     "react-signature-canvas": "^1.1.0-alpha.2",
+    "react-to-print": "^3.3.0",
     "recharts": "^2.15.4",
     "recordrtc": "^5.6.2",
     "sharp": "^0.34.5",

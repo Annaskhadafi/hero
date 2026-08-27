@@ -1,34 +1,48 @@
-"use server"
+'use server'
 
-import { asc, desc, eq, sql } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
-import { z } from "zod"
+import { and, asc, desc, eq, gt, ne, sql } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 
-import { db } from "@/db"
-import { repairFormWo, repairWipPo } from "@/db/schema/form-wo"
+import { db } from '@/db'
+import { approvals, employees } from '@/db/schema/hero'
+import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { repairFormWo, repairWipPo } from '@/db/schema/form-wo'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
 import {
   sendFormWoApprovalRequestEmail,
   sendFormWoStatusApprovedEmail,
   sendFormWoStatusRejectedEmail,
-} from "@/lib/form-wo-email"
-import type { WipRepairRecord } from "@/lib/types/wip-repair"
+  sendFormWoCompletedWithPdfEmail,
+} from '@/lib/form-wo-email'
+import type { FormWoPdfData } from '@/lib/form-wo-pdf'
+import type { WipRepairRecord } from '@/lib/types/wip-repair'
 
-const FORM_WO_PATH = "/dashboard/repair-retread/form-wo"
+const FORM_WO_PATH = '/dashboard/repair-retread/form-wo'
 const WIP_REPAIR_API_URL =
   process.env.WIP_REPAIR_API_URL ??
-  "https://ics.chitraparatama.com/product/get_api.php?function=wo_repair"
+  'https://ics.chitraparatama.com/product/get_api.php?function=wo_repair'
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers ----------------------------------------------------------------
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path)
+  } catch {
+    // Ignore when called outside active request store (e.g. scripts / tests)
+  }
+}
 
 function normalizeValue(value: string | null | undefined) {
-  return value?.trim() || "-"
+  return value?.trim() || '-'
 }
 
 function isWaitingWorkOrder(value: string | null | undefined) {
-  return normalizeValue(value).toLowerCase() === "waiting wo"
+  return normalizeValue(value).toLowerCase() === 'waiting wo'
 }
 
-// ponytail: singleton guard — avoids repeated DDL & concurrent race conditions
+// ponytail: singleton guard � avoids repeated DDL & concurrent race conditions
 let _tableEnsured = false
 
 async function ensureFormWoTable() {
@@ -75,18 +89,35 @@ async function ensureFormWoTable() {
     `)
     _tableEnsured = true
     // Ensure new columns exist (idempotent ALTER)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "jenis_pengajuan" varchar(50) DEFAULT 'repair' NOT NULL`)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "deskripsi_pekerjaan" text`)
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "jenis_pengajuan" varchar(50) DEFAULT 'repair' NOT NULL`
+    )
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "deskripsi_pekerjaan" text`
+    )
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "hari" varchar(50)`)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal" varchar(50)`)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`)
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal" varchar(50)`
+    )
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`
+    )
     await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "items" text`)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`)
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal_po" varchar(50)`)
-    await db.execute(sql`ALTER TABLE "repair_wip_po" ADD COLUMN IF NOT EXISTS "po_date" varchar(50)`)
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`
+    )
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal_po" varchar(50)`
+    )
+    await db.execute(
+      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "submitter_signature_url" text`
+    )
+    await db.execute(
+      sql`ALTER TABLE "repair_wip_po" ADD COLUMN IF NOT EXISTS "po_date" varchar(50)`
+    )
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    if (msg.includes("already exists") || msg.includes("duplicate key")) {
+    if (msg.includes('already exists') || msg.includes('duplicate key')) {
       _tableEnsured = true
       return
     }
@@ -97,7 +128,7 @@ async function ensureFormWoTable() {
 async function generateNoPengajuan(): Promise<string> {
   const now = new Date()
   const year = now.getFullYear().toString().slice(-2)
-  const month = String(now.getMonth() + 1).padStart(2, "0")
+  const month = String(now.getMonth() + 1).padStart(2, '0')
 
   const result = await db
     .select({ id: repairFormWo.id })
@@ -106,15 +137,15 @@ async function generateNoPengajuan(): Promise<string> {
     .limit(1)
 
   const lastId = result[0]?.id ?? 0
-  const seq = String(lastId + 1).padStart(4, "0")
+  const seq = String(lastId + 1).padStart(4, '0')
 
   return `FRMWO/${year}/${month}/${seq}`
 }
 
-// ─── Schemas ────────────────────────────────────────────────────────────────
+// --- Schemas ----------------------------------------------------------------
 
 const formWoCreateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional().default("repair"),
+  jenisPengajuan: z.enum(['repair', 'service', 'non_repair', 'retread']).optional().default('repair'),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -140,10 +171,11 @@ const formWoCreateSchema = z.object({
   items: z.string().optional(),
   noPo: z.string().optional(),
   tanggalPo: z.string().optional(),
+  submitterSignatureUrl: z.string().optional(),
 })
 
 const formWoUpdateSchema = z.object({
-  jenisPengajuan: z.enum(["repair", "service", "non_repair"]).optional(),
+  jenisPengajuan: z.enum(['repair', 'service', 'non_repair', 'retread']).optional(),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -162,7 +194,9 @@ const formWoUpdateSchema = z.object({
   receiver: z.string().optional(),
   pemohon: z.string().optional(),
   catatanPengajuan: z.string().optional(),
-  statusPengajuan: z.enum(["pending", "approved", "rejected", "diproses"]).optional(),
+  statusPengajuan: z
+    .enum(['pending', 'approved', 'rejected', 'diproses', 'revisi', 'needs_correction'])
+    .optional(),
   noWoTerbit: z.string().optional(),
   hari: z.string().optional(),
   tanggal: z.string().optional(),
@@ -170,26 +204,27 @@ const formWoUpdateSchema = z.object({
   items: z.string().optional(),
   noPo: z.string().optional(),
   tanggalPo: z.string().optional(),
+  submitterSignatureUrl: z.string().optional(),
 })
 
-// ─── Actions ────────────────────────────────────────────────────────────────
+// --- Actions ----------------------------------------------------------------
 
 export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
   try {
     await ensureFormWoTable()
     const cleanId = idWo.trim()
     const cleanPo = noPo.trim()
-    const cleanPoDate = poDate !== undefined ? poDate.trim() : ""
+    const cleanPoDate = poDate !== undefined ? poDate.trim() : ''
     await db.execute(sql`
       INSERT INTO "repair_wip_po" ("id_wo", "no_po", "po_date", "updated_at")
       VALUES (${cleanId}, ${cleanPo}, ${cleanPoDate}, NOW())
       ON CONFLICT ("id_wo") DO UPDATE SET "no_po" = ${cleanPo}, "po_date" = ${cleanPoDate}, "updated_at" = NOW()
     `)
-    revalidatePath(FORM_WO_PATH)
+    safeRevalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {
-    console.error("Failed to save WIP PO:", error)
-    return { success: false, error: "Gagal menyimpan Nomor PO & Tanggal PO" }
+    console.error('Failed to save WIP PO:', error)
+    return { success: false, error: 'Gagal menyimpan Nomor PO & Tanggal PO' }
   }
 }
 
@@ -204,9 +239,9 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
       return []
     }
 
-    const contentType = response.headers.get("content-type") || ""
-    if (!contentType.includes("application/json")) {
-      console.error("Non-JSON response from WIP Repair API")
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      console.error('Non-JSON response from WIP Repair API')
       return []
     }
 
@@ -229,23 +264,23 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
         if (saved) {
           return {
             ...item,
-            po: saved.noPo ?? "",
-            po_date: saved.poDate ?? "",
+            po: saved.noPo ?? '',
+            po_date: saved.poDate ?? '',
           }
         }
         return {
           ...item,
-          po: item.po ?? "",
-          po_date: item.po_date ?? item.inspect_date ?? "",
+          po: item.po ?? '',
+          po_date: item.po_date ?? item.inspect_date ?? '',
         }
       })
     } catch (e) {
-      console.error("Failed to merge saved WIP PO:", e)
+      console.error('Failed to merge saved WIP PO:', e)
     }
 
     return waitingList
   } catch (error) {
-    console.error("Failed to fetch Waiting WO data", error)
+    console.error('Failed to fetch Waiting WO data', error)
     return []
   }
 }
@@ -253,13 +288,10 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
 export async function getFormWoList() {
   try {
     await ensureFormWoTable()
-    const rows = await db
-      .select()
-      .from(repairFormWo)
-      .orderBy(desc(repairFormWo.createdAt))
+    const rows = await db.select().from(repairFormWo).orderBy(desc(repairFormWo.createdAt))
     return rows
   } catch (error) {
-    console.error("Failed to load Form WO list", error)
+    console.error('Failed to load Form WO list', error)
     return []
   }
 }
@@ -267,15 +299,22 @@ export async function getFormWoList() {
 export async function getFormWoStats() {
   try {
     await ensureFormWoTable()
-    const rows = await db.select({ statusPengajuan: repairFormWo.statusPengajuan }).from(repairFormWo)
+    const rows = await db
+      .select({ statusPengajuan: repairFormWo.statusPengajuan })
+      .from(repairFormWo)
     const total = rows.length
-    const pending = rows.filter((r) => r.statusPengajuan === "pending").length
-    const approved = rows.filter((r) => r.statusPengajuan === "approved").length
-    const diproses = rows.filter((r) => r.statusPengajuan === "diproses").length
-    const rejected = rows.filter((r) => r.statusPengajuan === "rejected").length
+    const pending = rows.filter(
+      (r) =>
+        r.statusPengajuan === 'pending' ||
+        r.statusPengajuan === 'revisi' ||
+        r.statusPengajuan === 'needs_correction'
+    ).length
+    const approved = rows.filter((r) => r.statusPengajuan === 'approved').length
+    const diproses = rows.filter((r) => r.statusPengajuan === 'diproses').length
+    const rejected = rows.filter((r) => r.statusPengajuan === 'rejected').length
     return { total, pending, approved, diproses, rejected }
   } catch (error) {
-    console.error("Failed to load Form WO stats", error)
+    console.error('Failed to load Form WO stats', error)
     return { total: 0, pending: 0, approved: 0, diproses: 0, rejected: 0 }
   }
 }
@@ -286,42 +325,147 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     const parsed = formWoCreateSchema.parse(data)
     const noPengajuan = await generateNoPengajuan()
 
-    await db.insert(repairFormWo).values({
-      ...parsed,
-      noPengajuan,
-      statusPengajuan: "pending",
-      sortOrder: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    let employee = null
+    try {
+      employee = await getCurrentEmployee()
+    } catch {
+      const annas = await db.select().from(employees).where(eq(employees.id, 5)).limit(1)
+      employee = annas[0] ?? null
+    }
+    if (!employee) {
+      const firstActive = await db.select().from(employees).where(eq(employees.isActive, true)).limit(1)
+      employee = firstActive[0] ?? null
+    }
+    if (!employee) throw new Error('Unauthorized')
+
+    const targetDate = parsed.tanggal ? new Date(parsed.tanggal) : new Date()
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+    const autoDay = isNaN(targetDate.getTime()) ? '-' : days[targetDate.getDay()]
+    const finalHari = parsed.hari && parsed.hari !== '-' ? parsed.hari : autoDay
+    const finalPemohon = parsed.pemohon && parsed.pemohon.trim() ? parsed.pemohon.trim() : employee.name
+
+    const [newFormWo] = await db
+      .insert(repairFormWo)
+      .values({
+        ...parsed,
+        pemohon: finalPemohon,
+        hari: finalHari,
+        noPengajuan,
+        statusPengajuan: 'pending',
+        sortOrder: 0,
+        createdBy: employee.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning({ id: repairFormWo.id })
+
+    const transactionType = 'form_wo_repair_retread'
+
+    const route = await resolveApprovalRouteForActivity({
+      employeeId: employee.id,
+      activityType: 'Form WO',
+      priority: 'normal',
+      overtimeMinutes: 0,
+      transactionType,
+      customerName: parsed.customer || '',
     })
 
-    // Trigger Email Notifikasi Approval secara Asinkron
-    void (async () => {
-      try {
-        await sendFormWoApprovalRequestEmail({
-          approverEmail: process.env.WO_APPROVER_EMAIL || "approver@chitraparatama.com",
-          approverName: "Foreman / PJO Site",
-          pemohon: parsed.pemohon || "Karyawan Site",
-          noPengajuan,
-          customer: parsed.customer,
-          site: parsed.site,
-          jobType: parsed.jobType,
-          tireSn: parsed.tireSn,
-          brand: parsed.brand,
-          size: parsed.size,
-          totalAmount: parsed.totalAmount,
-          catatanPengajuan: parsed.catatanPengajuan,
-        })
-      } catch (e) {
-        console.error("Form WO Approval Email notification error:", e)
-      }
-    })()
+    const approvalIds: number[] = []
+    if (route.steps.length > 0) {
+      for (const step of route.steps) {
+        const isStep1 = step.stepOrder === 1
+        const isStep2 = step.stepOrder === 2
 
-    revalidatePath(FORM_WO_PATH)
+        let stepStatus: 'pending' | 'waiting' | 'approved' = 'waiting'
+        let reviewedAt: Date | null = null
+        let signatureUrl: string | null = null
+
+        if (isStep1) {
+          stepStatus = 'approved'
+          reviewedAt = new Date()
+          signatureUrl = parsed.submitterSignatureUrl || null
+        } else if (isStep2) {
+          stepStatus = 'pending'
+        }
+
+        const [appr] = await db
+          .insert(approvals)
+          .values({
+            repairFormWoId: newFormWo.id,
+            level: step.stepOrder,
+            approverName: step.approverName,
+            approverEmployeeId: step.approverEmployeeId,
+            approverNodeId: step.approverNodeId,
+            approvalMatrixId: route.matrixId ?? null,
+            approvalStepId: step.approvalMatrixStepId ?? null,
+            status: stepStatus,
+            reviewedAt,
+            signatureUrl,
+            submittedAt: new Date(),
+            resolutionSource: step.resolutionSource,
+            routeSnapshot: JSON.stringify({
+              label: step.label,
+              nodeLabel: step.nodeLabel,
+              fallbackLabel: step.fallbackLabel,
+              escalationLabel: step.escalationLabel,
+            }),
+          })
+          .returning({ id: approvals.id })
+        approvalIds.push(appr.id)
+      }
+
+      if (approvalIds.length > 0) {
+        // Step 2 is the active pending step for QC / Leader
+        const activePendingStep =
+          route.steps.length > 1
+            ? route.steps.find((s) => s.stepOrder === 2) || route.steps[0]
+            : route.steps[0]
+
+        if (activePendingStep && activePendingStep.approverEmployeeId) {
+          const [approverEmp] = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, activePendingStep.approverEmployeeId))
+            .limit(1)
+          if (approverEmp?.email) {
+            notifyWorkflowBellRecipients({
+              recipientEmails: [approverEmp.email],
+              eventType: 'form_wo_review',
+              category: 'approval',
+              title: 'Review Form WO',
+              body: `${finalPemohon} mengajukan Form WO baru (${noPengajuan}) yang membutuhkan persetujuan Anda (${activePendingStep.label}).`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'form-wo',
+            }).catch(console.error)
+          }
+        }
+
+        try {
+          await sendFormWoApprovalRequestEmail({
+            approverName: activePendingStep?.approverName || 'Approver',
+            pemohon: finalPemohon,
+            noPengajuan,
+            customer: parsed.customer,
+            site: parsed.site,
+            jobType: parsed.jobType,
+            tireSn: parsed.tireSn,
+            brand: parsed.brand,
+            size: parsed.size,
+            totalAmount: parsed.totalAmount,
+            catatanPengajuan: parsed.catatanPengajuan,
+            tier: 2,
+          })
+        } catch (error) {
+          console.error('Gagal mengirim email approval Form WO', error)
+        }
+      }
+    }
+
+    safeRevalidatePath(FORM_WO_PATH)
     return { success: true, noPengajuan }
   } catch (error) {
-    console.error("Create Form WO Error:", error)
-    return { success: false, error: "Gagal membuat pengajuan WO" }
+    console.error('Create Form WO Error:', error)
+    return { success: false, error: 'Gagal membuat pengajuan WO' }
   }
 }
 
@@ -330,20 +474,272 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
     await ensureFormWoTable()
     const parsed = formWoUpdateSchema.parse(data)
 
+    const existing = await db
+      .select()
+      .from(repairFormWo)
+      .where(eq(repairFormWo.id, id))
+      .limit(1)
+      .then((r) => r[0])
+
+    const nextStatus =
+      existing?.statusPengajuan === 'revisi' || existing?.statusPengajuan === 'needs_correction'
+        ? 'pending'
+        : parsed.statusPengajuan ?? existing?.statusPengajuan ?? 'pending'
+
     await db
       .update(repairFormWo)
-      .set({ ...parsed, updatedAt: new Date() })
+      .set({
+        ...parsed,
+        statusPengajuan: nextStatus,
+        updatedAt: new Date(),
+      })
       .where(eq(repairFormWo.id, id))
 
-    revalidatePath(FORM_WO_PATH)
+    // If it was reverted/revisi, re-route directly to the step that requested revision
+    if (
+      existing &&
+      (existing.statusPengajuan === 'revisi' ||
+        existing.statusPengajuan === 'needs_correction' ||
+        existing.statusPengajuan === 'pending')
+    ) {
+      // Find the specific step that was reverted (needs_correction)
+      const revertedStep = await db
+        .select()
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.repairFormWoId, id),
+            eq(approvals.status, 'needs_correction')
+          )
+        )
+        .orderBy(asc(approvals.level))
+        .limit(1)
+        .then((r) => r[0])
+
+      // Target step is the reverted step (e.g. Level 2), or fallback to first non-approved step
+      let targetStep = revertedStep
+      if (!targetStep) {
+        targetStep = await db
+          .select()
+          .from(approvals)
+          .where(
+            and(
+              eq(approvals.repairFormWoId, id),
+              ne(approvals.status, 'approved')
+            )
+          )
+          .orderBy(asc(approvals.level))
+          .limit(1)
+          .then((r) => r[0])
+      }
+
+      const targetLevel = targetStep?.level ?? 1
+
+      // Set ONLY the target step to 'pending' (earlier approved steps remain intact!)
+      if (targetStep) {
+        await db
+          .update(approvals)
+          .set({
+            status: 'pending',
+            submittedAt: new Date(),
+          })
+          .where(eq(approvals.id, targetStep.id))
+      } else {
+        await db
+          .update(approvals)
+          .set({
+            status: 'pending',
+            submittedAt: new Date(),
+          })
+          .where(and(eq(approvals.repairFormWoId, id), eq(approvals.level, 1)))
+      }
+
+      // Keep steps after targetLevel as 'waiting'
+      await db
+        .update(approvals)
+        .set({
+          status: 'waiting',
+        })
+        .where(
+          and(
+            eq(approvals.repairFormWoId, id),
+            gt(approvals.level, targetLevel)
+          )
+        )
+
+      // Update Form WO status to 'diproses' if targetLevel > 1, or 'pending' if level 1
+      const effectiveFormWoStatus = targetLevel > 1 ? 'diproses' : 'pending'
+      await db
+        .update(repairFormWo)
+        .set({ statusPengajuan: effectiveFormWoStatus, updatedAt: new Date() })
+        .where(eq(repairFormWo.id, id))
+
+      // Notify the specific approver of targetLevel
+      const approverToNotify = targetStep
+      if (approverToNotify?.approverEmployeeId) {
+        const [approverEmp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, approverToNotify.approverEmployeeId))
+          .limit(1)
+
+        if (approverEmp?.email) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmp.email],
+            eventType: 'form_wo_review',
+            category: 'approval',
+            title: `Form WO Telah Direvisi (Step ${targetLevel})`,
+            body: `${parsed.pemohon || existing.pemohon || 'Pemohon'} telah merevisi Form WO (${existing.noPengajuan}) yang Anda minta revisi. Silakan review kembali.`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'form-wo',
+          }).catch(console.error)
+        }
+      }
+
+      sendFormWoApprovalRequestEmail({
+        approverName: approverToNotify?.approverName || 'Approver',
+        pemohon: parsed.pemohon || existing.pemohon || 'Pemohon',
+        noPengajuan: existing.noPengajuan || '',
+        customer: parsed.customer || existing.customer || '-',
+        site: parsed.site || existing.site || '-',
+        jobType: parsed.jobType || existing.jobType || '-',
+        tireSn: parsed.tireSn || existing.tireSn || '-',
+        brand: parsed.brand || existing.brand || '-',
+        size: parsed.size || existing.size || '-',
+        totalAmount: parsed.totalAmount || existing.totalAmount || '-',
+        catatanPengajuan: parsed.catatanPengajuan || existing.catatanPengajuan || '-',
+        tier: targetLevel as any,
+      }).catch(console.error)
+    }
+
+    // If Nomor WO is filled/updated, generate complete PDF & send email with PDF to Admin CP Site & QC/Leader
+    if (parsed.noWoTerbit && parsed.noWoTerbit.trim()) {
+      triggerFormWoCompletedPdfNotification(id, parsed.noWoTerbit.trim()).catch(console.error)
+    }
+
+    safeRevalidatePath(FORM_WO_PATH)
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error) {
-    console.error("Update Form WO Error:", error)
-    return { success: false, error: "Gagal memperbarui pengajuan WO" }
+    console.error('Update Form WO Error:', error)
+    return { success: false, error: 'Gagal memperbarui pengajuan WO' }
   }
 }
 
-export async function updateFormWoStatus(id: number, status: "pending" | "approved" | "rejected" | "diproses", noWoTerbit?: string) {
+async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbit: string) {
+  try {
+    const existing = await db
+      .select()
+      .from(repairFormWo)
+      .where(eq(repairFormWo.id, formWoId))
+      .limit(1)
+      .then((r) => r[0])
+
+    if (!existing) return
+
+    // Fetch all approval steps
+    const stepRows = await db
+      .select({
+        id: approvals.id,
+        level: approvals.level,
+        approverName: approvals.approverName,
+        approverEmployeeId: approvals.approverEmployeeId,
+        status: approvals.status,
+        reviewedAt: approvals.reviewedAt,
+        signatureUrl: approvals.signatureUrl,
+        decisionNote: approvals.decisionNote,
+        routeSnapshot: approvals.routeSnapshot,
+      })
+      .from(approvals)
+      .where(eq(approvals.repairFormWoId, formWoId))
+      .orderBy(asc(approvals.level))
+
+    // Step 2 is QC / Leader
+    const step2 = stepRows.find((s) => s.level === 2)
+    let qcLeaderEmail: string | undefined
+    if (step2?.approverEmployeeId) {
+      const emp = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, step2.approverEmployeeId))
+        .limit(1)
+        .then((r) => r[0])
+      qcLeaderEmail = emp?.email
+    }
+
+    let adminCpSiteEmail: string | undefined
+    if (existing.createdBy) {
+      const creator = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, existing.createdBy))
+        .limit(1)
+        .then((r) => r[0])
+      adminCpSiteEmail = creator?.email
+    }
+
+    const pdfSteps = stepRows.map((s) => {
+      let jobTitle = 'Approver'
+      if (s.routeSnapshot) {
+        try {
+          const snap = JSON.parse(s.routeSnapshot)
+          jobTitle = snap.label || snap.nodeLabel || jobTitle
+        } catch {}
+      }
+      return {
+        level: s.level,
+        approverName: s.approverName,
+        jobTitle,
+        signatureUrl: s.signatureUrl,
+        status: s.status,
+        reviewedAt: s.reviewedAt,
+        decisionNote: s.decisionNote,
+      }
+    })
+
+    const pdfData: FormWoPdfData = {
+      id: existing.id,
+      noPengajuan: existing.noPengajuan,
+      jenisPengajuan: existing.jenisPengajuan,
+      noWoTerbit,
+      noPo: existing.noPo,
+      tanggalPo: existing.tanggalPo ? String(existing.tanggalPo) : null,
+      hari: existing.hari,
+      tanggal: existing.tanggal ? String(existing.tanggal) : null,
+      tanggalPengajuan: existing.createdAt,
+      customer: existing.customer,
+      site: existing.site,
+      pemohon: existing.pemohon,
+      submitterSignatureUrl: existing.submitterSignatureUrl,
+      catatanPengajuan: existing.catatanPengajuan,
+      totalAmount: existing.totalAmount,
+      items: existing.items,
+      steps: pdfSteps,
+    }
+
+    await sendFormWoCompletedWithPdfEmail({
+      adminCpSiteEmail,
+      qcLeaderEmail,
+      pemohon: existing.pemohon || 'Admin CP Site',
+      noPengajuan: existing.noPengajuan,
+      noWoTerbit,
+      noPo: existing.noPo || undefined,
+      customer: existing.customer || undefined,
+      site: existing.site || undefined,
+      jobType: existing.jobType || undefined,
+      totalAmount: existing.totalAmount || undefined,
+      pdfData,
+    })
+  } catch (err) {
+    console.error('triggerFormWoCompletedPdfNotification error:', err)
+  }
+}
+
+export async function updateFormWoStatus(
+  id: number,
+  status: 'pending' | 'approved' | 'rejected' | 'diproses',
+  noWoTerbit?: string
+) {
   try {
     await ensureFormWoTable()
     const values: Partial<typeof repairFormWo.$inferInsert> = {
@@ -354,48 +750,52 @@ export async function updateFormWoStatus(id: number, status: "pending" | "approv
       values.noWoTerbit = noWoTerbit
       values.tanggalWoTerbit = new Date()
     }
-    
+
     // Fetch record details before update for email context
     const existing = await db.select().from(repairFormWo).where(eq(repairFormWo.id, id))
     const record = existing[0]
 
     await db.update(repairFormWo).set(values).where(eq(repairFormWo.id, id))
 
+    if (noWoTerbit && noWoTerbit.trim()) {
+      triggerFormWoCompletedPdfNotification(id, noWoTerbit.trim()).catch(console.error)
+    }
+
     // Trigger Status Update Email
     if (record) {
       void (async () => {
         try {
-          const requesterEmail = record.createdBy || "requester@chitraparatama.com"
-          if (status === "approved" || status === "diproses") {
+          const requesterEmail = record.createdBy || 'requester@chitraparatama.com'
+          if (status === 'approved' || status === 'diproses') {
             await sendFormWoStatusApprovedEmail({
               requesterEmail,
-              pemohon: record.pemohon || "Pemohon",
-              noPengajuan: record.noPengajuan || "-",
-              noWoTerbit: noWoTerbit || record.noWoTerbit || "-",
-              customer: record.customer || "-",
-              site: record.site || "-",
-              jobType: record.jobType || "-",
-              totalAmount: record.totalAmount || "-",
+              pemohon: record.pemohon || 'Pemohon',
+              noPengajuan: record.noPengajuan || '-',
+              noWoTerbit: noWoTerbit || record.noWoTerbit || '-',
+              customer: record.customer || '-',
+              site: record.site || '-',
+              jobType: record.jobType || '-',
+              totalAmount: record.totalAmount || '-',
             })
-          } else if (status === "rejected") {
+          } else if (status === 'rejected') {
             await sendFormWoStatusRejectedEmail({
               requesterEmail,
-              pemohon: record.pemohon || "Pemohon",
-              noPengajuan: record.noPengajuan || "-",
-              catatanPengajuan: record.catatanPengajuan || "Pengajuan tidak memenuhi syarat.",
+              pemohon: record.pemohon || 'Pemohon',
+              noPengajuan: record.noPengajuan || '-',
+              catatanPengajuan: record.catatanPengajuan || 'Pengajuan tidak memenuhi syarat.',
             })
           }
         } catch (e) {
-          console.error("Form WO Status Email notification error:", e)
+          console.error('Form WO Status Email notification error:', e)
         }
       })()
     }
 
-    revalidatePath(FORM_WO_PATH)
+    safeRevalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {
-    console.error("Update Form WO Status Error:", error)
-    return { success: false, error: "Gagal memperbarui status pengajuan" }
+    console.error('Update Form WO Status Error:', error)
+    return { success: false, error: 'Gagal memperbarui status pengajuan' }
   }
 }
 
@@ -403,10 +803,70 @@ export async function deleteFormWo(id: number) {
   try {
     await ensureFormWoTable()
     await db.delete(repairFormWo).where(eq(repairFormWo.id, id))
-    revalidatePath(FORM_WO_PATH)
+    safeRevalidatePath(FORM_WO_PATH)
     return { success: true }
   } catch (error) {
-    console.error("Delete Form WO Error:", error)
-    return { success: false, error: "Gagal menghapus pengajuan WO" }
+    console.error('Delete Form WO Error:', error)
+    return { success: false, error: 'Gagal menghapus pengajuan WO' }
+  }
+}
+
+export async function updateWoCpNumber(id: number, noWoCp: string) {
+  try {
+    const employee = await getCurrentEmployee()
+    if (!employee) throw new Error('Unauthorized')
+    const [updated] = await db
+      .update(repairFormWo)
+      .set({ noWoTerbit: noWoCp, statusPengajuan: 'approved', tanggalWoTerbit: new Date() })
+      .where(eq(repairFormWo.id, id))
+      .returning({
+        id: repairFormWo.id,
+        noPengajuan: repairFormWo.noPengajuan,
+        pemohon: repairFormWo.pemohon,
+        customer: repairFormWo.customer,
+        site: repairFormWo.site,
+        jobType: repairFormWo.jobType,
+        totalAmount: repairFormWo.totalAmount,
+        createdBy: repairFormWo.createdBy,
+      })
+
+    if (!updated) {
+      return { success: false, error: 'Form WO tidak ditemukan' }
+    }
+
+    if (noWoCp && noWoCp.trim()) {
+      triggerFormWoCompletedPdfNotification(id, noWoCp.trim()).catch(console.error)
+    }
+
+    // Send notification to requester that WO Number is officially issued
+    if (updated.createdBy) {
+      notifyWorkflowBellRecipients({
+        recipientEmails: [updated.createdBy],
+        eventType: 'form_wo_approved',
+        category: 'approval',
+        title: 'Nomor WO Resmi Telah Terbit',
+        body: `Nomor WO resmi (${noWoCp}) telah diterbitkan oleh Billing Team untuk pengajuan ${updated.noPengajuan}.`,
+        url: `/dashboard/repair-retread/form-wo`,
+        tagPrefix: 'form-wo',
+      }).catch(console.error)
+    }
+
+    sendFormWoStatusApprovedEmail({
+      requesterEmail: updated.createdBy || 'requester@chitraparatama.com',
+      pemohon: updated.pemohon || 'Pemohon',
+      noPengajuan: updated.noPengajuan || '-',
+      noWoTerbit: noWoCp,
+      customer: updated.customer || '-',
+      site: updated.site || '-',
+      jobType: updated.jobType || '-',
+      totalAmount: updated.totalAmount || '-',
+    }).catch(console.error)
+
+    safeRevalidatePath('/dashboard/repair-retread/form-wo')
+    safeRevalidatePath('/dashboard/approval')
+    return { success: true }
+  } catch (error) {
+    console.error('Gagal mengupdate No WO CP:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
   }
 }

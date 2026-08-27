@@ -1,44 +1,31 @@
-
-> hero@0.1.0 dev
-> next dev --turbopack
-
 ▲ Next.js 16.2.4 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://10.51.240.35:3000
-- Environments: .env.local, .env
-✓ Ready in 681ms
+- Network:       http://192.168.88.50:3000
+- Environments: .env
+✓ Ready in 634ms
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of D:\HERO\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * D:\HERO\hero\package-lock.json
 
- GET /mobile 307 in 8.5s (next.js: 2.6s, application-code: 5.9s)
- GET /mobile/approval 307 in 8.5s (next.js: 1576ms, application-code: 7.0s)
- GET /mobile/profile 307 in 8.6s (next.js: 2.7s, application-code: 5.8s)
- GET /mobile/executive 307 in 8.6s (next.js: 2.9s, application-code: 5.7s)
- GET /mobile/attendance 307 in 9.0s (next.js: 2.8s, application-code: 6.2s)
- GET /mobile/approval 307 in 658ms (next.js: 10ms, application-code: 649ms)
- GET /mobile/attendance 307 in 818ms (next.js: 17ms, application-code: 800ms)
- GET /mobile/profile 307 in 831ms (next.js: 128ms, application-code: 702ms)
- GET /mobile/executive 307 in 854ms (next.js: 249ms, application-code: 605ms)
-✓ Compiled in 3.9s
- GET /mobile/approval 307 in 5.9s (next.js: 509ms, application-code: 5.4s)
- GET /mobile/profile 307 in 3.3s (next.js: 502ms, application-code: 2.8s)
- GET /mobile 307 in 2.1s (next.js: 480ms, application-code: 1606ms)
- GET /mobile/attendance 307 in 2.5s (next.js: 1203ms, application-code: 1288ms)
- GET /mobile 307 in 889ms (next.js: 6ms, application-code: 883ms)
- GET /mobile/approval 307 in 998ms (next.js: 58ms, application-code: 940ms)
- GET /mobile/executive 307 in 1002ms (next.js: 324ms, application-code: 678ms)
- GET /mobile/profile 307 in 1008ms (next.js: 480ms, application-code: 527ms)
- GET /mobile/attendance 307 in 1345ms (next.js: 10ms, application-code: 1334ms)
- GET /mobile 307 in 2.3s (next.js: 247ms, application-code: 2.0s)
- GET /mobile/approval 307 in 2.0s (next.js: 660ms, application-code: 1351ms)
- GET /mobile/executive 307 in 2.0s (next.js: 1087ms, application-code: 940ms)
- GET /mobile/profile 307 in 2.0s (next.js: 1418ms, application-code: 620ms)
- GET /mobile/attendance 307 in 2.4s (next.js: 239ms, application-code: 2.2s)
- GET /mobile 307 in 138ms (next.js: 5ms, application-code: 133ms)
- GET /mobile/approval 307 in 496ms (next.js: 17ms, application-code: 479ms)
- GET /mobile/executive 307 in 402ms (next.js: 104ms, application-code: 298ms)
- GET /mobile/profile 307 in 408ms (next.js: 178ms, application-code: 230ms)
- GET /mobile/attendance 307 in 1013ms (next.js: 4ms, application-code: 1009ms)
- GET /mobile/profile 307 in 934ms (next.js: 8ms, application-code: 926ms)
- GET /mobile/dashboard 307 in 945ms (next.js: 263ms, application-code: 683ms)
- GET /mobile/executive 307 in 453ms (next.js: 62ms, application-code: 391ms)
- GET /mobile/approval 307 in 458ms (next.js: 108ms, application-code: 350ms)
- GET /mobile/attendance 307 in 730ms (next.js: 11ms, application-code: 719ms)
+- Experiments (use with caution):
+  · serverActions
+
+○ Compiling /dashboard/approval ...
+ GET / 307 in 314ms (next.js: 170ms, application-code: 143ms)
+ GET /dashboard/approval 200 in 17.7s (next.js: 5.1s, application-code: 12.6s)
+ GET /manifest.webmanifest 200 in 686ms (next.js: 668ms, application-code: 18ms)
+ GET /dashboard/approval 307 in 651ms (next.js: 6ms, application-code: 645ms)
+ GET /api/notifications 200 in 2.3s (next.js: 1669ms, application-code: 622ms)
+ GET /api/notifications 200 in 586ms (next.js: 8ms, application-code: 577ms)
+ GET /api/notifications 200 in 467ms (next.js: 5ms, application-code: 462ms)
+ GET /api/notifications 200 in 463ms (next.js: 6ms, application-code: 457ms)
+ GET /api/notifications 200 in 487ms (next.js: 8ms, application-code: 479ms)
+ GET /api/notifications 200 in 706ms (next.js: 5ms, application-code: 701ms)
+ GET /api/notifications 200 in 463ms (next.js: 16ms, application-code: 447ms)
+ GET /api/notifications 200 in 810ms (next.js: 6ms, application-code: 805ms)
+ GET /api/notifications 200 in 494ms (next.js: 8ms, application-code: 486ms)
+ GET /api/notifications 200 in 434ms (next.js: 3ms, application-code: 431ms)
+[?25h

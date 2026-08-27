@@ -357,13 +357,26 @@ function WorkflowBuilderDialog({
   // Section selalu menjadi langkah pertama secara default di setiap aktivitas —
   // tidak perlu ditambahkan manual di "Langkah Approval".
   function buildInitialSteps(): ApprovalStep[] {
-    const defaults: ApprovalStep[] = [
+    const isFormWo = (selectedMenuKey || initial?.id || '').toLowerCase().includes('wo')
+
+    const formWoDefaults: ApprovalStep[] = [
+      { id: 'step-0', label: 'Section', type: 'section' },
+      { id: 'step-1', label: 'Admin CP Site', type: 'employee' },
+      { id: 'step-2', label: 'QC / Leader', type: 'employee' },
+      { id: 'step-3', label: 'Repair / Retread Operation SPV', type: 'employee' },
+      { id: 'step-4', label: 'Team Billing', type: 'employee' },
+      { id: 'step-5', label: 'Inventory & Warehouse Management SPV', type: 'employee' },
+    ]
+
+    const generalDefaults: ApprovalStep[] = [
       { id: 'step-0', label: 'Section', type: 'section' },
       { id: 'step-1', label: 'Leader', type: 'employee' },
       { id: 'step-2', label: 'PJO (Head Lokasi)', type: 'employee' },
       { id: 'step-3', label: 'Section Head', type: 'employee' },
       { id: 'step-4', label: 'Department Head', type: 'employee' },
     ]
+
+    const defaults = isFormWo ? formWoDefaults : generalDefaults
     if (!initial?.globalSteps || initial.globalSteps.length === 0) return defaults
     // Workflow lama mungkin belum punya langkah Section — sisipkan di depan,
     // dan buang langkah Section lama agar tidak dobel.
@@ -385,6 +398,8 @@ function WorkflowBuilderDialog({
     const labelToStepId: Record<string, string> = {}
     for (const s of steps) {
       const norm = s.label.toLowerCase().replace(/[^a-z]/g, '')
+      const roleKey = s.label.trim().toLowerCase().replace(/ /g, '_')
+      labelToStepId[roleKey] = s.id
       if (norm === 'leader') labelToStepId['leader'] = s.id
       if (norm.includes('pjo') || norm.includes('headlokasi')) labelToStepId['pjo'] = s.id
       if (norm === 'sectionhead') labelToStepId['sectionHead'] = s.id
@@ -400,6 +415,15 @@ function WorkflowBuilderDialog({
         if (sa.pjoId != null && labelToStepId['pjo']) values[labelToStepId['pjo']] = String(sa.pjoId)
         if (sa.sectionHeadId != null && labelToStepId['sectionHead']) values[labelToStepId['sectionHead']] = String(sa.sectionHeadId)
         if (sa.departmentHeadId != null && labelToStepId['department']) values[labelToStepId['department']] = String(sa.departmentHeadId)
+        
+        if ((sa as any).customRoles) {
+          for (const [roleKey, empId] of Object.entries((sa as any).customRoles)) {
+            if (empId != null && labelToStepId[roleKey] && !values[labelToStepId[roleKey]]) {
+              values[labelToStepId[roleKey]] = String(empId)
+            }
+          }
+        }
+        
         return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '', values }
       })
     }
@@ -464,6 +488,26 @@ function WorkflowBuilderDialog({
   function addSite() {
     if (!pendingSiteId) return
     const firstSite = siteData[0]
+    
+    if (pendingSiteId === 'all') {
+      const newSites: SiteData[] = []
+      let i = 0
+      for (const site of availableSites) {
+        const pjoStepId = approvalSteps.find((s) => s.label.toLowerCase().includes('pjo'))?.id
+        const values: Record<string, string> = {}
+        for (const step of approvalSteps) {
+          values[step.id] = firstSite?.values[step.id] ?? ''
+        }
+        if (pjoStepId && site?.headEmployeeId) {
+          values[pjoStepId] = site.headEmployeeId.toString()
+        }
+        newSites.push({ key: `site-${Date.now()}-${i++}`, siteId: site.id.toString(), values })
+      }
+      setSiteData((prev) => [...prev, ...newSites])
+      setPendingSiteId('')
+      return
+    }
+
     const site = allSites.find((s) => s.id.toString() === pendingSiteId)
     const pjoStepId = approvalSteps.find((s) => s.label.toLowerCase().includes('pjo'))?.id
     const values: Record<string, string> = {}
@@ -526,7 +570,30 @@ function WorkflowBuilderDialog({
               <select
                 name="menuKey"
                 value={selectedMenuKey}
-                onChange={(event) => setSelectedMenuKey(event.target.value)}
+                onChange={(event) => {
+                  const newKey = event.target.value
+                  setSelectedMenuKey(newKey)
+                  if (!initial) {
+                    if (newKey.toLowerCase().includes('wo')) {
+                      setApprovalSteps([
+                        { id: 'step-0', label: 'Section', type: 'section' },
+                        { id: 'step-1', label: 'Admin CP Site', type: 'employee' },
+                        { id: 'step-2', label: 'QC / Leader', type: 'employee' },
+                        { id: 'step-3', label: 'Repair / Retread Operation SPV', type: 'employee' },
+                        { id: 'step-4', label: 'Team Billing', type: 'employee' },
+                        { id: 'step-5', label: 'Inventory & Warehouse Management SPV', type: 'employee' },
+                      ])
+                    } else {
+                      setApprovalSteps([
+                        { id: 'step-0', label: 'Section', type: 'section' },
+                        { id: 'step-1', label: 'Leader', type: 'employee' },
+                        { id: 'step-2', label: 'PJO (Head Lokasi)', type: 'employee' },
+                        { id: 'step-3', label: 'Section Head', type: 'employee' },
+                        { id: 'step-4', label: 'Department Head', type: 'employee' },
+                      ])
+                    }
+                  }
+                }}
                 className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm"
                 required
               >
@@ -618,6 +685,9 @@ function WorkflowBuilderDialog({
                     className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm"
                   >
                     <option value="">Pilih site...</option>
+                    {availableSites.length > 0 && (
+                      <option value="all">-- Pilih Semua Site --</option>
+                    )}
                     {availableSites.map((site) => (
                       <option key={site.id} value={site.id.toString()}>{site.name}</option>
                     ))}

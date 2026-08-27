@@ -556,6 +556,7 @@ export const approvals = pgTable('hero_approvals', {
   apdRequestId: integer('apd_request_id').references(() => apdRequests.id, {
     onDelete: 'cascade',
   }),
+  repairFormWoId: integer('repair_form_wo_id'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),
@@ -2765,6 +2766,16 @@ export const formWoNotificationConfig = pgTable('hero_form_wo_notification_confi
   ccEmails: text('cc_emails').notNull().default(''),
   tier3ThresholdAmount: text('tier3_threshold_amount').notNull().default('20000000'),
   isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const formWoApprovalSettings = pgTable('hero_form_wo_approval_settings', {
+  id: serial('id').primaryKey(),
+  trakindoApproverId: integer('trakindo_approver_id').references(() => employees.id, { onDelete: 'set null' }),
+  nonTrakindoApproverId: integer('non_trakindo_approver_id').references(() => employees.id, { onDelete: 'set null' }),
+  repairApproverId: integer('repair_approver_id').references(() => employees.id, { onDelete: 'set null' }),
+  billingApproverId: integer('billing_approver_id').references(() => employees.id, { onDelete: 'set null' }),
+  inventoryApproverId: integer('inventory_approver_id').references(() => employees.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
