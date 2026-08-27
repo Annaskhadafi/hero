@@ -418,14 +418,15 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  // GOBPI
   {
     menuArea: 'main',
-    section: 'Genius AI',
+    section: 'GOBPI',
     title: 'SOP/WIN',
     url: '/dashboard/sop-win',
     iconName: 'files',
     resource: 'sop-win',
-    sortOrder: 2,
+    sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
@@ -5050,6 +5051,11 @@ export async function ensureHeroGovernanceSeedData() {
           inArray(navbarMenuItems.url, DEPRECATED_MENU_URLS)
         )
       )
+
+    await db
+      .update(navbarMenuItems)
+      .set({ section: 'GOBPI', sortOrder: 1 })
+      .where(eq(navbarMenuItems.resource, 'sop-win'))
 
     const currentMenuItems = await db
       .select()
