@@ -57,9 +57,15 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import type { WipRepairRecord, WipRepairWorkOrderDetailRecord } from "@/lib/types/wip-repair"
-import { buildWipRepairDashboardData, type WipRepairDashboardData } from "@/lib/wip-repair-dashboard"
+import {
+  buildWipRepairDashboardData,
+  getWipRepairAgingUnder30Rows,
+  type WipRepairDashboardData,
+} from "@/lib/wip-repair-dashboard"
 import { normalizeWipRepairBrand } from "@/lib/wip-repair-brand"
 
 type WipRepairDashboardClientProps = {
@@ -661,6 +667,11 @@ export function WipRepairDashboardClient({
   const dashboard = useMemo(() => {
     return buildWipRepairDashboardData(filteredWorkOrders, filteredDetails)
   }, [filteredDetails, filteredWorkOrders])
+
+  const agingUnder30Rows = useMemo(
+    () => getWipRepairAgingUnder30Rows(dashboard.workOrderInsights),
+    [dashboard.workOrderInsights]
+  )
 
   const detailRows = useMemo(() => {
     const workOrderByKey = filteredWorkOrders.reduce<Record<string, WipRepairRecord>>((accumulator, item) => {
@@ -1339,6 +1350,68 @@ export function WipRepairDashboardClient({
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-4">
+        <MinimalTableShell
+          title="Daftar Aging <30 Hari"
+          description="WO berumur 0-29 hari yang mengikuti seluruh filter dashboard aktif."
+          label="WO aging <30 hari"
+          fileName={`wip-repair-aging-under-30-${selectedMonth === ALL_FILTER ? "semua-bulan" : selectedMonth}`}
+          searchPlaceholder="Cari WO, tire SN, customer, site..."
+          showImport={false}
+          dateFilter={false}
+          tableViewportClassName="max-h-[460px]"
+        >
+          <Table className="min-w-[1280px]">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+              <TableRow>
+                <TableHead>WO</TableHead>
+                <TableHead>Tire SN</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Jobsite</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead>Pattern</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Injury</TableHead>
+                <TableHead>Received Date</TableHead>
+                <TableHead>WO Date</TableHead>
+                <TableHead className="text-right">Aging (Hari)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agingUnder30Rows.length > 0 ? (
+                agingUnder30Rows.map((item) => (
+                  <TableRow key={item.insightKey} data-date-value={item.receivedDate}>
+                    <TableCell className="font-mono text-xs font-semibold">{item.wo}</TableCell>
+                    <TableCell>{item.tireSn}</TableCell>
+                    <TableCell>{item.customer}</TableCell>
+                    <TableCell>{item.site}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>{item.brand}</TableCell>
+                    <TableCell>{item.pattern}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("rounded-full px-2.5 py-1 text-xs", getStatusTone(item.status))}>
+                        {item.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{item.injury}</TableCell>
+                    <TableCell>{formatDate(item.receivedDate)}</TableCell>
+                    <TableCell>{formatDate(item.woDate)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{formatNumber(item.agingDays ?? 0)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={12} className="h-24 text-center text-slate-500">
+                    Tidak ada WO dengan aging kurang dari 30 hari untuk filter saat ini.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">

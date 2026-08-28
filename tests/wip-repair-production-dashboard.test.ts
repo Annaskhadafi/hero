@@ -1,4 +1,9 @@
-import { buildWipRepairProductionData, normalizeWipRepairSite } from "@/lib/wip-repair-dashboard"
+import {
+  buildWipRepairDashboardData,
+  buildWipRepairProductionData,
+  getWipRepairAgingUnder30Rows,
+  normalizeWipRepairSite,
+} from "@/lib/wip-repair-dashboard"
 import type { WipRepairRecord, WipRepairWorkOrderDetailRecord } from "@/lib/types/wip-repair"
 
 const record = (wo: string, tireSn: string, site: string, size: string): WipRepairRecord => ({
@@ -89,4 +94,20 @@ test("groups common site aliases while keeping BIB KGB and BIB GH separate", () 
   expect(normalizeWipRepairSite("CK-BMB")).toBe("BMB")
   expect(normalizeWipRepairSite("ck mhu")).toBe("MHU")
   expect(normalizeWipRepairSite("Sangata ")).toBe("SANGATTA")
+})
+
+
+test("returns only WIP repair rows with aging strictly below 30 days", () => {
+  const now = new Date("2026-08-28T00:00:00.000Z")
+  const records = [
+    { ...record("WO-29", "SN-29", "Site A", "27.00R49"), received_date: "2026-07-30" },
+    { ...record("WO-30", "SN-30", "Site A", "27.00R49"), received_date: "2026-07-29" },
+    record("WO-NO-DATE", "SN-NO-DATE", "Site A", "27.00R49"),
+  ]
+
+  const dashboard = buildWipRepairDashboardData(records, [], now)
+  const result = getWipRepairAgingUnder30Rows(dashboard.workOrderInsights)
+
+  expect(result.map((item) => item.wo)).toEqual(["WO-29"])
+  expect(result[0]?.agingDays).toBe(29)
 })
