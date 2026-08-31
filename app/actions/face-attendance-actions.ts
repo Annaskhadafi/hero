@@ -58,30 +58,44 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     }
 
     // 3. Call vision.chitraparatama.com API v1 verify endpoint directly
-    let verified = false
-    let confidence = 0.95
-
     const rvResult = await rarayVerifyFace({
       employeeId: currentEmp.id,
       employeeSn: currentEmp.employeeSn || String(currentEmp.id),
+      faceRarayId: currentEmp.faceRarayId || undefined,
       imageBuffer,
       mimeType,
     }).catch(() => null)
 
-    if (rvResult) {
-      if (rvResult.status === 'success' && rvResult.verified !== false) {
-        verified = true
-        confidence = rvResult.confidence || 0.95
-      } else if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
-        return {
-          success: false,
-          error: rvResult.message || '🚨 Terdeteksi foto/layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
-        }
+    if (!rvResult) {
+      return {
+        success: false,
+        error: 'Gagal terhubung ke layanan verifikasi wajah (Vision AI). Mohon coba lagi.',
       }
     }
 
-    // Fallback: If vision.chitraparatama.com is unreachable or employee not yet registered in V2, accept live webcam photo for attendance
-    verified = true
+    if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
+      return {
+        success: false,
+        error: rvResult.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+      }
+    }
+
+    if (rvResult.status === 'not_registered') {
+      return {
+        success: false,
+        error: 'Wajah Anda belum terdaftar di sistem biometrik. Silakan lakukan registrasi wajah terlebih dahulu.',
+      }
+    }
+
+    const confidence = rvResult.confidence || 0
+    if (!rvResult.verified || confidence < 0.45) {
+      return {
+        success: false,
+        error: `Wajah tidak cocok dengan data biometrik ${currentEmp.name} (Kecocokan: ${(confidence * 100).toFixed(0)}%, minimal 45%).`,
+      }
+    }
+
+    const verified = true
 
     const eventTime = new Date()
     const nowStr = eventTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })

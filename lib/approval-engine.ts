@@ -966,6 +966,66 @@ export async function resolveApprovalRouteForActivity(
     ),
   );
 
+  // Post-process virtual relative approvers (Direct Supervisor, Dept Head, Sect Head, Site Head)
+  for (const step of steps) {
+    if (step.approverEmployeeId === 990001 && context.directManagerId) {
+      const [mgr] = await db
+        .select({ name: employees.name })
+        .from(employees)
+        .where(eq(employees.id, context.directManagerId))
+        .limit(1);
+      if (mgr) {
+        step.approverEmployeeId = context.directManagerId;
+        step.approverName = mgr.name;
+        step.resolutionSource = "legacy_manager";
+      }
+    } else if (step.approverEmployeeId === 990002 && context.departmentId) {
+      const [dept] = await db
+        .select({ headEmployeeId: masterDepartments.headEmployeeId })
+        .from(masterDepartments)
+        .where(eq(masterDepartments.id, context.departmentId))
+        .limit(1);
+      if (dept?.headEmployeeId) {
+        const [mgr] = await db
+          .select({ name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, dept.headEmployeeId))
+          .limit(1);
+        if (mgr) {
+          step.approverEmployeeId = dept.headEmployeeId;
+          step.approverName = mgr.name;
+        }
+      }
+    } else if (step.approverEmployeeId === 990003 && context.sectionId) {
+      const [sect] = await db
+        .select({ headEmployeeId: masterSections.headEmployeeId })
+        .from(masterSections)
+        .where(eq(masterSections.id, context.sectionId))
+        .limit(1);
+      if (sect?.headEmployeeId) {
+        const [mgr] = await db
+          .select({ name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, sect.headEmployeeId))
+          .limit(1);
+        if (mgr) {
+          step.approverEmployeeId = sect.headEmployeeId;
+          step.approverName = mgr.name;
+        }
+      }
+    } else if (step.approverEmployeeId === 990004 && context.siteHeadEmployeeId) {
+      const [mgr] = await db
+        .select({ name: employees.name })
+        .from(employees)
+        .where(eq(employees.id, context.siteHeadEmployeeId))
+        .limit(1);
+      if (mgr) {
+        step.approverEmployeeId = context.siteHeadEmployeeId;
+        step.approverName = mgr.name;
+      }
+    }
+  }
+
   const warnings = steps
     .filter((step) => step.resolutionSource === "vacant")
     .map(

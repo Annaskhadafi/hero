@@ -50,12 +50,15 @@ export type AuditAction =
   | 'timesheet.period_finalized'
   | 'timesheet.period_reopened'
   | 'timesheet.period_submitted'
+  | 'timesheet.meals_config_applied_all'
   | 'spl.status_changed'
   | 'daily_activity.submitted'
   | 'workflow_studio.saved'
   | 'workflow_studio.deleted'
   | 'workflow_studio.investigated'
   | 'workflow_studio.reminder_resent'
+  | 'database.backup_created'
+  | 'database.backup_restored'
 
 export type AuditSeverity = 'info' | 'warning' | 'critical'
 

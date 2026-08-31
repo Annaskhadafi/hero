@@ -126,6 +126,55 @@ async function getAuthHeader(): Promise<string> {
 }
 
 /**
+ * Delete all face records for an employee across all alias IDs on Raray Vision.
+ */
+export async function rarayDeleteFace(params: {
+  employeeId: number
+  employeeSn?: string
+  faceRarayId?: string
+}): Promise<void> {
+  const { employeeId, employeeSn, faceRarayId } = params
+  const baseUrl = getBaseUrl()
+  const authHeader = await getAuthHeader()
+
+  const allAliases = Array.from(
+    new Set(
+      [
+        employeeSn?.trim(),
+        faceRarayId?.trim(),
+        faceRarayId ? faceRarayId.replace(/^emp-/, '').trim() : '',
+        `emp-${employeeId}`,
+        String(employeeId),
+      ].filter(Boolean) as string[]
+    )
+  )
+
+  // 1. Try HERO unregister endpoint
+  try {
+    await fetch(`${baseUrl}/api/v1/hero/unregister/${employeeId}`, {
+      method: 'DELETE',
+      headers: { Authorization: authHeader },
+      cache: 'no-store',
+    })
+  } catch {
+    // Ignore
+  }
+
+  // 2. Delete each alias from /api/v1/faces/{user_id}
+  for (const alias of allAliases) {
+    try {
+      await fetch(`${baseUrl}/api/v1/faces/${encodeURIComponent(alias)}`, {
+        method: 'DELETE',
+        headers: { Authorization: authHeader },
+        cache: 'no-store',
+      })
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
  * Register or update an employee face in Raray Vision.
  * Tries custom `/api/v1/hero/register` first, falls back to native `/api/v1/faces/live` or `/api/v1/faces`
  */
@@ -141,6 +190,11 @@ export async function rarayRegisterFace(params: {
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
   const faceId = employeeSn?.trim() || `emp-${employeeId}`
+
+  // If force overwrite, purge old aliases in Raray Vision first to prevent multiple face vectors
+  if (force) {
+    await rarayDeleteFace({ employeeId, employeeSn })
+  }
 
   // 1. Try custom HERO controller endpoint
   try {
@@ -257,8 +311,10 @@ export async function rarayRecognizeFace(params: {
     }
 
     const data = await res.json()
-    const match = data.match ?? false
     const info = data.data || {}
+    const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
+    const similarity = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+    const normalizedSim = similarity > 1 ? similarity / 100 : similarity
 
     const faceId = info.id || data.face_id || data.user_id
     let employeeId: string | undefined = info.employee_id || info.user_id || faceId
@@ -266,13 +322,16 @@ export async function rarayRecognizeFace(params: {
       employeeId = String(faceId).slice(4)
     }
 
+    const recognized = Boolean((isMatch && normalizedSim >= 0.45) || normalizedSim >= 0.48) && !!employeeId && employeeId !== 'Unknown'
+
     return {
       status: 'success',
-      recognized: match && !!employeeId && employeeId !== 'Unknown',
+      recognized,
       face_id: faceId,
       employee_id: employeeId,
       employee_name: info.name || data.name,
-      confidence: info.similarity ?? data.confidence ?? 0,
+      confidence: normalizedSim,
+      threshold: 0.45,
     }
   } catch (err) {
     return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }
@@ -286,14 +345,23 @@ export async function rarayRecognizeFace(params: {
 export async function rarayVerifyFace(params: {
   employeeId: number
   employeeSn?: string
+  faceRarayId?: string
   imageBuffer: Buffer
   mimeType?: string
 }): Promise<RarayVerifyResult> {
-  const { employeeId, employeeSn, imageBuffer, mimeType = 'image/jpeg' } = params
+  const { employeeId, employeeSn, faceRarayId, imageBuffer, mimeType = 'image/jpeg' } = params
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
   const candidateIds = Array.from(
-    new Set([`emp-${employeeId}`, employeeSn?.trim(), String(employeeId)].filter(Boolean) as string[])
+    new Set(
+      [
+        employeeSn?.trim(),
+        faceRarayId?.trim(),
+        faceRarayId ? faceRarayId.replace(/^emp-/, '').trim() : '',
+        `emp-${employeeId}`,
+        String(employeeId),
+      ].filter(Boolean) as string[]
+    )
   )
 
   // 1. Try HERO endpoint first
@@ -312,29 +380,31 @@ export async function rarayVerifyFace(params: {
 
     if (res.ok) {
       const data = await res.json()
-      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
-      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+      if (data.status === 'success' && data.verified !== undefined) {
+        const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
+        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
+        const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
-        return {
-          status: 'spoofing_detected',
-          verified: false,
-          employee_id: String(employeeId),
-          confidence: data.confidence ?? data.similarity ?? 0,
-          liveness_score: livenessScore ?? 0,
-          is_live: false,
-          message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
+          return {
+            status: 'spoofing_detected',
+            verified: false,
+            employee_id: String(employeeId),
+            confidence: data.confidence ?? data.similarity ?? 0,
+            liveness_score: livenessScore ?? 0,
+            is_live: false,
+            message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+          }
         }
-      }
 
-      return data as RarayVerifyResult
+        return data as RarayVerifyResult
+      }
     }
   } catch {
     // Fall through
   }
 
-  // 2. Native endpoint fallback: try candidate user_ids (POST /api/v1/faces/compare/live or /api/v1/faces/compare)
+  // 2. Native endpoint fallback: try candidate user_ids directly on POST /api/v1/faces/compare
   let lastErrorMessage = ''
   for (const faceId of candidateIds) {
     try {
@@ -342,24 +412,14 @@ export async function rarayVerifyFace(params: {
       formData.append('user_id', faceId)
       formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
 
-      let res = await fetch(`${baseUrl}/api/v1/faces/compare/live`, {
+      const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
         method: 'POST',
         headers: { Authorization: authHeader },
         body: formData,
         cache: 'no-store',
       })
 
-      if (!res.ok) {
-        res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
-          method: 'POST',
-          headers: { Authorization: authHeader },
-          body: formData,
-          cache: 'no-store',
-        })
-      }
-
       if (res.status === 404) {
-        // Try next candidate face ID
         continue
       }
 
@@ -370,12 +430,29 @@ export async function rarayVerifyFace(params: {
       }
 
       const data = await res.json()
-      const similarity = data.similarity ?? data.data?.similarity ?? 0
-      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
-      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+      // If user not found on this ID alias, continue trying next candidate ID
+      if (
+        data.status === 'error' &&
+        (String(data.message).toLowerCase().includes('not found') ||
+          String(data.message).toLowerCase().includes('tidak ditemukan'))
+      ) {
+        continue
+      }
+
+      if (data.status === 'error') {
+        lastErrorMessage = data.message || 'Error from Vision API'
+        continue
+      }
+
+      const info = data.data || {}
+      const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+      const similarity = rawSim > 1 ? rawSim / 100 : rawSim
+      const livenessScore = data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
+      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
+      const isSpoof = data.is_spoof ?? info.is_spoof ?? false
+
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
         return {
           status: 'spoofing_detected',
           verified: false,
@@ -387,7 +464,9 @@ export async function rarayVerifyFace(params: {
         }
       }
 
-      const verified = (data.match ?? data.status === 'success') && similarity >= 0.45
+      const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
+      // Balanced verification rule for ArcFace:
+      const verified = (isMatch && similarity >= 0.45) || similarity >= 0.48
 
       return {
         status: 'success',
@@ -446,32 +525,6 @@ export async function rarayCheckFaceStatus(params: {
   return { status: 'success', registered: false, employee_id: String(employeeId) }
 }
 
-/**
- * Delete an employee face from Raray Vision.
- */
-export async function rarayDeleteFace(params: {
-  employeeId: number
-}): Promise<{ status: 'success' | 'error'; message?: string }> {
-  const { employeeId } = params
-  const baseUrl = getBaseUrl()
-  const authHeader = await getAuthHeader()
-  const faceId = `emp-${employeeId}`
-
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/faces/${faceId}`, {
-      method: 'DELETE',
-      headers: { Authorization: authHeader },
-      cache: 'no-store',
-    })
-
-    if (res.ok) {
-      return { status: 'success', message: `Wajah untuk employee ${employeeId} berhasil dihapus.` }
-    }
-    return { status: 'error', message: `Delete failed: ${res.status}` }
-  } catch (err) {
-    return { status: 'error', message: err instanceof Error ? err.message : 'Delete error' }
-  }
-}
 
 /**
  * Health check: verify Raray Vision is reachable.
@@ -529,7 +582,8 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
     const data = await res.json()
     const rawConf = typeof data.confidence === 'number' ? data.confidence : 0
     const confidence = rawConf > 1 ? rawConf : rawConf * 100
-    const isReal = Boolean(data.is_real) && confidence >= 90
+    // UniFace-v2 verdict threshold: trust model's is_real flag with rational >= 60% confidence floor
+    const isReal = Boolean(data.is_real) && confidence >= 60
 
     if (data.status === 'success' || data.is_real !== undefined) {
       if (isReal) {

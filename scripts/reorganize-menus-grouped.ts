@@ -106,6 +106,9 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Security Overview", url: "/dashboard/security", section: "Laporan", iconName: "database", resource: "security_session", sortOrder: 5 },
     { title: "Audit Log", url: "/dashboard/security/audit-logs", section: "Laporan", iconName: "report", resource: "security_audit", sortOrder: 6 },
   ],
+  "GOBPI": [
+    { title: "SOP/WIN", url: "/dashboard/sop-win", section: "GOBPI", iconName: "files", resource: "sop-win", sortOrder: 1 },
+  ],
   "Pengaturan": [
     { title: "Role Management", url: "/dashboard/security/roles", section: "Pengaturan", iconName: "shield", resource: "security_roles", sortOrder: 1 },
     { title: "User Management", url: "/dashboard/security/users", section: "Pengaturan", iconName: "users", resource: "security_users", sortOrder: 2, menuArea: "secondary" },

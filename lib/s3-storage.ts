@@ -324,30 +324,49 @@ export function resolveS3ObjectKey(objectUrl: string | null) {
 }
 
 export async function getS3ObjectForProxy(objectUrl: string | null) {
-  const key = resolveS3ObjectKey(objectUrl);
-
-  if (!key) {
+  if (!objectUrl || !isS3UploadConfigured()) {
     return null;
   }
 
-  const response = await getS3Client().send(
-    new GetObjectCommand({
-      Bucket: serverEnv.s3BucketName,
-      Key: key,
-    }),
+  const primaryKey = resolveS3ObjectKey(objectUrl);
+  if (!primaryKey) {
+    return null;
+  }
+
+  const candidateKeys = Array.from(
+    new Set([
+      primaryKey,
+      decodeURIComponent(primaryKey),
+      primaryKey.replace(/^upload\//, ""),
+      `upload/${primaryKey.replace(/^upload\//, "")}`,
+    ])
   );
 
-  if (!response.Body) {
-    return null;
+  const client = getS3Client();
+
+  for (const candidateKey of candidateKeys) {
+    try {
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: candidateKey,
+        }),
+      );
+
+      if (response.Body) {
+        const byteArray = await response.Body.transformToByteArray();
+        return {
+          body: byteArray,
+          contentType: response.ContentType ?? "application/octet-stream",
+          contentLength: response.ContentLength ?? byteArray.byteLength,
+        };
+      }
+    } catch {
+      // Continue trying next candidate key
+    }
   }
 
-  const byteArray = await response.Body.transformToByteArray();
-
-  return {
-    body: byteArray,
-    contentType: response.ContentType ?? "application/octet-stream",
-    contentLength: response.ContentLength ?? byteArray.byteLength,
-  };
+  return null;
 }
 
 export function isS3UploadConfigured() {

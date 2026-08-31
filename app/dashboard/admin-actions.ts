@@ -18,7 +18,7 @@ import {
 } from '@/lib/workflow-email'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
-import { getCurrentEmployeeAccessRole } from '@/lib/get-current-employee'
+import { getCurrentEmployeeAccessRole, requireAdminOrHcManagerRole } from '@/lib/get-current-employee'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -197,7 +197,7 @@ import {
   parseTrainingRecordCsv,
   type TrainingRecordImportState,
 } from '@/lib/training-record-import'
-import { normalizeBirthDateValue } from '@/lib/birth-date'
+import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import {
   type ApprovalRouteResolution,
   type ResolvedApprovalStep,
@@ -641,7 +641,7 @@ async function syncFieldBreakPlansFromV2Rows(
   }
 ) {
   const employeeIds = input.rows.map((row) => row.employeeId)
-  const employeeRows = employeeIds.length
+  const employeeRows: Array<{ id: number; name: string; section: string | null; role: string | null }> = employeeIds.length
     ? await tx
         .select({
           id: employees.id,
@@ -653,7 +653,7 @@ async function syncFieldBreakPlansFromV2Rows(
         .where(inArray(employees.id, employeeIds))
     : []
   const employeeById = new Map(
-    employeeRows.map((employee: (typeof employeeRows)[number]) => [employee.id, employee])
+    employeeRows.map((employee: { id: number; name: string; section: string | null; role: string | null }) => [employee.id, employee])
   )
 
   for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
@@ -3169,16 +3169,30 @@ const importUsersSchema = z.object({
 })
 
 export type ImportUsersActionState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
   importedCount?: number
   updatedCount?: number
   skippedCount?: number
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 export type AdminMutationState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 const optionalFormString = z.preprocess(
@@ -4185,15 +4199,23 @@ async function applyLegacySubmissionDecision(params: {
   return true
 }
 
-function parseApprovalRouteSnapshot(routeSnapshot: string) {
-  const trimmedSnapshot = routeSnapshot.trim()
+function parseApprovalRouteSnapshot(routeSnapshot: string): ApprovalRouteResolution | null {
+  const trimmedSnapshot = routeSnapshot ? routeSnapshot.trim() : ''
 
   if (!trimmedSnapshot) {
     return null
   }
 
   try {
-    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution
+    const parsed = JSON.parse(trimmedSnapshot)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    return {
+      ...parsed,
+      steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    } as ApprovalRouteResolution
   } catch {
     return null
   }
@@ -4428,21 +4450,21 @@ async function applyApprovalDecision(params: {
   const now = new Date()
   const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
   const currentStepIndex =
-    approvalRoute?.steps.findIndex(
+    approvalRoute?.steps?.findIndex(
       (step) =>
         step.stepOrder === approval.level &&
         (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId)
     ) ?? -1
   const currentStep =
-    approvalRoute != null && currentStepIndex >= 0
+    approvalRoute != null && currentStepIndex >= 0 && Array.isArray(approvalRoute.steps)
       ? (approvalRoute.steps[currentStepIndex] ?? null)
       : null
   const currentStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
   const nextStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
 
@@ -4763,6 +4785,28 @@ function normalizeLookupValue(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
+type ImportSiteLookup = {
+  id: number
+  name: string
+  location: string | null
+}
+
+function resolveSiteFromImportedLocation(
+  value: string,
+  siteRows: ImportSiteLookup[],
+  fallbackSite: ImportSiteLookup
+) {
+  const normalized = normalizeLookupValue(value)
+  if (!normalized) return fallbackSite
+
+  return (
+    siteRows.find(
+      (site) =>
+        normalizeLookupValue(site.name) === normalized ||
+        normalizeLookupValue(site.location) === normalized
+    ) ?? fallbackSite
+  )
+}
 function extractActivitySupplementalPayload(formData: FormData) {
   const checklistCompletion = formData
     .getAll('checklistCompletion')
@@ -5898,7 +5942,13 @@ export async function importSecurityUsersAction(
       return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [[defaultSite]] = await Promise.all([db.select().from(sites).limit(1)])
+    const [[defaultSite], siteRows] = await Promise.all([
+      db.select().from(sites).limit(1),
+      db
+        .select({ id: sites.id, name: sites.name, location: sites.location })
+        .from(sites)
+        .where(eq(sites.isActive, true)),
+    ])
 
     if (!defaultSite) {
       return { status: 'error', message: 'Site default belum tersedia untuk import user.' }
@@ -5948,6 +5998,8 @@ export async function importSecurityUsersAction(
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
       const levelName = getMappedValue(record, headers, mapping, 'levelName') || 'Rookie'
       const workLocation = getMappedValue(record, headers, mapping, 'workLocation') || ''
+      const resolvedSite = resolveSiteFromImportedLocation(workLocation, siteRows, defaultSite)
+      const resolvedWorkLocation = workLocation || resolvedSite.location || resolvedSite.name
       const accessRole = getMappedValue(record, headers, mapping, 'accessRole') || 'User'
       const employeeStatusType =
         getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
@@ -5971,7 +6023,7 @@ export async function importSecurityUsersAction(
         department,
         section,
         jobTitle,
-        siteId: defaultSite.id,
+        siteId: resolvedSite.id,
         statusName: employeeStatusType,
       })
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
@@ -6013,7 +6065,8 @@ export async function importSecurityUsersAction(
         email,
         role: jobTitle,
         department,
-        siteId: defaultSite.id,
+        workLocation: resolvedWorkLocation,
+        siteId: resolvedSite.id,
         joinDate: joinDate || null,
         birthDate: birthDate || null,
         departmentId: hrGovernanceIds.departmentId,
@@ -6070,6 +6123,7 @@ export async function importSecurityUsersAction(
 
 const importUpdateUsersSchema = z.object({
   rawCsv: z.string().trim().min(1, 'CSV file is required.'),
+  confirmLocationChanges: z.preprocess((value) => value === 'true' || value === 'on' || value === true, z.boolean().default(false)),
 })
 
 const IMPORT_UPDATE_HEADERS = [
@@ -6124,6 +6178,7 @@ export async function importUpdateUsersAction(
   try {
     const payload = importUpdateUsersSchema.parse({
       rawCsv: formData.get('rawCsv'),
+      confirmLocationChanges: formData.get('confirmLocationChanges'),
     })
 
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
@@ -6143,6 +6198,11 @@ export async function importUpdateUsersAction(
     if (snCol === undefined) {
       return { status: 'error', message: 'Kolom "SN" wajib ada di file.' }
     }
+
+    const siteRows = await db
+      .select({ id: sites.id, name: sites.name, location: sites.location })
+      .from(sites)
+      .where(eq(sites.isActive, true))
 
     // Fetch all existing employees
     const existingEmployees = await db
@@ -6193,6 +6253,42 @@ export async function importUpdateUsersAction(
       return undefined
     }
 
+    const lokasiSiteImportIdx = col('lokasi site')
+    const pendingLocationChanges: string[] = []
+    if (lokasiSiteImportIdx !== undefined) {
+      for (const record of records) {
+        const recordValues = Object.values(record)
+        const employeeSn = (recordValues[snCol] ?? '').trim()
+        const nextLocation = (recordValues[lokasiSiteImportIdx] ?? '').trim()
+        if (!employeeSn || !nextLocation) continue
+
+        const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+        if (!existing) continue
+
+        const resolvedSite = resolveSiteFromImportedLocation(nextLocation, siteRows, {
+          id: existing.siteId,
+          name: existing.workLocation ?? '',
+          location: existing.workLocation ?? '',
+        })
+        const currentLocation = existing.workLocation || ''
+        const locationChanged =
+          normalizeLookupValue(currentLocation) !== normalizeLookupValue(nextLocation) ||
+          existing.siteId !== resolvedSite.id
+
+        if (locationChanged) {
+          pendingLocationChanges.push(
+            `${existing.employeeSn || existing.email || existing.id}: ${currentLocation || '-'} -> ${nextLocation}`
+          )
+        }
+      }
+    }
+
+    if (pendingLocationChanges.length > 0 && !payload.confirmLocationChanges) {
+      return {
+        status: 'error',
+        message: `Import ditahan: ada ${pendingLocationChanges.length} perubahan Lokasi Site. Centang konfirmasi perubahan lokasi dulu. Contoh: ${pendingLocationChanges.slice(0, 5).join('; ')}`,
+      }
+    }
     let updatedCount = 0
     let skippedCount = 0
     const errors: string[] = []
@@ -6268,7 +6364,15 @@ export async function importUpdateUsersAction(
       }
       if (lokasiSiteIdx !== undefined) {
         const v = getValue(lokasiSiteIdx)
-        if (v) employeeUpdate.workLocation = v
+        if (v) {
+          const resolvedSite = resolveSiteFromImportedLocation(v, siteRows, {
+            id: existing.siteId,
+            name: existing.workLocation ?? '',
+            location: existing.workLocation ?? '',
+          })
+          employeeUpdate.workLocation = v
+          employeeUpdate.siteId = resolvedSite.id
+        }
       }
       if (tipeStatusIdx !== undefined) {
         const v = getValue(tipeStatusIdx)
@@ -6388,6 +6492,7 @@ export async function manageSecurityUserAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityUserSchema.parse({
@@ -6548,6 +6653,17 @@ export async function manageSecurityUserAction(
       })
       const orgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
 
+      const directManagerId =
+        payload.directManagerId && payload.directManagerId !== 'none'
+          ? Number.parseInt(payload.directManagerId, 10) || null
+          : null
+      const parsedBirthDate =
+        getBirthDateInputValue(payload.birthDate?.trim() || payload.birthPlaceDate?.trim() || '') ||
+        null
+      const normalizedBirthPlaceDate = normalizeBirthDateValue(
+        payload.birthPlaceDate?.trim() || payload.birthDate?.trim() || ''
+      )
+
       // 1. Upsert auth user
       if (existingAuthUser) {
         await db
@@ -6587,9 +6703,10 @@ export async function manageSecurityUserAction(
             siteId: defaultSite.id,
             joinDate: parseJoinDateFromYear(payload.joinYear),
             joinYear: parseJoinYear(payload.joinYear ?? ''),
-            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            birthDate: parsedBirthDate,
+            birthPlaceDate: normalizedBirthPlaceDate,
             domicile: payload.domicile?.trim() || 'Belum diisi',
+            directManagerId,
             departmentId: hrGovernanceIds.departmentId,
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
@@ -6620,9 +6737,10 @@ export async function manageSecurityUserAction(
             siteId: defaultSite.id,
             joinDate: parseJoinDateFromYear(payload.joinYear),
             joinYear: parseJoinYear(payload.joinYear ?? ''),
-            birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
-            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+            birthDate: parsedBirthDate,
+            birthPlaceDate: normalizedBirthPlaceDate,
             domicile: payload.domicile?.trim() || 'Belum diisi',
+            directManagerId,
             departmentId: hrGovernanceIds.departmentId,
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
@@ -6740,8 +6858,12 @@ export async function manageSecurityUserAction(
       const joinDate = payload.joinDate || null
       const contractDurationStart = payload.contractDurationStart || null
       const contractDurationEnd = payload.contractDurationEnd || null
-      const permanentDate = payload.permanentDate || null
-      const birthDateValue = payload.birthDate || null
+      const birthDateValue =
+        getBirthDateInputValue(payload.birthDate?.trim() || payload.birthPlaceDate?.trim() || '') ||
+        null
+      const normalizedBirthPlaceDate = normalizeBirthDateValue(
+        payload.birthPlaceDate?.trim() || payload.birthDate?.trim() || ''
+      )
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
@@ -6802,9 +6924,8 @@ export async function manageSecurityUserAction(
           joinYear: joinDate
             ? new Date(joinDate).getFullYear()
             : parseJoinYear(payload.joinYear ?? ''),
-          birthDate:
-            birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
-          birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
+          birthDate: birthDateValue,
+          birthPlaceDate: normalizedBirthPlaceDate,
           domicile: payload.domicile || 'Belum diisi',
           directManagerId,
           departmentId: hrGovernanceIds.departmentId,
@@ -6824,7 +6945,7 @@ export async function manageSecurityUserAction(
           pointOfHire,
           contractDurationStart,
           contractDurationEnd,
-          permanentDate,
+          permanentDate: payload.permanentDate || null,
           workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
@@ -7048,6 +7169,7 @@ export async function manageSecurityRoleAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityRoleSchema.parse({
@@ -9777,3 +9899,8 @@ function parseSioExcelDate(value: string): string | null {
   const d = new Date(value)
   return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null
 }
+
+
+
+
+

@@ -78,19 +78,25 @@ export async function POST(request: NextRequest) {
     if (identifier && typeof identifier === "string" && identifier.trim()) {
       const cleanIdentifier = identifier.trim().toLowerCase();
       
-      const [emp] = await db
-        .select()
+      const [row] = await db
+        .select({
+          employee: employees,
+        })
         .from(employees)
+        .leftJoin(user, eq(employees.authUserId, user.id))
         .where(
           and(
             eq(employees.isActive, true),
             or(
               eq(employees.email, cleanIdentifier),
-              eq(employees.employeeSn, identifier.trim())
+              eq(employees.employeeSn, identifier.trim()),
+              eq(user.email, cleanIdentifier)
             )
           )
         )
         .limit(1);
+
+      const emp = row?.employee;
 
       if (!emp) {
         console.log("[face-login] Identifier provided but employee not found in active database:", cleanIdentifier);
@@ -108,18 +114,20 @@ export async function POST(request: NextRequest) {
       try {
         const verifyRes = await rarayVerifyFace({
           employeeId: emp.id,
+          employeeSn: emp.employeeSn || undefined,
+          faceRarayId: emp.faceRarayId || undefined,
           imageBuffer,
           mimeType,
         });
 
         console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
 
-        if (verifyRes.status === "success" && verifyRes.verified) {
+        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.45) {
           matchedEmployee = emp;
           confidenceScore = verifyRes.confidence || 0.85;
-          console.log("[face-login] 1:1 verification succeeded for:", emp.name);
+          console.log("[face-login] 1:1 verification succeeded for:", emp.name, "Confidence:", confidenceScore);
         } else {
-          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold.");
+          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.45:", verifyRes.confidence);
         }
       } catch (err) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);
@@ -133,7 +141,7 @@ export async function POST(request: NextRequest) {
           if (extraction && extraction.embedding && Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
             const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
             console.log("[face-login] Local 1:1 embedding similarity for", emp.name, ":", sim);
-            if (sim >= 0.55) {
+            if (sim >= 0.65) {
               matchedEmployee = emp;
               confidenceScore = sim;
               verificationMode = "local-1:1";
@@ -170,20 +178,63 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:N result:", JSON.stringify(rarayResult));
 
-        if (rarayResult.status === "success" && rarayResult.recognized && rarayResult.employee_id) {
-          const empId = Number(rarayResult.employee_id);
-          if (Number.isFinite(empId) && empId > 0) {
-            const [foundEmp] = await db
+        if (
+          rarayResult.status === "success" &&
+          rarayResult.recognized &&
+          (rarayResult.employee_id || rarayResult.face_id) &&
+          (rarayResult.confidence ?? 0) >= 0.45
+        ) {
+          const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
+          const numericId = Number(rawIdOrSn);
+
+          let foundEmp: typeof employees.$inferSelect | null = null;
+
+          // 2a. Try lookup by DB Primary Key ID (if numeric)
+          if (!isNaN(numericId) && numericId > 0) {
+            const [byPk] = await db
               .select()
               .from(employees)
-              .where(and(eq(employees.id, empId), eq(employees.isActive, true)))
+              .where(and(eq(employees.id, numericId), eq(employees.isActive, true)))
               .limit(1);
+            if (byPk) foundEmp = byPk;
+          }
 
-            if (foundEmp) {
-              matchedEmployee = foundEmp;
-              confidenceScore = rarayResult.confidence || 0.85;
-              console.log("[face-login] 1:N recognition matched active employee:", foundEmp.name);
-            }
+          // 2b. Try lookup by employeeSn (e.g., "71261" or stripped "emp-71261")
+          if (!foundEmp && rawIdOrSn) {
+            const cleanSn = rawIdOrSn.replace(/^emp-/, "").trim();
+            const [bySn] = await db
+              .select()
+              .from(employees)
+              .where(and(eq(employees.employeeSn, cleanSn), eq(employees.isActive, true)))
+              .limit(1);
+            if (bySn) foundEmp = bySn;
+          }
+
+          // 2c. Try lookup by faceRarayId
+          if (!foundEmp && rawIdOrSn) {
+            const cleanFaceId = rawIdOrSn.replace(/^emp-/, "").trim();
+            const [byFaceId] = await db
+              .select()
+              .from(employees)
+              .where(
+                and(
+                  or(
+                    eq(employees.faceRarayId, rawIdOrSn),
+                    eq(employees.faceRarayId, cleanFaceId)
+                  ),
+                  eq(employees.isActive, true)
+                )
+              )
+              .limit(1);
+            if (byFaceId) foundEmp = byFaceId;
+          }
+
+          if (foundEmp) {
+            matchedEmployee = foundEmp;
+            confidenceScore = rarayResult.confidence || 0.85;
+            console.log("[face-login] 1:N recognition matched active employee:", foundEmp.name, "ID:", foundEmp.id, "SN:", foundEmp.employeeSn);
+          } else {
+            console.warn("[face-login] 1:N recognition matched face ID/SN", rawIdOrSn, "but no active employee found in HERO DB.");
           }
         }
       } catch (err) {
@@ -218,7 +269,7 @@ export async function POST(request: NextRequest) {
 
           console.log("[face-login] Local embedding best match:", bestMatch ? bestMatch.name : "None", "Similarity:", highestSimilarity);
 
-          if (bestMatch && highestSimilarity >= 0.55) {
+          if (bestMatch && highestSimilarity >= 0.65) {
             matchedEmployee = bestMatch;
             confidenceScore = highestSimilarity;
           }
@@ -242,18 +293,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Check if user has login account
+    // 5. Check if user has login account and get their registered email
     let targetAuthUserId = matchedEmployee.authUserId;
+    let targetUserEmail = "";
 
-    if (!targetAuthUserId && matchedEmployee.email) {
+    if (targetAuthUserId) {
       const [foundUser] = await db
-        .select({ id: user.id })
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.id, targetAuthUserId))
+        .limit(1);
+      if (foundUser) {
+        targetUserEmail = foundUser.email;
+      }
+    } else if (matchedEmployee.email) {
+      const [foundUser] = await db
+        .select({ id: user.id, email: user.email })
         .from(user)
         .where(eq(user.email, matchedEmployee.email.toLowerCase().trim()))
         .limit(1);
 
       if (foundUser) {
         targetAuthUserId = foundUser.id;
+        targetUserEmail = foundUser.email;
         await db
           .update(employees)
           .set({ authUserId: foundUser.id })
@@ -261,23 +323,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!targetAuthUserId) {
+    if (!targetAuthUserId || !targetUserEmail) {
       return NextResponse.json(
         {
           success: false,
           error: `Wajah dikenali sebagai ${matchedEmployee.name}, tetapi akun login belum dibuat. Silakan hubungi Administrator.`,
         },
         { status: 404 }
-      );
-    }
-
-    if (!matchedEmployee.email) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Wajah dikenali sebagai ${matchedEmployee.name}, tetapi email tidak terdaftar di data karyawan.`,
-        },
-        { status: 400 }
       );
     }
 
@@ -288,7 +340,7 @@ export async function POST(request: NextRequest) {
     await db.insert(verification).values({
       id: crypto.randomBytes(16).toString("hex"),
       identifier: magicToken,
-      value: JSON.stringify({ email: matchedEmployee.email.toLowerCase().trim(), name: matchedEmployee.name }),
+      value: JSON.stringify({ email: targetUserEmail.toLowerCase().trim(), name: matchedEmployee.name }),
       expiresAt: expiresAt,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -304,7 +356,7 @@ export async function POST(request: NextRequest) {
       token: magicToken,
       user: {
         name: matchedEmployee.name,
-        email: matchedEmployee.email,
+        email: targetUserEmail,
         employeeSn: matchedEmployee.employeeSn,
         employeeId: matchedEmployee.id,
       },

@@ -13,6 +13,7 @@ import {
   IconDatabase,
   IconFileWord,
   IconFileText,
+  IconFiles,
   IconFolder,
   IconHelp,
   IconListDetails,
@@ -173,6 +174,7 @@ const DESKTOP_MENU_ORDER = [
   "Attendance",
   "HSE",
   "Central Service",
+  "GOBPI",
   "Laporan",
   "Pengaturan",
 ] as const
@@ -188,6 +190,7 @@ const desktopMenuIconMap = {
   Attendance: IconClockHour4,
   HSE: IconShieldHalfFilled,
   "Central Service": IconDatabase,
+  GOBPI: IconFiles,
   Laporan: IconReport,
   "Command Center": IconBell,
   Pengaturan: IconSettings,

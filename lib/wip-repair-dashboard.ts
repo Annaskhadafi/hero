@@ -67,6 +67,16 @@ export type WipRepairDashboardData = {
   workOrderInsights: WipRepairWorkOrderInsight[]
 }
 
+export function getWipRepairAgingUnder30Rows(items: WipRepairWorkOrderInsight[]) {
+  return items
+    .filter((item) => item.agingDays !== null && item.agingDays >= 0 && item.agingDays < 30)
+    .sort(
+      (left, right) =>
+        (right.agingDays ?? 0) - (left.agingDays ?? 0) ||
+        left.wo.localeCompare(right.wo)
+    )
+}
+
 export type WipRepairProductionData = {
   year: number
   month: number

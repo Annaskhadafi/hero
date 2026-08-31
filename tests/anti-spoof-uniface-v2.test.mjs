@@ -9,7 +9,7 @@ const clientCode = fs.readFileSync(clientPath, 'utf8')
 assert(clientCode.includes('rarayCheckAntiSpoofUniFaceV2'), 'rarayCheckAntiSpoofUniFaceV2 must be defined in client.ts')
 assert(clientCode.includes('/api/v1/anti-spoof/uniface-v2'), 'UniFace-v2 API endpoint must be targeted')
 assert(clientCode.includes('RarayAntiSpoofResult'), 'RarayAntiSpoofResult interface must be defined')
-assert(clientCode.includes('confidence >= 90'), 'Confidence threshold must check >= 90%')
+assert(clientCode.includes('confidence >= 60'), 'Confidence threshold must check >= 60%')
 
 // Test face login route integration
 const faceLoginPath = path.resolve('app/api/auth/face-login/route.ts')

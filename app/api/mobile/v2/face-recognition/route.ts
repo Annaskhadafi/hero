@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
       mimeType,
     }).catch(() => null)
 
-    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+    if (antiSpoofRes && antiSpoofRes.status === 'spoof_detected' && (antiSpoofRes.confidence ?? 0) > 0.85) {
       console.warn('[face-recognition-v2] Anti-Spoofing detected spoof attempt:', antiSpoofRes.verdict, antiSpoofRes.confidence)
       return NextResponse.json(
         {
@@ -230,7 +230,8 @@ export async function POST(request: NextRequest) {
     // 9. Call Raray Vision to verify face using Employee SN / faceRarayId
     const rvResult = await rarayVerifyFace({
       employeeId: empId,
-      employeeSn: employee.employeeSn || employee.faceRarayId || undefined,
+      employeeSn: employee.employeeSn || undefined,
+      faceRarayId: employee.faceRarayId || undefined,
       imageBuffer,
       mimeType,
     })

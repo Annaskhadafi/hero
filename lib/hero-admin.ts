@@ -418,14 +418,15 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  // GOBPI
   {
     menuArea: 'main',
-    section: 'Genius AI',
+    section: 'GOBPI',
     title: 'SOP/WIN',
     url: '/dashboard/sop-win',
     iconName: 'files',
     resource: 'sop-win',
-    sortOrder: 2,
+    sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4109,6 +4110,8 @@ const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
 const HSE_ROLE_FULL_ACCESS_RESOURCES = new Set([
   ...HSE_MANAGED_RESOURCES,
   ...WELLNESS_MANAGED_RESOURCES,
+  'hero-genius',
+  'sop-win',
 ])
 
 const OWN_SCOPE_RESOURCES = new Set([
@@ -4135,12 +4138,41 @@ const OWN_SCOPE_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
+  // Always permit core resources for all roles
+  if (
+    [
+      'attendance',
+      'scheduling_timesheet_attendance',
+      'tire_service',
+      'overtime_requests',
+      'approval_inbox',
+    ].includes(resource)
+  ) {
+    return {
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'global',
+    }
+  }
+
   if (roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi') {
     return {
       canView: true,
       canEdit: true,
       canDelete: true,
       canSelectAll: true,
+      dataScope: 'global',
+    }
+  }
+
+  if (resource === 'settings_system_backup') {
+    return {
+      canView: roleName === 'Super Admin',
+      canEdit: roleName === 'Super Admin',
+      canDelete: roleName === 'Super Admin',
+      canSelectAll: roleName === 'Super Admin',
       dataScope: 'global',
     }
   }
@@ -4197,7 +4229,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 
   return {
     canView: true,
-    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra'].includes(resource),
+    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra', 'settings_system_backup'].includes(resource),
     canDelete: false,
     canSelectAll: false,
     dataScope: OWN_SCOPE_RESOURCES.has(resource) ? 'own' : 'global',
@@ -4822,6 +4854,25 @@ async function ensureHeroGovernanceTables() {
   `)
 }
 
+export async function ensureVirtualRelativeEmployees() {
+  const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
+  if (!firstSite) {
+    console.warn("Skipping virtual employees seeding: no sites found.")
+    return
+  }
+
+  const virtuals = [
+    { id: 990001, name: " [Atasan Langsung (Direct Manager)]", email: "direct_manager@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990002, name: " [Kepala Departemen (Department Head)]", email: "department_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990003, name: " [Kepala Seksi (Section Head)]", email: "section_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    { id: 990004, name: " [Kepala Site (Site Head)]", email: "site_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+  ]
+
+  for (const v of virtuals) {
+    await db.insert(employees).values(v).onConflictDoNothing()
+  }
+}
+
 export async function ensureHeroSeedData() {
   if (seedPromise) {
     return seedPromise
@@ -4834,6 +4885,7 @@ export async function ensureHeroSeedData() {
     await ensureTrainingRecordHistoryColumns()
     await ensureApprovalBlueprintSeedData()
     await ensureDepartmentSectionSeedData()
+    await ensureVirtualRelativeEmployees()
   })().catch((error) => {
     seedPromise = null
     throw error
@@ -4920,6 +4972,12 @@ export async function ensureHeroGovernanceSeedData() {
           action: 'read',
         },
         {
+          code: 'settings.system_backup.manage',
+          label: 'Manage database backup and restore',
+          resource: 'settings_system_backup',
+          action: 'manage',
+        },
+        {
           code: 'warehouse_repair.manage',
           label: 'Manage Warehouse Repair',
           resource: 'warehouse_repair_dashboard',
@@ -4983,6 +5041,10 @@ export async function ensureHeroGovernanceSeedData() {
           permissionId: permissionByCode['settings.email.read'].id,
         },
         {
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['settings.system_backup.manage'].id,
+        },
+        {
           roleId: roleByName['Site Admin'].id,
           permissionId: permissionByCode['security.overview.read'].id,
         },
@@ -5009,6 +5071,11 @@ export async function ensureHeroGovernanceSeedData() {
           inArray(navbarMenuItems.url, DEPRECATED_MENU_URLS)
         )
       )
+
+    await db
+      .update(navbarMenuItems)
+      .set({ section: 'GOBPI', sortOrder: 1 })
+      .where(eq(navbarMenuItems.resource, 'sop-win'))
 
     const currentMenuItems = await db
       .select()
@@ -5055,6 +5122,8 @@ export async function ensureHeroGovernanceSeedData() {
     const menuItemByResource = new Map(canonicalMenuItems.map((item) => [item.resource, item]))
     const menuItemByUrl = new Map(canonicalMenuItems.map((item) => [item.url, item]))
 
+    // Commented out to prevent overwriting user modifications to existing menu items
+    /*
     for (const menuSeed of SIDEBAR_MENU_SEEDS) {
       const existingMenuItem =
         menuItemByResource.get(menuSeed.resource) ?? menuItemByUrl.get(menuSeed.url)
@@ -5081,6 +5150,7 @@ export async function ensureHeroGovernanceSeedData() {
           .where(eq(navbarMenuItems.id, existingMenuItem.id))
       }
     }
+    */
 
     const refreshedMenuItems = await db
       .select()
@@ -5103,6 +5173,8 @@ export async function ensureHeroGovernanceSeedData() {
 
     const portalAppBySlug = new Map(existingPortalApps.map((item) => [item.slug, item]))
 
+    // Commented out to prevent overwriting user modifications to existing portal apps
+    /*
     for (const portalSeed of PORTAL_CHITRA_APP_SEEDS) {
       const existingPortalApp = portalAppBySlug.get(portalSeed.slug)
 
@@ -5130,6 +5202,7 @@ export async function ensureHeroGovernanceSeedData() {
           .where(eq(portalChitraApps.id, existingPortalApp.id))
       }
     }
+    */
 
     const missingPortalApps = PORTAL_CHITRA_APP_SEEDS.filter(
       (item) => !portalAppBySlug.has(item.slug)
@@ -5209,6 +5282,25 @@ export async function ensureHeroGovernanceSeedData() {
 
     if (missingRoleMenuPermissions.length > 0) {
       await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
+    }
+
+    // Ensure all existing roles have access to the core resources
+    const coreResources = [
+      'attendance',
+      'scheduling_timesheet_attendance',
+      'tire_service',
+      'overtime_requests',
+      'approval_inbox',
+    ]
+    const coreMenuItems = menuItemsForRole.filter(
+      (item) => item.resource && coreResources.includes(item.resource)
+    )
+    if (coreMenuItems.length > 0) {
+      const coreMenuItemIds = coreMenuItems.map((item) => item.id)
+      await db
+        .update(roleMenuPermissions)
+        .set({ canView: true, canEdit: true })
+        .where(inArray(roleMenuPermissions.menuItemId, coreMenuItemIds))
     }
   })().catch((error) => {
     governanceSeedPromise = null
@@ -6428,7 +6520,7 @@ export async function getSchedulingTimesheetOptions() {
         department: employee.department ?? null,
         section: employee.section ?? null,
         siteId: employee.siteId,
-        locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+        locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
         kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
         kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
         sio: kimperMap.get(employee.id)?.sioNames
@@ -6601,6 +6693,7 @@ async function getSchedulingTimesheetBaseOptions() {
         section: employees.section,
         siteId: employees.siteId,
         siteName: sites.name,
+        workLocation: employees.workLocation,
       })
       .from(employees)
       .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -6629,7 +6722,7 @@ async function getSchedulingTimesheetBaseOptions() {
       department: employee.department ?? null,
       section: employee.section ?? null,
       siteId: employee.siteId,
-      locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+      locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
     })),
     sites: siteRows,
   }
@@ -6877,12 +6970,14 @@ export async function getSecurityUsersData() {
       birthDate: employees.birthDate,
       domicile: employees.domicile,
       directManagerId: employees.directManagerId,
-      section: masterSections.name,
+      section: sql<string>`coalesce(${masterSections.name}, ${employees.section}, '')`.as(
+        'section'
+      ),
       sectionId: employees.sectionId,
       jobTitle: sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as(
         'job_title'
       ),
-      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, '')`.as(
+      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, ${employees.workLocation}, '')`.as(
         'work_location'
       ),
       phoneNumber: employees.phoneNumber,
@@ -6894,7 +6989,9 @@ export async function getSecurityUsersData() {
           'access_role'
         ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
-      department: masterDepartments.name,
+      department: sql<string>`coalesce(${masterDepartments.name}, ${employees.department}, '')`.as(
+        'department'
+      ),
       departmentId: employees.departmentId,
       levelName: sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as(
         'level_name'
@@ -7421,6 +7518,22 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
   const visibleItems = dedupeMenuItemsByPage(
     permittedMenuItems
+      .map((item) => {
+        // Force core items to be always visible for all roles
+        if (
+          item.resource &&
+          [
+            'attendance',
+            'scheduling_timesheet_attendance',
+            'tire_service',
+            'overtime_requests',
+            'approval_inbox',
+          ].includes(item.resource)
+        ) {
+          return { ...item, canView: true }
+        }
+        return item
+      })
       .filter((item) => item.isVisible && item.canView)
       .map((item) => ({
         ...item,
@@ -7484,3 +7597,5 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
+

@@ -11,6 +11,7 @@ import {
   chitraLearningCourses,
   activityLibraries,
 } from "@/db/schema/hero"
+import { user } from "@/db/schema/auth"
 import { getCurrentEmployee } from "@/lib/get-current-employee"
 
 export interface IndividualDashboardData {
@@ -124,6 +125,19 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
   // 1. Fetch Logged-in Employee (STRICT SINGLE USER DATA)
   const currentEmp = await getCurrentEmployee().catch(() => null)
 
+  let avatarUrl: string | null = null
+  if (currentEmp?.authUserId) {
+    const userRows = await db
+      .select({ image: user.image })
+      .from(user)
+      .where(eq(user.id, currentEmp.authUserId))
+      .limit(1)
+      .catch(() => [])
+    if (userRows[0]?.image) {
+      avatarUrl = userRows[0].image
+    }
+  }
+
   // Site Info
   let siteName = "Balikpapan Base"
   if (currentEmp?.siteId) {
@@ -158,7 +172,7 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
     department: currentEmp?.department || "Finance Business Partner Dept",
     siteName,
     workLocation: currentEmp?.workLocation || siteName,
-    avatarUrl: null,
+    avatarUrl,
     email: currentEmp?.email || "",
     phone: currentEmp?.phoneNumber || "",
     contractStart: currentEmp?.contractDurationStart ? String(currentEmp.contractDurationStart) : null,

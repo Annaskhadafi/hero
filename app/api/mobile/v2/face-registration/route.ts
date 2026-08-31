@@ -5,6 +5,7 @@ import { employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayRegisterFace } from '@/lib/raray-vision/client'
+import { extractServerFaceEmbedding } from '@/lib/face-recognition/server-face-api'
 
 // --- Error response helper ---
 function errorResponse(status: number, code: string, message: string, field?: string) {
@@ -119,17 +120,27 @@ export async function POST(request: NextRequest) {
       return errorResponse(502, 'RARAY_VISION_ERROR', rvResult.message || 'Face recognition service error.')
     }
 
-    // 8. Update employee record with Raray Vision registration info
+    // 8. Update employee record with Raray Vision registration info & overwrite local embedding
     const registeredAt = new Date()
     const faceRarayId = employee.employeeSn?.trim() || `emp-${employee.id}`
+
+    let newLocalEmbedding: number[] | null = null
+    try {
+      const extraction = await extractServerFaceEmbedding(imageBuffer)
+      if (extraction && extraction.embedding) {
+        newLocalEmbedding = extraction.embedding
+      }
+    } catch {
+      // ignore
+    }
 
     await db
       .update(employees)
       .set({
         faceRarayId,
         faceRarayRegisteredAt: registeredAt,
-        // Also update v1 fields for backward compat display
         faceRegisteredAt: registeredAt,
+        faceEmbedding: newLocalEmbedding, // Purges any previous person's vector embedding
       })
       .where(eq(employees.id, employee.id))
 

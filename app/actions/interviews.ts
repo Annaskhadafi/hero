@@ -744,6 +744,14 @@ export async function updateInterviewStatus(interviewId: number, status: string,
   return interview;
 }
 
+export async function getCandidateInterviews(candidateId: number) {
+  return await db
+    .select()
+    .from(hcCandidateInterviews)
+    .where(eq(hcCandidateInterviews.candidateId, candidateId))
+    .orderBy(desc(hcCandidateInterviews.scheduledAt));
+}
+
 export async function getAllScheduledInterviews() {
   return await db.select({
     id: hcCandidateInterviews.id,

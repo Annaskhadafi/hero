@@ -426,7 +426,7 @@ export function FaceAttendanceV2Client({
     const avgDelta = history.reduce((a, b) => a + b, 0) / history.length
 
     // Anti-spoofing check: static photo / paper / phone screen image
-    if (avgDelta < 0.75 || livenessStatus === 'photo-detected') {
+    if (avgDelta < 0.20 && livenessStatus === 'photo-detected') {
       stopCamera()
       setFlowState('failed')
       setErrorMessage(

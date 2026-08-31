@@ -21,6 +21,30 @@ export const approvalAssignmentStatusEnum = pgEnum("approval_assignment_status",
 export const approvalDecisionActionEnum = pgEnum("approval_decision_action", ["approve", "reject", "comment", "escalate", "cancel"]);
 export const approvalOrgStructureTypeEnum = pgEnum("approval_org_structure_type", ["enterprise", "work", "project"]);
 
+export const approvalStepTypeEnum = pgEnum("approval_step_type", [
+    "approval",      // Standard approve/reject/revise
+    "user_input",    // Approver must enrich form fields
+    "notification",  // Automated push/email notification
+    "delay",         // Sleep for a duration before resuming
+]);
+
+export const approvalRevertTargetEnum = pgEnum("approval_revert_target", [
+    "requester",     // Send back to submission author (default behavior)
+    "previous_step", // Send back to step before this one
+    "specific_step", // Send back to step order specified by revertToStepOrder
+]);
+
+export const approvalApproverResolutionEnum = pgEnum("approval_approver_resolution", [
+    "role",               // Fixed position role
+    "user",               // Fixed user ID
+    "direct_supervisor",  // Requester's direct manager
+    "department_head",    // Requester's department head
+    "section_head",       // Requester's section head
+    "site_head",          // Requester's site manager
+    "form_field",         // User picked inside form field (approverFormFieldKey)
+    "org_node",           // Org chart node resolution (legacy matrix-style)
+]);
+
 export const approvalFormRegistry = pgTable("approval_form_registry", {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
     formKey: varchar("form_key", { length: 100 }).notNull().unique(),
@@ -57,12 +81,27 @@ export const approvalDefinitionSteps = pgTable("approval_definition_steps", {
     definitionId: varchar("definition_id", { length: 36 }).notNull().references(() => approvalDefinitions.id, { onDelete: "cascade" }),
     stepOrder: integer("step_order").notNull(),
     stepName: varchar("step_name", { length: 200 }).notNull(),
+    stepType: approvalStepTypeEnum("step_type").notNull().default("approval"),
     approverType: approvalApproverTypeEnum("approver_type").notNull().default("role"),
     approverRole: varchar("approver_role", { length: 100 }),
     approverUserId: text("approver_user_id").references(() => user.id),
+    approverResolution: approvalApproverResolutionEnum("approver_resolution").notNull().default("role"),
+    approverFormFieldKey: varchar("approver_form_field_key", { length: 100 }),
+    approverOrgNodeId: integer("approver_org_node_id"),
     minApprovals: integer("min_approvals").notNull().default(1),
     conditionJson: jsonb("condition_json").$type<Record<string, unknown>>().default({}),
     isRequired: boolean("is_required").notNull().default(true),
+    // Revert target config (Gravity Flow)
+    revertTarget: approvalRevertTargetEnum("revert_target").notNull().default("requester"),
+    revertToStepOrder: integer("revert_to_step_order"),
+    // Step visibility and fields logic
+    fieldPermissionsJson: jsonb("field_permissions_json").$type<Record<string, "editable" | "readonly" | "hidden">>().default({}),
+    // Delay config
+    delayDurationHours: integer("delay_duration_hours"),
+    delayUntilFieldKey: varchar("delay_until_field_key", { length: 100 }),
+    // Automatic branch/skip rule
+    skipConditionJson: jsonb("skip_condition_json").$type<Record<string, unknown>>().default({}),
+    autoActionOnExpiry: varchar("auto_action_on_expiry", { length: 30 }).default("none"),
     // Email notification config
     notifyOnAssign: boolean("notify_on_assign").notNull().default(true),
     notifyOnComplete: boolean("notify_on_complete").notNull().default(false),
@@ -108,6 +147,8 @@ export const approvalAssignments = pgTable("approval_assignments", {
     status: approvalAssignmentStatusEnum("status").notNull().default("pending"),
     actedAt: timestamp("acted_at"),
     comment: text("comment"),
+    inputData: jsonb("input_data").$type<Record<string, unknown>>().default({}),
+    resolutionMethod: varchar("resolution_method", { length: 50 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
@@ -125,6 +166,34 @@ export const approvalAuditLogs = pgTable("approval_audit_logs", {
 }, (t) => [
     index("approval_audit_request_idx").on(t.requestId),
 ]);
+
+export const approvalWorkflowPresets = pgTable("approval_workflow_presets", {
+    id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
+    presetKey: varchar("preset_key", { length: 100 }).notNull().unique(),
+    name: varchar("name", { length: 200 }).notNull(),
+    description: text("description"),
+    category: varchar("category", { length: 50 }).notNull().default("general"),
+    stepsJson: jsonb("steps_json").$type<Array<{
+        stepOrder: number;
+        stepName: string;
+        stepType: string;
+        approverResolution: string;
+        approverRole?: string;
+        approverUserId?: string;
+        minApprovals: number;
+        slaDays?: number;
+        revertTarget: string;
+        revertToStepOrder?: number;
+        fieldPermissionsJson?: Record<string, string>;
+        skipConditionJson?: Record<string, unknown>;
+        autoActionOnExpiry: string;
+    }>>().notNull(),
+    isSystemPreset: boolean("is_system_preset").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: text("created_by").references(() => user.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const approvalMatrixImports = pgTable("approval_matrix_imports", {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
