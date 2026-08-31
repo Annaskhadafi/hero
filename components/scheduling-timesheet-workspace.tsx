@@ -1337,6 +1337,7 @@ export function SchedulingTimesheetWorkspace({
   const [importHistoryOpen, setImportHistoryOpen] = useState(false)
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
+  const [includeTotalOvertime, setIncludeTotalOvertime] = useState<boolean>(true)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
@@ -1425,16 +1426,16 @@ export function SchedulingTimesheetWorkspace({
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
     if (typeof window === 'undefined') return false
-    return localStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+    return sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
   })
 
   function setConflictsDismissed(value: boolean) {
     setConflictsDismissedState(value)
     if (typeof window !== 'undefined') {
       if (value) {
-        localStorage.setItem(conflictsDismissKey, 'true')
+        sessionStorage.setItem(conflictsDismissKey, 'true')
       } else {
-        localStorage.removeItem(conflictsDismissKey)
+        sessionStorage.removeItem(conflictsDismissKey)
       }
     }
   }
@@ -1479,8 +1480,8 @@ export function SchedulingTimesheetWorkspace({
       ])
     )
     setApprovalApprovers((prev) => {
-      const prevKeys = Object.keys(prev)
-      const nextKeys = Object.keys(nextMap)
+      const prevKeys = Object.keys(prev || {})
+      const nextKeys = Object.keys(nextMap || {})
       if (
         prevKeys.length === nextKeys.length &&
         prevKeys.every(
@@ -1846,7 +1847,7 @@ export function SchedulingTimesheetWorkspace({
     setSelectedAttendanceKeys([])
     // Reset conflict dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
-    const isDismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true'
+    const isDismissed = typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, period, siteId])
@@ -2028,16 +2029,30 @@ export function SchedulingTimesheetWorkspace({
     // Extract from selected site name
     const selectedSiteExtracted = extractSiteNameLocal(selectedSite.location || selectedSite.name)
 
+    const scheduledEmployeeIds = new Set(
+      savedPlan
+        ? [
+            ...(savedPlan.fixedSchedule || []),
+            ...(savedPlan.draftSchedule || []),
+            ...(savedPlan.employeeProfiles || []),
+          ]
+            .map((s: any) => s.employeeId)
+            .filter(Boolean)
+        : []
+    )
+
     const filtered = employees.filter((employee) => {
-      // First priority: exact siteId match
+      // First priority: included in this site's saved/scheduled plan roster
+      if (scheduledEmployeeIds.has(employee.id)) return true
+      // Second priority: exact siteId match
       if (String(employee.siteId) === siteId) return true
-      // Second priority: employee locationName (already extracted) matches extracted site name
+      // Third priority: employee locationName (already extracted) matches extracted site name
       if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
 
     return filtered
-  }, [employees, mode, selectedSite, siteId])
+  }, [employees, mode, savedPlan, selectedSite, siteId])
 
   const rosterSectionByEmployee = useMemo(
     () =>
@@ -4319,7 +4334,7 @@ export function SchedulingTimesheetWorkspace({
       const workingCode: ScheduleCode = siteConfig.scheduleType === 'shift' ? 'DS' : 'IN'
       setOverrides((currentOverrides) => {
         const next = { ...currentOverrides }
-        for (const [key, cell] of Object.entries(cellUpdates)) {
+        for (const [key, cell] of Object.entries(cellUpdates || {})) {
           if (cell.status === 'present') {
             const [empId, day] = key.split('-').map(Number)
             const row = rows.find((r) => r.employee.id === empId)
@@ -4422,7 +4437,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Save attendance')) return
     const numericSiteId = Number(siteId)
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
-    const overrides = Object.entries(nextManual).map(([key, cell]) => {
+    const overrides = Object.entries(nextManual || {}).map(([key, cell]) => {
       const [employeeId, day] = key.split('-').map(Number)
       return {
         employeeId,
@@ -4481,7 +4496,7 @@ export function SchedulingTimesheetWorkspace({
           removeWorkspace: false,
         })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== 'excel'))
+          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
         )
         setAttendanceImportPreview(null)
         setClearExcelImportDialogOpen(false)
@@ -4503,7 +4518,7 @@ export function SchedulingTimesheetWorkspace({
       try {
         await rollbackAttendanceImportPreviewAction({ previewId })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== 'excel'))
+          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
         )
         setAttendanceSavedAt(new Date().toISOString())
         await refreshAttendanceImportHistory()
@@ -4848,7 +4863,7 @@ export function SchedulingTimesheetWorkspace({
         toast.success(`PDF ${label} Record ${employee.name} berhasil di-generate.`)
         return
       }
-      const pdf = await buildEmployeeOvertimePdf(employee)
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -5064,7 +5079,7 @@ export function SchedulingTimesheetWorkspace({
 
   async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
-      const pdf = await buildEmployeeOvertimePdf(employee, true)
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
       openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
     } catch (error) {
       console.error('[Preview PDF OT Error]', error)
@@ -5295,7 +5310,7 @@ export function SchedulingTimesheetWorkspace({
       }
       for (const employee of allEmployees) {
         for (const pdf of [
-          await buildEmployeeOvertimePdf(employee, true),
+          await buildEmployeeOvertimePdf(employee, includeTotalOvertime),
           await buildEmployeeAllowancePdf(employee),
         ]) {
           const source = await PDFDocument.load(pdf)
@@ -8118,7 +8133,20 @@ export function SchedulingTimesheetWorkspace({
                           <span className="font-semibold text-foreground">{selectedOvertimeEmployeeIds.length} karyawan dipilih</span> untuk generate dokumen PDF.
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                          <Switch
+                            id="toggle-total-overtime-bulk"
+                            checked={includeTotalOvertime}
+                            onCheckedChange={setIncludeTotalOvertime}
+                          />
+                          <label
+                            htmlFor="toggle-total-overtime-bulk"
+                            className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                          >
+                            Sertakan Kolom Total Overtime
+                          </label>
+                        </div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -8131,21 +8159,17 @@ export function SchedulingTimesheetWorkspace({
                         </Button>
                         <Button
                           size="sm"
-                          variant="outline"
+                          variant="default"
                           disabled={selectedOvertimeEmployeeIds.length === 0}
-                          onClick={() => void bulkDownloadOvertimePdf(true)}
-                          className="h-8 rounded-lg text-xs"
+                          onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
+                          className="h-8 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                          title={
+                            selectedOvertimeEmployeeIds.length === 0
+                              ? 'Pilih minimal satu karyawan'
+                              : `Download PDF OT + Benefit (${includeTotalOvertime ? 'dengan' : 'tanpa'} Kolom Total Overtime)`
+                          }
                         >
-                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Total Overtime
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={selectedOvertimeEmployeeIds.length === 0}
-                          onClick={() => void bulkDownloadOvertimePdf(false)}
-                          className="h-8 rounded-lg text-xs"
-                        >
-                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Tanpa Total Overtime
+                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih {selectedOvertimeEmployeeIds.length > 0 ? `(${selectedOvertimeEmployeeIds.length})` : ''}
                         </Button>
                       </div>
                     </div>

@@ -523,7 +523,7 @@ export function calculateConfiguredOvertime(params: {
     autoMinutes: totalMinutes(autoEligible),
     splMinutes: totalMinutes(splEligible),
     unauthorizedMinutes:
-      isTemplateMode ? 0 : (unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0),
+      unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0,
     source: hasAuto && hasSpl ? 'Auto + SPL' : hasAuto ? 'Auto' : hasSpl ? 'SPL' : 'None',
     splNumbers: [...new Set(contributingSplNumbers)],
     intervals: eligible.map((item) => ({

@@ -1,13 +1,90 @@
+'use client'
+
+// Universal Centralized Approval Workbench
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import * as XLSX from 'xlsx'
+import {
+  Check,
+  CheckCheck,
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  Download,
+  ExternalLink,
+  FileCheck,
+  FileDown,
+  FileSignature,
+  FileSpreadsheet,
+  FileText,
+  HardHat,
+  MapPin,
+  PenTool,
+  RotateCcw,
+  Search,
+  Square,
+  Settings,
+  Trash2,
+  Upload,
+  User,
+  X,
+  XCircle,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
+import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
+
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
+// User signature action for approval workspace signoffs
+import { getUserSignatureAction } from '@/app/actions/user-signature'
+import {
+  singleApproveDailyActivityAction,
+  singleRejectDailyActivityAction,
+  singleRevertDailyActivityAction,
+  batchApproveDailyActivitySessionsAction,
+  batchRevertDailyActivitySessionsAction,
+  batchRejectDailyActivitySessionsAction,
+} from '@/app/dashboard/activity-hub/actions'
+import {
+  singleApproveOvertimeRequestAction,
+  singleRejectOvertimeRequestAction,
+  singleRevertOvertimeRequestAction,
+  batchApproveOvertimeRequestsAction,
+  batchRevertOvertimeRequestsAction,
+  batchRejectOvertimeRequestsAction,
+} from '@/app/dashboard/overtime-requests/actions'
+import {
+  singleApprovePtwPermitAction,
+  singleRejectPtwPermitAction,
+  singleRevertPtwPermitAction,
+  batchApprovePtwPermitsAction,
+  batchRevertPtwPermitsAction,
+  batchRejectPtwPermitsAction,
+} from '@/app/dashboard/hse/izin-kerja-ptw/actions'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked } from '@/lib/ptw-helpers'
+import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
+import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
-import { ApprovalRequestDetails } from '@/components/approval-request-details'
+import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
+import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { TableFilterPresets } from '@/components/table-filter-presets'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import {
   Table,
@@ -19,17 +96,57 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { downloadElementAsPdf, downloadFilesAsZip } from '@/lib/pdf-download'
+import { cn } from '@/lib/utils'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
-import Link from 'next/link'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>
+
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric' })
+}
+
+function formatTimestamp(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatPtwTime(value: Date | string | null | undefined) {
+  if (!value) return '08:00'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '08:00'
+  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':')
+}
+
+async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 500): Promise<T> {
+  let attempt = 0
+  while (true) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      attempt++
+      const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase()
+      const isNetworkError =
+        errStr.includes("network error") ||
+        errStr.includes("failed to fetch") ||
+        errStr.includes("econnreset") ||
+        errStr.includes("network")
+      if (attempt <= retries && isNetworkError) {
+        console.warn(`[withActionRetry] Network error detected (attempt ${attempt}/${retries}). Retrying in ${delayMs}ms...`)
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt))
+        continue
+      }
+      throw err
+    }
+  }
+}
 
 function ApprovalFilterBar({
   sites,
@@ -82,8 +199,688 @@ function ApprovalFilterBar({
   )
 }
 
-function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
-  if (groups.length === 0) {
+function InboxTab({
+  groups,
+  dailyActivityItems = [],
+  overtimeItems = [],
+  ptwItems = [],
+  contractReviewItems = [],
+  sopWinRequestItems = [],
+}: {
+  groups: ApprovalCenterData['inboxGroups']
+  dailyActivityItems?: ApprovalCenterData['dailyActivityInboxItems']
+  overtimeItems?: ApprovalCenterData['overtimeInboxItems']
+  ptwItems?: ApprovalCenterData['ptwInboxItems']
+  contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
+  sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
+}) {
+  const router = useRouter()
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Batch Review Modal State
+  const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
+  const [batchReviewIndex, setBatchReviewIndex] = useState(0)
+  const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
+  const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
+  const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+
+  // Confirmation dialogs & validation state
+  const [confirmActionType, setConfirmActionType] = useState<'approve' | 'revert' | 'reject' | null>(null)
+  const [confirmBatchActionType, setConfirmBatchActionType] = useState<'approve' | 'revert' | 'reject' | null>(null)
+  const [actionReasonInput, setActionReasonInput] = useState('')
+  const [remarkFieldError, setRemarkFieldError] = useState(false)
+
+  // Signature state
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
+  const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
+  const [isAccessSettingsOpen, setIsAccessSettingsOpen] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [hasDrawn, setHasDrawn] = useState(false)
+
+  useEffect(() => {
+    async function loadSig() {
+      try {
+        const res = await getUserSignatureAction()
+        if (res.success && res.signatureDataUrl) {
+          setSignatureDataUrl(res.signatureDataUrl)
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    loadSig()
+  }, [])
+
+  // Canvas drawing handlers
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    setIsDrawing(true)
+    setHasDrawn(true)
+    const rect = canvas.getBoundingClientRect()
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+  }
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const rect = canvas.getBoundingClientRect()
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = '#000000'
+    ctx.lineTo(x, y)
+    ctx.stroke()
+  }
+
+  const stopDrawing = () => {
+    setIsDrawing(false)
+    if (canvasRef.current) {
+      setSignatureDataUrl(canvasRef.current.toDataURL('image/png'))
+    }
+  }
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    setHasDrawn(false)
+    setSignatureDataUrl(null)
+  }
+
+  // All unified items
+  const allUnifiedItems = useMemo(() => {
+    const list: Array<{
+      id: string
+      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'GENERAL'
+      categoryLabel: string
+      documentNumber: string
+      title: string
+      employeeName: string
+      department?: string
+      section?: string
+      siteName?: string
+      location?: string
+      workDate?: Date | string | null
+      shiftCode?: string
+      stepLabel: string
+      approverName?: string | null
+      approverRole?: string | null
+      dueState: string
+      dueAt: Date
+      submittedAt: Date
+      url: string
+      isReverted?: boolean
+      actionLabel?: string
+      rawDaily?: (typeof dailyActivityItems)[number]
+      rawOvertime?: (typeof overtimeItems)[number]
+      rawPtw?: (typeof ptwItems)[number]
+      rawContractReview?: (typeof contractReviewItems)[number]
+      rawSopWinRequest?: (typeof sopWinRequestItems)[number]
+      rawGeneralGroup?: (typeof groups)[number]
+    }> = []
+
+    for (const d of dailyActivityItems) {
+      const isReverted = Boolean((d as any).isReverted || (d as any).sessionStatus === 'reverted' || (d as any).status === 'reverted')
+      list.push({
+        id: d.id,
+        category: 'DAILY_ACTIVITY',
+        categoryLabel: 'Daily Activity',
+        documentNumber: d.documentNumber,
+        title: d.title,
+        employeeName: d.employeeName,
+        department: (d as any).department,
+        section: (d as any).section,
+        siteName: d.siteName,
+        workDate: (d as any).workDate || d.submittedAt,
+        shiftCode: d.shiftCode,
+        stepLabel: d.stepLabel,
+        approverName: d.approverName,
+        approverRole: d.approverRole,
+        dueState: d.dueState,
+        dueAt: d.dueAt,
+        submittedAt: d.submittedAt,
+        url: d.url,
+        isReverted,
+        actionLabel: (d as any).actionLabel || (isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗'),
+        rawDaily: d,
+      })
+    }
+
+    for (const ot of overtimeItems) {
+      const isReverted = Boolean((ot as any).isReverted || (ot as any).splStatus === 'reverted' || (ot as any).status === 'reverted')
+      list.push({
+        id: ot.id,
+        category: 'OVERTIME',
+        categoryLabel: 'Lembur (SPL)',
+        documentNumber: ot.documentNumber,
+        title: ot.title,
+        employeeName: ot.employeeName,
+        department: (ot as any).department,
+        section: (ot as any).section,
+        siteName: ot.siteName,
+        workDate: (ot as any).workDate || ot.submittedAt,
+        stepLabel: ot.stepLabel,
+        approverName: ot.approverName,
+        approverRole: ot.approverRole,
+        dueState: ot.dueState,
+        dueAt: ot.dueAt,
+        submittedAt: ot.submittedAt,
+        url: ot.url,
+        isReverted,
+        actionLabel: (ot as any).actionLabel || (isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗'),
+        rawOvertime: ot,
+      })
+    }
+
+    for (const p of ptwItems) {
+      list.push({
+        id: p.id,
+        category: 'PTW',
+        categoryLabel: 'Izin Kerja (PTW)',
+        documentNumber: p.documentNumber,
+        title: p.title,
+        employeeName: p.employeeName,
+        location: p.location,
+        stepLabel: p.stepLabel,
+        approverName: p.approverName,
+        approverRole: p.approverRole,
+        dueState: p.dueState,
+        dueAt: p.dueAt,
+        submittedAt: p.submittedAt,
+        url: p.url,
+        rawPtw: p,
+      })
+    }
+
+    for (const cr of contractReviewItems) {
+      list.push({
+        id: cr.id,
+        category: 'CONTRACT_REVIEW',
+        categoryLabel: 'Contract Review',
+        documentNumber: `CR-${cr.approvalId}`,
+        title: cr.title,
+        employeeName: cr.employeeName,
+        stepLabel: cr.stepLabel,
+        approverName: cr.approverName,
+        approverRole: cr.approverRole,
+        dueState: cr.dueState,
+        dueAt: cr.dueAt,
+        submittedAt: cr.submittedAt,
+        url: cr.url,
+        rawContractReview: cr,
+      })
+    }
+
+    const sopWinItems = sopWinRequestItems || []
+    for (const sr of sopWinItems) {
+      list.push({
+        id: sr.id,
+        category: 'SOP_WIN_REQUEST',
+        categoryLabel: 'Permintaan Dokumen SOP/WIN',
+        documentNumber: sr.documentNumber,
+        title: sr.title,
+        employeeName: sr.employeeName,
+        department: sr.department,
+        stepLabel: sr.stepLabel,
+        approverName: sr.approverName,
+        dueState: sr.dueState,
+        dueAt: sr.dueAt,
+        submittedAt: sr.submittedAt,
+        url: sr.url || '/dashboard/sop-win?tab=approval',
+        rawSopWinRequest: sr,
+      })
+    }
+
+    for (const g of groups) {
+      list.push({
+        id: `general-group-${g.id}`,
+        category: 'GENERAL',
+        categoryLabel: 'Form Activity',
+        documentNumber: `GRP-${g.id}`,
+        title: `${g.requesterName} - ${g.activityCount} Item Activity`,
+        employeeName: g.requesterName,
+        siteName: g.siteName,
+        workDate: g.workDate,
+        stepLabel: `${g.items.length} Step Pending`,
+        dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
+        dueAt: g.items[0]?.dueAt || new Date(),
+        submittedAt: g.items[0]?.submittedAt || new Date(),
+        url: '#',
+        rawGeneralGroup: g,
+      })
+    }
+
+    return list
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, groups])
+
+  const searchParams = useSearchParams()
+  const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
+
+  const selectedItems = useMemo(() => {
+    return allUnifiedItems.filter((it) => selectedIds.has(it.id))
+  }, [allUnifiedItems, selectedIds])
+
+  // Automatically open "BUKA TTD" floating review modal if opened via email or URL search params
+  useEffect(() => {
+    const openDocParam =
+      searchParams?.get('openDoc') ||
+      searchParams?.get('doc') ||
+      searchParams?.get('documentNumber') ||
+      searchParams?.get('reviewId') ||
+      searchParams?.get('sessionId') ||
+      searchParams?.get('id')
+
+    if (openDocParam && allUnifiedItems.length > 0 && autoOpenedDoc !== openDocParam) {
+      const paramNorm = openDocParam.trim().toLowerCase()
+      const matchingItem = allUnifiedItems.find((it) => {
+        const docNumNorm = (it.documentNumber || '').toLowerCase()
+        const reqNumNorm = (it.requestNumber || '').toLowerCase()
+        const itemIdNorm = (it.id || '').toLowerCase()
+        const rawDailyId = String(it.rawDaily?.id || '')
+        const rawOvertimeId = String(it.rawOvertime?.id || '')
+        const rawPtwId = String(it.rawPtw?.id || '')
+
+        return (
+          docNumNorm === paramNorm ||
+          reqNumNorm === paramNorm ||
+          itemIdNorm === paramNorm ||
+          rawDailyId === paramNorm ||
+          rawOvertimeId === paramNorm ||
+          rawPtwId === paramNorm ||
+          (docNumNorm && paramNorm.includes(docNumNorm)) ||
+          (docNumNorm && docNumNorm.includes(paramNorm))
+        )
+      })
+
+      if (matchingItem) {
+        setAutoOpenedDoc(openDocParam)
+        setSelectedIds(new Set([matchingItem.id]))
+        setBatchReviewIndex(0)
+        setIsBatchReviewOpen(true)
+      }
+    }
+  }, [searchParams, allUnifiedItems, autoOpenedDoc])
+
+  const currentBatchDoc = selectedItems[batchReviewIndex] || null
+
+  const isAllSelected = allUnifiedItems.length > 0 && selectedIds.size === allUnifiedItems.length
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allUnifiedItems.map((it) => it.id)))
+    }
+  }
+
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelectedIds(next)
+  }
+
+  const handleOpenBatchReview = () => {
+    if (selectedItems.length === 0) {
+      toast.warning('Pilih minimal 1 pengajuan untuk ditinjau.')
+      return
+    }
+    setBatchReviewIndex(0)
+    setIsBatchReviewOpen(true)
+  }
+
+  // Action dispatchers for current batch document
+  const handleExecuteApprovalAction = async (action: 'approve' | 'revert' | 'reject', reason?: string) => {
+    if (!currentBatchDoc) return
+
+    if (action === 'approve' && !signatureDataUrl) {
+      setIsMissingSignatureDialogOpen(true)
+      return
+    }
+
+    setIsBatchActionRunning(true)
+    const docId = currentBatchDoc.id
+    const currentRemark = approvalRemarks[docId] || reason || ''
+
+    try {
+      if (currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily) {
+        const sessId = currentBatchDoc.rawDaily.sessionId
+        if (action === 'approve') {
+          const res = await singleApproveDailyActivityAction(sessId, currentRemark)
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui Daily Activity')
+          toast.success(`Daily Activity #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else if (action === 'revert') {
+          const res = await singleRevertDailyActivityAction(sessId, currentRemark || 'Dokumen dikembalikan.')
+          if (!res.success) throw new Error(res.error || 'Gagal mengembalikan Daily Activity')
+          toast.info(`Daily Activity #${currentBatchDoc.documentNumber} dikembalikan.`)
+        } else if (action === 'reject') {
+          const res = await singleRejectDailyActivityAction(sessId, currentRemark || 'Dokumen ditolak.')
+          if (!res.success) throw new Error(res.error || 'Gagal menolak Daily Activity')
+          toast.error(`Daily Activity #${currentBatchDoc.documentNumber} ditolak.`)
+        }
+      } else if (currentBatchDoc.category === 'OVERTIME' && currentBatchDoc.rawOvertime) {
+        const splId = currentBatchDoc.rawOvertime.splId
+        if (action === 'approve') {
+          const res = await singleApproveOvertimeRequestAction(splId, currentRemark)
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui SPL')
+          toast.success(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else if (action === 'revert') {
+          const res = await singleRevertOvertimeRequestAction(splId, currentRemark || 'SPL dikembalikan.')
+          if (!res.success) throw new Error(res.error || 'Gagal mengembalikan SPL')
+          toast.info(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} dikembalikan.`)
+        } else if (action === 'reject') {
+          const res = await singleRejectOvertimeRequestAction(splId, currentRemark || 'SPL ditolak.')
+          if (!res.success) throw new Error(res.error || 'Gagal menolak SPL')
+          toast.error(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} ditolak.`)
+        }
+      } else if (currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw) {
+        const ptwId = currentBatchDoc.rawPtw.ptwId
+        if (action === 'approve') {
+          const res = await singleApprovePtwPermitAction(ptwId, currentRemark)
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui Izin Kerja PTW')
+          toast.success(`Izin Kerja (PTW) #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else if (action === 'revert') {
+          const res = await singleRevertPtwPermitAction(ptwId, currentRemark || 'PTW dikembalikan.')
+          if (!res.success) throw new Error(res.error || 'Gagal mengembalikan PTW')
+          toast.info(`Izin Kerja (PTW) #${currentBatchDoc.documentNumber} dikembalikan.`)
+        } else if (action === 'reject') {
+          const res = await singleRejectPtwPermitAction(ptwId, currentRemark || 'PTW ditolak.')
+          if (!res.success) throw new Error(res.error || 'Gagal menolak PTW')
+          toast.error(`Izin Kerja (PTW) #${currentBatchDoc.documentNumber} ditolak.`)
+        }
+      } else if (currentBatchDoc.category === 'SOP_WIN_REQUEST' && currentBatchDoc.rawSopWinRequest) {
+        const req = currentBatchDoc.rawSopWinRequest
+        const res = await withActionRetry(() =>
+          reviewSopWinDocumentRequestAction({
+            requestId: req.requestId,
+            approvalToken: req.approvalToken,
+            action: action === 'approve' ? 'approve' : action === 'revert' ? 'revert' : 'reject',
+            remarks: currentRemark || `Proses ${action} via Inbox Approval`,
+            expiryDays: req.expiryDays || 3,
+            signatureDataUrl: signatureDataUrl || undefined,
+          })
+        )
+        if (!res.success) throw new Error(res.error || 'Gagal memproses permohonan dokumen SOP/WIN')
+        toast.success(`Permintaan dokumen #${req.documentNumber} berhasil diproses (${action}).`)
+      } else if (currentBatchDoc.category === 'GENERAL' && currentBatchDoc.rawGeneralGroup) {
+        const grp = currentBatchDoc.rawGeneralGroup
+        const formData = new FormData()
+        formData.append('groupId', grp.id)
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
+        formData.append('notes', currentRemark || `Keputusan ${action}`)
+        await withActionRetry(() => approveApprovalGroupAction(formData))
+        toast.success(`Grup aktivitas #${grp.id} berhasil diproses.`)
+      }
+
+      setProcessedBatchIds((prev) => new Set([...prev, docId]))
+
+      // Auto advance to next item
+      if (batchReviewIndex < selectedItems.length - 1) {
+        setBatchReviewIndex((prev) => prev + 1)
+      } else {
+        toast.success('Semua dokumen yang dipilih telah selesai diproses.')
+        setIsBatchReviewOpen(false)
+        router.refresh()
+      }
+    } catch (e: any) {
+      console.error(e)
+      const errStr = String(e?.message || e || '').toLowerCase()
+      const isNetErr = errStr.includes('network') || errStr.includes('failed to fetch') || errStr.includes('econnreset')
+      toast.error(isNetErr ? 'Koneksi terputus sementara (Network Error). Silakan klik ulang tombol persetujuan.' : (e.message || 'Terjadi kesalahan saat memproses approval.'))
+    } finally {
+      setIsBatchActionRunning(false)
+      setConfirmActionType(null)
+      setActionReasonInput('')
+    }
+  }
+
+  // Execute Batch Action for ALL selected items
+  const handleExecuteBatchAllAction = async (action: 'approve' | 'revert' | 'reject', reason?: string) => {
+    const itemsToProcess = selectedItems.length > 0 ? selectedItems : allUnifiedItems
+    if (itemsToProcess.length === 0) return
+
+    if (action === 'approve' && !signatureDataUrl) {
+      setIsMissingSignatureDialogOpen(true)
+      return
+    }
+
+    setIsBatchActionRunning(true)
+
+    let successCount = 0
+    let failCount = 0
+
+    try {
+      const dailyItems = itemsToProcess.filter(it => it.category === 'DAILY_ACTIVITY' && it.rawDaily)
+      const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
+      const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
+      const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
+      const generalItems = itemsToProcess.filter(it => it.category === 'GENERAL' && it.rawGeneralGroup)
+
+      // Daily Activity Batch
+      if (dailyItems.length > 0) {
+        const sessionIds = dailyItems.map(it => it.rawDaily!.sessionId)
+        const remarkText = reason || (action === 'approve' ? 'Approved' : action === 'revert' ? 'Reverted' : 'Rejected')
+        let res: { success: boolean; error?: string } = { success: false }
+        if (action === 'approve') {
+          res = await batchApproveDailyActivitySessionsAction(sessionIds, remarkText)
+        } else if (action === 'revert') {
+          res = await batchRevertDailyActivitySessionsAction(sessionIds, remarkText)
+        } else if (action === 'reject') {
+          res = await batchRejectDailyActivitySessionsAction(sessionIds, remarkText)
+        }
+        if (res.success) successCount += dailyItems.length
+        else {
+          failCount += dailyItems.length
+          toast.error(res.error || 'Gagal memproses batch Daily Activity')
+        }
+      }
+
+      // Overtime Batch
+      if (overtimeItems.length > 0) {
+        const splIds = overtimeItems.map(it => it.rawOvertime!.splId)
+        const remarkText = reason || (action === 'approve' ? 'Approved' : action === 'revert' ? 'Reverted' : 'Rejected')
+        let res: { success: boolean; error?: string } = { success: false }
+        if (action === 'approve') {
+          res = await batchApproveOvertimeRequestsAction(splIds, remarkText)
+        } else if (action === 'revert') {
+          res = await batchRevertOvertimeRequestsAction(splIds, remarkText)
+        } else if (action === 'reject') {
+          res = await batchRejectOvertimeRequestsAction(splIds, remarkText)
+        }
+        if (res.success) successCount += overtimeItems.length
+        else {
+          failCount += overtimeItems.length
+          toast.error(res.error || 'Gagal memproses batch Overtime SPL')
+        }
+      }
+
+      // PTW Batch
+      if (ptwItems.length > 0) {
+        const ptwIds = ptwItems.map(it => it.rawPtw!.ptwId)
+        const remarkText = reason || (action === 'approve' ? 'Approved' : action === 'revert' ? 'Reverted' : 'Rejected')
+        let res: { success: boolean; error?: string } = { success: false }
+        if (action === 'approve') {
+          res = await batchApprovePtwPermitsAction(ptwIds, remarkText)
+        } else if (action === 'revert') {
+          res = await batchRevertPtwPermitsAction(ptwIds, remarkText)
+        } else if (action === 'reject') {
+          res = await batchRejectPtwPermitsAction(ptwIds, remarkText)
+        }
+        if (res.success) successCount += ptwItems.length
+        else {
+          failCount += ptwItems.length
+          toast.error(res.error || 'Gagal memproses batch PTW')
+        }
+      }
+
+      // SOP WIN Items
+      for (const item of sopWinItems) {
+        const req = item.rawSopWinRequest!
+        const res = await reviewSopWinDocumentRequestAction({
+          requestId: req.requestId,
+          approvalToken: req.approvalToken,
+          action: action === 'approve' ? 'approve' : action === 'revert' ? 'revert' : 'reject',
+          remarks: reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`,
+          expiryDays: req.expiryDays || 3,
+          signatureDataUrl: signatureDataUrl || undefined,
+        })
+        if (res.success) successCount++
+        else failCount++
+      }
+
+      // General Items
+      for (const item of generalItems) {
+        const grp = item.rawGeneralGroup!
+        const formData = new FormData()
+        formData.append('groupId', grp.id)
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
+        formData.append('notes', reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`)
+        await approveApprovalGroupAction(formData)
+        successCount++
+      }
+
+      if (successCount > 0) {
+        toast.success(`Berhasil memproses ${successCount} pengajuan (${action.toUpperCase()} ALL).`)
+        setIsBatchReviewOpen(false)
+        setSelectedIds(new Set())
+        router.refresh()
+      }
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.message || 'Terjadi kesalahan saat memproses aksi massal.')
+    } finally {
+      setIsBatchActionRunning(false)
+      setConfirmBatchActionType(null)
+      setActionReasonInput('')
+    }
+  }
+
+  // Direct action triggers (validating Catatan Approval field without popup modal)
+  const executeDirectSingleAction = (action: 'approve' | 'revert' | 'reject') => {
+    if (!currentBatchDoc) return
+    const currentRemark = (approvalRemarks[currentBatchDoc.id] || '').trim()
+
+    if ((action === 'revert' || action === 'reject') && !currentRemark) {
+      setRemarkFieldError(true)
+      toast.warning(
+        action === 'revert'
+          ? 'Mohon cantumkan rincian revisi pada Catatan Approval terlebih dahulu.'
+          : 'Mohon cantumkan alasan penolakan pada Catatan Approval terlebih dahulu.'
+      )
+      return
+    }
+
+    setRemarkFieldError(false)
+    handleExecuteApprovalAction(action, currentRemark)
+  }
+
+  const executeDirectBatchAllAction = (action: 'approve' | 'revert' | 'reject') => {
+    const currentRemark = currentBatchDoc ? (approvalRemarks[currentBatchDoc.id] || '').trim() : ''
+
+    if ((action === 'revert' || action === 'reject') && !currentRemark) {
+      setRemarkFieldError(true)
+      toast.warning(
+        action === 'revert'
+          ? 'Mohon cantumkan rincian revisi pada Catatan Approval terlebih dahulu.'
+          : 'Mohon cantumkan alasan penolakan pada Catatan Approval terlebih dahulu.'
+      )
+      return
+    }
+
+    setRemarkFieldError(false)
+    handleExecuteBatchAllAction(action, currentRemark)
+  }
+
+  // Export Excel
+  const handleExportExcel = () => {
+    const itemsToExport = selectedItems.length > 0 ? selectedItems : allUnifiedItems
+    if (itemsToExport.length === 0) {
+      toast.warning('Tidak ada data untuk diekspor.')
+      return
+    }
+
+    const rows = itemsToExport.map((it, idx) => ({
+      No: idx + 1,
+      Kategori: it.categoryLabel,
+      'No. Dokumen': it.documentNumber,
+      Judul: it.title,
+      'Pemohon / Karyawan': it.employeeName,
+      'Departemen / Section': [it.department, it.section].filter(Boolean).join(' / ') || '-',
+      'Site / Lokasi': it.siteName || it.location || '-',
+      'Tahap Approval': it.stepLabel,
+      'Approver Tertuju': it.approverName || '-',
+      'Status SLA': it.dueState,
+      'Batas Waktu (Due)': formatDate(it.dueAt),
+      'Tanggal Pengajuan': formatDate(it.submittedAt),
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Inbox Approval')
+    XLSX.writeFile(wb, `Inbox_Approval_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    toast.success(`${itemsToExport.length} data approval berhasil diekspor ke Excel.`)
+  }
+
+  // Download PDF Single / Current
+  const handleDownloadCurrentPdf = async (item: typeof currentBatchDoc) => {
+    if (!item) return
+    setIsDownloadingPdf(true)
+    try {
+      const el = document.querySelector('#unified-batch-preview-sheet') as HTMLElement
+      if (!el) {
+        toast.error('Elemen preview dokumen tidak ditemukan.')
+        return
+      }
+      await downloadElementAsPdf(el, `${item.category}_${item.documentNumber || item.id}.pdf`)
+      toast.success(`PDF ${item.documentNumber} berhasil diunduh.`)
+    } catch (e) {
+      console.error(e)
+      toast.error('Gagal mengunduh PDF.')
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
+  // ZIP All Selected
+  const handleDownloadZip = async () => {
+    const itemsToZip = selectedItems.length > 0 ? selectedItems : allUnifiedItems
+    if (itemsToZip.length === 0) {
+      toast.warning('Pilih minimal 1 dokumen untuk diunduh ZIP.')
+      return
+    }
+
+    toast.loading('Menyiapkan file arsip ZIP...', { id: 'zip-progress' })
+    try {
+      const summaryCsv = itemsToZip.map((it, idx) => `"${idx + 1}","${it.categoryLabel}","${it.documentNumber}","${it.title}","${it.employeeName}","${it.siteName || it.location || '-'}","${it.stepLabel}","${it.dueState}"`).join('\n')
+      const files = [
+        {
+          name: 'ringkasan_inbox_approval.csv',
+          blob: new Blob([`No,Kategori,No Dokumen,Judul,Pemohon,Lokasi,Step,Status\n${summaryCsv}`], { type: 'text/csv' }),
+        },
+      ]
+      await downloadFilesAsZip(files, `Arsip_Inbox_Approval_${new Date().toISOString().slice(0, 10)}.zip`)
+      toast.success('File ZIP berhasil dibuat dan diunduh.', { id: 'zip-progress' })
+    } catch (e) {
+      console.error(e)
+      toast.error('Gagal membuat file ZIP.', { id: 'zip-progress' })
+    }
+  }
+
+  if (allUnifiedItems.length === 0) {
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
@@ -94,13 +891,10 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
     )
   }
 
-  const sites = Array.from(new Set(groups.map((group) => group.siteName))).sort()
-  const priorities = Array.from(
-    new Set(groups.flatMap((group) => group.items.map((item) => item.priority)))
-  ).sort()
+  const sites = Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
 
   return (
-    <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+    <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)] relative">
       <CardContent className="pt-6">
         <MinimalTableShell
           title="Tugas yang harus saya approve"
@@ -112,7 +906,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
           filters={
             <ApprovalFilterBar
               sites={sites}
-              priorities={priorities}
+              priorities={['normal', 'urgent']}
               statusOptions={['on_track', 'due_soon', 'overdue']}
             />
           }
@@ -125,83 +919,217 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
             />
           }
         >
+          {/* ── TOP INLINE MULTI-SELECT ACTION BAR (BELOW ROWS CONTROLS) ── */}
+          {selectedIds.size > 0 && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl bg-[#EEF2FF] border border-indigo-100/90 shadow-2xs transition-all animate-in fade-in slide-in-from-top-2 duration-200 select-none">
+              <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs sm:text-sm tracking-tight">
+                <Check className="size-4 text-[#4F46E5] stroke-[3] shrink-0" />
+                <span>
+                  {selectedIds.size} dari {allUnifiedItems.length} aktivitas terpilih
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleOpenBatchReview}
+                  className="bg-[#4F46E5] hover:bg-[#4338CA] text-white font-extrabold text-xs h-9 px-4 rounded-xl shadow-2xs gap-1.5"
+                >
+                  REVIEW
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDownloadZip}
+                  className="bg-white border-slate-200/90 text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-3.5 rounded-xl shadow-2xs gap-1.5"
+                >
+                  <FileText className="size-3.5 text-rose-500" />
+                  UNDUH
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExportExcel}
+                  className="bg-white border-slate-200/90 text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-3.5 rounded-xl shadow-2xs gap-1.5"
+                >
+                  <FileSpreadsheet className="size-3.5 text-emerald-600" />
+                  EXCEL
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100/50 font-extrabold text-xs h-9 px-2.5 rounded-xl uppercase tracking-wider"
+                >
+                  BATAL
+                </Button>
+              </div>
+            </div>
+          )}
+
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Requester</TableHead>
-                <TableHead>Site</TableHead>
-                <TableHead>Pengajuan</TableHead>
-                <TableHead>Step</TableHead>
-                <TableHead>SLA</TableHead>
-                <TableHead>Aksi</TableHead>
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleToggleSelectAll}
+                    className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    title="Pilih Semua"
+                  />
+                </TableHead>
+                <TableHead>Tipe & Requester</TableHead>
+                <TableHead>Site / Lokasi</TableHead>
+                <TableHead>Pengajuan / Dokumen</TableHead>
+                <TableHead>Step Approval</TableHead>
+                <TableHead>SLA / Due Date</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groups.flatMap((group) =>
-                group.items.map((item) => (
+              {allUnifiedItems.map((item) => {
+                const isSelected = selectedIds.has(item.id)
+                return (
                   <TableRow
-                    key={item.approvalId}
-                    data-date-value={item.submittedAt.toISOString()}
-                    data-filter-site={group.siteName}
-                    data-filter-priority={item.priority}
+                    key={item.id}
+                    data-date-value={item.submittedAt ? new Date(item.submittedAt).toISOString() : new Date().toISOString()}
+                    data-filter-site={item.siteName || item.location || ''}
+                    data-filter-priority="normal"
                     data-filter-status={item.dueState}
+                    className={cn(
+                      'transition-colors',
+                      isSelected ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : 'hover:bg-slate-50/70'
+                    )}
                   >
+                    <TableCell className="align-middle">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelect(item.id)}
+                        className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="text-foreground font-semibold">{group.requesterName}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {group.requesterJobTitle || '-'} • {group.workDateLabel}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          {group.activityCount} item dalam grup ini
-                        </p>
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase border',
+                            item.category === 'DAILY_ACTIVITY' && 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                            item.category === 'OVERTIME' && 'bg-amber-50 text-amber-700 border-amber-200',
+                            item.category === 'PTW' && 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            item.category === 'CONTRACT_REVIEW' && 'bg-blue-50 text-blue-700 border-blue-200',
+                            item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
+                          )}
+                        >
+                          {item.categoryLabel}
+                        </span>
+                        <p className="text-foreground font-semibold">{item.employeeName}</p>
+                        <p className="text-muted-foreground text-xs font-mono">{item.documentNumber}</p>
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="text-foreground text-sm">{group.siteName}</p>
-                        <p className="text-muted-foreground text-xs">
-                          Overtime {group.totalOvertimeLabel}
-                        </p>
+                        <p className="text-foreground text-sm">{item.siteName || item.location || '—'}</p>
+                        {item.shiftCode && <p className="text-muted-foreground text-xs">Shift {item.shiftCode}</p>}
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <p className="text-foreground font-medium">{item.title}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {item.activityType} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''} • {item.timeRange}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <AdminStatusBadge value={item.priority} />
-                        </div>
+                        <p className="text-muted-foreground text-xs">{item.department ? `Dept: ${item.department}` : 'Pengajuan operasional'}</p>
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="text-foreground text-sm font-medium">
-                          {item.currentStepLabel}
-                        </p>
-                        <p className="text-muted-foreground text-xs">
-                          Submit {item.submittedAt.toLocaleString('id-ID')}
-                        </p>
+                        <p className="text-foreground text-sm font-semibold text-indigo-700">{item.stepLabel}</p>
+                        {item.approverRole && <p className="text-muted-foreground text-xs capitalize">{item.approverRole.replace(/_/g, ' ')}</p>}
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <AdminStatusBadge value={item.dueState} />
-                        <p className="text-muted-foreground text-xs">
-                          Due {item.dueAt.toLocaleString('id-ID')}
-                        </p>
+                        <p className="text-muted-foreground text-xs">Due {formatDate(item.dueAt)}</p>
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="align-top text-right">
                       {item.activityType === 'Request APD' ? (
                         <ApdApprovalDialog item={item} group={group} />
+                      ) : item.category === 'GENERAL' && item.rawGeneralGroup ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedIds(new Set([item.id]))
+                              setBatchReviewIndex(0)
+                              setIsBatchReviewOpen(true)
+                            }}
+                            className="h-8 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border-indigo-200"
+                          >
+                            Buka TTD ↗
+                          </Button>
+                          {item.rawGeneralGroup.items.map((item) => (
+                            <AdminDetailDrawer
+                              key={item.approvalId}
+                              title={`Review ${item.title}`}
+                              description={`${item.title} • ${item.currentStepLabel}`}
+                              width="wide"
+                              trigger={
+                                <Button type="button" variant="ghost" size="dense" className="hidden">
+                                  Detail
+                                </Button>
+                              }
+                            >
+                              <div className="space-y-4">
+                                <ApprovalRequestDetails item={item} />
+                                <form action={reviewApprovalAction} className="space-y-3">
+                                  <input type="hidden" name="approvalId" value={item.approvalId} />
+                                  <Textarea
+                                    required
+                                    minLength={3}
+                                    name="notes"
+                                    placeholder="Catatan approval..."
+                                    className="min-h-[80px]"
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      type="submit"
+                                      name="decision"
+                                      value="approved"
+                                      formNoValidate
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                                    >
+                                      Approve
+                                    </Button>
+                                  </div>
+                                </form>
+                              </div>
+                            </AdminDetailDrawer>
+                          ))}
+                        </div>
+                      ) : item.isReverted ? (
+                        <Button
+                          size="sm"
+                          asChild
+                          className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+                        >
+                          <a href={item.url || '#'}>
+                            {item.actionLabel || 'Revisi Dokumen'} ↗
+                          </a>
+                        </Button>
                       ) : (
                         <Dialog>
                           <DialogTrigger asChild>
-                            <Button type="button" variant="outline" size="dense">
-                              Review
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border-indigo-200"
+                            >
+                              {item.actionLabel || 'Buka TTD ↗'}
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden rounded-xl border border-outline-ghost bg-background">
@@ -215,7 +1143,6 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                             </DialogHeader>
                             
                             <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden bg-background">
-                              {/* GRID KIRI (col-span-7): Preview Form & Audit Trail */}
                               <div className="md:col-span-7 flex flex-col h-full border-r border-outline-ghost overflow-y-auto p-6 space-y-6">
                                 <div className="space-y-4">
                                   <h3 className="text-sm font-bold text-foreground">Dokumen Pengajuan</h3>
@@ -242,9 +1169,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                                 </div>
                               </div>
 
-                              {/* GRID KANAN (col-span-5): Comments & Approval Action */}
                               <div className="md:col-span-5 flex flex-col h-full overflow-hidden">
-                                {/* Top: Comment Thread */}
                                 <div className="flex-1 overflow-y-auto p-6 border-b border-outline-ghost space-y-4">
                                   <h3 className="text-sm font-bold text-foreground">Diskusi & Catatan</h3>
                                   <div className="space-y-3">
@@ -267,7 +1192,6 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                                   </div>
                                 </div>
 
-                                {/* Bottom: Action Box */}
                                 <div className="p-6 bg-surface-container-lowest space-y-4">
                                   <form action={reviewApprovalAction} className="space-y-4">
                                     <input type="hidden" name="approvalId" value={item.approvalId} />
@@ -311,38 +1235,1639 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                                       </Button>
                                     </div>
                                   </form>
-                                  {group.items.length > 1 ? (
-                                    <form
-                                      action={approveApprovalGroupAction}
-                                      className="border-outline-ghost/70 mt-3 border-t pt-3"
-                                    >
-                                      {group.items.map((approvalItem) => (
-                                        <input
-                                          key={approvalItem.approvalId}
-                                          type="hidden"
-                                          name="approvalIds"
-                                          value={approvalItem.approvalId}
-                                        />
-                                      ))}
-                                      <Button type="submit" variant="outline" size="dense" className="w-full text-xs">
-                                        Setujui semua milik {group.requesterName}
-                                      </Button>
-                                    </form>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>
                           </DialogContent>
                         </Dialog>
-
                       )}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                )
+              })}
             </TableBody>
           </Table>
         </MinimalTableShell>
+
+        {/* ── BATCH MULTI-DOCUMENT PREVIEW & APPROVAL MODAL ── */}
+        <Dialog
+          open={isBatchReviewOpen && Boolean(currentBatchDoc)}
+          onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}
+        >
+          {(() => {
+            const isLandscapeDoc = currentBatchDoc?.category === 'PTW'
+            return (
+              <DialogContent
+                showCloseButton={false}
+                className={cn(
+                  "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
+                  isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl"
+                )}
+              >
+                {/* Top Viewer Toolbar */}
+                <div className="bg-white px-6 py-3.5 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="size-9 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0">
+                      <FileText className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-slate-900 truncate">
+                        Review & Approval Dokumen • <span className="text-[#003461]">{currentBatchDoc?.documentNumber}</span>
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {currentBatchDoc?.employeeName} • {formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)} • Shift {currentBatchDoc?.shiftCode || 'ALL'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Stepper */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2.5 py-1 border border-slate-200 shadow-xs">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={batchReviewIndex === 0 || isBatchActionRunning}
+                        onClick={() => setBatchReviewIndex((prev) => Math.max(0, prev - 1))}
+                        className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
+                      >
+                        ‹
+                      </Button>
+                      <span className="text-xs font-mono font-semibold text-slate-700 px-1">
+                        Dokumen {batchReviewIndex + 1} dari {selectedItems.length}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={batchReviewIndex >= selectedItems.length - 1 || isBatchActionRunning}
+                        onClick={() => setBatchReviewIndex((prev) => Math.min(selectedItems.length - 1, prev + 1))}
+                        className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
+                      >
+                        ›
+                      </Button>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9 text-xs rounded-xl font-medium gap-1.5 border-slate-200 bg-[#e2e8f0] text-slate-800 hover:bg-slate-300 shadow-xs"
+                      disabled={isDownloadingPdf}
+                      onClick={() => currentBatchDoc && handleDownloadCurrentPdf(currentBatchDoc)}
+                    >
+                      <Download className="size-3.5" /> UNDUH PDF
+                    </Button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsBatchReviewOpen(false)}
+                      className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Body: Split 2 Columns */}
+                <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100">
+                  {/* Left Column: Live Letterhead PDF Preview */}
+                  <div className="flex-1 overflow-y-auto overflow-x-auto p-4 sm:p-6 flex justify-center items-start bg-slate-200/60 border-r border-slate-200/80">
+                    {currentBatchDoc && (
+                      <div
+                        id="unified-batch-preview-sheet"
+                        className={cn(
+                          "relative mx-auto shrink-0 overflow-hidden bg-white shadow-md border border-slate-200/90 rounded-sm transition-all",
+                          isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                        )}
+                        style={{
+                          backgroundImage: isLandscapeDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                          backgroundSize: '100% 100%',
+                        }}
+                      >
+                        <div
+                          className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
+                          style={{
+                            color: 'black',
+                            paddingTop: isLandscapeDoc ? '10mm' : '36mm',
+                            paddingBottom: isLandscapeDoc ? '10mm' : '30mm',
+                            paddingLeft: isLandscapeDoc ? '12mm' : '20mm',
+                            paddingRight: isLandscapeDoc ? '12mm' : '20mm',
+                            minHeight: isLandscapeDoc ? '210mm' : '297mm',
+                          }}
+                        >
+                      {/* Document Type Specific Content */}
+                      {currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily && (
+                        <div>
+                          <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+                          <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                            <tbody>
+                              <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Details</td></tr>
+                              <tr>
+                                <td className="w-1/2">Tanggal Kerja: <strong>{formatDate(currentBatchDoc.workDate)}</strong></td>
+                                <td className="w-1/2">Shift: <strong>{currentBatchDoc.shiftCode || 'ALL'}</strong></td>
+                              </tr>
+                              <tr>
+                                <td>Kode Sesi: <strong>{currentBatchDoc.documentNumber}</strong></td>
+                                <td>Status: <span className={cn("capitalize font-bold", currentBatchDoc.isReverted ? "text-amber-700 font-extrabold" : "text-black")}>{currentBatchDoc.isReverted ? 'Reverted' : 'Submitted'}</span></td>
+                              </tr>
+                              <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Employee Profile</td></tr>
+                              <tr>
+                                <td>Nama: <strong>{currentBatchDoc.employeeName}</strong></td>
+                                <td>SN: <strong>{(currentBatchDoc.rawDaily as any).employeeSn || '-'}</strong></td>
+                              </tr>
+                              <tr>
+                                <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</strong></td>
+                                <td>Dept / Section: <strong>{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || '—'}</strong></td>
+                              </tr>
+                              <tr>
+                                <td>Site: <strong>{currentBatchDoc.siteName || '—'}</strong></td>
+                                <td>Customer: <strong>{(currentBatchDoc.rawDaily as any).customerName || 'Default Customer'}</strong></td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          {/* A. Daily Activity Items */}
+                          {(() => {
+                            const items = (currentBatchDoc.rawDaily as any).items || []
+                            const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points || 0), 0)
+                            return (
+                              <>
+                                <div className="font-bold mb-1 text-[8.5pt]">
+                                  A. Daily Activity Items (Total: {items.length} item, {totalPoints} poin)
+                                </div>
+                                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                                  <thead>
+                                    <tr className="bg-white font-bold text-center">
+                                      <th className="w-[6%]">#</th>
+                                      <th className="text-left w-[40%]">Aktivitas</th>
+                                      <th className="w-[14%]">Unit</th>
+                                      <th className="w-[12%]">Durasi</th>
+                                      <th className="w-[10%]">Poin</th>
+                                      <th className="text-left w-[18%]">Remark</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.length > 0 ? (
+                                      items.map((it: any, idx: number) => (
+                                        <tr key={it.id || idx}>
+                                          <td className="text-center">{idx + 1}</td>
+                                          <td>{it.label}</td>
+                                          <td className="text-center">{it.unitNumber || '-'}</td>
+                                          <td className="text-center">{it.duration || '-'}</td>
+                                          <td className="text-center font-bold">{it.points || 0}</td>
+                                          <td className="text-left text-[7.5pt]">{it.remark || '-'}</td>
+                                        </tr>
+                                      ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada item aktivitas.</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </>
+                            )
+                          })()}
+
+                          {/* B. Approval Steps */}
+                          <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                            <thead>
+                              <tr className="bg-white font-bold text-center">
+                                <th style={{ width: '6%' }}>#</th>
+                                <th className="text-left" style={{ width: '22%' }}>Tahap</th>
+                                <th className="text-left" style={{ width: '24%' }}>Approver</th>
+                                <th style={{ width: '14%' }}>Status</th>
+                                <th style={{ width: '18%' }}>Waktu</th>
+                                <th className="text-left" style={{ width: '16%' }}>Catatan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {((currentBatchDoc.rawDaily as any).approvals || []).map((step: any) => {
+                                const isPending = step.status === 'pending'
+                                const isReverted = step.status === 'reverted'
+                                const isApproved = step.status === 'approved'
+                                const liveRemark = isPending && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
+                                return (
+                                  <tr key={step.stepOrder} className={isReverted ? "bg-amber-50/70" : undefined}>
+                                    <td className="text-center">{step.stepOrder}</td>
+                                    <td className="text-left font-medium">{step.stepLabel}</td>
+                                    <td className="text-left font-medium">{step.approverName || '-'}</td>
+                                    <td className={cn(
+                                      "text-center capitalize font-bold",
+                                      isApproved ? "text-emerald-700" :
+                                      isReverted ? "text-amber-700" :
+                                      step.status === 'rejected' ? "text-rose-700" :
+                                      "text-slate-700"
+                                    )}>
+                                      {isReverted ? 'Reverted' : step.status}
+                                    </td>
+                                    <td className="text-center text-[7pt]">{isApproved ? formatTimestamp(step.signedAt) : '—'}</td>
+                                    <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight">{liveRemark}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+
+                          {/* Signatories (3 Roles: Employee, Leader/PJO, Section Head) */}
+                          {(() => {
+                            const approvals = (currentBatchDoc.rawDaily as any).approvals || []
+                            const step1 = approvals.find((s: any) => s.stepOrder === 1)
+                            const step2 = approvals.find((s: any) => s.stepOrder === 2)
+                            const step3 = approvals.find((s: any) => s.stepOrder === 3)
+                            const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
+                            const isApproved2 = step2?.status === 'approved'
+                            const isApproved3 = step3?.status === 'approved'
+                            const currentSig = isSigned1 ? step1?.signatureDataUrl : null
+                            const sig2 = isApproved2 ? step2?.signatureDataUrl : null
+                            const sig3 = isApproved3 ? step3?.signatureDataUrl : null
+
+                            return (
+                              <>
+                                <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
+                                <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                                  {/* Karyawan */}
+                                  <div>
+                                    <div className="text-[7pt] text-slate-500 mb-1">Employee Signature</div>
+                                    <div className="h-14 flex items-end">
+                                      {currentSig ? (
+                                        <img src={currentSig} alt="TTD" className="h-10 object-contain" />
+                                      ) : isSigned1 ? (
+                                        <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{currentBatchDoc.employeeName}</span>
+                                      ) : step1?.status === 'reverted' ? (
+                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
+                                      ) : (
+                                        <span className="text-slate-400 italic text-[7.5pt]"></span>
+                                      )}
+                                    </div>
+                                    <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                                      {currentBatchDoc.employeeName}
+                                    </div>
+                                    <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                    {isSigned1 && step1?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1.signedAt)}</div>
+                                    )}
+                                  </div>
+
+                                  {/* Leader / PJO */}
+                                  <div>
+                                    <div className="text-[7pt] text-slate-500 mb-1">Leader / PJO Signature</div>
+                                    <div className="h-14 flex items-end">
+                                      {sig2 ? (
+                                        <img src={sig2} alt="TTD" className="h-10 object-contain" />
+                                      ) : isApproved2 ? (
+                                        <div className="flex flex-col items-center justify-center text-center">
+                                          <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2?.signedAt)})</span>
+                                        </div>
+                                      ) : step2?.status === 'reverted' ? (
+                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                                      ) : (
+                                        <span className="text-slate-400 italic text-[7.5pt]"></span>
+                                      )}
+                                    </div>
+                                    <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                                      {step2?.approverName || currentBatchDoc.employeeName}
+                                    </div>
+                                    <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
+                                    {isApproved2 && step2?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step2.signedAt)}</div>
+                                    )}
+                                  </div>
+
+                                  {/* Section Head */}
+                                  <div>
+                                    <div className="text-[7pt] text-slate-500 mb-1">Section Head Signature</div>
+                                    <div className="h-14 flex items-end">
+                                      {sig3 ? (
+                                        <img src={sig3} alt="TTD" className="h-10 object-contain" />
+                                      ) : isApproved3 ? (
+                                        <div className="flex flex-col items-center justify-center text-center">
+                                          <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
+                                        </div>
+                                      ) : step3?.status === 'reverted' ? (
+                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                                      ) : (
+                                        <span className="text-slate-400 italic text-[7.5pt]"></span>
+                                      )}
+                                    </div>
+                                    <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                                      {step3?.approverName || currentBatchDoc.employeeName}
+                                    </div>
+                                    <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
+                                    {isApproved3 && step3?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step3.signedAt)}</div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                              </>
+                            )
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Overtime SPL */}
+                      {currentBatchDoc.category === 'OVERTIME' && currentBatchDoc.rawOvertime && (
+                        <div>
+                          <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
+                          <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8.5pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={4} className="font-bold bg-slate-50">Details & Request Profile</td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/4 font-bold bg-slate-50">SPL Number</td>
+                                <td className="w-1/4 font-mono font-semibold">{currentBatchDoc.documentNumber}</td>
+                                <td className="w-1/4 font-bold bg-slate-50">Work Date</td>
+                                <td className="w-1/4 font-semibold">{formatDate(currentBatchDoc.workDate)}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50">Title / Keperluan</td>
+                                <td colSpan={3} className="font-semibold">{currentBatchDoc.rawOvertime.title || '—'}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50">Requester Name</td>
+                                <td>{currentBatchDoc.employeeName}</td>
+                                <td className="font-bold bg-slate-50">Department</td>
+                                <td>{currentBatchDoc.department || 'Central Services'}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50">Planned Schedule</td>
+                                <td colSpan={3}>
+                                  {currentBatchDoc.rawOvertime.plannedStartAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedStartAt) : '-'} s.d. {currentBatchDoc.rawOvertime.plannedEndAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedEndAt) : '-'}
+                                </td>
+                              </tr>
+                              {Boolean((currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes) && (
+                                <tr>
+                                  <td className="font-bold bg-slate-50">Request Notes</td>
+                                  <td colSpan={3}>{(currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+
+                          {/* Section 2: Workers */}
+                          {(() => {
+                            const participants = (currentBatchDoc.rawOvertime as any).participants || []
+                            return (
+                              <>
+                                <div className="font-bold mb-1">A. Workers ({participants.length} Orang)</div>
+                                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-center text-[8pt]">
+                                  <thead>
+                                    <tr className="bg-slate-50 font-bold">
+                                      <th className="w-[8%]">#</th>
+                                      <th className="text-left w-[42%]">Name</th>
+                                      <th className="w-[15%]">Shift</th>
+                                      <th className="w-[15%]">Roster</th>
+                                      <th className="w-[20%]">Category</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {participants.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={5} className="py-2 text-slate-400 italic">Belum ada peserta lembur.</td>
+                                      </tr>
+                                    ) : (
+                                      participants.map((p: any, idx: number) => (
+                                        <tr key={idx}>
+                                          <td className="text-center">{idx + 1}</td>
+                                          <td className="text-left font-semibold">{p.employeeName}</td>
+                                          <td>{p.shiftCode || '-'}</td>
+                                          <td>{p.rosterType || p.roster || '-'}</td>
+                                          <td className="capitalize text-[7.5pt]">{(p.category || '-').replace(/_/g, ' ')}</td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
+                              </>
+                            )
+                          })()}
+
+                          {/* Section 3: Line Items */}
+                          {(() => {
+                            const lineItems = (currentBatchDoc.rawOvertime as any).lineItems || []
+                            if (lineItems.length === 0) return null
+                            return (
+                              <>
+                                <div className="font-bold mb-1">B. Line Items (Aktivitas Pekerjaan)</div>
+                                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
+                                  <thead>
+                                    <tr className="bg-slate-50 text-center font-bold">
+                                      <th className="w-[8%]">#</th>
+                                      <th className="text-left w-[40%]">Activity</th>
+                                      <th className="w-[18%]">Target</th>
+                                      <th className="w-[14%]">Minutes</th>
+                                      <th className="w-[20%]">Points</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {lineItems.map((item: any, idx: number) => (
+                                      <tr key={idx}>
+                                        <td className="text-center">{idx + 1}</td>
+                                        <td className="font-medium">{item.lineLabel}</td>
+                                        <td className="text-center">{item.targetUnit || '—'}</td>
+                                        <td className="text-center">{item.estimatedMinutes} m</td>
+                                        <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </>
+                            )
+                          })()}
+
+                          {/* Section 4: Approval Steps */}
+                          <div className="font-bold mb-1">C. Approval Steps</div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-center text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold">
+                                <th className="w-[6%]">#</th>
+                                <th className="text-left w-[22%]">Tahap</th>
+                                <th className="text-left w-[22%]">Approver</th>
+                                <th className="w-[14%]">Status</th>
+                                <th className="w-[18%]">Waktu</th>
+                                <th className="text-left w-[18%]">Catatan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
+                                const activeReviewStep = approvals.find((a: any) => (a.status === 'pending' || a.status === 'waiting' || a.status === 'reverted') && a.stepOrder > 1) || approvals.find((a: any) => a.status === 'pending' || a.status === 'reverted') || approvals[0]
+
+                                return approvals.map((step: any) => {
+                                  const isThisActiveStep = activeReviewStep && (step.id === activeReviewStep.id || step.stepOrder === activeReviewStep.stepOrder)
+                                  const liveRemark = isThisActiveStep && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
+                                  const isRevertedStep = step.status === 'reverted'
+                                  const isApprovedStep = step.status === 'approved'
+
+                                  return (
+                                    <tr key={step.stepOrder} className={isRevertedStep ? "bg-amber-50/70" : undefined}>
+                                      <td>{step.stepOrder}</td>
+                                      <td className="text-left">{step.stepLabel}</td>
+                                      <td className="text-left">{step.approverName || '-'}</td>
+                                      <td className={cn(
+                                        "capitalize font-bold",
+                                        isApprovedStep ? "text-emerald-700" :
+                                        isRevertedStep ? "text-amber-700" :
+                                        step.status === 'rejected' ? "text-rose-700" :
+                                        "text-slate-700"
+                                      )}>
+                                        {isRevertedStep ? 'Reverted' : step.status}
+                                      </td>
+                                      <td className="text-[7pt]">{isApprovedStep ? formatTimestamp(step.signedAt) : '—'}</td>
+                                      <td className="text-left text-[7pt] text-slate-700 italic font-medium">{liveRemark}</td>
+                                    </tr>
+                                  )
+                                })
+                              })()}
+                            </tbody>
+                          </table>
+
+                          {/* Section 5: Signatories */}
+                          <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+                          <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
+                            {/* 1. Serviceman / Karyawan */}
+                            {(() => {
+                              const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
+                              const step1 = approvals.find((s: any) => s.stepOrder === 1)
+                              const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
+                              const sigUrl1 = isSigned1 ? step1?.signatureDataUrl : null
+
+                              return (
+                                <div className="flex flex-col items-center text-center">
+                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
+                                  <div className="h-16 w-full flex items-center justify-center my-1">
+                                    {isSigned1 && sigUrl1 ? (
+                                      <img src={sigUrl1} alt="TTD" className="max-h-14 max-w-full object-contain" />
+                                    ) : isSigned1 && step1?.signedAt ? (
+                                      <div className="flex flex-col items-center justify-center text-center">
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed ({formatTimestamp(step1.signedAt)})</span>
+                                      </div>
+                                    ) : step1?.status === 'reverted' ? (
+                                      <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                    {step1?.approverName || currentBatchDoc.employeeName}
+                                  </div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawOvertime as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                                    {isSigned1 && step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+
+                            {/* 2. Leader / Pengawas */}
+                            {(() => {
+                              const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
+                              const step2 = approvals.find((s: any) => s.stepOrder === 2)
+                              const isApproved2 = step2?.status === 'approved'
+                              const sigUrl2 = isApproved2 ? step2?.signatureDataUrl : null
+
+                              return (
+                                <div className="flex flex-col items-center text-center">
+                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                                  <div className="h-16 w-full flex items-center justify-center my-1">
+                                    {isApproved2 && sigUrl2 ? (
+                                      <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
+                                    ) : isApproved2 && step2?.signedAt ? (
+                                      <div className="flex flex-col items-center justify-center text-center">
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2.signedAt)})</span>
+                                      </div>
+                                    ) : step2?.status === 'reverted' ? (
+                                      <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                    {step2?.approverName || 'Leader / Supervisor'}
+                                  </div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / Supervisor'}</div>
+                                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                                    {isApproved2 && step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+
+                            {/* 3. Section Head */}
+                            {(() => {
+                              const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
+                              const step3 = approvals.find((s: any) => s.stepOrder === 3)
+                              const isApproved3 = step3?.status === 'approved'
+                              const sigUrl3 = isApproved3 ? step3?.signatureDataUrl : null
+
+                              return (
+                                <div className="flex flex-col items-center text-center">
+                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
+                                  <div className="h-16 w-full flex items-center justify-center my-1">
+                                    {isApproved3 && sigUrl3 ? (
+                                      <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
+                                    ) : isApproved3 && step3?.signedAt ? (
+                                      <div className="flex flex-col items-center justify-center text-center">
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3.signedAt)})</span>
+                                      </div>
+                                    ) : step3?.status === 'reverted' ? (
+                                      <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                    {step3?.approverName || 'Section Head'}
+                                  </div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'Section Head'}</div>
+                                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                                    {isApproved3 && step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </div>
+
+                          <div className="w-full text-right text-[7pt] text-slate-400 mt-6 pt-2 border-t border-slate-100">PT Chitra Paratama • HERO Platform</div>
+                        </div>
+                      )}
+
+                      {/* PTW */}
+                      {currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw && (() => {
+                        const doc = currentBatchDoc.rawPtw
+                        const ptwApprovals = (doc as any).approvals || []
+                        const step1 = ptwApprovals.find((a: any) => a.stepOrder === 1 || a.approverRole === 'applicant')
+                        const step2 = ptwApprovals.find((a: any) => a.stepOrder === 2 || a.approverRole === 'safety_officer')
+                        const step3 = ptwApprovals.find((a: any) => a.stepOrder === 3 || a.approverRole === 'field_pic' || a.approverRole === 'authorized')
+
+                        const remark1 = (step1 && step1.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step1?.remarks
+                        const remark2 = (step2 && step2.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step2?.remarks
+                        const remark3 = (step3 && step3.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step3?.remarks
+
+                        const permitTypeNorm = (doc.permitType || '').toUpperCase()
+                        const activeTypes: string[] = []
+                        if (permitTypeNorm.includes('HOT')) activeTypes.push('HOT')
+                        if (permitTypeNorm.includes('CONFINED')) activeTypes.push('CONFINED')
+                        if (permitTypeNorm.includes('DIGGING')) activeTypes.push('DIGGING')
+                        if (permitTypeNorm.includes('COLD')) activeTypes.push('COLD')
+                        if (permitTypeNorm.includes('ELECTRICAL') || permitTypeNorm.includes('MECHANICAL')) activeTypes.push('ELECTRICAL')
+
+                        const columnsToShow = activeTypes.length > 0 ? activeTypes : ['HOT', 'CONFINED', 'DIGGING', 'COLD', 'ELECTRICAL']
+                        const gridColsClass =
+                          columnsToShow.length === 1
+                            ? 'grid-cols-1'
+                            : columnsToShow.length === 2
+                            ? 'grid-cols-2'
+                            : columnsToShow.length === 3
+                            ? 'grid-cols-3'
+                            : columnsToShow.length === 4
+                            ? 'grid-cols-4'
+                            : 'grid-cols-5'
+
+                        return (
+                          <div className="-mx-5 -my-9 text-slate-900 w-[866px] min-h-[612px] flex flex-col justify-between">
+                            {/* ── HEADER TABLE ── */}
+                            <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
+                              <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
+                                <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-12 object-contain" />
+                              </div>
+                              <div className="bg-[#bfe6ff] flex items-center justify-center font-bold text-base tracking-wider uppercase py-2.5 text-slate-900">
+                                IJIN KERJA BERBAHAYA ( Work Permit )
+                              </div>
+                            </div>
+
+                            {/* ── FORM META FIELDS ── */}
+                            <div className="grid grid-cols-12 border-b-2 border-slate-900 text-[8pt]">
+                              <div className="col-span-4 border-r border-slate-900 p-1.5 bg-slate-50">
+                                <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{doc?.permitNumber || currentBatchDoc?.documentNumber || '—'}</span>
+                              </div>
+                              <div className="col-span-8 p-1.5 bg-slate-50">
+                                <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{(doc?.permitNumber || currentBatchDoc?.documentNumber || '').replace('PTW', 'WO')}</span>
+                              </div>
+
+                              <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
+                                <span className="font-bold block text-[7.5pt] text-slate-500">Nama Pekerja :</span>
+                                <span className="font-semibold text-slate-900">{doc.applicantName || '—'}</span>
+                              </div>
+                              <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
+                                <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
+                                <span className="font-semibold text-slate-900">{doc.location} {doc.area ? `(${doc.area})` : ''}</span>
+                              </div>
+                              <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
+                                <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
+                                <span className="font-semibold text-slate-900">{doc.projectName || doc.description || '—'}</span>
+                              </div>
+
+                              <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                                <span className="font-bold text-slate-800">Referensi HIRADC :</span>{' '}
+                                <span className="font-semibold text-blue-900">
+                                  {doc.hiradcReference || (doc.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || 'JSA-HSE-PTW-2026-001'}
+                                </span>
+                              </div>
+                              <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                                <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{' '}
+                                <span className="font-semibold uppercase text-slate-900">{doc.permitType || 'Cold Permit'}</span>
+                              </div>
+                            </div>
+
+                            {/* ── TABLE TITLE: JENIS PEKERJAAN ── */}
+                            <div className="bg-[#e2e8f0] text-center font-bold uppercase text-[8.5pt] py-1 border-b-2 border-slate-900">
+                              JENIS PEKERJAAN
+                            </div>
+
+                            {/* ── DYNAMIC COLUMNS FOR PERMIT TYPES ── */}
+                            {(() => {
+                              const checkedEquipment: string[] = doc.controlSteps
+                                ? doc.controlSteps.split('\n').map((l: string) => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
+                                : (Array.isArray(doc.ppe) ? doc.ppe : [])
+
+                              return (
+                                <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
+                                  {columnsToShow.includes('HOT') && (
+                                    <div className="flex flex-col justify-between">
+                                      <div>
+                                        <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                                          Hot Work Permit
+                                        </div>
+                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subTypes?.map((st) => (
+                                            <div key={st}>- {st}</div>
+                                          ))}
+                                        </div>
+                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subHeader}
+                                        </div>
+                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                                          <thead>
+                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item, idx) => {
+                                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                                              return (
+                                                <tr key={item.id}>
+                                                  <td>{idx + 1}. {item.label}</td>
+                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
+                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {columnsToShow.includes('CONFINED') && (
+                                    <div className="flex flex-col justify-between">
+                                      <div>
+                                        <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
+                                          Confined Space Permit
+                                        </div>
+                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subTypes?.map((st) => (
+                                            <div key={st}>- {st}</div>
+                                          ))}
+                                        </div>
+                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subHeader}
+                                        </div>
+                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                                          <thead>
+                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item, idx) => {
+                                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                                              return (
+                                                <tr key={item.id}>
+                                                  <td>{idx + 1}. {item.label}</td>
+                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
+                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {columnsToShow.includes('DIGGING') && (
+                                    <div className="flex flex-col justify-between">
+                                      <div>
+                                        <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
+                                          Digging Permit
+                                        </div>
+                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subTypes?.map((st) => (
+                                            <div key={st}>- {st}</div>
+                                          ))}
+                                        </div>
+                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subHeader}
+                                        </div>
+                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                                          <thead>
+                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item, idx) => {
+                                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                                              return (
+                                                <tr key={item.id}>
+                                                  <td>{idx + 1}. {item.label}</td>
+                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
+                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {columnsToShow.includes('COLD') && (
+                                    <div className="flex flex-col justify-between">
+                                      <div>
+                                        <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                                          Cold Work Permit
+                                        </div>
+                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subTypes?.map((st) => (
+                                            <div key={st}>- {st}</div>
+                                          ))}
+                                        </div>
+                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subHeader}
+                                        </div>
+                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                                          <thead>
+                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item, idx) => {
+                                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                                              return (
+                                                <tr key={item.id}>
+                                                  <td>{idx + 1}. {item.label}</td>
+                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
+                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {columnsToShow.includes('ELECTRICAL') && (
+                                    <div className="flex flex-col justify-between">
+                                      <div>
+                                        <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                                          Electrical / Mechanical Permit
+                                        </div>
+                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subTypes?.map((st) => (
+                                            <div key={st}>- {st}</div>
+                                          ))}
+                                        </div>
+                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subHeader}
+                                        </div>
+                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                                          <thead>
+                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item, idx) => {
+                                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                                              return (
+                                                <tr key={item.id}>
+                                                  <td>{idx + 1}. {item.label}</td>
+                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
+                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
+
+                            {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
+                            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+                                <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                                  {(doc.ppe && doc.ppe.length > 0 ? doc.ppe : ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness']).map((apd: string) => (
+                                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                                      ☑ {apd}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4 font-bold text-[7.5pt] text-slate-800 shrink-0">
+                                <span>Gas Test: <strong className="text-emerald-700">{doc.gasTestRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+                                <span>LOTO / Isolasi: <strong className="text-emerald-700">{doc.isolationRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+                                <span>Risk Level: <strong className="text-rose-700 uppercase">{doc.riskLevel || 'MEDIUM'}</strong></span>
+                              </div>
+                            </div>
+
+                            {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
+                            <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
+                              {/* 1. Catatan Pelaksana Pekerjaan */}
+                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                                <div>
+                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                    CATATAN PELAKSANA PEKERJAAN
+                                  </span>
+                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 2. Catatan Pemberi Kerja */}
+                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                                <div>
+                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                    CATATAN PEMBERI KERJA
+                                  </span>
+                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                    {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 3. Catatan Safety Dept */}
+                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                                <div>
+                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                    CATATAN SAFETY DEPT
+                                  </span>
+                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                    {remark3 || <span className="text-slate-400 italic text-[6.5pt]">Peralatan & APAR standby di lokasi.</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 4. QR Code */}
+                              <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                                    `http://localhost:3000/review/ptw/${doc.permitNumber}`
+                                  )}`}
+                                  alt="QR Code Lampiran PTW"
+                                  className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
+                                />
+                                <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
+                              </div>
+                            </div>
+
+                            {/* ── MASA BERLAKU IKB ── */}
+                            <div className="border-b-2 border-slate-900 text-[8pt]">
+                              <div className="bg-slate-100 text-center font-bold uppercase py-0.5 border-b border-slate-900 text-[8pt]">
+                                MASA BERLAKU IKB (IJIN KERJA BERBAHAYA)
+                              </div>
+                              <div className="grid grid-cols-2 divide-x divide-slate-900">
+                                <div className="grid grid-cols-2 divide-x divide-slate-900 border-r border-slate-900">
+                                  <div className="p-1 text-center">
+                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL MULAI</span>
+                                    <span className="font-semibold">{formatDate(doc.startAt)}</span>
+                                  </div>
+                                  <div className="p-1 text-center">
+                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU MULAI</span>
+                                    <span className="font-semibold">{formatPtwTime(doc.startAt)}</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 divide-x divide-slate-900">
+                                  <div className="p-1 text-center">
+                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL BERAKHIR</span>
+                                    <span className="font-semibold">{formatDate(doc.endAt)}</span>
+                                  </div>
+                                  <div className="p-1 text-center">
+                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
+                                    <span className="font-semibold">{formatPtwTime(doc.endAt)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+                            <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
+                              <div className="p-1.5 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                                  {step1?.signatureDataUrl ? (
+                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                                  ) : null}
+                                  {step1?.status === 'rejected' ? (
+                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
+                                  ) : step1?.status === 'reverted' ? (
+                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
+                                  ) : step1?.status === 'approved' && !step1?.signatureDataUrl ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
+                                  ) : !step1?.signatureDataUrl ? (
+                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                  ) : null}
+                                </div>
+                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                  {step1?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+                                </div>
+                              </div>
+
+                              <div className="p-1.5 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
+                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                                  {step2?.status === 'rejected' ? (
+                                    <>
+                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
+                                    </>
+                                  ) : step2?.status === 'reverted' ? (
+                                    <>
+                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
+                                    </>
+                                  ) : step2?.signatureDataUrl ? (
+                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                  ) : step2?.status === 'approved' ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : (
+                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                  )}
+                                </div>
+                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                  {step2?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
+                                </div>
+                              </div>
+
+                              <div className="p-1.5 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                                  {step3?.status === 'rejected' ? (
+                                    <>
+                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step3?.signedAt)})</span>
+                                    </>
+                                  ) : step3?.status === 'reverted' ? (
+                                    <>
+                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step3?.signedAt)})</span>
+                                    </>
+                                  ) : step3?.signatureDataUrl ? (
+                                    <img src={step3.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                  ) : step3?.status === 'approved' ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step3?.signedAt)})</span>
+                                  ) : (
+                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                  )}
+                                </div>
+                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                  {step3?.approverName || doc.authorizedByName || 'NAMA & TANDA TANGAN'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ── CATATAN FOOTER ── */}
+                            <div className="p-2 text-[7pt] space-y-0.5 bg-slate-50 flex items-start justify-between">
+                              <div>
+                                <span className="font-bold block text-slate-900">CATATAN :</span>
+                                <div>1. Ijin kerja ini hanya berlaku untuk satu area kerja saja.</div>
+                                <div>2. Ijin kerja ini selalu berada ditempat kerja</div>
+                                <div>3. Dilarang melakukan pekerjaan sebelum ada ijin kerja</div>
+                              </div>
+                              <div className="text-right text-slate-500 font-mono text-[6.5pt] pt-1 shrink-0">
+                                No. Form: CP-F-SHE-026 / P-HSE-SOP-031.00
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* SOP / WIN Request Official Document Preview */}
+                      {currentBatchDoc.category === 'SOP_WIN_REQUEST' && (
+                        <div>
+                          {/* Header Title (Matching Daily Activity Format Exactly) */}
+                          <div className="text-center mb-4">
+                            <h1 className="font-bold text-[11pt] uppercase text-black mb-0.5 tracking-wide">
+                              PT. CHITRA PARATAMA
+                            </h1>
+                            <h2 className="font-bold text-[12pt] uppercase text-black tracking-wide">
+                              PERMOHONAN AKSES DOKUMEN SOP / WIN / POL
+                            </h2>
+                          </div>
+
+                          {/* Table 1: Details & Requester Profile */}
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1.5 text-[8.5pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={2} className="font-bold bg-slate-100 text-black py-1 uppercase">
+                                  1. INFORMASI PEMOHON DOKUMEN ({(currentBatchDoc as any).isExternal ? "PIHAK EKSTERNAL" : "PIHAK INTERNAL"})
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/2">
+                                  Nama Pemohon: <strong>{currentBatchDoc.employeeName || '—'}</strong>
+                                </td>
+                                <td className="w-1/2">
+                                  No. Registrasi: <strong className="font-mono text-indigo-900">{currentBatchDoc.documentNumber}</strong>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  Departemen / Section: <strong>{currentBatchDoc.department || '—'}</strong>
+                                </td>
+                                <td>
+                                  Tanggal Pengajuan: <strong>{(currentBatchDoc as any).requestDate ? new Date((currentBatchDoc as any).requestDate).toLocaleDateString('id-ID') : formatDate(currentBatchDoc.submittedAt)}</strong>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  Prosedur Yang Diminta: <strong>{(currentBatchDoc as any).procedureName || '—'}</strong>
+                                </td>
+                                <td>
+                                  Departemen Sendiri: <strong>{(currentBatchDoc as any).ownDepartment || currentBatchDoc.department || '—'}</strong>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  Jenis Dokumen: <strong className="font-mono font-bold">[{ (currentBatchDoc as any).requestedDocType || 'SOP' }]</strong>
+                                </td>
+                                <td>
+                                  Apakah Pemilik Proses?: <strong>{(currentBatchDoc as any).isProcessOwner ? 'Ya' : 'Tidak'}</strong>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  Jenis Akses: <strong className="uppercase">{currentBatchDoc.requestType === 'softcopy' ? 'Soft Copy (PDF Watermark)' : 'Hard Copy (Cetak Fisik)'}</strong>
+                                </td>
+                                <td>
+                                  Masa Berlaku Akses: <strong>{currentBatchDoc.expiryDays || 3} Hari Kerja</strong>
+                                </td>
+                              </tr>
+                              {(currentBatchDoc as any).isExternal && (
+                                <tr>
+                                  <td>
+                                    Instansi / Perusahaan: <strong>{(currentBatchDoc as any).externalCompany || '—'}</strong>
+                                  </td>
+                                  <td>
+                                    Nama Contact Person: <strong>{(currentBatchDoc as any).externalName || '—'}</strong>
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+
+                          {/* Table 2: Rincian Dokumen yang Diminta & Catatan Approval */}
+                          {(() => {
+                            const deptRaw = (currentBatchDoc as any).ownDepartment || currentBatchDoc.department || 'CPI';
+                            const dbApprovals = (currentBatchDoc as any).approvals || (currentBatchDoc.rawSopWinRequest as any)?.approvals;
+                            const defaultWf = getDepartmentWorkflowSteps(
+                              deptRaw,
+                              currentBatchDoc.employeeName,
+                              currentBatchDoc.department,
+                              (currentBatchDoc as any).requestedDocTitleAndNumber || currentBatchDoc.title
+                            );
+
+                            const wfSteps = (Array.isArray(dbApprovals) && dbApprovals.length > 0)
+                              ? dbApprovals.map((a: any) => ({
+                                  stepNumber: a.stepOrder,
+                                  role: a.stepLabel,
+                                  name: a.approverName || "Approver",
+                                }))
+                              : defaultWf.steps;
+
+                            const wf = {
+                              departmentCode: defaultWf.departmentCode,
+                              departmentName: defaultWf.departmentName,
+                              steps: wfSteps,
+                            };
+
+                            const gridColsClass =
+                              wf.steps.length === 3
+                                ? "grid-cols-3"
+                                : wf.steps.length === 4
+                                ? "grid-cols-2"
+                                : wf.steps.length === 5
+                                ? "grid-cols-3"
+                                : "grid-cols-2";
+
+                            const reqStatus = (currentBatchDoc as any).status || (currentBatchDoc.rawSopWinRequest as any)?.status;
+                            const adminApprovedAt = (currentBatchDoc as any).adminApprovedAt || (currentBatchDoc.rawSopWinRequest as any)?.adminApprovedAt;
+                            const reqRemarks = (currentBatchDoc as any).remarks || (currentBatchDoc.rawSopWinRequest as any)?.remarks;
+                            const isReverted = reqStatus === "reverted" || reqStatus === "needs_revision" || (currentBatchDoc as any).status === "reverted" || (currentBatchDoc as any).status === "needs_revision";
+                            const isRejected = reqStatus === "rejected" || (currentBatchDoc as any).status === "rejected";
+
+                            const activeStepIdx = wf.steps.findIndex((s, i) => {
+                              const stepOrder = i + 1;
+                              const approvalRecord = (currentBatchDoc as any).approvals?.find((a: any) => a.stepOrder === stepOrder) || (currentBatchDoc.rawSopWinRequest as any)?.approvals?.find((a: any) => a.stepOrder === stepOrder);
+                              if (approvalRecord) return approvalRecord.status === "pending";
+                              if (i === 0 && (reqStatus === "pending_ria" || reqStatus === "submitted")) return true;
+                              if (i === 1 && (reqStatus === "pending_creator" || reqStatus === "pending_owner")) return true;
+                              if (i === 2 && reqStatus === "pending_bardynia") return true;
+                              return false;
+                            });
+
+                            const currentActiveIdx = activeStepIdx >= 0 ? activeStepIdx : (reqStatus === "pending_ria" || reqStatus === "submitted" ? 0 : -1);
+
+                            return (
+                              <>
+                                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1.5 text-[8.5pt]">
+                                  <tbody>
+                                    <tr>
+                                      <td colSpan={2} className="font-bold bg-slate-100 text-black py-1 uppercase">
+                                        2. RINCIAN DOKUMEN DAN CATATAN APPROVAL
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td colSpan={2}>
+                                        Jumlah Prosedur Yang Diminta: <strong>{(currentBatchDoc as any).requestedDocCount || 1} Prosedur</strong>
+                                      </td>
+                                    </tr>
+                                    <tr>
+                                      <td colSpan={2} className="bg-white p-2">
+                                        <span className="font-bold block mb-1">Judul & Nomor Prosedur / Dokumen:</span>
+                                        <div className="font-mono text-[8.5pt] bg-amber-50/80 p-2 border border-black rounded-xs font-semibold whitespace-pre-wrap leading-relaxed">
+                                          {(currentBatchDoc as any).requestedDocTitleAndNumber || currentBatchDoc.title?.replace('Permintaan Dokumen: ', '') || currentBatchDoc.documentNumber}
+                                        </div>
+                                        {(currentBatchDoc as any).requestReason && (
+                                          <div className="mt-2 text-slate-800 italic">
+                                            <span className="font-bold not-italic text-slate-900 block text-[7.5pt]">ALASAN PERMINTAAN:</span>
+                                            "{(currentBatchDoc as any).requestReason}"
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+
+                                    {/* Embedded Catatan Approval Table */}
+                                    <tr>
+                                      <td colSpan={2} className="bg-white p-2">
+                                        <div className="font-bold mb-1.5 text-[8.5pt]">Catatan Approval</div>
+                                        <table className="w-full border-collapse border border-black [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                                          <thead>
+                                            <tr className="bg-white font-bold text-center">
+                                              <th style={{ width: '6%' }}>#</th>
+                                              <th className="text-left" style={{ width: '24%' }}>Tahap</th>
+                                              <th className="text-left" style={{ width: '26%' }}>Approver</th>
+                                              <th style={{ width: '14%' }}>Status</th>
+                                              <th style={{ width: '15%' }}>Waktu</th>
+                                              <th className="text-left" style={{ width: '15%' }}>Catatan</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {wf.steps.map((step, idx) => {
+                                              let statusText = "Pending";
+                                              let statusClass = "text-amber-700 font-bold";
+                                              let signedTime = "—";
+                                              const stepOrder = idx + 1;
+                                              const approvalRecord = (currentBatchDoc as any).approvals?.find((a: any) => a.stepOrder === stepOrder) || (currentBatchDoc.rawSopWinRequest as any)?.approvals?.find((a: any) => a.stepOrder === stepOrder);
+                                              const formatDateTimeUI = (dVal: any) => dVal ? new Date(dVal).toLocaleString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : "—";
+
+                                              const rawStepRemark = (idx === currentActiveIdx && approvalRemarks[currentBatchDoc.id]?.trim())
+                                                ? approvalRemarks[currentBatchDoc.id].trim()
+                                                : (approvalRecord?.remarks || (idx === 0 ? reqRemarks : step.remarks) || "");
+
+                                              const displayStepRemark =
+                                                rawStepRemark &&
+                                                rawStepRemark !== "undefined" &&
+                                                rawStepRemark !== "Proses approve via Inbox Approval" &&
+                                                rawStepRemark.trim() !== ""
+                                                  ? rawStepRemark.trim()
+                                                  : "-";
+
+                                              if (reqStatus === "approved" || (approvalRecord && approvalRecord.status === "approved")) {
+                                                statusText = "Approved";
+                                                statusClass = "text-emerald-700 font-bold";
+                                                signedTime = formatDateTimeUI(approvalRecord?.signedAt || approvalRecord?.updatedAt || currentBatchDoc.submittedAt);
+                                              } else if (idx === 0) {
+                                                const isStep1Approved = Boolean(
+                                                  adminApprovedAt ||
+                                                  reqStatus === "pending_creator" ||
+                                                  reqStatus === "pending_owner" ||
+                                                  reqStatus === "pending_bardynia" ||
+                                                  reqStatus === "approved_by_ria" ||
+                                                  reqStatus === "pending_manager" ||
+                                                  reqStatus === "pending_director" ||
+                                                  (approvalRecord && (approvalRecord.status === "approved" || approvalRecord.status === "submitted" || Boolean(approvalRecord.signedAt))) ||
+                                                  Boolean((currentBatchDoc as any).approvals?.some((a: any) => a.stepOrder > 1))
+                                                );
+                                                if (isStep1Approved) {
+                                                  statusText = "Submitted";
+                                                  statusClass = "text-emerald-700 font-bold";
+                                                  signedTime = formatDateTimeUI(approvalRecord?.signedAt || adminApprovedAt || currentBatchDoc.submittedAt || (currentBatchDoc as any).createdAt);
+                                                  
+                                                  return (
+                                                    <tr key={idx}>
+                                                      <td className="text-center">{step.stepNumber}</td>
+                                                      <td className="text-left font-medium">{step.role}</td>
+                                                      <td className="text-left font-medium">{step.name}</td>
+                                                      <td className={`text-center capitalize ${statusClass}`}>{statusText}</td>
+                                                      <td className="text-center text-[7pt]">{signedTime}</td>
+                                                      <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight text-center">
+                                                        {displayStepRemark}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                } else {
+                                                  statusText = "Pending";
+                                                }
+                                              }
+
+                                              return (
+                                                <tr key={idx}>
+                                                  <td className="text-center">{step.stepNumber}</td>
+                                                  <td className="text-left font-medium">{step.role}</td>
+                                                  <td className="text-left font-medium">{step.name}</td>
+                                                  <td className={`text-center capitalize ${statusClass}`}>{statusText}</td>
+                                                  <td className="text-center text-[7pt]">{signedTime}</td>
+                                                  <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight text-center">
+                                                    {displayStepRemark}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+
+                                {/* Section 3: Dynamic Department Workflow Signatories */}
+                                <div>
+                                  <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
+                                  <div className={`grid ${gridColsClass} gap-x-6 gap-y-4 mb-4`}>
+                                    {wf.steps.map((step, idx) => {
+                                      let isSigned = false;
+                                      const stepOrder = idx + 1;
+                                      const approvalRecord = (currentBatchDoc as any).approvals?.find((a: any) => a.stepOrder === stepOrder) || (currentBatchDoc.rawSopWinRequest as any)?.approvals?.find((a: any) => a.stepOrder === stepOrder);
+
+                                      if (approvalRecord?.status === "approved") {
+                                        isSigned = true;
+                                      } else if (idx === 0) {
+                                        isSigned = Boolean(
+                                          (adminApprovedAt || reqStatus === "pending_creator" || reqStatus === "approved_by_ria") &&
+                                          approvalRecord?.status === "approved"
+                                        );
+                                      }
+
+                                      const rawSigUrl = isSigned
+                                        ? (approvalRecord?.signatureDataUrl || (idx === 0 ? ((currentBatchDoc as any).adminSignatureUrl || (currentBatchDoc.rawSopWinRequest as any)?.adminSignatureUrl) : null) || step.signatureDataUrl)
+                                        : null;
+
+                                      const isValidImageSig = Boolean(
+                                        rawSigUrl &&
+                                        typeof rawSigUrl === "string" &&
+                                        (rawSigUrl.startsWith("data:image/") || rawSigUrl.startsWith("http://") || rawSigUrl.startsWith("https://") || rawSigUrl.startsWith("/api/uploads/") || rawSigUrl.startsWith("/uploads/"))
+                                      );
+
+                                      return (
+                                        <div key={idx}>
+                                          <div className="text-[7pt] text-slate-500 font-medium mb-1">
+                                            {step.role}
+                                          </div>
+                                          <div className="h-14 flex items-end">
+                                            {isSigned ? (
+                                              isValidImageSig ? (
+                                                <img src={rawSigUrl} alt="TTD" className="h-10 object-contain" />
+                                              ) : (
+                                                <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">✓ Disetujui ({step.name})</span>
+                                              )
+                                            ) : isReverted ? (
+                                              <span className="text-amber-700 font-bold text-[8pt]">↺ Diminta Revisi</span>
+                                            ) : isRejected ? (
+                                              <span className="text-rose-700 font-bold text-[8pt]">✗ Ditolak</span>
+                                            ) : (
+                                              <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
+                                            )}
+                                          </div>
+                                          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                                            {step.name}
+                                          </div>
+                                          <div className="text-[7pt] text-slate-600 font-medium">{step.role}</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </>
+                            );
+                          })()}
+
+                          <div className="text-right text-[7pt] text-slate-400 mt-2">PT Chitra Paratama • HERO Platform</div>
+                        </div>
+                      )}
+
+                      {/* General & Contract Review Fallbacks */}
+                      {(currentBatchDoc.category === 'CONTRACT_REVIEW' || currentBatchDoc.category === 'GENERAL') && (
+                        <div>
+                          <h1 className="text-center font-bold text-[11pt] mb-1">PT. CHITRA PARATAMA</h1>
+                          <h2 className="text-center font-bold text-[12pt] mb-3">{currentBatchDoc.categoryLabel.toUpperCase()}</h2>
+                          <div className="border border-black p-3 text-[8.5pt] space-y-2">
+                            <p><strong>Nomor Pengajuan:</strong> {currentBatchDoc.documentNumber}</p>
+                            <p><strong>Nama Karyawan:</strong> {currentBatchDoc.employeeName}</p>
+                            <p><strong>Site:</strong> {currentBatchDoc.siteName || '—'}</p>
+                            <p><strong>Tahap Approval:</strong> {currentBatchDoc.stepLabel}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Reviewer Action Sidebar */}
+              <div className="w-full lg:w-96 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 p-4 sm:p-5 flex flex-col justify-between overflow-y-auto text-slate-800 space-y-4">
+                <div className="space-y-4">
+                  {/* Card 1: Informasi Dokumen */}
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs space-y-2 relative">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-800 text-xs">Informasi Dokumen</p>
+                      <span className={cn(
+                        "capitalize text-[10px] font-bold px-2 py-0.5 rounded-md border",
+                        currentBatchDoc?.isReverted
+                          ? "bg-amber-100 border-amber-300 text-amber-800"
+                          : "bg-blue-100 border-blue-300 text-blue-800"
+                      )}>
+                        {currentBatchDoc?.isReverted ? 'Reverted' : 'Submitted'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 space-y-1 pt-1">
+                      <p><span className="text-slate-400">Karyawan:</span> <span className="font-semibold text-slate-900">{currentBatchDoc?.employeeName}</span></p>
+                      <p><span className="text-slate-400">Kode Sesi:</span> <span className="font-mono text-indigo-700 font-semibold">{currentBatchDoc?.documentNumber}</span></p>
+                      <p><span className="text-slate-400">Tanggal:</span> <span className="font-semibold text-slate-900">{formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}</span></p>
+                      <p><span className="text-slate-400">Shift:</span> <span className="font-semibold text-slate-900">{currentBatchDoc?.shiftCode || 'ALL'}</span></p>
+                    </div>
+
+                    {currentBatchDoc?.category === 'SOP_WIN_REQUEST' && (
+                      <div className="space-y-2 pt-2 border-t border-slate-200/80 mt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsAccessSettingsOpen(true)}
+                          className="w-full h-8 text-[11px] font-bold border-blue-200 bg-blue-50/50 text-[#003461] hover:bg-blue-100/60 rounded-xl gap-1.5"
+                        >
+                          <Settings className="size-3.5 text-[#003461]" /> Pengaturan Akses Dokumen
+                        </Button>
+
+                        {((currentBatchDoc as any).accessToken || (currentBatchDoc as any).rawSopWinRequest?.accessToken) && (
+                          <div className="p-2.5 bg-[#003461]/5 border border-[#003461]/20 rounded-xl space-y-1.5 text-xs">
+                            <span className="font-bold text-[#003461] block flex items-center gap-1.5 text-[11px]">
+                              <ExternalLink className="size-3 text-[#003461]" />
+                              Link Portal Akses Dokumen
+                            </span>
+                            <a
+                              href={`/sop-win/request/${(currentBatchDoc as any).accessToken || (currentBatchDoc as any).rawSopWinRequest?.accessToken}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-[#003461] underline font-mono break-all hover:text-indigo-900 block bg-white p-1.5 rounded-md border border-slate-200"
+                            >
+                              {typeof window !== 'undefined'
+                                ? `${window.location.origin}/sop-win/request/${(currentBatchDoc as any).accessToken || (currentBatchDoc as any).rawSopWinRequest?.accessToken}`
+                                : `/sop-win/request/${(currentBatchDoc as any).accessToken || (currentBatchDoc as any).rawSopWinRequest?.accessToken}`}
+                            </a>
+                            <Button
+                              type="button"
+                              size="sm"
+                              asChild
+                              className="w-full h-7.5 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-[11px] rounded-lg gap-1.5 shadow-2xs mt-1"
+                            >
+                              <a
+                                href={`/sop-win/request/${(currentBatchDoc as any).accessToken || (currentBatchDoc as any).rawSopWinRequest?.accessToken}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="size-3" /> BUKA PORTAL AKSES DOKUMEN
+                              </a>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 2: Catatan Approval */}
+                  <div className={cn(
+                    "rounded-xl border p-3.5 bg-white space-y-1.5 transition-all duration-200",
+                    remarkFieldError ? "border-rose-400 bg-rose-50/40 ring-2 ring-rose-200" : "border-slate-200"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-800 text-xs">Catatan Approval</p>
+                      {remarkFieldError && (
+                        <span className="text-[10px] font-bold text-rose-600 animate-pulse">Wajib Diisi</span>
+                      )}
+                    </div>
+                    <Textarea
+                      placeholder="Mohon cantumkan rincian revisi atau catatan approval di sini..."
+                      value={currentBatchDoc ? approvalRemarks[currentBatchDoc.id] || '' : ''}
+                      onChange={(e) => {
+                        if (currentBatchDoc) {
+                          setApprovalRemarks((prev) => ({
+                            ...prev,
+                            [currentBatchDoc.id]: e.target.value,
+                          }))
+                          if (e.target.value.trim()) setRemarkFieldError(false)
+                        }
+                      }}
+                      className={cn(
+                        "text-xs min-h-[85px] resize-none rounded-xl bg-slate-50/50",
+                        remarkFieldError ? "border-rose-400 focus-visible:ring-rose-400" : "border-slate-200"
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Section: Action Buttons */}
+                <div className="space-y-4 pt-3 border-t border-slate-100">
+                  {/* AKSI DOKUMEN INI */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      AKSI DOKUMEN INI ({batchReviewIndex + 1} / {selectedItems.length})
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={() => executeDirectSingleAction('approve')}
+                      disabled={isBatchActionRunning}
+                      className="w-full h-11 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs rounded-xl shadow-xs gap-2"
+                    >
+                      <CheckCircle2 className="size-4" /> APPROVE
+                    </Button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => executeDirectSingleAction('revert')}
+                        disabled={isBatchActionRunning}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5"
+                      >
+                        <RotateCcw className="size-3.5 text-slate-500" /> REVERT
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => executeDirectSingleAction('reject')}
+                        disabled={isBatchActionRunning}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5"
+                      >
+                        <XCircle className="size-3.5 text-slate-500" /> REJECT
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* AKSI MASSAL */}
+                  {selectedItems.length > 1 && (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        AKSI MASSAL ({selectedItems.length} DOKUMEN)
+                      </p>
+                      <Button
+                        type="button"
+                        onClick={() => executeDirectBatchAllAction('approve')}
+                        disabled={isBatchActionRunning}
+                        className="w-full h-11 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs rounded-xl shadow-xs gap-2"
+                      >
+                        <CheckCheck className="size-4" /> APPROVE ALL ({selectedItems.length})
+                      </Button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => executeDirectBatchAllAction('revert')}
+                          disabled={isBatchActionRunning}
+                          className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl"
+                        >
+                          REVERT ALL
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => executeDirectBatchAllAction('reject')}
+                          disabled={isBatchActionRunning}
+                          className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl"
+                        >
+                          REJECT ALL
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TUTUP REVIEWER BUTTON */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setIsBatchReviewOpen(false)}
+                    className="w-full h-10 bg-[#e5f0ec] text-[#003461] hover:bg-[#d6e7e1] font-bold text-xs rounded-xl mt-2"
+                  >
+                    TUTUP REVIEWER
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+            )
+          })()}
+        </Dialog>
+
+        <MissingSignatureDialog
+          isOpen={isMissingSignatureDialogOpen}
+          onClose={() => setIsMissingSignatureDialogOpen(false)}
+          onSignatureRegistered={(newSigUrl) => {
+            setSignatureDataUrl(newSigUrl)
+            toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol APPROVE untuk menyetujui dokumen.')
+          }}
+        />
+
+        {currentBatchDoc?.category === 'SOP_WIN_REQUEST' && currentBatchDoc.rawSopWinRequest && (
+          <SopWinAccessSettingsModal
+            isOpen={isAccessSettingsOpen}
+            onClose={() => setIsAccessSettingsOpen(false)}
+            requestId={currentBatchDoc.rawSopWinRequest.requestId || currentBatchDoc.id}
+            requestNumber={currentBatchDoc.documentNumber}
+            docTitle={currentBatchDoc.title || 'Dokumen SOP/WIN'}
+            currentExpiryDays={currentBatchDoc.rawSopWinRequest.expiryDays || 3}
+            currentCanDownload={currentBatchDoc.rawSopWinRequest.canDownload ?? true}
+          />
+        )}
       </CardContent>
     </Card>
   )
@@ -353,44 +2878,37 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
-          <CardTitle>Riwayat approval</CardTitle>
-          <CardDescription>
-            Belum ada pengajuan Anda yang masuk ke workflow approval.
-          </CardDescription>
+          <CardTitle>Riwayat</CardTitle>
+          <CardDescription>Belum ada riwayat pengajuan yang tercatat.</CardDescription>
         </CardHeader>
       </Card>
     )
   }
 
-  const sites = Array.from(
-    new Set(groups.flatMap((group) => group.items.map((item) => item.siteName)))
-  ).sort()
+  const safeGroups = Array.isArray(groups) ? groups : []
+  const sites = Array.from(new Set(safeGroups.map((group) => group?.siteName || 'Site Operasional'))).sort()
   const priorities = Array.from(
-    new Set(groups.flatMap((group) => group.items.map((item) => item.priority)))
+    new Set(safeGroups.flatMap((group) => (group?.items || []).map((item) => item?.priority || 'normal')))
   ).sort()
   const statuses = Array.from(
-    new Set(groups.flatMap((group) => group.items.map((item) => item.status)))
+    new Set(safeGroups.flatMap((group) => (group?.items || []).map((item) => item?.status || 'open')))
   ).sort()
 
   return (
     <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
       <CardContent className="pt-6">
         <MinimalTableShell
-          title="Jejak keputusan Approval Inbox"
-          description="Lacak keputusan yang sudah lewat dari antrian approval Anda. Status pengajuan milik Anda tetap dibuka dari Request Center."
-          label="request history"
+          title="Riwayat"
+          description="Seluruh jejak persetujuan dan riwayat dokumen operasional dapat dipantau dari sini."
+          label="approval history"
           fileName="approval-history"
-          searchPlaceholder="Cari pengajuan, site, approver, workflow, atau hasil keputusan..."
+          searchPlaceholder="Cari riwayat pengajuan, requester, unit, atau status..."
           dateFilter
           filters={
-            <ApprovalFilterBar sites={sites} priorities={priorities} statusOptions={statuses} />
-          }
-          presets={
-            <TableFilterPresets
-              presets={[
-                { label: 'Disetujui', filters: { status: 'approved' } },
-                { label: 'Perlu revisi', filters: { status: 'needs_revision' } },
-              ]}
+            <ApprovalFilterBar
+              sites={sites}
+              priorities={priorities}
+              statusOptions={statuses}
             />
           }
         >
@@ -400,20 +2918,20 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                 <TableHead>Pengajuan</TableHead>
                 <TableHead>Site</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Menunggu</TableHead>
+                <TableHead>Posisi Terakhir</TableHead>
                 <TableHead>Workflow</TableHead>
-                <TableHead>Detail</TableHead>
+                <TableHead>Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groups.flatMap((group) =>
-                group.items.map((item) => (
+              {safeGroups.flatMap((group) =>
+                (group?.items || []).map((item) => (
                   <TableRow
                     key={item.activityId}
-                    data-date-value={item.submittedAt.toISOString()}
-                    data-filter-site={item.siteName}
-                    data-filter-priority={item.priority}
-                    data-filter-status={item.status}
+                    data-date-value={item.submittedAt ? new Date(item.submittedAt).toISOString() : new Date().toISOString()}
+                    data-filter-site={item.siteName || ''}
+                    data-filter-priority={item.priority || 'normal'}
+                    data-filter-status={item.status || 'open'}
                   >
                     <TableCell className="align-top">
                       <div className="space-y-1">
@@ -466,7 +2984,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                           <div className="bg-surface-container-low rounded-lg p-3">
                             <p className="text-foreground text-sm font-semibold">Jejak approval</p>
                             <div className="mt-2 space-y-2">
-                              {item.notes.map((note) => (
+                              {(item.notes || []).map((note) => (
                                 <div
                                   key={note.id}
                                   className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
@@ -479,7 +2997,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                                   </div>
                                   <p className="text-foreground mt-2 text-sm">{note.message}</p>
                                   <p className="text-muted-foreground mt-1 text-xs">
-                                    {note.at.toLocaleString('id-ID')}
+                                    {note.at ? new Date(note.at).toLocaleString('id-ID') : '-'}
                                   </p>
                                 </div>
                               ))}
@@ -488,7 +3006,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                           <div className="bg-surface-container-low rounded-lg p-3">
                             <p className="text-foreground text-sm font-semibold">Status per step</p>
                             <div className="mt-2 space-y-2">
-                              {item.steps.map((step) => (
+                              {(item.steps || []).map((step) => (
                                 <div
                                   key={step.approvalId}
                                   className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
@@ -502,7 +3020,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
                                   <p className="text-muted-foreground mt-1 text-xs">
                                     {step.approverName} •{' '}
                                     {step.reviewedAt
-                                      ? step.reviewedAt.toLocaleString('id-ID')
+                                      ? new Date(step.reviewedAt).toLocaleString('id-ID')
                                       : 'Belum diputuskan'}
                                   </p>
                                 </div>
@@ -524,6 +3042,18 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
 }
 
 export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
+  const safeData = data || {
+    inboxMetrics: { pendingGroups: 0, pendingActivities: 0, dueSoon: 0, overdue: 0 },
+    historyMetrics: { approved: 0, rejected: 0 },
+    inboxGroups: [],
+    historyGroups: [],
+    dailyActivityInboxItems: [],
+    overtimeInboxItems: [],
+    ptwInboxItems: [],
+    contractReviewInboxItems: [],
+    sopWinRequestInboxItems: [],
+  }
+
   return (
     <AdminPageShell
       eyebrow="Approval"
@@ -535,33 +3065,33 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
         items={[
           {
             label: 'Grup menunggu',
-            value: `${data.inboxMetrics.pendingGroups}`,
+            value: `${safeData.inboxMetrics?.pendingGroups ?? 0}`,
             meta: 'Requester-hari yang masih perlu keputusan',
           },
           {
             label: 'Item pending',
-            value: `${data.inboxMetrics.pendingActivities}`,
+            value: `${safeData.inboxMetrics?.pendingActivities ?? 0}`,
             meta: 'Pengajuan yang bisa diputuskan sekarang',
           },
           {
             label: 'Segera jatuh tempo',
-            value: `${data.inboxMetrics.dueSoon}`,
+            value: `${safeData.inboxMetrics?.dueSoon ?? 0}`,
             meta: 'Butuh diprioritaskan di shift ini',
           },
           {
             label: 'Terlambat',
-            value: `${data.inboxMetrics.overdue}`,
+            value: `${safeData.inboxMetrics?.overdue ?? 0}`,
             meta: 'Sudah melewati SLA review',
           },
           {
             label: 'Riwayat disetujui',
-            value: `${data.historyMetrics.approved}`,
-            meta: 'Pengajuan Anda yang selesai mulus',
+            value: `${safeData.historyMetrics?.approved ?? 0}`,
+            meta: 'Seluruh pengajuan & persetujuan yang disetujui',
           },
           {
             label: 'Riwayat ditolak',
-            value: `${data.historyMetrics.rejected}`,
-            meta: 'Butuh tindak lanjut atau submit ulang',
+            value: `${safeData.historyMetrics?.rejected ?? 0}`,
+            meta: 'Butuh tindak lanjut, ditolak, atau dikembalikan',
           },
         ]}
       />
@@ -569,15 +3099,22 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
       <Tabs defaultValue="inbox" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="inbox">Approval Inbox</TabsTrigger>
-          <TabsTrigger value="history">Riwayat pengajuan</TabsTrigger>
+          <TabsTrigger value="history">Riwayat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="inbox">
-          <InboxTab groups={data.inboxGroups} />
+          <InboxTab
+            groups={safeData.inboxGroups || []}
+            dailyActivityItems={safeData.dailyActivityInboxItems || []}
+            overtimeItems={safeData.overtimeInboxItems || []}
+            ptwItems={safeData.ptwInboxItems || []}
+            contractReviewItems={safeData.contractReviewInboxItems || []}
+            sopWinRequestItems={safeData.sopWinRequestInboxItems || []}
+          />
         </TabsContent>
 
         <TabsContent value="history">
-          <HistoryTab groups={data.historyGroups} />
+          <HistoryTab groups={safeData.historyGroups || []} />
         </TabsContent>
       </Tabs>
     </AdminPageShell>

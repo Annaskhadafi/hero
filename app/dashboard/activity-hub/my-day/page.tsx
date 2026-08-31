@@ -102,18 +102,20 @@ function SelectFilter({
 
 export default async function MyDayPage() {
   const session = await getServerSession();
+  const userEmail = session?.user?.email ?? '';
 
-  if (!session?.user?.email) {
-    redirect("/sign-in");
-  }
-
-  const [data, teamData] = await Promise.all([
-    getDailyActivityEmployeeData(session.user.email),
-    getDailyActivityTeamBoardData(session.user.email),
+  let [data, teamData] = await Promise.all([
+    getDailyActivityEmployeeData(userEmail || null),
+    getDailyActivityTeamBoardData(userEmail || null),
   ]);
 
   if (!data) {
-    return null;
+    return (
+      <div className="p-8 text-center text-slate-500">
+        <p className="font-semibold text-lg">Data aktivitas harian tidak ditemukan.</p>
+        <p className="text-xs text-slate-400 mt-1">Silakan hubungi administrator atau pastikan data karyawan Anda telah terdaftar.</p>
+      </div>
+    );
   }
 
   const now = new Date();
@@ -234,12 +236,20 @@ export default async function MyDayPage() {
                 <Badge variant="outline">{data.routeChecklist.itemCount} item</Badge>
                 {data.routeChecklist.mobileEnabled ? <Badge variant="outline">Mobile ready</Badge> : null}
                 {data.routeChecklist.sessionId ? (
-                  <Button asChild variant="outline" size="sm" className="rounded-full">
-                    <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
-                      <FileSignature className="size-4" />
-                      Dokumen user
-                    </Link>
-                  </Button>
+                  <>
+                    <Button asChild variant="outline" size="sm" className="rounded-full">
+                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
+                        <FileSignature className="size-4" />
+                        Dokumen user
+                      </Link>
+                    </Button>
+                    <Button asChild variant="default" size="sm" className="rounded-full">
+                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}/approval`}>
+                        <FileSignature className="size-4" />
+                        Approval Workflow
+                      </Link>
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </div>

@@ -756,7 +756,7 @@ export function MobileDailyActivityForm({
     }
 
     setRouteItemState((current) => {
-      if (Object.keys(current).length > 0) {
+      if (Object.keys(current || {}).length > 0) {
         return current
       }
 
@@ -905,7 +905,7 @@ export function MobileDailyActivityForm({
         } else {
           libraryIds.forEach((id, idx) => {
             if (!next[id]) {
-              next[id] = buildDefaultSelfInputEntry(Object.keys(next).length + idx, defaultStartTime, defaultEndTime)
+              next[id] = buildDefaultSelfInputEntry(Object.keys(next || {}).length + idx, defaultStartTime, defaultEndTime)
             }
           })
         }
