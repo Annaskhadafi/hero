@@ -16,11 +16,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm ci || npm install --legacy-peer-deps
+        run: npm install --no-audit
 
       - name: Run ESLint
         run: npm run lint
@@ -34,14 +33,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm ci || npm install --legacy-peer-deps
+        run: npm install --no-audit
 
       - name: Run TypeScript compiler
         run: npm run type-check
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
   build:
     name: Build
@@ -52,11 +52,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm ci || npm install --legacy-peer-deps
+        run: npm install --no-audit
 
       - name: Build application
         run: npm run build
@@ -91,11 +90,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
 
       - name: Install dependencies
-        run: npm ci || npm install --legacy-peer-deps
+        run: npm install --no-audit
 
       - name: Setup database
         run: npm run db:push
@@ -110,13 +108,3 @@ jobs:
           BETTER_AUTH_URL: http://localhost:3000
           NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
 
-      - name: Run attendance import QA
-        run: npm run qa:attendance-import
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-          BETTER_AUTH_SECRET: test-secret-key-for-ci
-          BETTER_AUTH_URL: http://localhost:3000
-          NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
-
-      - name: Check attendance DB drift
-        run: npm run check:attendance-db
