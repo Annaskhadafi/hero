@@ -113,7 +113,7 @@ export function MobileOvertimeRequestForm({
       setEndTime(saved?.fields?.plannedEndAt?.slice(11, 16) ?? halfHourInputValue(new Date(Date.now() + 2 * 60 * 60 * 1000)).slice(11));
       requestAnimationFrame(() => {
         if (!formRef.current || !saved?.fields) return;
-        for (const [name, value] of Object.entries(saved.fields)) {
+        for (const [name, value] of Object.entries(saved.fields || {})) {
           if (["workDate", "plannedStartAt", "plannedEndAt", "requestNotes"].includes(name)) continue;
           const field = formRef.current.elements.namedItem(name);
           if (field instanceof HTMLInputElement) field.value = value;
@@ -132,12 +132,15 @@ export function MobileOvertimeRequestForm({
 
   function persistDraft() {
     if (!formRef.current) return;
-    const fields = Object.fromEntries(
-      [...new FormData(formRef.current).entries()]
-        .filter((entry): entry is [string, string] => typeof entry[1] === "string")
-        .filter(([name]) => name !== "lineItemsJson"),
-    );
-    localStorage.setItem(draftKey, JSON.stringify({ selectedActivityId, fields }));
+    try {
+      const entries = formRef.current ? [...new FormData(formRef.current).entries()] : [];
+      const fields = Object.fromEntries(
+        entries
+          .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+          .filter(([name]) => name !== "lineItemsJson"),
+      );
+      localStorage.setItem(draftKey, JSON.stringify({ selectedActivityId, fields }));
+    } catch {}
   }
 
   const lineItemsJson = JSON.stringify(

@@ -1678,7 +1678,7 @@ export async function syncActivityWorkflowArtifacts(
       .orderBy(asc(formTemplateFields.sortOrder))
 
     const valueMap = new Map<string, string>(
-      Object.entries(payloadSnapshot).map(([key, value]) => [
+      Object.entries(payloadSnapshot || {}).map(([key, value]) => [
         key,
         Array.isArray(value) ? value.join(', ') : `${value ?? ''}`,
       ])
@@ -2691,14 +2691,15 @@ export function evaluateWorkflowConditionGroups(
     groupLabel: string
   }>
 ) {
-  const groups = conditions.reduce<Record<string, typeof conditions>>((accumulator, condition) => {
+  const groups = (conditions || []).reduce<Record<string, typeof conditions>>((accumulator, condition) => {
+    if (!condition) return accumulator
     const key = condition.groupLabel || 'Default Group'
     accumulator[key] = accumulator[key] ?? []
     accumulator[key].push(condition)
     return accumulator
   }, {})
 
-  return Object.entries(groups).map(([groupLabel, groupConditions]) => {
+  return Object.entries(groups || {}).map(([groupLabel, groupConditions]) => {
     const outcomes = groupConditions.map((condition) => ({
       condition,
       passed: compareConditionValue(
@@ -3554,7 +3555,8 @@ export async function getWorkflowStudioConsoleData() {
     counts: Map<number, number> | undefined
   ): number | null => {
     if (!counts || counts.size === 0) return null
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
+    return sorted[0]?.[0] ?? null
   }
 
   const csSectionsWithDefaults = csSectionsForDept.map((section) => {

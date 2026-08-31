@@ -1,412 +1,275 @@
 import { redirect } from 'next/navigation'
-import { ClipboardList, Settings2, Users2 } from 'lucide-react'
-
-import {
-  manageOvertimeCommandLetterAction,
-  manageOvertimeRequestLeaderPermissionAction,
-  transitionOvertimeCommandLetterStatusAction,
-} from '@/app/dashboard/activity-hub/actions'
-import { OvertimeCommandLetterComposer } from '@/components/overtime-command-letter-composer'
-import { SearchableEmployeeSelect } from '@/components/searchable-employee-select'
-import { SplMonthlySummary } from '@/components/spl-monthly-summary'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getServerSession } from '@/lib/auth-session'
-import { getOvertimeRequestWorkspaceData } from '@/lib/overtime-request-data'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { db } from '@/db'
+import {
+  employees,
+  masterDepartments,
+  overtimeApprovals,
+  overtimeCommandLetters,
+  overtimeCommandLetterItems,
+  overtimeCommandLetterParticipants,
+} from '@/db/schema/hero'
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { OvertimeListingClient, type OvertimeListingRow } from './client'
+import { getOvertimeWorkflowSettings } from './actions'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
 
-function statusBadgeClass(status: string) {
-  const normalized = status.toLowerCase()
-
-  if (['draft', 'submitted'].includes(normalized)) {
-    return 'bg-amber-100 text-amber-900'
-  }
-
-  if (['approved', 'closed'].includes(normalized)) {
-    return 'bg-emerald-100 text-emerald-900'
-  }
-
-  return 'bg-slate-100 text-slate-800'
-}
-
-function MetricPill({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-surface-container-low rounded-full px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground ml-2 font-semibold">{value}</span>
-    </div>
-  )
+export const metadata = {
+  title: 'Overtime Requests Approval - HERO',
 }
 
 export default async function OvertimeRequestsPage() {
   const session = await getServerSession()
-
   if (!session?.user?.email) {
     redirect('/sign-in')
   }
 
-  const [data, permission] = await Promise.all([
-    getOvertimeRequestWorkspaceData(session.user.email),
-    getCurrentMenuPermission('overtime_requests'),
+  const activeEmployee = await getCurrentEmployee()
+  const userRole = (session?.user?.role || '').toLowerCase()
+  const accessRole = (activeEmployee?.accessRole || '').toLowerCase()
+  const isAdmin =
+    userRole === 'admin' ||
+    userRole === 'superadmin' ||
+    userRole === 'super admin' ||
+    accessRole === 'admin' ||
+    accessRole === 'super admin' ||
+    accessRole === 'superadmin' ||
+    accessRole === 'system administrator' ||
+    accessRole === 'khusus mas rendi' ||
+    accessRole === 'hc manager' ||
+    accessRole === 'hr'
+
+  const isSiteAdmin = accessRole === 'site admin'
+
+  const [rawSplRecords, allEmployees] = await Promise.all([
+    db
+      .select({
+        id: overtimeCommandLetters.id,
+        splNumber: overtimeCommandLetters.splNumber,
+        title: overtimeCommandLetters.title,
+        workDate: overtimeCommandLetters.workDate,
+        plannedStartAt: overtimeCommandLetters.plannedStartAt,
+        plannedEndAt: overtimeCommandLetters.plannedEndAt,
+        status: overtimeCommandLetters.status,
+        requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+        requesterName: employees.name,
+        requesterDepartment: masterDepartments.name,
+        requesterSection: employees.section,
+        siteId: employees.siteId,
+        requestNotes: overtimeCommandLetters.requestNotes,
+      })
+      .from(overtimeCommandLetters)
+      .leftJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .orderBy(desc(overtimeCommandLetters.id)),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeId: employees.employeeSn,
+        position: employees.jobTitle,
+        rank: employees.role,
+        department: employees.department,
+        section: employees.section,
+        directManagerId: employees.directManagerId,
+        sectionId: employees.sectionId,
+        departmentId: employees.departmentId,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true)),
   ])
-  if (!data) {
-    return null
+
+  const rawSplIds = rawSplRecords.map((r) => r.id)
+
+  const [rawApprovalsList, rawParticipantsList] = await Promise.all([
+    rawSplIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
+            stepOrder: overtimeApprovals.stepOrder,
+            stepLabel: overtimeApprovals.stepLabel,
+            status: overtimeApprovals.status,
+            approverName: overtimeApprovals.approverName,
+            approverEmail: overtimeApprovals.approverEmail,
+            approverEmployeeId: overtimeApprovals.approverEmployeeId,
+            signatureDataUrl: overtimeApprovals.signatureDataUrl,
+            remarks: overtimeApprovals.remarks,
+            signedAt: overtimeApprovals.signedAt,
+          })
+          .from(overtimeApprovals)
+          .where(inArray(overtimeApprovals.overtimeCommandLetterId, rawSplIds))
+          .orderBy(asc(overtimeApprovals.stepOrder))
+      : [],
+    rawSplIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+            employeeId: overtimeCommandLetterParticipants.employeeId,
+            employeeName: employees.name,
+            shiftCode: overtimeCommandLetterParticipants.shiftCode,
+            rosterType: overtimeCommandLetterParticipants.rosterType,
+            category: overtimeCommandLetterParticipants.category,
+          })
+          .from(overtimeCommandLetterParticipants)
+          .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
+          .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, rawSplIds))
+      : [],
+  ])
+
+  const approvalsBySplMap = new Map<number, typeof rawApprovalsList>()
+  for (const a of rawApprovalsList) {
+    if (!approvalsBySplMap.has(a.overtimeCommandLetterId)) {
+      approvalsBySplMap.set(a.overtimeCommandLetterId, [])
+    }
+    approvalsBySplMap.get(a.overtimeCommandLetterId)!.push(a)
   }
 
-  return (
-    <div className="space-y-6">
-      <Card className="rounded-[1.5rem]">
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Pengajuan Lembur</Badge>
-              <Badge variant="outline">{data.lead.name}</Badge>
-              <Badge variant="outline">{data.lead.department}</Badge>
-            </div>
-            <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">
-                Workspace Surat Pengajuan Lembur
-              </CardTitle>
-              <CardDescription className="max-w-3xl text-sm leading-6">
-                Leader pilih bawahan yang boleh ikut lembur, lalu assign checklist pekerjaan dari
-                library untuk tiap orang. Mobile dan web baca sumber data yang sama.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <MetricPill label="Dokumen" value={data.metrics.totalDocuments} />
-              <MetricPill
-                label="Leader aktif"
-                value={`${data.metrics.activeLeaders}/${data.metrics.totalLeaders}`}
-              />
-              <MetricPill label="Assigned workers" value={data.metrics.totalAssignedWorkers} />
-              <MetricPill label="Assigned lines" value={data.metrics.totalAssignedLines} />
-            </div>
-          </div>
+  const participantsBySplMap = new Map<number, typeof rawParticipantsList>()
+  for (const p of rawParticipantsList) {
+    if (!participantsBySplMap.has(p.overtimeCommandLetterId)) {
+      participantsBySplMap.set(p.overtimeCommandLetterId, [])
+    }
+    participantsBySplMap.get(p.overtimeCommandLetterId)!.push(p)
+  }
 
-          <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-3 text-sm">
-            {data.canCreateCommands
-              ? `Perintah lembur aktif. Bawahan tersedia: ${data.team.length} orang.`
-              : 'Pengajuan SPL mandiri tersedia. Perintah lembur perlu akses leader aktif.'}
-          </div>
-        </CardHeader>
-      </Card>
+  // Row-Level Security (RLS) Filter: Admin sees ALL, users strictly see their own / assigned documents
+  const normalizedEmail = (session?.user?.email || activeEmployee?.email || '').trim().toLowerCase()
+  const splRecords = rawSplRecords.filter((r) => {
+    if (isAdmin) return true
+    if (isSiteAdmin && activeEmployee?.siteId) return r.siteId === activeEmployee.siteId
 
-      <Tabs defaultValue="request" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="request">Pengajuan</TabsTrigger>
-          <TabsTrigger value="history">Riwayat</TabsTrigger>
-          {data.canManageSettings ? <TabsTrigger value="settings">Settings</TabsTrigger> : null}
-        </TabsList>
+    // Requester / Creator
+    if (activeEmployee?.id && r.requestedByEmployeeId === activeEmployee.id) return true
 
-        <TabsContent value="request">
-          <Card className="rounded-[1.4rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="text-primary size-5" />
-                Form Pengajuan Lembur
-              </CardTitle>
-              <CardDescription>
-                Satu line = satu checklist kerja untuk satu bawahan. Tambahkan line sebanyak yang
-                dibutuhkan.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {data.canCreateCommands && data.team.length > 0 && permission.canEdit ? (
-                <OvertimeCommandLetterComposer
-                  action={manageOvertimeCommandLetterAction}
-                  intent="create"
-                  submitLabel="Simpan Pengajuan Lembur"
-                  routeTemplates={data.splOptions.routeTemplates}
-                  libraryActivities={data.splOptions.libraryActivities}
-                  teamMembers={data.team.map((member) => ({
-                    id: member.id,
-                    name: member.name,
-                    role: member.jobTitle || member.role,
-                  }))}
-                />
-              ) : (
-                <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] px-4 py-6 text-sm font-medium">
-                  {data.team.length === 0
-                    ? 'Belum ada bawahan aktif. Pengajuan lembur baru bisa dibuat setelah struktur bawahan tersedia.'
-                    : !permission.canEdit
-                    ? 'Anda tidak memiliki hak akses untuk menambah pengajuan lembur.'
-                    : 'Leader ini belum diaktifkan pada setting pengajuan lembur.'}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+    // Participant Worker in this SPL
+    const splParts = participantsBySplMap.get(r.id) || []
+    if (activeEmployee?.id && splParts.some((p) => p.employeeId === activeEmployee.id)) return true
 
-        <TabsContent value="history">
-          <div className="space-y-4">
-            <SplMonthlySummary documents={data.splDocuments} />
-            {data.splDocuments.length > 0 ? (
-              data.splDocuments.map((document) => (
-                <Card key={document.id} className="rounded-[1.4rem]">
-                  <CardContent className="space-y-4 pt-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-foreground text-lg font-semibold">{document.title}</p>
-                        <p className="text-muted-foreground text-sm">
-                          {document.splNumber} • {document.workDate.toLocaleDateString('id-ID')}
-                        </p>
-                      </div>
-                      <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
-                    </div>
+    // Assigned approver for any step of this SPL
+    const splApps = approvalsBySplMap.get(r.id) || []
+    const isAssignedApprover = splApps.some(
+      (a) =>
+        (activeEmployee?.id && a.approverEmployeeId === activeEmployee.id) ||
+        (a.approverEmail && a.approverEmail.trim().toLowerCase() === normalizedEmail) ||
+        (activeEmployee?.name && a.approverName && a.approverName.trim().toLowerCase() === activeEmployee.name.trim().toLowerCase())
+    )
+    if (isAssignedApprover) return true
 
-                    {['draft', 'returned'].includes(document.status.toLowerCase()) && permission.canEdit ? (
-                      <form action={transitionOvertimeCommandLetterStatusAction}>
-                        <input type="hidden" name="id" value={document.id} />
-                        <input type="hidden" name="targetStatus" value="submitted" />
-                        <Button type="submit" className="rounded-xl">
-                          Submit ke Approval
-                        </Button>
-                      </form>
-                    ) : null}
+    // Section Head / Leader
+    const jobTitleLower = (activeEmployee?.jobTitle || '').toLowerCase()
+    const isSectionHeadOrLeader = jobTitleLower.includes('section head') || jobTitleLower.includes('leader') || jobTitleLower.includes('supervisor') || jobTitleLower.includes('foreman')
+    if (isSectionHeadOrLeader && activeEmployee?.section && r.requesterSection === activeEmployee.section) return true
 
-                    <div className="grid gap-3 md:grid-cols-4">
-                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
-                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-                          Workers
-                        </p>
-                        <p className="text-foreground mt-2 font-semibold">{document.workerCount}</p>
-                      </div>
-                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
-                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-                          Lines
-                        </p>
-                        <p className="text-foreground mt-2 font-semibold">{document.lineCount}</p>
-                      </div>
-                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
-                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-                          Progress
-                        </p>
-                        <p className="text-foreground mt-2 font-semibold">
-                          {document.progressPercent}%
-                        </p>
-                      </div>
-                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-3 text-sm">
-                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-                          Planned Points
-                        </p>
-                        <p className="text-foreground mt-2 font-semibold">
-                          {document.plannedPointsTotal}
-                        </p>
-                      </div>
-                    </div>
+    const isDeptHeadOrManager = jobTitleLower.includes('dept') || jobTitleLower.includes('department head') || jobTitleLower.includes('manager')
+    if (isDeptHeadOrManager && activeEmployee?.department && r.requesterDepartment === activeEmployee.department) return true
 
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-                      <div className="bg-surface-container-low rounded-[1rem] px-4 py-4">
-                        <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-                          Assigned Workers
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {document.workers.length > 0 ? (
-                            document.workers.map((worker) => (
-                              <div
-                                key={worker.employeeId}
-                                className="text-foreground rounded-full bg-white px-3 py-1 text-xs font-semibold"
-                              >
-                                {worker.employeeName}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-muted-foreground text-sm">
-                              Belum ada worker terpasang.
-                            </div>
-                          )}
-                        </div>
+    return false
+  })
 
-                        <div className="mt-4 space-y-2">
-                          {document.items.map((item) => (
-                            <div
-                              key={item.id}
-                              className="rounded-[0.9rem] bg-white px-3 py-3 text-sm"
-                            >
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div>
-                                  <p className="text-foreground font-semibold">{item.lineLabel}</p>
-                                  <p className="text-muted-foreground text-xs">
-                                    {item.assignedEmployeeName ?? 'Belum pilih'} •{' '}
-                                    {item.targetUnit || '-'} • {item.estimatedMinutes} menit
-                                  </p>
-                                </div>
-                                <Badge variant="outline">{item.plannedPoints} pts</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+  const splIds = splRecords.map((r) => r.id)
+  const approvalsList = rawApprovalsList.filter((a) => splIds.includes(a.overtimeCommandLetterId))
 
-                      {['draft', 'returned'].includes(document.status.toLowerCase()) && (permission.canEdit || permission.canDelete) ? (
-                        <details className="bg-surface-container-low rounded-[1rem] px-4 py-4">
-                          <summary className="text-foreground cursor-pointer list-none text-sm font-semibold">
-                            Edit / Hapus Pengajuan
-                          </summary>
-                          <div className="mt-4 space-y-3">
-                            {permission.canEdit && (
-                              <OvertimeCommandLetterComposer
-                                action={manageOvertimeCommandLetterAction}
-                                intent="update"
-                                submitLabel="Update Request"
-                                routeTemplates={data.splOptions.routeTemplates}
-                                libraryActivities={data.splOptions.libraryActivities}
-                                teamMembers={data.team.map((member) => ({
-                                  id: member.id,
-                                  name: member.name,
-                                  role: member.jobTitle || member.role,
-                                }))}
-                                defaults={document}
-                              />
-                            )}
+  const [participantsList, itemsList] = await Promise.all([
+    splIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+            employeeName: employees.name,
+            shiftCode: overtimeCommandLetterParticipants.shiftCode,
+            rosterType: overtimeCommandLetterParticipants.rosterType,
+            category: overtimeCommandLetterParticipants.category,
+          })
+          .from(overtimeCommandLetterParticipants)
+          .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
+          .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, splIds))
+      : [],
+    splIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+            lineLabel: overtimeCommandLetterItems.lineLabel,
+            targetUnit: overtimeCommandLetterItems.targetUnit,
+            estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+            plannedPoints: overtimeCommandLetterItems.plannedPoints,
+          })
+          .from(overtimeCommandLetterItems)
+          .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
+      : [],
+  ])
 
-                            {permission.canDelete && (
-                              <form action={manageOvertimeCommandLetterAction} className="mt-3">
-                                <input type="hidden" name="intent" value="delete" />
-                                <input type="hidden" name="id" value={document.id} />
-                                <Button
-                                  type="submit"
-                                  variant="outline"
-                                  className="w-full rounded-xl text-rose-700"
-                                >
-                                  Hapus Pengajuan
-                                </Button>
-                              </form>
-                            )}
-                          </div>
-                        </details>
-                      ) : null}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <Card className="rounded-[1.4rem]">
-                <CardContent className="text-muted-foreground pt-6 text-sm">
-                  Belum ada pengajuan lembur untuk site ini.
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
+  const approvalsMap = new Map<number, OvertimeListingRow['approvals']>()
+  for (const a of approvalsList) {
+    const list = approvalsMap.get(a.overtimeCommandLetterId) || []
+    list.push({
+      stepOrder: Number(a.stepOrder) || 1,
+      stepLabel: a.stepLabel || '',
+      status: a.status || 'waiting',
+      approverName: a.approverName || '',
+      signatureDataUrl: a.signatureDataUrl || null,
+      remarks: a.remarks || null,
+      signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
+    })
+    approvalsMap.set(a.overtimeCommandLetterId, list)
+  }
 
-        {data.canManageSettings ? (
-          <TabsContent value="settings">
-            <Card className="rounded-[1.4rem]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings2 className="text-primary size-5" />
-                  Setting Leader Pembuat
-                </CardTitle>
-                <CardDescription>
-                  Pilih pemberi perintah lembur dari hierarchy Head Area pada master Lokasi Site.
-                  Scope otomatis hanya ke bawahannya.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="bg-surface-container-low rounded-[1rem] px-4 py-4">
-                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-[0.14em]">
-                    Head Area / Head Location
-                  </p>
-                  <p className="text-foreground mt-1 font-semibold">
-                    {data.headLocation?.headEmployeeName ?? 'Belum diatur di Master Data > Lokasi Site'}
-                  </p>
-                </div>
+  const participantsMap = new Map<number, any[]>()
+  for (const p of participantsList) {
+    const list = participantsMap.get(p.overtimeCommandLetterId) || []
+    list.push({
+      employeeName: p.employeeName || 'Karyawan',
+      shiftCode: p.shiftCode || 'DS',
+      rosterType: p.rosterType || '5:2',
+      category: p.category || 'after_mandatory_ot',
+    })
+    participantsMap.set(p.overtimeCommandLetterId, list)
+  }
 
-                {data.headLocation?.headEmployeeId && data.leaderOptions.length > 0 && permission.canEdit ? (
-                  <form
-                    action={manageOvertimeRequestLeaderPermissionAction}
-                    className="grid gap-3 rounded-[1rem] border border-border bg-background p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
-                  >
-                    <SearchableEmployeeSelect
-                      name="leaderEmployeeId"
-                      label="Tambah pemberi perintah lembur"
-                      placeholder="Cari orang dari hierarchy Head Area..."
-                      employees={data.leaderOptions.map((leader) => ({
-                        id: leader.id,
-                        name: leader.name,
-                        employeeSn: leader.employeeSn,
-                        role: `${leader.jobTitle || leader.role} • ${leader.subordinateCount} bawahan`,
-                      }))}
-                    />
-                    <input type="hidden" name="isActive" value="true" />
-                    <Button type="submit" className="min-h-10 rounded-xl">
-                      <Users2 className="size-4" /> Tambahkan
-                    </Button>
-                  </form>
-                ) : null}
+  const itemsMap = new Map<number, any[]>()
+  for (const item of itemsList) {
+    const list = itemsMap.get(item.overtimeCommandLetterId) || []
+    list.push({
+      lineLabel: item.lineLabel || 'Aktivitas Lembur',
+      targetUnit: item.targetUnit || '—',
+      estimatedMinutes: Number(item.estimatedMinutes) || 60,
+      plannedPoints: Number(item.plannedPoints) || 0,
+    })
+    itemsMap.set(item.overtimeCommandLetterId, list)
+  }
 
-                {data.leaderCandidates.length > 0 ? (
-                  data.leaderCandidates.map((leader) => (
-                    <div
-                      key={leader.id}
-                      className="bg-surface-container-low flex flex-col gap-3 rounded-[1rem] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                    >
-                      <div>
-                        <p className="text-foreground font-semibold">{leader.name}</p>
-                        <p className="text-muted-foreground text-sm">
-                          {leader.jobTitle || leader.role} • {leader.department}
-                        </p>
-                        <p className="text-muted-foreground mt-1 text-xs">
-                          Bawahan aktif: {leader.subordinateCount}
-                        </p>
-                        <details className="mt-2">
-                          <summary className="text-primary cursor-pointer text-xs font-semibold">
-                            Lihat siapa saja bawahannya
-                          </summary>
-                          <div className="mt-2 flex max-w-3xl flex-wrap gap-1.5">
-                            {leader.subordinateNames.map((name) => (
-                              <Badge key={name} variant="outline" className="bg-background">
-                                {name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </details>
-                      </div>
+  const rows: OvertimeListingRow[] = splRecords.map((r) => {
+    const parts = participantsMap.get(r.id) || []
+    return {
+      id: Number(r.id),
+      splNumber: r.splNumber || `SPL-${r.id}`,
+      title: r.title || 'Surat Perintah Lembur',
+      workDate: r.workDate ? new Date(r.workDate).toISOString() : null,
+      plannedStartAt: r.plannedStartAt ? new Date(r.plannedStartAt).toISOString() : null,
+      plannedEndAt: r.plannedEndAt ? new Date(r.plannedEndAt).toISOString() : null,
+      status: r.status || 'draft',
+      requesterName: r.requesterName || 'Pemohon',
+      requesterDepartment: r.requesterDepartment || 'Central Services',
+      requestNotes: r.requestNotes || null,
+      workerCount: parts.length,
+      participants: parts,
+      lineItems: itemsMap.get(r.id) || [],
+      approvals: approvalsMap.get(r.id) || [],
+    }
+  })
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          className={
-                            leader.isActive
-                              ? 'bg-emerald-100 text-emerald-900'
-                              : 'bg-slate-100 text-slate-800'
-                          }
-                        >
-                          {leader.isActive ? 'Aktif' : 'Nonaktif'}
-                        </Badge>
-                        {permission.canEdit && (
-                          <form action={manageOvertimeRequestLeaderPermissionAction}>
-                            <input type="hidden" name="leaderEmployeeId" value={leader.id} />
-                            <input
-                              type="hidden"
-                              name="isActive"
-                              value={leader.isActive ? 'false' : 'true'}
-                            />
-                            <Button
-                              type="submit"
-                              variant={leader.isActive ? 'outline' : 'default'}
-                              className="rounded-full"
-                            >
-                              <Users2 className="size-4" />
-                              {leader.isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                            </Button>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="bg-surface-container-low text-muted-foreground rounded-[1rem] px-4 py-6 text-sm">
-                    Belum ada pemberi perintah lembur yang dipilih.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        ) : null}
-      </Tabs>
-    </div>
-  )
+  const sanitizedEmployees = (allEmployees || []).map((e) => ({
+    id: Number(e.id),
+    name: e.name || '',
+    employeeId: e.employeeId || '',
+    position: e.position || '',
+    rank: e.rank || '',
+    department: e.department || '',
+    section: e.section || '',
+    directManagerId: e.directManagerId ? Number(e.directManagerId) : null,
+    sectionId: e.sectionId ? Number(e.sectionId) : null,
+    departmentId: e.departmentId ? Number(e.departmentId) : null,
+  }))
+
+  const initialSettings = await getOvertimeWorkflowSettings()
+
+  return <OvertimeListingClient rows={rows} employees={sanitizedEmployees} initialSettings={initialSettings} />
 }

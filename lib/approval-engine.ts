@@ -807,6 +807,43 @@ export async function resolveApprovalRouteForActivity(
 
   const selectedMatrix = rankedCandidates[0];
   if (!selectedMatrix) {
+    if (context.transactionType === "sop_win_request" || context.transactionType === "sop_win") {
+      return {
+        matrixId: null,
+        matrixName: "Default SOP/WIN Access Matrix (2-Step)",
+        structureId: null,
+        structureName: null,
+        transactionType: "sop_win_request",
+        warnings: [],
+        steps: [
+          {
+            stepOrder: 1,
+            label: "Quality Management Review (Ria Annisa)",
+            approverName: "Ria Annisa Putri",
+            approverEmployeeId: null,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: "single",
+            resolutionSource: "matrix",
+            canDelegate: false,
+            slaHours: 24,
+          },
+          {
+            stepOrder: 2,
+            label: "BPI & IA Reps Review (Bardinia Susi)",
+            approverName: "Bardinia Susi Ekawaty",
+            approverEmployeeId: null,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: "single",
+            resolutionSource: "matrix",
+            canDelegate: false,
+            slaHours: 24,
+          },
+        ],
+      };
+    }
+
     if (context.transactionType === "apd-request") {
       return resolveApdApprovalRoute(context);
     }
