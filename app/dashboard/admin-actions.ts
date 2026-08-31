@@ -641,7 +641,7 @@ async function syncFieldBreakPlansFromV2Rows(
   }
 ) {
   const employeeIds = input.rows.map((row) => row.employeeId)
-  const employeeRows = employeeIds.length
+  const employeeRows: Array<{ id: number; name: string; section: string | null; role: string | null }> = employeeIds.length
     ? await tx
         .select({
           id: employees.id,
@@ -653,7 +653,7 @@ async function syncFieldBreakPlansFromV2Rows(
         .where(inArray(employees.id, employeeIds))
     : []
   const employeeById = new Map(
-    employeeRows.map((employee: (typeof employeeRows)[number]) => [employee.id, employee])
+    employeeRows.map((employee: { id: number; name: string; section: string | null; role: string | null }) => [employee.id, employee])
   )
 
   for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
@@ -3169,16 +3169,30 @@ const importUsersSchema = z.object({
 })
 
 export type ImportUsersActionState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
   importedCount?: number
   updatedCount?: number
   skippedCount?: number
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 export type AdminMutationState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 const optionalFormString = z.preprocess(
@@ -4771,6 +4785,28 @@ function normalizeLookupValue(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
+type ImportSiteLookup = {
+  id: number
+  name: string
+  location: string | null
+}
+
+function resolveSiteFromImportedLocation(
+  value: string,
+  siteRows: ImportSiteLookup[],
+  fallbackSite: ImportSiteLookup
+) {
+  const normalized = normalizeLookupValue(value)
+  if (!normalized) return fallbackSite
+
+  return (
+    siteRows.find(
+      (site) =>
+        normalizeLookupValue(site.name) === normalized ||
+        normalizeLookupValue(site.location) === normalized
+    ) ?? fallbackSite
+  )
+}
 function extractActivitySupplementalPayload(formData: FormData) {
   const checklistCompletion = formData
     .getAll('checklistCompletion')
@@ -5906,7 +5942,13 @@ export async function importSecurityUsersAction(
       return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [[defaultSite]] = await Promise.all([db.select().from(sites).limit(1)])
+    const [[defaultSite], siteRows] = await Promise.all([
+      db.select().from(sites).limit(1),
+      db
+        .select({ id: sites.id, name: sites.name, location: sites.location })
+        .from(sites)
+        .where(eq(sites.isActive, true)),
+    ])
 
     if (!defaultSite) {
       return { status: 'error', message: 'Site default belum tersedia untuk import user.' }
@@ -5956,6 +5998,8 @@ export async function importSecurityUsersAction(
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
       const levelName = getMappedValue(record, headers, mapping, 'levelName') || 'Rookie'
       const workLocation = getMappedValue(record, headers, mapping, 'workLocation') || ''
+      const resolvedSite = resolveSiteFromImportedLocation(workLocation, siteRows, defaultSite)
+      const resolvedWorkLocation = workLocation || resolvedSite.location || resolvedSite.name
       const accessRole = getMappedValue(record, headers, mapping, 'accessRole') || 'User'
       const employeeStatusType =
         getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
@@ -5979,7 +6023,7 @@ export async function importSecurityUsersAction(
         department,
         section,
         jobTitle,
-        siteId: defaultSite.id,
+        siteId: resolvedSite.id,
         statusName: employeeStatusType,
       })
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
@@ -6021,7 +6065,8 @@ export async function importSecurityUsersAction(
         email,
         role: jobTitle,
         department,
-        siteId: defaultSite.id,
+        workLocation: resolvedWorkLocation,
+        siteId: resolvedSite.id,
         joinDate: joinDate || null,
         birthDate: birthDate || null,
         departmentId: hrGovernanceIds.departmentId,
@@ -6078,6 +6123,7 @@ export async function importSecurityUsersAction(
 
 const importUpdateUsersSchema = z.object({
   rawCsv: z.string().trim().min(1, 'CSV file is required.'),
+  confirmLocationChanges: z.preprocess((value) => value === 'true' || value === 'on' || value === true, z.boolean().default(false)),
 })
 
 const IMPORT_UPDATE_HEADERS = [
@@ -6132,6 +6178,7 @@ export async function importUpdateUsersAction(
   try {
     const payload = importUpdateUsersSchema.parse({
       rawCsv: formData.get('rawCsv'),
+      confirmLocationChanges: formData.get('confirmLocationChanges'),
     })
 
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
@@ -6151,6 +6198,11 @@ export async function importUpdateUsersAction(
     if (snCol === undefined) {
       return { status: 'error', message: 'Kolom "SN" wajib ada di file.' }
     }
+
+    const siteRows = await db
+      .select({ id: sites.id, name: sites.name, location: sites.location })
+      .from(sites)
+      .where(eq(sites.isActive, true))
 
     // Fetch all existing employees
     const existingEmployees = await db
@@ -6201,6 +6253,42 @@ export async function importUpdateUsersAction(
       return undefined
     }
 
+    const lokasiSiteImportIdx = col('lokasi site')
+    const pendingLocationChanges: string[] = []
+    if (lokasiSiteImportIdx !== undefined) {
+      for (const record of records) {
+        const recordValues = Object.values(record)
+        const employeeSn = (recordValues[snCol] ?? '').trim()
+        const nextLocation = (recordValues[lokasiSiteImportIdx] ?? '').trim()
+        if (!employeeSn || !nextLocation) continue
+
+        const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+        if (!existing) continue
+
+        const resolvedSite = resolveSiteFromImportedLocation(nextLocation, siteRows, {
+          id: existing.siteId,
+          name: existing.workLocation ?? '',
+          location: existing.workLocation ?? '',
+        })
+        const currentLocation = existing.workLocation || ''
+        const locationChanged =
+          normalizeLookupValue(currentLocation) !== normalizeLookupValue(nextLocation) ||
+          existing.siteId !== resolvedSite.id
+
+        if (locationChanged) {
+          pendingLocationChanges.push(
+            `${existing.employeeSn || existing.email || existing.id}: ${currentLocation || '-'} -> ${nextLocation}`
+          )
+        }
+      }
+    }
+
+    if (pendingLocationChanges.length > 0 && !payload.confirmLocationChanges) {
+      return {
+        status: 'error',
+        message: `Import ditahan: ada ${pendingLocationChanges.length} perubahan Lokasi Site. Centang konfirmasi perubahan lokasi dulu. Contoh: ${pendingLocationChanges.slice(0, 5).join('; ')}`,
+      }
+    }
     let updatedCount = 0
     let skippedCount = 0
     const errors: string[] = []
@@ -6276,7 +6364,15 @@ export async function importUpdateUsersAction(
       }
       if (lokasiSiteIdx !== undefined) {
         const v = getValue(lokasiSiteIdx)
-        if (v) employeeUpdate.workLocation = v
+        if (v) {
+          const resolvedSite = resolveSiteFromImportedLocation(v, siteRows, {
+            id: existing.siteId,
+            name: existing.workLocation ?? '',
+            location: existing.workLocation ?? '',
+          })
+          employeeUpdate.workLocation = v
+          employeeUpdate.siteId = resolvedSite.id
+        }
       }
       if (tipeStatusIdx !== undefined) {
         const v = getValue(tipeStatusIdx)
@@ -6849,7 +6945,7 @@ export async function manageSecurityUserAction(
           pointOfHire,
           contractDurationStart,
           contractDurationEnd,
-          permanentDate,
+          permanentDate: payload.permanentDate || null,
           workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
@@ -9803,3 +9899,8 @@ function parseSioExcelDate(value: string): string | null {
   const d = new Date(value)
   return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null
 }
+
+
+
+
+

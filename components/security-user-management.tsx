@@ -122,6 +122,10 @@ function getUniqueOptions(values: string[]) {
   )
 }
 
+function normalizeImportValue(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 function toHeaderPreview(mapping: UserImportMapping) {
   return USER_IMPORT_FIELDS.map(
     (field) => `${field.label}: ${mapping[field.key] || 'belum dipilih'}`
@@ -319,6 +323,7 @@ export function SecurityUserManagement({
   )
   const [isImportUpdateOpen, setIsImportUpdateOpen] = useState(false)
   const [importUpdateRawCsv, setImportUpdateRawCsv] = useState('')
+  const [confirmLocationChanges, setConfirmLocationChanges] = useState(false)
   const [importUpdateActionState, importUpdateFormAction] = useActionState(
     importUpdateUsersAction,
     INITIAL_IMPORT_STATE
@@ -326,6 +331,31 @@ export function SecurityUserManagement({
 
   const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv])
   const parsedImportUpdate = useMemo(() => parseCsvToRecords(importUpdateRawCsv), [importUpdateRawCsv])
+  const importUpdateLocationChanges = useMemo(() => {
+    const snHeader = parsedImportUpdate.headers.find((header) => normalizeImportValue(header) === 'sn')
+    const siteHeader = parsedImportUpdate.headers.find((header) => normalizeImportValue(header) === 'lokasi site')
+    if (!snHeader || !siteHeader) return []
+
+    const usersBySn = new Map(
+      users
+        .filter((user) => user.employeeSn)
+        .map((user) => [normalizeImportValue(user.employeeSn), user])
+    )
+
+    return parsedImportUpdate.records.flatMap((record) => {
+      const sn = (record[snHeader] ?? '').trim()
+      const nextLocation = (record[siteHeader] ?? '').trim()
+      if (!sn || !nextLocation) return []
+
+      const user = usersBySn.get(normalizeImportValue(sn))
+      if (!user) return []
+
+      const currentLocation = getSiteDisplayName(user)
+      if (normalizeImportValue(currentLocation) === normalizeImportValue(nextLocation)) return []
+
+      return [{ sn, name: user.name, before: currentLocation, after: nextLocation }]
+    })
+  }, [parsedImportUpdate.headers, parsedImportUpdate.records, users])
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
     [users]
@@ -381,6 +411,14 @@ export function SecurityUserManagement({
     }
   }, [actionState.status, router, startRefreshTransition])
 
+  useEffect(() => {
+    if (importUpdateActionState.status === 'success') {
+      setIsImportUpdateOpen(false)
+      setImportUpdateRawCsv('')
+      setConfirmLocationChanges(false)
+      startRefreshTransition(() => router.refresh())
+    }
+  }, [importUpdateActionState.status, router, startRefreshTransition])
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
@@ -594,6 +632,7 @@ export function SecurityUserManagement({
                               onChange={async (event) => {
                                 const file = event.target.files?.[0]
                                 if (!file) return
+                        setConfirmLocationChanges(false)
                                 if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                                   const XLSX = await import('xlsx')
                                   const buffer = await file.arrayBuffer()
@@ -987,7 +1026,11 @@ export function SecurityUserManagement({
 
                 <form action={importUpdateFormAction} className="space-y-4">
                   <input type="hidden" name="rawCsv" value={importUpdateRawCsv} />
-
+                  <input
+                    type="hidden"
+                    name="confirmLocationChanges"
+                    value={confirmLocationChanges ? 'true' : 'false'}
+                  />
                   <div className="space-y-2">
                     <p className="text-foreground text-xs font-semibold">Upload File Excel/CSV</p>
                     <Input
@@ -996,6 +1039,7 @@ export function SecurityUserManagement({
                       onChange={async (event) => {
                         const file = event.target.files?.[0]
                         if (!file) return
+                        setConfirmLocationChanges(false)
                         const lowerName = file.name.toLowerCase()
                         if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
                           const buffer = await file.arrayBuffer()
@@ -1048,6 +1092,32 @@ export function SecurityUserManagement({
                     )}
                   </div>
 
+                  {importUpdateLocationChanges.length > 0 ? (
+                    <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-700">
+                      <AlertDescription className="space-y-3 text-xs">
+                        <p>
+                          Ada {importUpdateLocationChanges.length} perubahan Lokasi Site. Cek dulu sebelum update.
+                        </p>
+                        <div className="max-h-36 overflow-auto rounded-lg bg-white/60 p-2">
+                          {importUpdateLocationChanges.slice(0, 10).map((item) => (
+                            <div key={`${item.sn}-${item.after}`} className="grid gap-1 py-1 sm:grid-cols-[8rem_1fr_1fr]">
+                              <span className="font-semibold">{item.sn}</span>
+                              <span>{item.before || '-'}</span>
+                              <span>{item.after || '-'}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <label className="flex items-center gap-2 font-semibold">
+                          <Checkbox
+                            checked={confirmLocationChanges}
+                            onCheckedChange={(checked) => setConfirmLocationChanges(checked === true)}
+                          />
+                          Saya setuju update Lokasi Site sesuai file import.
+                        </label>
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+
                   {importUpdateActionState.status !== 'idle' ? (
                     <Alert
                       className={
@@ -1067,6 +1137,7 @@ export function SecurityUserManagement({
                       size="sm"
                       onClick={() => {
                         setImportUpdateRawCsv('')
+                        setConfirmLocationChanges(false)
                         setIsImportUpdateOpen(false)
                       }}
                       className="h-9 rounded-xl px-4 text-xs"
@@ -1076,7 +1147,7 @@ export function SecurityUserManagement({
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={parsedImportUpdate.records.length === 0}
+                      disabled={parsedImportUpdate.records.length === 0 || (importUpdateLocationChanges.length > 0 && !confirmLocationChanges)}
                       className="h-9 rounded-xl px-4 text-xs"
                     >
                       {importUpdateActionState.status === 'error' ? 'Coba Lagi' : 'Update Data'}

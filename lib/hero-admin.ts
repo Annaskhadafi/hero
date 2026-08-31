@@ -4167,6 +4167,16 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
+  if (resource === 'settings_system_backup') {
+    return {
+      canView: roleName === 'Super Admin',
+      canEdit: roleName === 'Super Admin',
+      canDelete: roleName === 'Super Admin',
+      canSelectAll: roleName === 'Super Admin',
+      dataScope: 'global',
+    }
+  }
+
   if (roleName === 'HSE') {
     const allowed = HSE_ROLE_FULL_ACCESS_RESOURCES.has(resource)
     return {
@@ -4219,7 +4229,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 
   return {
     canView: true,
-    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra'].includes(resource),
+    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra', 'settings_system_backup'].includes(resource),
     canDelete: false,
     canSelectAll: false,
     dataScope: OWN_SCOPE_RESOURCES.has(resource) ? 'own' : 'global',
@@ -4962,6 +4972,12 @@ export async function ensureHeroGovernanceSeedData() {
           action: 'read',
         },
         {
+          code: 'settings.system_backup.manage',
+          label: 'Manage database backup and restore',
+          resource: 'settings_system_backup',
+          action: 'manage',
+        },
+        {
           code: 'warehouse_repair.manage',
           label: 'Manage Warehouse Repair',
           resource: 'warehouse_repair_dashboard',
@@ -5023,6 +5039,10 @@ export async function ensureHeroGovernanceSeedData() {
         {
           roleId: roleByName['Super Admin'].id,
           permissionId: permissionByCode['settings.email.read'].id,
+        },
+        {
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['settings.system_backup.manage'].id,
         },
         {
           roleId: roleByName['Site Admin'].id,
@@ -6500,7 +6520,7 @@ export async function getSchedulingTimesheetOptions() {
         department: employee.department ?? null,
         section: employee.section ?? null,
         siteId: employee.siteId,
-        locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+        locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
         kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
         kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
         sio: kimperMap.get(employee.id)?.sioNames
@@ -6673,6 +6693,7 @@ async function getSchedulingTimesheetBaseOptions() {
         section: employees.section,
         siteId: employees.siteId,
         siteName: sites.name,
+        workLocation: employees.workLocation,
       })
       .from(employees)
       .leftJoin(sites, eq(employees.siteId, sites.id))
@@ -6701,7 +6722,7 @@ async function getSchedulingTimesheetBaseOptions() {
       department: employee.department ?? null,
       section: employee.section ?? null,
       siteId: employee.siteId,
-      locationName: extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+      locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
     })),
     sites: siteRows,
   }
@@ -7576,3 +7597,5 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
+
