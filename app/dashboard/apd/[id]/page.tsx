@@ -156,7 +156,7 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
                         <div className="font-semibold text-foreground">{step.approverName || "Approver"}</div>
                         <time className="text-xs text-muted-foreground">
-                          {step.resolvedAt ? step.resolvedAt.toLocaleString("id-ID") : "Menunggu"}
+                          {(step as any).resolvedAt ? new Date((step as any).resolvedAt).toLocaleString("id-ID") : "Menunggu"}
                         </time>
                       </div>
                       <div className="text-sm text-muted-foreground capitalize">

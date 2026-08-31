@@ -44,7 +44,7 @@ export default async function DailyActivityApprovalPage({
 
   return (
     <DailyActivityApprovalForm
-      data={data}
+      data={data as any}
       employees={employees}
       orgNodes={orgNodes}
     />

@@ -532,7 +532,7 @@ export function WipRepairTable({ data, workOrderDetails, invoiceMappings, pmoMap
       return accumulator
     }, {})
 
-    for (const details of Object.values(grouped)) {
+    for (const details of Object.values(grouped || {})) {
       details.sort((left, right) => {
         const sortDiff = getDetailSortValue(left) - getDetailSortValue(right)
 

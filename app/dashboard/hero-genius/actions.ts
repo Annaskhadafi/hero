@@ -1008,8 +1008,8 @@ export async function sendHeroGeniusFeedbackAction(payload: RagFeedbackPayload) 
         : 1;
 
     const messageId = payload.message_id ? String(payload.message_id) : `msg_${Date.now()}`;
-    const feedbackNotes = payload.feedback_notes || payload.feedback_text || null;
-    const correctionText = payload.correction_text || payload.correction || null;
+    const feedbackNotes = payload.feedback_notes || (payload as any).feedback_text || null;
+    const correctionText = payload.correction_text || (payload as any).correction || null;
 
     // 1. Send directly to vision.chitraparatama.com /api/v1/rag/feedback
     let remoteSuccess = false;

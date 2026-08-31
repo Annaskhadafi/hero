@@ -70,8 +70,8 @@ function ChartContainer({
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme || config.color
+  const colorConfig = Object.entries(config || {}).filter(
+    ([, itemConfig]) => itemConfig && (itemConfig.theme || itemConfig.color)
   )
 
   if (!colorConfig.length) {
@@ -81,7 +81,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   return (
     <style
       dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
+        __html: Object.entries(THEMES || {})
           .map(
             ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
@@ -338,9 +338,10 @@ function getPayloadConfigFromPayload(
     ] as string
   }
 
-  return configLabelKey in config
-    ? config[configLabelKey]
-    : config[key as keyof typeof config]
+  const cfg = config || {}
+  return configLabelKey in cfg
+    ? cfg[configLabelKey]
+    : cfg[key as keyof typeof cfg]
 }
 
 export {

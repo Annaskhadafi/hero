@@ -181,7 +181,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
           <CardHeader><CardTitle className="text-sm">Available Placeholders</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-              {Object.entries(PLACEHOLDER_DEFS).map(([key, desc]) => (
+              {Object.entries(PLACEHOLDER_DEFS || {}).map(([key, desc]) => (
                 <div key={key} className="flex items-center gap-2 bg-muted/30 px-3 py-1.5 rounded-md">
                   <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{`{${key}}`}</code>
                   <span className="text-muted-foreground text-xs">{desc}</span>
@@ -295,7 +295,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
               )}
             </div>
             <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
-              <strong>Available variables:</strong> {Object.keys(PLACEHOLDER_DEFS).map(k => `{${k}}`).join(", ")}
+              <strong>Available variables:</strong> {Object.keys(PLACEHOLDER_DEFS || {}).map(k => `{${k}}`).join(", ")}
             </div>
           </div>
           <DialogFooter>

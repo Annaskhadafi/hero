@@ -120,7 +120,7 @@ export async function submitApdRequest(formData: FormData) {
         previewSnapshot,
         decisionNote: "",
         submittedAt: new Date(),
-      });
+      } as any);
 
       // 5. Send Email if there is an approver
       if (firstStep?.approverEmployeeId) {
@@ -137,7 +137,7 @@ export async function submitApdRequest(formData: FormData) {
           notifyWorkflowBellRecipients({
             recipientEmails: [approverEmailRec.email],
             eventType: "apd_request_review",
-            category: "approval",
+            category: "approval_requests",
             title: "Review Permintaan APD",
             body: `${currentEmployee.name} mengajukan permintaan APD baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
             url: `/dashboard/approval`,

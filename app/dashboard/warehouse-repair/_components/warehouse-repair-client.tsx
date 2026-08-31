@@ -136,7 +136,6 @@ function ViewDialog({
       title={title}
       mode="view"
       access={access}
-      className="sm:max-w-4xl"
     >
       <div className="flex flex-col gap-6 md:flex-row">
         {row.photoUrl && row.photoUrl.trim() ? (
@@ -558,9 +557,14 @@ function TransferDialog({
 
   const save = () =>
     start(async () => {
-      if (!selectedItem) return toast.error("Pilih barang terlebih dahulu")
-      if (quantity > selectedItem.stock)
-        return toast.error(`Stok tidak mencukupi (stok saat ini: ${selectedItem.stock})`)
+      if (!selectedItem) {
+        toast.error("Pilih barang terlebih dahulu")
+        return
+      }
+      if (quantity > selectedItem.stock) {
+        toast.error(`Stok tidak mencukupi (stok saat ini: ${selectedItem.stock})`)
+        return
+      }
 
       const res = await createWarehouseRepairTransfer({
         transactionDate,

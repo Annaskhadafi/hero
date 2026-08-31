@@ -428,7 +428,7 @@ export function CreateManHoursButton({ access, options }: { access: TableRbacAcc
   }, [inputType, workLocation, year, monthIndex, handleFetchAttendance])
 
   const calculatedManualTotal = React.useMemo(() => {
-    return Object.values(monthlyValues).reduce((acc, curr) => {
+    return Object.values(monthlyValues || {}).reduce((acc, curr) => {
       const num = parseFloat(curr.replace(/,/g, ""))
       return acc + (Number.isFinite(num) ? num : 0)
     }, 0)
@@ -694,7 +694,7 @@ export function EditBatchManHoursButton({
   }, [inputType, siteRow.workLocation, year, monthIndex, handleFetchAttendance])
 
   const calculatedManualTotal = React.useMemo(() => {
-    return Object.values(monthlyValues).reduce((acc, curr) => {
+    return Object.values(monthlyValues || {}).reduce((acc, curr) => {
       const num = parseFloat(curr.replace(/,/g, ""))
       return acc + (Number.isFinite(num) ? num : 0)
     }, 0)

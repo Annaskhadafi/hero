@@ -19,6 +19,7 @@ import {
   DEFAULT_DAILY_ACTIVITY_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getServerSession } from '@/lib/auth-session'
 import {
   getUserSignatureAction as getUserSignatureActionInternal,
   saveUserSignatureAction as saveUserSignatureActionInternal,
@@ -2912,7 +2913,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       }
 
       memberActivityInfos.push({
-        memberEmployee,
+        memberEmployee: memberEmployee as any,
         createdActivityId: createdActivity.id,
         activityTitle,
         activityStatus,
@@ -2926,7 +2927,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       await syncDailyRouteSessionForActivity({
         tx,
         activityId: createdActivity.id,
-        employee: memberEmployee,
+        employee: memberEmployee as any,
         payload: {
           ...payload,
           routeSummaryRemark: payload.routeSummaryRemark || payload.notes,
@@ -3802,7 +3803,7 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
       ? settings.approvalMatrix.sectionHeads
       : Object.values(settings.approvalMatrix.sectionHeads)
 
-    const matched = secList.find((sh: any) =>
+    const matched: any = secList.find((sh: any) =>
       sh.section && (
         sectionName.toLowerCase().includes(sh.section.toLowerCase()) ||
         sh.section.toLowerCase().includes(sectionName.toLowerCase())
@@ -3815,7 +3816,7 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
       const [empMatch] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(sql`LOWER(TRIM(${employees.email})) = ${matched.email.trim().toLowerCase()}`)
+        .where(sql`LOWER(TRIM(${employees.email})) = ${String(matched.email).trim().toLowerCase()}`)
         .limit(1)
       if (empMatch) {
         sectionHeadEmployeeId = empMatch.id
@@ -4239,6 +4240,7 @@ export async function submitDailyActivityApprovalStepAction(
             eventType: 'daily_activity_approved',
             category: 'approval_requests',
             title: `Daily Activity Disetujui: ${session.sessionCode || ''}`,
+            body: `Daily Activity untuk sesi ${session.sessionCode || ''} telah disetujui sepenuhnya.`,
             url: `/dashboard/activity-hub/document/${payload.sessionId}`,
             tagPrefix: 'daily-activity-approved',
             metadata: { sessionId: payload.sessionId },
@@ -5659,8 +5661,8 @@ export async function generateTestDailyActivityApproval() {
     const workflowSettings = await getDailyActivityWorkflowSettings()
 
     // Resolve Section Head name from workflow settings matrix
-    const empSectionLower = (currentEmployee.section || '').trim().toLowerCase()
-    const empDeptLower = (currentEmployee.department || '').trim().toLowerCase()
+    const empSectionLower = ((currentEmployee as any).section || '').trim().toLowerCase()
+    const empDeptLower = ((currentEmployee as any).department || '').trim().toLowerCase()
 
     const matchedSecConfig = (workflowSettings.approvalMatrix.sectionHeads || []).find((sh) => {
       const secLower = (sh.section || '').trim().toLowerCase()
@@ -5728,7 +5730,7 @@ export async function generateTestDailyActivityApproval() {
     const firstStepUrl = links[0]?.url || `${baseUrl}/dashboard/activity-hub/document/${testSessionId}/approval`
     try {
       await sendWorkflowEmail({
-        to: TEST_EMAIL,
+        to: currentEmployee.email || 'admin@chitraparatama.co.id',
         templateCode: 'daily_activity_test_notification',
         templateName: 'Daily Activity Test Approval Notification',
         fallbackSubject: `[TEST APPROVAL] Daily Activity Report - ${currentEmployee.name}`,
@@ -6696,10 +6698,9 @@ export async function getDailyActivityWorkflowSettings(): Promise<DailyActivityW
       approvalMatrix: {
         ...DEFAULT_DAILY_ACTIVITY_SETTINGS.approvalMatrix,
         ...stored.approvalMatrix,
-        sectionHeads: {
-          ...DEFAULT_DAILY_ACTIVITY_SETTINGS.approvalMatrix.sectionHeads,
-          ...stored.approvalMatrix?.sectionHeads,
-        },
+        sectionHeads: Array.isArray(stored.approvalMatrix?.sectionHeads)
+          ? stored.approvalMatrix.sectionHeads
+          : DEFAULT_DAILY_ACTIVITY_SETTINGS.approvalMatrix.sectionHeads,
       },
       emailTemplates: {
         ...DEFAULT_DAILY_ACTIVITY_SETTINGS.emailTemplates,
@@ -6787,7 +6788,7 @@ export async function saveDailyActivityWorkflowSettings(settings: DailyActivityW
               htmlContent: '',
               description: tplInfo.desc,
               isActive: true,
-            })
+            } as any)
           }
         }
       }

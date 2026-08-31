@@ -348,12 +348,12 @@ export function DailyClientPage({
       if (result.success && result.rate) {
         const rate = result.rate.toString()
         setActualsForm((prev) => {
-          const amountIdr = Number(prev.amountIdr)
+          const amountIdr = Number((prev as any).amountIdr || (prev as any).outstandingAmountIdr || 0)
           return {
             ...prev,
             exchangeRate: rate,
-            amountUsd: amountIdr > 0 ? (amountIdr / Number(rate)).toFixed(2) : prev.amountUsd,
-          }
+            amountUsd: amountIdr > 0 ? (amountIdr / Number(rate)).toFixed(2) : (prev as any).amountUsd,
+          } as any
         })
         toast.success('Kurs API terbaru: ' + result.rate)
       } else {
@@ -1012,7 +1012,7 @@ export function DailyClientPage({
                                           }
                                         byDate[key].items.push(a)
                                       })
-                                      return Object.entries(byDate)
+                                      return Object.entries(byDate || {})
                                         .sort(([, a], [, b]) => b.ts - a.ts)
                                         .map(([dateKey, { items, label: dateLabel }]) => {
                                           const getCat = (cat: string) => {

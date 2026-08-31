@@ -126,15 +126,15 @@ export function buildSafetyCharts(input: {
       NearMiss: row.nearMissReport,
       Total: row.totalEvents,
     })),
-    certificationStatus: Object.entries(certificationStatus).map(([name, value]) => ({ name, value })),
-    weeklyActivitiesByCategory: Object.entries(weeklyCategory).map(([category, count]) => ({ category, count })),
+    certificationStatus: Object.entries(certificationStatus || {}).map(([name, value]) => ({ name, value })),
+    weeklyActivitiesByCategory: Object.entries(weeklyCategory || {}).map(([category, count]) => ({ category, count })),
     manHoursByLocation,
     monthlyManHoursTrend: Object.entries(
-      input.monthlyManHours.reduce<Record<string, number>>((acc, row) => {
+      (input.monthlyManHours || []).reduce<Record<string, number>>((acc, row) => {
         const m = monthLabel(row.month)
         acc[m] = (acc[m] || 0) + asNumber(row.safetyManHours)
         return acc
-      }, {})
+      }, {}) || {}
     ).map(([month, manHours]) => ({ month, manHours })).reverse(),
     performanceComparison: input.performanceMetrics.map((row) => ({
       site: row.periodLabel,

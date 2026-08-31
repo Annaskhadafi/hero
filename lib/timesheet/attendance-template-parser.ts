@@ -125,7 +125,7 @@ function aliasField(header: string): keyof AttendanceTemplateColumnMapping | nul
   const normalized = normalizeHeader(header)
   if (!normalized) return null
 
-  for (const [field, aliases] of Object.entries(fieldAliases) as Array<
+  for (const [field, aliases] of Object.entries(fieldAliases || {}) as Array<
     [keyof AttendanceTemplateColumnMapping, string[]]
   >) {
     if (aliases.some((alias) => normalized === normalizeHeader(alias))) return field

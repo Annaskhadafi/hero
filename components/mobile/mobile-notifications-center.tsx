@@ -1,6 +1,7 @@
 "use client";
 
-import { startTransition, useEffect, useEffectEvent, useState } from "react";
+import * as React from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -318,7 +319,7 @@ export function MobileNotificationsCenter({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationActionBusy, setIsNotificationActionBusy] = useState(false);
 
-  const refreshData = useEffectEvent(async () => {
+  const refreshData = React.useCallback(async () => {
     const response = await fetch("/api/mobile/notifications", { cache: "no-store" });
     if (!response.ok) {
       return;
@@ -326,7 +327,7 @@ export function MobileNotificationsCenter({
 
     const next = (await response.json()) as NotificationApiPayload;
     startTransition(() => setData(next));
-  });
+  }, []);
 
   useEffect(() => {
     if (typeof Notification !== "undefined") {

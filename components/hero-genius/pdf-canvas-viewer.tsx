@@ -242,7 +242,7 @@ export function PdfCanvasViewer({
       }
     );
 
-    const elements = Object.values(canvasRefs.current).filter(Boolean);
+    const elements = Object.values(canvasRefs.current || {}).filter(Boolean);
     elements.forEach((el) => {
       if (el?.parentElement) observer.observe(el.parentElement);
     });

@@ -21,6 +21,11 @@ export const auth = betterAuth({
     secret: authSecret || undefined,
     baseURL: getServerAuthBaseUrl(),
     trustedOrigins: async (request) => getTrustedOrigins(request),
+    session: {
+        cookieCache: {
+            enabled: false,
+        },
+    },
     plugins: [
         nextCookies(),
         magicLink({

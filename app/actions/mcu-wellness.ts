@@ -455,7 +455,7 @@ export async function uploadMcuResultFile(
 
   const buffer = Buffer.from(base64File.split(',')[1] ?? base64File, 'base64')
   const key = `mcu-wellness-results/${mcuId}-${Date.now()}-${fileName}`
-  const proxyUrl = `/api/uploads/${result.key}`
+  const proxyUrl = `/api/uploads/${key}`
   await db
     .update(employeeMcu)
     .set({

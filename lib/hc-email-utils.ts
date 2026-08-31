@@ -46,7 +46,7 @@ export function renderHcTemplate(
 ) {
   let subject = template.subject;
   let body = template.body;
-  for (const [key, value] of Object.entries(vars)) {
+  for (const [key, value] of Object.entries(vars || {})) {
     const token = `{${key}}`;
     subject = subject.replaceAll(token, value);
     body = body.replaceAll(token, value);

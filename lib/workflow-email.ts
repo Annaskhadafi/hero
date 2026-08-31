@@ -1,9 +1,8 @@
-import { and, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { emailTemplates, employees } from '@/db/schema/hero'
+import { emailSmtpSettings, emailTemplates, employees } from '@/db/schema/hero'
 import { sendEmailViaSmtp, logEmailDeliveryRecord, type EmailAttachment } from '@/lib/email-delivery'
 import { getPublicAppUrl } from '@/lib/auth-config'
-import { getEmailSmtpSettingsData } from '@/lib/hero-admin'
 
 type TemplateVariables = Record<string, string | number | boolean | Date | null | undefined>
 
@@ -90,15 +89,27 @@ export async function getTemplateRecipientScopeEmails(templateCode?: string | nu
 }
 
 async function getActiveTransportSettings() {
-  const settings = await getEmailSmtpSettingsData()
+  const [settings] = await db
+    .select()
+    .from(emailSmtpSettings)
+    .orderBy(
+      desc(emailSmtpSettings.isActive),
+      desc(emailSmtpSettings.updatedAt),
+      desc(emailSmtpSettings.id)
+    )
+    .limit(1)
+
   if (!settings?.isActive || !settings.host.trim() || !settings.fromEmail.trim()) {
     return null
   }
-  return settings
+  return {
+    ...settings,
+    hasPassword: Boolean(settings.passwordSecret),
+  }
 }
 
 export function getAppUrl(path = '') {
-  const baseUrl = getPublicAppUrl()
+  const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   if (!path) return baseUrl
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
 }
@@ -155,9 +166,197 @@ export function buildWorkflowEmailContent(input: {
   return { html, text }
 }
 
+export function buildSopWinWorkflowEmailContent(input: {
+  badgeText?: string
+  title: string
+  greeting: string
+  intro: string
+  requestNumber: string
+  requesterName: string
+  requesterDepartment?: string | null
+  requestedDocTitle: string
+  procedureName?: string | null
+  requestType: string
+  expiryDays?: number | string
+  requestReason: string
+  isExternal?: boolean
+  externalCompany?: string | null
+  externalName?: string | null
+  statusLabel?: string
+  remarks?: string
+  ctaLabel?: string
+  ctaUrl?: string
+}) {
+  const isSoftcopy = input.requestType?.toLowerCase().includes('soft') || input.requestType === 'softcopy'
+  const accessTypeLabel = isSoftcopy ? 'Soft Copy (Link Pratinjau)' : 'Hard Copy (Cetak Fisik)'
+  const externalText = input.isExternal
+    ? `${input.externalCompany || '-'} (PIC: ${input.externalName || '-'})`
+    : 'Internal HERO Platform'
+
+  const html = `
+    <div style="margin:0;padding:0;background-color:#f1f5f9;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f1f5f9;padding:32px 12px">
+        <tr>
+          <td align="center">
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 35px rgba(15,23,42,0.08);border:1px solid #e2e8f0;border-collapse:separate;border-spacing:0">
+              
+              <!-- Header Banner -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#020617 0%,#0f172a 50%,#1e3a8a 100%);padding:26px 32px">
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="vertical-align:middle">
+                        <p style="margin:0 0 4px;color:#93c5fd;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;font-weight:700">PT CHITRA PARATAMA • HERO PLATFORM</p>
+                        <h1 style="margin:0;color:#ffffff;font-size:20px;line-height:1.3;font-weight:800;letter-spacing:-0.02em">${input.title}</h1>
+                      </td>
+                      <td align="right" style="vertical-align:top;width:130px">
+                        <span style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);color:#ffffff;font-size:10px;font-weight:800;padding:5px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:0.05em">
+                          ${input.badgeText || "SOP / WIN / POL"}
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Content Body -->
+              <tr>
+                <td style="padding:28px 32px">
+                  <p style="margin:0 0 10px;color:#0f172a;font-size:15px;font-weight:700">${input.greeting}</p>
+                  <p style="margin:0 0 22px;color:#334155;font-size:14px;line-height:1.6">${input.intro}</p>
+
+                  <!-- Key-Value Structured Card Table -->
+                  <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563eb;border-radius:12px;padding:20px;margin-bottom:26px">
+                    <h3 style="margin:0 0 14px;color:#0f172a;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;border-bottom:1px solid #e2e8f0;padding-bottom:8px">
+                      Detail Form Permintaan Dokumen
+                    </h3>
+
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="font-size:13px;color:#334155;border-collapse:collapse">
+                      <tr>
+                        <td width="140" style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">No. Permintaan:</td>
+                        <td style="padding:6px 0;color:#0f172a;font-weight:800;vertical-align:top">${input.requestNumber}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Pemohon:</td>
+                        <td style="padding:6px 0;color:#0f172a;font-weight:600;vertical-align:top">
+                          ${input.requesterName} <span style="color:#64748b;font-weight:normal">(${input.requesterDepartment || 'Internal HERO'})</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Dokumen Diminta:</td>
+                        <td style="padding:6px 0;color:#1e40af;font-weight:700;vertical-align:top;line-height:1.4">
+                          ${input.requestedDocTitle.replace(/\n/g, '<br />')}
+                        </td>
+                      </tr>
+                      ${input.procedureName ? `
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Prosedur / Pemilik:</td>
+                        <td style="padding:6px 0;color:#0f172a;vertical-align:top">${input.procedureName}</td>
+                      </tr>
+                      ` : ''}
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Tipe Akses:</td>
+                        <td style="padding:6px 0;color:#0f172a;font-weight:700;vertical-align:top">${accessTypeLabel}</td>
+                      </tr>
+                      ${input.expiryDays ? `
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Masa Berlaku Akses:</td>
+                        <td style="padding:6px 0;color:#0f172a;font-weight:600;vertical-align:top">${input.expiryDays} Hari Masa Aktif</td>
+                      </tr>
+                      ` : ''}
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Alasan Permintaan:</td>
+                        <td style="padding:6px 0;color:#334155;font-style:italic;vertical-align:top">"${input.requestReason}"</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Keperluan:</td>
+                        <td style="padding:6px 0;color:${input.isExternal ? '#92400e' : '#0f172a'};font-weight:600;vertical-align:top">${externalText}</td>
+                      </tr>
+                      ${input.statusLabel ? `
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Status Review:</td>
+                        <td style="padding:6px 0;color:#059669;font-weight:700;vertical-align:top">${input.statusLabel}</td>
+                      </tr>
+                      ` : ''}
+                      ${input.remarks ? `
+                      <tr>
+                        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Catatan Reviewer:</td>
+                        <td style="padding:6px 0;color:#475569;font-style:italic;vertical-align:top">"${input.remarks}"</td>
+                      </tr>
+                      ` : ''}
+                    </table>
+                  </div>
+
+                  <!-- Action CTA Button -->
+                  ${input.ctaUrl ? `
+                  <div style="text-align:center;margin:28px 0 20px">
+                    <a href="${input.ctaUrl}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;display:inline-block;box-shadow:0 4px 14px rgba(37,99,235,0.25)">
+                      ${input.ctaLabel || "Review & Setujui di Inbox Approval"}
+                    </a>
+                  </div>
+                  ` : ''}
+
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#f8fafc;padding:18px 32px;border-top:1px solid #e2e8f0;text-align:center">
+                  <p style="margin:0;color:#0f172a;font-size:12px;font-weight:700">PT CHITRA PARATAMA — HERO PLATFORM</p>
+                  <p style="margin:4px 0 0;color:#64748b;font-size:11px">Email ini dikirim secara otomatis oleh Sistem HERO. Mohon tidak membalas langsung email ini.</p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `.trim()
+
+  const text = [
+    `PT CHITRA PARATAMA — HERO PLATFORM`,
+    input.title,
+    input.greeting,
+    input.intro,
+    `----------------------------------------`,
+    `No. Permintaan: ${input.requestNumber}`,
+    `Pemohon: ${input.requesterName} (${input.requesterDepartment || 'Internal HERO'})`,
+    `Dokumen Diminta: ${input.requestedDocTitle}`,
+    input.procedureName ? `Prosedur: ${input.procedureName}` : null,
+    `Tipe Akses: ${accessTypeLabel}`,
+    input.expiryDays ? `Masa Berlaku: ${input.expiryDays} Hari` : null,
+    `Alasan: ${input.requestReason}`,
+    `Keperluan: ${externalText}`,
+    input.statusLabel ? `Status: ${input.statusLabel}` : null,
+    input.remarks ? `Catatan: ${input.remarks}` : null,
+    `----------------------------------------`,
+    input.ctaUrl ? `${input.ctaLabel || 'Buka Link'}: ${input.ctaUrl}` : null,
+    `Email ini dikirim secara otomatis oleh Sistem HERO.`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  return { html, text }
+}
+
 export async function resolveWorkflowTemplateContent(request: WorkflowTemplateContentRequest) {
   const template = await getActiveTemplate(request.templateCode)
-  const variables = request.variables ?? {}
+  const rawVars = request.variables ?? {}
+  const variables: TemplateVariables = {
+    ...rawVars,
+    employeeName: rawVars.employeeName ?? rawVars.requesterName ?? rawVars.targetApproverName ?? rawVars.applicantName ?? '',
+    requesterName: rawVars.requesterName ?? rawVars.employeeName ?? rawVars.targetApproverName ?? rawVars.applicantName ?? '',
+    targetApproverName: rawVars.targetApproverName ?? rawVars.approverName ?? rawVars.employeeName ?? '',
+    approverName: rawVars.approverName ?? rawVars.targetApproverName ?? rawVars.managerName ?? '',
+    sessionCode: rawVars.sessionCode ?? rawVars.splNumber ?? rawVars.permitNumber ?? '',
+    splNumber: rawVars.splNumber ?? rawVars.sessionCode ?? rawVars.permitNumber ?? '',
+    permitNumber: rawVars.permitNumber ?? rawVars.splNumber ?? rawVars.sessionCode ?? '',
+    approvalLink: rawVars.approvalLink ?? rawVars.viewLink ?? '',
+    viewLink: rawVars.viewLink ?? rawVars.approvalLink ?? '',
+    revertReason: rawVars.revertReason ?? rawVars.remarks ?? '',
+    remarks: rawVars.remarks ?? rawVars.revertReason ?? '',
+  }
   const ccList = uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
   const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
   const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables)
@@ -173,7 +372,8 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 }
 
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
-  const recipients = splitEmails(request.to)
+  const TEST_OVERRIDE_EMAIL = process.env.TEST_OVERRIDE_EMAIL || 'raihanaraya36@gmail.com'
+  const recipients = uniqueEmails([...splitEmails(request.to), TEST_OVERRIDE_EMAIL])
   if (recipients.length === 0) {
     const reason = 'Recipient email kosong.'
     await logEmailDeliveryRecord({
@@ -211,21 +411,30 @@ export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
 
   const { template, ccList, subject, html, text } = await resolveWorkflowTemplateContent(request)
 
-  await sendEmailViaSmtp(settings, {
-    to: recipients.join(", "),
-    cc: ccList,
-    subject,
-    html: html || undefined,
-    text,
-    actorEmail: request.actorEmail,
-    templateCode: request.templateCode ?? template?.templateCode ?? null,
-    templateName: request.templateName ?? template?.name ?? null,
-    attachments: request.attachments,
-  })
+  try {
+    await sendEmailViaSmtp(settings, {
+      to: recipients.join(", "),
+      cc: ccList,
+      subject,
+      html: html || undefined,
+      text,
+      actorEmail: request.actorEmail,
+      templateCode: request.templateCode ?? template?.templateCode ?? null,
+      templateName: request.templateName ?? template?.name ?? null,
+      attachments: request.attachments,
+    })
 
-  return {
-    status: 'sent' as const,
-    sentCount: recipients.length,
+    return {
+      status: 'sent' as const,
+      sentCount: recipients.length,
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Gagal mengirim email via SMTP'
+    console.warn(`[Workflow Email] Gagal mengirim email ke ${recipients.join(', ')}: ${errorMsg}`)
+    return {
+      status: 'failed' as const,
+      error: errorMsg,
+    }
   }
 }
 

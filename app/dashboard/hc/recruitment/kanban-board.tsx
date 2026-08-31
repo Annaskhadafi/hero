@@ -104,7 +104,7 @@ export function KanbanBoard({
 
   useEffect(() => {
     return () => {
-      Object.values(aiProgressTimers.current).forEach((timer) => clearInterval(timer));
+      Object.values(aiProgressTimers.current || {}).forEach((timer) => clearInterval(timer));
     };
   }, []);
 

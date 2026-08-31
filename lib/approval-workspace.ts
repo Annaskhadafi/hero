@@ -43,6 +43,7 @@ type ApprovalRecordRow = {
   level: number
   status: string
   approverName: string
+  approverEmail?: string | null
   approverEmployeeId: number | null
   submittedAt: Date
   reviewedAt: Date | null
@@ -96,6 +97,7 @@ type RawApprovalRecordRow = {
   level: number
   status: string
   approverName: string
+  approverEmail?: string | null
   approverEmployeeId: number | null
   submittedAt: Date
   reviewedAt: Date | null
@@ -600,6 +602,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       level: row.level,
       status: row.status,
       approverName: row.approverName,
+      approverEmail: (row as any).approverEmail ?? null,
       approverEmployeeId: row.approverEmployeeId,
       submittedAt: row.submittedAt,
       reviewedAt: row.reviewedAt,
@@ -941,7 +944,7 @@ async function fetchApprovalRows() {
 
 async function fetchApprovalRowsForUser(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1204,7 +1207,7 @@ function getContractReviewDueState(contractEndDate?: Date | null, now?: Date) {
 
 async function getContractReviewInboxItems(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1241,7 +1244,7 @@ async function getContractReviewInboxItems(
       const nameMatches =
         normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
       const roleMatches =
-        row.approverRole && currentEmployee?.rank && normalizeMatchValue(row.approverRole) === normalizeMatchValue(currentEmployee.rank)
+        row.approverRole && (currentEmployee as any)?.rank && normalizeMatchValue(row.approverRole) === normalizeMatchValue((currentEmployee as any).rank)
       return emailMatches || employeeMatches || nameMatches || roleMatches
     })
     .map((row) => {
@@ -1268,7 +1271,7 @@ async function getContractReviewInboxItems(
 
 async function getDailyActivityInboxItems(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1512,7 +1515,7 @@ async function getDailyActivityInboxItems(
 
 async function getOvertimeInboxItems(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1740,7 +1743,7 @@ async function getOvertimeInboxItems(
 
 async function getPtwInboxItems(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1901,7 +1904,7 @@ async function getPtwInboxItems(
 
 export async function getSopWinRequestInboxItems(
   email: string,
-  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
@@ -1919,6 +1922,9 @@ export async function getSopWinRequestInboxItems(
       requestId: sopWinRequests.id,
       requestNumber: sopWinRequests.requestNumber,
       requesterName: sopWinRequests.requesterName,
+      requesterEmail: employees.email,
+      requesterEmployeeId: sopWinRequests.requesterEmployeeId,
+      accessToken: sopWinRequests.accessToken,
       requesterDepartment: sopWinRequests.requesterDepartment,
       requestedDocType: sopWinRequests.requestedDocType,
       procedureName: sopWinRequests.procedureName,
@@ -1941,6 +1947,10 @@ export async function getSopWinRequestInboxItems(
     .innerJoin(
       sopWinRequests,
       eq(sopWinRequestApprovals.requestId, sopWinRequests.id)
+    )
+    .leftJoin(
+      employees,
+      eq(sopWinRequests.requesterEmployeeId, employees.id)
     )
     .where(
       and(
@@ -2245,6 +2255,14 @@ export async function getApprovalCenterData(email: string) {
         siteName: string
         notes: ApprovalComment[]
         lastNote: ApprovalComment | null
+        steps?: Array<{
+          approvalId: number
+          approverName: string
+          level: number
+          label: string
+          status: string
+          reviewedAt: Date | null
+        }>
         photoUrl: string | null
         requestKindLabel: string
         description: string

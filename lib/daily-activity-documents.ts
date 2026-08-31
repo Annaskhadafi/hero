@@ -1,6 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
+  dailyActivityApprovals,
   dailyActivitySessionItems,
   dailyActivitySessionSignoffs,
   dailyActivitySessions,
@@ -100,7 +101,7 @@ export async function getDailyActivitySessionDocumentData(
     return null
   }
 
-  const [itemRows, signoff] = await Promise.all([
+  const [itemRows, approvalsRows, signoff] = await Promise.all([
     db
       .select({
         id: dailyActivitySessionItems.id,
@@ -119,6 +120,24 @@ export async function getDailyActivitySessionDocumentData(
       .from(dailyActivitySessionItems)
       .where(eq(dailyActivitySessionItems.sessionId, sessionId))
       .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id)),
+    db
+      .select({
+        id: dailyActivityApprovals.id,
+        sessionId: dailyActivityApprovals.sessionId,
+        stepOrder: dailyActivityApprovals.stepOrder,
+        stepLabel: dailyActivityApprovals.stepLabel,
+        status: dailyActivityApprovals.status,
+        approverName: dailyActivityApprovals.approverName,
+        approverEmail: dailyActivityApprovals.approverEmail,
+        approverRole: dailyActivityApprovals.approverRole,
+        approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
+        signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
+        remarks: dailyActivityApprovals.remarks,
+        signedAt: dailyActivityApprovals.signedAt,
+      })
+      .from(dailyActivityApprovals)
+      .where(eq(dailyActivityApprovals.sessionId, sessionId))
+      .orderBy(asc(dailyActivityApprovals.stepOrder)),
     db
       .select()
       .from(dailyActivitySessionSignoffs)
@@ -201,6 +220,7 @@ export async function getDailyActivitySessionDocumentData(
       totalDurationMinutes,
       totalDurationLabel: formatDurationLabel(totalDurationMinutes),
     },
+    approvals: approvalsRows,
     signoff: {
       employeeSignerName: signoff?.employeeSignerName ?? '',
       employeeSignatureUrl: signoff?.employeeSignatureUrl ?? '',

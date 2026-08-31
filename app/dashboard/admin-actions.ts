@@ -6295,7 +6295,7 @@ export async function importUpdateUsersAction(
 
     type RecordType = (typeof records)[number]
     for (const record of records) {
-      const recordValues = Object.values(record)
+      const recordValues = Object.values(record || {})
       const employeeSn = (recordValues[snCol] ?? '').trim()
       if (!employeeSn) {
         skippedCount++
@@ -6441,7 +6441,7 @@ export async function importUpdateUsersAction(
         }
       }
 
-      if (Object.keys(employeeUpdate).length === 0) {
+      if (Object.keys(employeeUpdate || {}).length === 0) {
         skippedCount++
         continue
       }

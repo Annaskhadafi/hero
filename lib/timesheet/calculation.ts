@@ -61,7 +61,7 @@ export function determineDailyStatus(
   // Check if OT status matches known status codes
   const normalizedOtStatus = otStatus?.toUpperCase().trim();
   const statusCodeKey = normalizedOtStatus
-    ? (Object.keys(STATUS_CODES).find((key) =>
+    ? (Object.keys(STATUS_CODES || {}).find((key) =>
         normalizedOtStatus.includes(key)
       ) as StatusCodeKey | undefined)
     : undefined;
@@ -81,7 +81,7 @@ export function determineDailyStatus(
   // Check allowance status
   const normalizedAllowanceStatus = allowanceStatus?.toUpperCase().trim();
   const allowanceStatusKey = normalizedAllowanceStatus
-    ? (Object.keys(STATUS_CODES).find((key) =>
+    ? (Object.keys(STATUS_CODES || {}).find((key) =>
         normalizedAllowanceStatus.includes(key)
       ) as StatusCodeKey | undefined)
     : undefined;
@@ -136,7 +136,7 @@ export function calculateAllowanceAmount(
   // If status is present and not eligible for allowance, return null
   if (status) {
     const normalizedStatus = status.toUpperCase().trim();
-    const statusKey = Object.keys(STATUS_CODES).find((key) =>
+    const statusKey = Object.keys(STATUS_CODES || {}).find((key) =>
       normalizedStatus.includes(key)
     ) as StatusCodeKey | undefined;
 

@@ -23,11 +23,11 @@ export async function POST(req: NextRequest) {
     let remoteData: any = null;
     try {
       const remoteRes = await teachRagMemory({
+        content: fact.trim(),
         fact: fact.trim(),
         category,
         source,
         tags: Array.isArray(tags) ? tags : [],
-        user_id: userId,
       });
       remoteData = remoteRes.data;
     } catch (e) {

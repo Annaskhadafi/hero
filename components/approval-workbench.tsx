@@ -488,7 +488,7 @@ function InboxTab({
       const paramNorm = openDocParam.trim().toLowerCase()
       const matchingItem = allUnifiedItems.find((it) => {
         const docNumNorm = (it.documentNumber || '').toLowerCase()
-        const reqNumNorm = (it.requestNumber || '').toLowerCase()
+        const reqNumNorm = (((it as any).requestNumber || '') as string).toLowerCase()
         const itemIdNorm = (it.id || '').toLowerCase()
         const rawDailyId = String(it.rawDaily?.id || '')
         const rawOvertimeId = String(it.rawOvertime?.id || '')
@@ -607,7 +607,6 @@ function InboxTab({
         const res = await withActionRetry(() =>
           reviewSopWinDocumentRequestAction({
             requestId: req.requestId,
-            approvalToken: req.approvalToken,
             action: action === 'approve' ? 'approve' : action === 'revert' ? 'revert' : 'reject',
             remarks: currentRemark || `Proses ${action} via Inbox Approval`,
             expiryDays: req.expiryDays || 3,
@@ -732,7 +731,6 @@ function InboxTab({
         const req = item.rawSopWinRequest!
         const res = await reviewSopWinDocumentRequestAction({
           requestId: req.requestId,
-          approvalToken: req.approvalToken,
           action: action === 'approve' ? 'approve' : action === 'revert' ? 'revert' : 'reject',
           remarks: reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`,
           expiryDays: req.expiryDays || 3,
@@ -1056,8 +1054,8 @@ function InboxTab({
                       </div>
                     </TableCell>
                     <TableCell className="align-top text-right">
-                      {item.activityType === 'Request APD' ? (
-                        <ApdApprovalDialog item={item} group={group} />
+                      {(item as any).activityType === 'Request APD' && item.rawGeneralGroup ? (
+                        <ApdApprovalDialog item={item as any} group={item.rawGeneralGroup as any} />
                       ) : item.category === 'GENERAL' && item.rawGeneralGroup ? (
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -1137,7 +1135,7 @@ function InboxTab({
                               <DialogTitle className="text-base flex items-center justify-between">
                                 <span>Review Pengajuan: {item.title}</span>
                                 <span className="text-xs font-normal text-muted-foreground mr-6">
-                                  Request No: {item.requestNumber || "-"}
+                                  Request No: {(item as any).requestNumber || item.documentNumber || "-"}
                                 </span>
                               </DialogTitle>
                             </DialogHeader>
@@ -1146,7 +1144,7 @@ function InboxTab({
                               <div className="md:col-span-7 flex flex-col h-full border-r border-outline-ghost overflow-y-auto p-6 space-y-6">
                                 <div className="space-y-4">
                                   <h3 className="text-sm font-bold text-foreground">Dokumen Pengajuan</h3>
-                                  <ApprovalRequestDetails item={item} />
+                                  <ApprovalRequestDetails item={item as any} />
                                 </div>
                                 
                                 <div className="border-t border-outline-ghost/60 pt-6 space-y-4">
@@ -1173,8 +1171,8 @@ function InboxTab({
                                 <div className="flex-1 overflow-y-auto p-6 border-b border-outline-ghost space-y-4">
                                   <h3 className="text-sm font-bold text-foreground">Diskusi & Catatan</h3>
                                   <div className="space-y-3">
-                                    {item.notes && item.notes.length > 0 ? (
-                                      item.notes.map((note: any) => (
+                                    {(item as any).notes && (item as any).notes.length > 0 ? (
+                                      (item as any).notes.map((note: any) => (
                                         <div key={note.id} className="p-3 rounded-lg bg-surface-container-low border border-outline-ghost/30 text-xs">
                                           <div className="flex items-center justify-between">
                                             <span className="font-semibold text-foreground">{note.actor}</span>
@@ -1194,7 +1192,7 @@ function InboxTab({
 
                                 <div className="p-6 bg-surface-container-lowest space-y-4">
                                   <form action={reviewApprovalAction} className="space-y-4">
-                                    <input type="hidden" name="approvalId" value={item.approvalId} />
+                                    <input type="hidden" name="approvalId" value={(item as any).approvalId || item.id} />
                                     
                                     <div className="space-y-1.5">
                                       <label className="text-xs font-semibold text-foreground">Catatan Keputusan</label>
@@ -1378,7 +1376,7 @@ function InboxTab({
                                 <td>SN: <strong>{(currentBatchDoc.rawDaily as any).employeeSn || '-'}</strong></td>
                               </tr>
                               <tr>
-                                <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</strong></td>
+                                <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</strong></td>
                                 <td>Dept / Section: <strong>{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || '—'}</strong></td>
                               </tr>
                               <tr>
@@ -1506,7 +1504,7 @@ function InboxTab({
                                     <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
                                       {currentBatchDoc.employeeName}
                                     </div>
-                                    <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                    <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
                                     {isSigned1 && step1?.signedAt && (
                                       <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1.signedAt)}</div>
                                     )}
@@ -1759,7 +1757,7 @@ function InboxTab({
                                   <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
                                     {step1?.approverName || currentBatchDoc.employeeName}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawOvertime as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawOvertime as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
                                   <div className="text-[6.5pt] text-slate-400 mt-0.5">
                                     {isSigned1 && step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
                                   </div>
@@ -1842,7 +1840,7 @@ function InboxTab({
 
                       {/* PTW */}
                       {currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw && (() => {
-                        const doc = currentBatchDoc.rawPtw
+                        const doc: any = currentBatchDoc.rawPtw
                         const ptwApprovals = (doc as any).approvals || []
                         const step1 = ptwApprovals.find((a: any) => a.stepOrder === 1 || a.approverRole === 'applicant')
                         const step2 = ptwApprovals.find((a: any) => a.stepOrder === 2 || a.approverRole === 'safety_officer')
@@ -2375,10 +2373,10 @@ function InboxTab({
                               </tr>
                               <tr>
                                 <td>
-                                  Jenis Akses: <strong className="uppercase">{currentBatchDoc.requestType === 'softcopy' ? 'Soft Copy (PDF Watermark)' : 'Hard Copy (Cetak Fisik)'}</strong>
+                                  Jenis Akses: <strong className="uppercase">{(currentBatchDoc as any).requestType === 'softcopy' ? 'Soft Copy (PDF Watermark)' : 'Hard Copy (Cetak Fisik)'}</strong>
                                 </td>
                                 <td>
-                                  Masa Berlaku Akses: <strong>{currentBatchDoc.expiryDays || 3} Hari Kerja</strong>
+                                  Masa Berlaku Akses: <strong>{(currentBatchDoc as any).expiryDays || 3} Hari Kerja</strong>
                                 </td>
                               </tr>
                               {(currentBatchDoc as any).isExternal && (
@@ -2501,7 +2499,7 @@ function InboxTab({
 
                                               const rawStepRemark = (idx === currentActiveIdx && approvalRemarks[currentBatchDoc.id]?.trim())
                                                 ? approvalRemarks[currentBatchDoc.id].trim()
-                                                : (approvalRecord?.remarks || (idx === 0 ? reqRemarks : step.remarks) || "");
+                                                : (approvalRecord?.remarks || (idx === 0 ? reqRemarks : (step as any).remarks) || "");
 
                                               const displayStepRemark =
                                                 rawStepRemark &&
@@ -2588,7 +2586,7 @@ function InboxTab({
                                       }
 
                                       const rawSigUrl = isSigned
-                                        ? (approvalRecord?.signatureDataUrl || (idx === 0 ? ((currentBatchDoc as any).adminSignatureUrl || (currentBatchDoc.rawSopWinRequest as any)?.adminSignatureUrl) : null) || step.signatureDataUrl)
+                                        ? (approvalRecord?.signatureDataUrl || (idx === 0 ? ((currentBatchDoc as any).adminSignatureUrl || (currentBatchDoc.rawSopWinRequest as any)?.adminSignatureUrl) : null) || (step as any).signatureDataUrl)
                                         : null;
 
                                       const isValidImageSig = Boolean(
@@ -2861,11 +2859,11 @@ function InboxTab({
           <SopWinAccessSettingsModal
             isOpen={isAccessSettingsOpen}
             onClose={() => setIsAccessSettingsOpen(false)}
-            requestId={currentBatchDoc.rawSopWinRequest.requestId || currentBatchDoc.id}
+            requestId={Number(currentBatchDoc.rawSopWinRequest.requestId || currentBatchDoc.id)}
             requestNumber={currentBatchDoc.documentNumber}
             docTitle={currentBatchDoc.title || 'Dokumen SOP/WIN'}
             currentExpiryDays={currentBatchDoc.rawSopWinRequest.expiryDays || 3}
-            currentCanDownload={currentBatchDoc.rawSopWinRequest.canDownload ?? true}
+            currentCanDownload={(currentBatchDoc.rawSopWinRequest as any).canDownload ?? true}
           />
         )}
       </CardContent>
@@ -2886,7 +2884,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
   }
 
   const safeGroups = Array.isArray(groups) ? groups : []
-  const sites = Array.from(new Set(safeGroups.map((group) => group?.siteName || 'Site Operasional'))).sort()
+  const sites = Array.from(new Set(safeGroups.map((group) => (group as any)?.siteName || 'Site Operasional'))).sort()
   const priorities = Array.from(
     new Set(safeGroups.flatMap((group) => (group?.items || []).map((item) => item?.priority || 'normal')))
   ).sort()

@@ -430,7 +430,7 @@ export default async function ChitraLearningLmsPage({
     section: params.section ?? "",
     role: params.role ?? "",
   };
-  const hasManagementFilters = Object.values(managementFilters).some(Boolean);
+  const hasManagementFilters = Object.values(managementFilters || {}).some(Boolean);
   const lmsUrl = process.env.LMS_SITE_URL || "https://chitralearning.com";
   const [currentEmployee, employeeRows, internalWorkspace] = await Promise.all([
     db

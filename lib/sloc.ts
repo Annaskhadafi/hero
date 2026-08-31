@@ -77,7 +77,7 @@ export function normalizeSlocFields<T>(value: T): T {
     return value
   }
 
-  const entries = Object.entries(value).map(([key, fieldValue]) => {
+  const entries = Object.entries(value || {}).map(([key, fieldValue]) => {
     if (slocFieldNames.has(key) && typeof fieldValue === "string") {
       return [key, normalizeSloc(fieldValue)]
     }

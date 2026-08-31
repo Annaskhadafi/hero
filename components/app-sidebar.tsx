@@ -369,7 +369,7 @@ export function AppSidebar({
             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Dokumen
             </div>
-            <NavDocuments items={documentItems} />
+            <NavDocuments items={documentItems as any} />
           </>
         ) : null}
       </SidebarContent>

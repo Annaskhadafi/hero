@@ -210,7 +210,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       if (gender === 'Female') map[status].Female++
     })
 
-    return Object.values(map)
+    return Object.values(map || {})
   }, [users])
 
   // 6. Education Data
@@ -231,7 +231,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       if (gender === 'Female') counts[edu].Female++
     })
 
-    return Object.values(counts)
+    return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
   }, [users])
@@ -245,7 +245,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       counts[rel] = (counts[rel] || 0) + 1
     })
 
-    return Object.entries(counts)
+    return Object.entries(counts || {})
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
   }, [users])
@@ -265,7 +265,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       if (gender === 'Female') counts[loc].Female++
     })
 
-    return Object.values(counts)
+    return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
   }, [users])
@@ -285,7 +285,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       if (gender === 'Female') counts[dept].Female++
     })
 
-    return Object.values(counts)
+    return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
   }, [users])
@@ -305,7 +305,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       if (gender === 'Female') counts[lvl].Female++
     })
 
-    return Object.values(counts)
+    return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
   }, [users])

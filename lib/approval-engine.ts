@@ -52,9 +52,9 @@ export type ResolvedApprovalStep = {
     | "vacant";
   canDelegate: boolean;
   slaHours: number;
-  nodeLabel: string | null;
-  fallbackLabel: string | null;
-  escalationLabel: string | null;
+  nodeLabel?: string | null;
+  fallbackLabel?: string | null;
+  escalationLabel?: string | null;
 };
 
 export type ApprovalRouteResolution = {
@@ -629,7 +629,7 @@ function resolveNodeStep(
     fallbackNodeId: number | null;
     escalationNodeId: number | null;
   },
-) {
+): ResolvedApprovalStep {
   const node = nodeId != null ? nodeById.get(nodeId) ?? null : null;
   const fallbackNode =
     options.fallbackNodeId != null ? nodeById.get(options.fallbackNodeId) ?? null : null;

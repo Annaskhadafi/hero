@@ -1716,7 +1716,7 @@ function McuAiTab({ rows }: { rows: McuListRow[] }) {
         const catMap = ext.metrics?.[cat];
         if (!catMap) continue;
         m[cat] = {};
-        for (const [key, entry] of Object.entries(catMap)) {
+        for (const [key, entry] of Object.entries(catMap || {})) {
           if (entry) {
             m[cat]![key] = {
               value: entry.value || "",

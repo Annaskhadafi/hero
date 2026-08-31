@@ -697,7 +697,7 @@ const router = useRouter()
       if (obj.message && typeof obj.message === 'string') return [obj.message];
       
       let messages: string[] = [];
-      Object.values(obj).forEach(val => {
+      Object.values(obj || {}).forEach(val => {
         if (typeof val === 'object') {
           messages = [...messages, ...extractErrors(val)];
         }

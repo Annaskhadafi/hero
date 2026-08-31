@@ -34,7 +34,7 @@ function ValueDisplay({ value }: { value: any }) {
           <div key={idx} className="rounded border border-border/50 bg-muted/20 px-2 py-1">
             {typeof item === "object" && item !== null ? (
               <div className="space-y-0.5">
-                {Object.entries(item).map(([k, v]) => (
+                {Object.entries(item || {}).map(([k, v]) => (
                   <div key={k} className="flex items-start gap-2 text-xs">
                     <span className="min-w-[100px] shrink-0 text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</span>
                     <ValueDisplay value={v} />
@@ -52,7 +52,7 @@ function ValueDisplay({ value }: { value: any }) {
   if (typeof value === "object") {
     return (
       <div className="space-y-0.5">
-        {Object.entries(value).map(([k, v]) => (
+        {Object.entries(value || {}).map(([k, v]) => (
           <div key={k} className="flex items-start gap-2 text-xs">
             <span className="min-w-[100px] shrink-0 text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</span>
             <ValueDisplay value={v} />
@@ -85,7 +85,7 @@ function AnswerDisplay({ text }: { text?: string }) {
 
   return (
     <div className="mt-1 space-y-1 text-sm">
-      {Object.entries(parsed).map(([key, value]) => (
+      {Object.entries(parsed || {}).map(([key, value]) => (
         <div key={key} className="flex items-start gap-2 border-b border-border/40 py-1 last:border-0">
           <span className="min-w-[140px] shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/([A-Z])/g, " $1").trim()}</span>
           <div className="font-medium flex-1"><ValueDisplay value={value} /></div>
@@ -325,7 +325,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       return items.map((item, idx) => `${idx + 1}. ${item.replace(/\n/g, "\n   ")}`).join("\n");
     }
     if (typeof value === "object") {
-      return Object.entries(value)
+      return Object.entries(value || {})
         .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").trim()}: ${formatValueForExcel(v, depth + 1)}`)
         .join("\n");
     }

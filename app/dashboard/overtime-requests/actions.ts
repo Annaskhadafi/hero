@@ -174,7 +174,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
       ? settings.approvalMatrix.sectionHeads
       : Object.values(settings.approvalMatrix.sectionHeads)
 
-    const matched = secList.find((sh: any) =>
+    const matched: any = secList.find((sh: any) =>
       sh.section && (
         sectionName.toLowerCase().includes(sh.section.toLowerCase()) ||
         sh.section.toLowerCase().includes(sectionName.toLowerCase())
@@ -187,7 +187,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
       const [empMatch] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(sql`LOWER(TRIM(${employees.email})) = ${matched.email.trim().toLowerCase()}`)
+        .where(sql`LOWER(TRIM(${employees.email})) = ${String(matched.email).trim().toLowerCase()}`)
         .limit(1)
       if (empMatch) {
         sectionHeadEmployeeId = empMatch.id
@@ -267,6 +267,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
       documentId: document.id,
       splNumber: document.splNumber || `SPL-${document.id}`,
       workDate: document.workDate,
+      employeeName: requester.name || 'Karyawan',
       requesterName: requester.name || 'Karyawan',
       approverName: requester.name || 'Karyawan',
       approverEmail: requester.email,
@@ -391,7 +392,7 @@ export async function getOvertimeApprovalData(documentId: number): Promise<Overt
       currentEmployeeEmail: session?.user?.email ?? null,
       currentEmployeeName: session?.user?.name ?? null,
       accessRole: currentEmployee?.accessRole ?? 'Staff',
-    },
+    } as any,
   }
 }
 
@@ -399,7 +400,7 @@ export async function getOvertimeApprovalData(documentId: number): Promise<Overt
 
 const saveOvertimeApprovalFormSchema = z.object({
   documentId: z.coerce.number().int().positive(),
-  itemRemarks: z.record(z.string()).optional().default({}),
+  itemRemarks: z.record(z.string(), z.string()).optional().default({}),
   leaderName: z.string().optional().default(''),
   leaderTitle: z.string().optional().default(''),
   superiorName: z.string().optional().default(''),
@@ -1361,6 +1362,7 @@ export async function createOvertimeCommandLetterAction(payload: {
       .select({
         id: employees.id,
         name: employees.name,
+        email: employees.email,
         signatureDataUrl: employees.signatureDataUrl,
         siteId: employees.siteId,
         departmentId: employees.departmentId,
@@ -1526,6 +1528,7 @@ export async function createOvertimeCommandLetterAction(payload: {
           documentId: inserted.id,
           splNumber: inserted.splNumber || `SPL-${inserted.id}`,
           workDate: inserted.workDate,
+          employeeName: currentEmp?.name || requesterEmp?.name || 'Karyawan',
           requesterName: currentEmp?.name || 'Karyawan',
           approverName: currentEmp?.name || 'Karyawan',
           approverEmail: currentEmp?.email || requesterEmp?.email || '',
@@ -2128,12 +2131,13 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
             await sendOvertimeStepApprovalEmail({
               documentId: splDoc.id,
               splNumber: splDoc.splNumber,
-              title: splDoc.title,
-              targetApproverName: nextStep.approverName || 'Approver',
-              targetApproverEmail: nextStep.approverEmail,
+              employeeName: requester?.name || 'Karyawan',
+              workDate: (splDoc as any).workDate || new Date(),
+              approverName: nextStep.approverName || 'Approver',
+              approverEmail: nextStep.approverEmail,
               requesterName: requester?.name || 'Pemohon',
-              stepLabel: nextStep.stepLabel,
-              approvalToken: nextStep.approvalToken || '',
+              approvalStep: nextStep.stepLabel,
+              approvalToken: (nextStep.approvalToken || '') as any,
             })
           } catch (err) {
             console.error('Error dispatching overtime next step email:', err)
@@ -2420,10 +2424,9 @@ export async function getOvertimeWorkflowSettings(): Promise<OvertimeWorkflowSet
       approvalMatrix: {
         ...DEFAULT_OVERTIME_SETTINGS.approvalMatrix,
         ...stored.approvalMatrix,
-        sectionHeads: {
-          ...DEFAULT_OVERTIME_SETTINGS.approvalMatrix.sectionHeads,
-          ...stored.approvalMatrix?.sectionHeads,
-        },
+        sectionHeads: Array.isArray(stored.approvalMatrix?.sectionHeads)
+          ? stored.approvalMatrix.sectionHeads
+          : DEFAULT_OVERTIME_SETTINGS.approvalMatrix.sectionHeads,
       },
       emailTemplates: {
         ...DEFAULT_OVERTIME_SETTINGS.emailTemplates,
@@ -2519,7 +2522,7 @@ export async function saveOvertimeWorkflowSettings(settings: OvertimeWorkflowSet
               isActive: true,
               createdAt: new Date(),
               updatedAt: new Date(),
-            })
+            } as any)
           }
         }
       }

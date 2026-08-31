@@ -62,14 +62,18 @@ export function getTrustedOrigins(request?: Request) {
 export function getPublicAppUrl() {
     const candidates = [
         process.env.NEXT_PUBLIC_APP_URL,
-        process.env.VERCEL_PROJECT_PRODUCTION_URL,
-        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
         process.env.APP_URL,
         process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.replace(/\/api\/auth\/?$/, ""),
+        process.env.BETTER_AUTH_URL?.replace(/\/api\/auth\/?$/, ""),
+        process.env.VERCEL_PROJECT_PRODUCTION_URL,
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
     ]
     const origin = candidates.map(normalizeOrigin).find(Boolean)
-    if (origin && !origin.includes("localhost") && !origin.includes("127.0.0.1")) {
+    if (origin) {
         return origin
+    }
+    if (process.env.NODE_ENV !== "production") {
+        return "http://localhost:3000"
     }
     return "https://hero.chitraparatama.com"
 }

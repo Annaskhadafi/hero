@@ -14,6 +14,7 @@ import {
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
+import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
 
 export const metadata = {
   title: 'Approval Workflow - Daily Activity Hub',
@@ -40,7 +41,7 @@ export default async function DailyActivityApprovalListPage() {
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
       .limit(1)
 
-    const userRole = (session?.user?.role || '').toLowerCase()
+    const userRole = ((session?.user as any)?.role || '').toLowerCase()
     const accessRole = (currentEmployee?.accessRole || '').toLowerCase()
     const isAdmin =
       userRole === 'admin' ||
@@ -340,15 +341,7 @@ export default async function DailyActivityApprovalListPage() {
         activityPresets={[]}
         sectionHeadMap={{}}
         deptHeadMap={{}}
-        initialSettings={{
-          slaHoursLevel1: 24,
-          slaHoursLevel2: 24,
-          slaHoursLevel3: 24,
-          autoApproveEnabled: false,
-          requireSignature: true,
-          notifyEmailOnSubmit: true,
-          notifyEmailOnDecision: true,
-        }}
+        initialSettings={DEFAULT_DAILY_ACTIVITY_SETTINGS}
       />
     )
   }

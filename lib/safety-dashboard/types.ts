@@ -9,7 +9,7 @@ export const SAFETY_WORKBOOK_SHEETS = {
   weeklyActivities: " Weekly Report",
 } as const
 
-export const SAFETY_WORKBOOK_SHEET_NAMES = Object.values(SAFETY_WORKBOOK_SHEETS)
+export const SAFETY_WORKBOOK_SHEET_NAMES = Object.values(SAFETY_WORKBOOK_SHEETS || {})
 
 export type SafetyImportSheetSummary = {
   sheet: string

@@ -566,7 +566,7 @@ export default function CentralServicePage() {
       },
       {} as Record<string, number>
     )
-    const topSite = Object.entries(sitesCount).sort((a, b) => b[1] - a[1])[0] || ['-', 0]
+    const topSite = Object.entries(sitesCount || {}).sort((a, b) => b[1] - a[1])[0] || ['-', 0]
 
     let contractExpired = 0
     let contractEndingSoon = 0

@@ -988,11 +988,20 @@ const EMPTY_SCHEDULING_STATUSES: Array<{
 
 const EMPTY_APPROVAL_EMPLOYEES: Array<{ id: number; name: string }> = []
 const EMPTY_APPROVAL_SECTIONS: Array<{
-  id: number
-  siteId: number | null
+  id: string
+  siteId: number
+  departmentId: number
+  departmentName: string | null
+  sectionId: number
+  sectionName: string
+  matrixId: number | null
+  matrixName: string | null
   pjoLeaderId: number | null
+  pjoLeaderName: string | null
   sectionHeadId: number | null
+  sectionHeadName: string | null
   departmentHeadId: number | null
+  departmentHeadName: string | null
 }> = []
 const EMPTY_ACTIVITIES: Array<{
   id: number

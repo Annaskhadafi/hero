@@ -121,7 +121,7 @@ function detectPeriod(sheets: SheetRows[]) {
         const year = valueText.match(/(?:19|20)\d{2}/)?.[0]
         if (!year) continue
         const normalized = valueText.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-        const month = Object.entries(monthAliases).find(([alias]) =>
+        const month = Object.entries(monthAliases || {}).find(([alias]) =>
           new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`, 'i').test(normalized)
         )?.[1]
         if (month) return `${year}-${String(month).padStart(2, '0')}`

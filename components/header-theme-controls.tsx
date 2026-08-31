@@ -159,8 +159,8 @@ export function HeaderThemeControls({
   }, []);
 
   const syncNotifications = React.useCallback((payload: NotificationResponse) => {
-    setNotifications(payload.notifications);
-    setUnreadCount(payload.count);
+    setNotifications(Array.isArray(payload?.notifications) ? payload.notifications : []);
+    setUnreadCount(Number(payload?.count) || 0);
   }, []);
 
   const loadNotifications = React.useCallback(async () => {
@@ -261,7 +261,7 @@ export function HeaderThemeControls({
   }, []);
 
   const desktopGroups = React.useMemo(() => {
-    const desktopItems = [...navMain, ...navSecondary].map((item) => ({
+    const desktopItems = [...(navMain || []), ...(navSecondary || [])].map((item) => ({
       section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
       title: item.title,
       url: item.url,

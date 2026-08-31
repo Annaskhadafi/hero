@@ -29,13 +29,13 @@ export default async function MobileAttendancePage() {
     <FaceAttendanceV2Client
       employeeId={data.employee.id}
       employeeName={data.employee.name}
-      employeeSn={data.employee.employeeSn ?? String(data.employee.id)}
+      employeeSn={(data.employee as any).employeeSn ?? String(data.employee.id)}
       siteId={data.employee.siteId ?? 1}
       siteName={data.employee.siteName ?? 'Default Site'}
-      faceRarayId={data.employee.faceRarayId ?? null}
+      faceRarayId={(data.employee as any).faceRarayId ?? null}
       faceRarayRegisteredAt={
-        data.employee.faceRarayRegisteredAt
-          ? new Date(data.employee.faceRarayRegisteredAt).toISOString()
+        (data.employee as any).faceRarayRegisteredAt
+          ? new Date((data.employee as any).faceRarayRegisteredAt).toISOString()
           : null
       }
       suggestedEventType={suggestedEventType}

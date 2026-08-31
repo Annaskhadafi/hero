@@ -43,7 +43,14 @@
     "node_modules",
     "scripts",
     "tests",
+    "scratch*",
+    "scratch_*",
+    "seed-route*",
     "sync-data.ts",
-    "test-*.ts"
+    "test-*.ts",
+    "check_cols*",
+    "check-cols*",
+    "add_column*",
+    "**/*.old.tsx"
   ]
 }

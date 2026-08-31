@@ -72,6 +72,7 @@ type PtwApprovalData = {
   ppe: string[]
   gasTestRequired: boolean
   isolationRequired: boolean
+  registeredSignature?: string | null
   approvals: ApprovalStep[]
   permissions: {
     canApprove: boolean
@@ -1203,7 +1204,7 @@ export async function sendDuePtwReminders(targetPermitId?: number) {
         skipped++
         continue
       }
-      const approvalLink = `${baseUrl}/dashboard/hse/izin-kerja-ptw/${pending.ptwPermitId}/approval`
+      const approvalLink = `${baseUrl}/dashboard/hse/izin-kerja-ptw/${pending.permitId || (pending as any).ptwPermitId}/approval`
 
       await sendWorkflowEmail({
         to: recipientEmail,
@@ -2006,10 +2007,10 @@ export async function batchRejectPtwPermitsAction(permitIds: number[], remarks?:
             permitId,
             permitNumber: permit?.permitNumber || '',
             projectName: permit?.projectName || 'Izin Kerja PTW',
-            targetApproverName: step1.approverName || 'Pemohon',
-            targetApproverEmail: step1.approverEmail,
-            managerName: emp.name || 'Approver',
-            rejectReason: remarks || 'Dokumen PTW ditolak.',
+            applicantName: step1.approverName || 'Pemohon',
+            applicantEmail: step1.approverEmail,
+            approverName: emp.name || 'Approver',
+            remarks: remarks || 'Dokumen PTW ditolak.',
           })
         }
       } catch (mailErr) {

@@ -6,7 +6,7 @@ import { eq, sql, inArray, ilike } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { productSchema } from "@/lib/schemas"
+export const productSchema = z.record(z.string(), z.any())
 import { normalizeSloc, normalizeSlocFields } from "@/lib/sloc"
 
 const DEFAULT_PRODUCT_CATEGORIES = [
@@ -186,15 +186,16 @@ export async function upsertProduct(data: z.infer<typeof productSchema>, id?: nu
     try {
         const normalizedData = {
             ...data,
-            category: data.category.trim(),
-            materialNumber: data.materialNumber.trim().toUpperCase(),
-            oldMaterialNo: data.oldMaterialNo?.trim() || null,
-            materialDescription: data.materialDescription?.trim() || null,
-            brand: data.brand?.trim() || null,
-            plant: data.plant?.trim().toUpperCase() || null,
+            category: data.category?.trim?.() || data.category,
+            materialNumber: data.materialNumber?.trim?.()?.toUpperCase?.() || data.materialNumber,
+            oldMaterialNo: data.oldMaterialNo?.trim?.() || null,
+            materialDescription: data.materialDescription?.trim?.() || null,
+            brand: data.brand?.trim?.() || null,
+            costSap: data.costSap ? String(data.costSap).trim() : null,
+            plant: data.plant?.trim?.()?.toUpperCase?.() || null,
             sloc: normalizeSloc(data.sloc),
-            slocDescription: data.slocDescription?.trim() || null,
-            imageUrl: data.imageUrl?.trim() || null,
+            slocDescription: data.slocDescription?.trim?.() || null,
+            imageUrl: data.imageUrl?.trim?.() || null,
         }
 
         if (!normalizedData.sloc) {

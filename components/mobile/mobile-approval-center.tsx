@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import {
+  AlertTriangle,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -510,7 +511,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
       const paramNorm = openDocParam.trim().toLowerCase()
       const matchingItem = allUnifiedInboxItems.find((it) => {
         const docNumNorm = (it.documentNumber || '').toLowerCase()
-        const reqNumNorm = (it.requestNumber || '').toLowerCase()
+        const reqNumNorm = (((it as any).requestNumber || '') as string).toLowerCase()
         const itemIdNorm = (it.id || '').toLowerCase()
         const rawDailyId = String(it.rawDaily?.id || '')
         const rawOvertimeId = String(it.rawOvertime?.id || '')
@@ -681,7 +682,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
     }
 
     setRemarkFieldError(false)
-    handleExecuteBatchAllAction(action, currentRemark)
+    handleExecuteApprovalAction(action, currentRemark)
   }
 
   // Export Excel
@@ -968,7 +969,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                     </div>
                   </div>
 
-                  {item.isRejected ? (
+                  {(item as any).isRejected ? (
                     <Button
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
@@ -1033,7 +1034,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                         </p>
                       </div>
                     </div>
-                    <AdminStatusBadge value={item.isRejected ? 'rejected' : item.isReverted ? 'reverted' : item.dueState} />
+                    <AdminStatusBadge value={(item as any).isRejected ? 'rejected' : item.isReverted ? 'reverted' : item.dueState} />
                   </div>
 
                   <div className="space-y-1">
@@ -1055,7 +1056,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                     </div>
                   </div>
 
-                  {item.isRejected ? (
+                  {(item as any).isRejected ? (
                     <Button
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
@@ -1519,7 +1520,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                               <td>SN: <strong>{(currentBatchDoc.rawDaily as any).employeeSn || '-'}</strong></td>
                             </tr>
                             <tr>
-                              <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</strong></td>
+                              <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</strong></td>
                               <td>Dept / Section: <strong>{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || '—'}</strong></td>
                             </tr>
                             <tr>
@@ -1631,7 +1632,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                                   <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
                                     {currentBatchDoc.employeeName}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
                                   {(step1?.signedAt || currentSig) && (
                                     <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1?.signedAt || new Date())}</div>
                                   )}
@@ -1859,7 +1860,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                                 <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
                                   {step1?.approverName || currentBatchDoc.employeeName}
                                 </div>
-                                <div className="text-[7pt] text-slate-600">{(currentBatchDoc.rawOvertime as any).jobTitle || currentBatchDoc.position || 'Staff'}</div>
+                                <div className="text-[7pt] text-slate-600">{(currentBatchDoc.rawOvertime as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
                                 {(step1?.signedAt || sigUrl1) && (
                                   <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1?.signedAt || new Date())}</div>
                                 )}
@@ -1948,7 +1949,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
                     {/* PTW */}
                     {currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw && (() => {
-                      const doc = currentBatchDoc.rawPtw
+                      const doc: any = currentBatchDoc.rawPtw
                       const ptwApprovals = (doc as any).approvals || []
                       const step1 = ptwApprovals.find((a: any) => a.stepOrder === 1 || a.approverRole === 'applicant')
                       const step2 = ptwApprovals.find((a: any) => a.stepOrder === 2 || a.approverRole === 'safety_officer')

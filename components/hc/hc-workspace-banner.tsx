@@ -4,15 +4,17 @@ import { cn } from "@/lib/utils";
 
 type HcWorkspaceBannerProps = {
   eyebrow?: string;
+  badge?: string;
   title: string;
   description: string;
   items?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
+  metrics?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
   className?: string;
 };
 
-type BannerTone = NonNullable<HcWorkspaceBannerProps["items"]>[number]["tone"] & string;
+type BannerTone = "slate" | "emerald" | "amber" | "rose" | "sky";
 
-const toneClassName: Record<BannerTone, string> = {
+const toneClassName: Record<string, string> = {
   slate: "bg-slate-950 text-white shadow-[0_16px_36px_rgba(15,23,42,0.16)]",
   emerald: "bg-emerald-50 text-emerald-950 shadow-[inset_0_0_0_1px_rgba(5,150,105,0.14)]",
   amber: "bg-amber-50 text-amber-950 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.16)]",
@@ -20,7 +22,18 @@ const toneClassName: Record<BannerTone, string> = {
   sky: "bg-sky-50 text-sky-950 shadow-[inset_0_0_0_1px_rgba(2,132,199,0.16)]",
 };
 
-export function HcWorkspaceBanner({ eyebrow = "Human Capital", title, description, items = [], className }: HcWorkspaceBannerProps) {
+export function HcWorkspaceBanner({
+  eyebrow,
+  badge,
+  title,
+  description,
+  items,
+  metrics,
+  className,
+}: HcWorkspaceBannerProps) {
+  const displayEyebrow = badge || eyebrow || "Human Capital";
+  const displayItems = metrics || items || [];
+
   return (
     <section
       className={cn(
@@ -31,14 +44,14 @@ export function HcWorkspaceBanner({ eyebrow = "Human Capital", title, descriptio
       <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(15,23,42,0.10),transparent_45%)]" />
       <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{eyebrow}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{displayEyebrow}</p>
           <h2 className="font-display text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
           <p className="max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
         </div>
-        {items.length ? (
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[28rem]">
-            {items.map((item) => (
-              <div key={item.label} className={cn("rounded-2xl px-3 py-2.5", toneClassName[item.tone ?? "slate"])}>
+        {displayItems.length ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[28rem]">
+            {displayItems.map((item) => (
+              <div key={item.label} className={cn("rounded-2xl px-3 py-2.5", toneClassName[item.tone ?? "slate"] || toneClassName.slate)}>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">{item.label}</p>
                 <div className="mt-1 font-display text-xl font-semibold tabular-nums tracking-tight">{item.value}</div>
               </div>

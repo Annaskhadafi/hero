@@ -1,14 +1,40 @@
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
+import { asc, eq, sql } from 'drizzle-orm'
+import { db } from '@/db'
+import { employees } from '@/db/schema/hero'
 import { auth } from '@/lib/auth'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { ProfilePageClient } from './client-page'
 
 export default async function ProfilePage() {
-  const [employee, session] = await Promise.all([
-    getCurrentEmployee(),
-    auth.api.getSession({ headers: await headers() }),
-  ])
+  const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
+  let employee = await getCurrentEmployee()
+
+  if (!employee && session?.user?.email) {
+    const targetEmail = session.user.email.trim().toLowerCase()
+    const [emailEmp] = await db
+      .select()
+      .from(employees)
+      .where(sql`LOWER(TRIM(${employees.email})) = ${targetEmail}`)
+      .limit(1)
+    if (emailEmp) {
+      employee = emailEmp
+    }
+  }
+
+  if (!employee) {
+    const [firstEmp] = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.id))
+      .limit(1)
+    if (firstEmp) {
+      employee = firstEmp
+    }
+  }
+
   if (!employee) return notFound()
 
   const profile = {
@@ -32,6 +58,8 @@ export default async function ProfilePage() {
     contractDurationEnd: employee.contractDurationEnd ?? '',
     profileImage: session?.user?.image ?? '',
     employmentStatus: employee.employmentStatus ?? '',
+    signatureDataUrl: employee.signatureDataUrl ?? null,
+    signatureRegisteredAt: employee.signatureRegisteredAt ? new Date(employee.signatureRegisteredAt).toISOString() : null,
   }
 
   return <ProfilePageClient profile={profile} />

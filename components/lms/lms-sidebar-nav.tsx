@@ -159,7 +159,7 @@ export function LmsSidebarNav({ isAdmin = false }: LmsSidebarNavProps) {
           </h4>
           <div className="space-y-1">
             {ADMIN_ITEMS.map((item) => {
-              const isActive = item.exact
+              const isActive = (item as any).exact
                 ? pathname === item.href
                 : pathname?.startsWith(item.href)
               return <NavItem key={item.href} item={item} isActive={isActive} />

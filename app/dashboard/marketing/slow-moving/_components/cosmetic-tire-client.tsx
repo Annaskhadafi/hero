@@ -101,7 +101,7 @@ function stringifyCell(value: unknown) {
 }
 
 function pickValue(row: Record<string, unknown>, candidates: string[]) {
-    const entry = Object.entries(row).find(([key]) => candidates.includes(normalizeHeader(key)))
+    const entry = Object.entries(row || {}).find(([key]) => candidates.includes(normalizeHeader(key)))
     return entry ? stringifyCell(entry[1]) : ""
 }
 

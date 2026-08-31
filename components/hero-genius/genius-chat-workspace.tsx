@@ -219,10 +219,10 @@ export function GeniusChatWorkspace({
     try {
       const res = await sendHeroGeniusFeedbackAction({
         session_id: sessionId,
-        message_id: msg.message_id ? String(msg.message_id) : undefined,
+        message_id: String(msg.message_id || msg.id || 'msg-1'),
         query: msg.userQuery || "Pertanyaan umum",
         answer: msg.content,
-        rating: "up",
+        rating: 1,
       });
 
       if (res.success) {
@@ -252,12 +252,12 @@ export function GeniusChatWorkspace({
     try {
       const res = await sendHeroGeniusFeedbackAction({
         session_id: sessionId,
-        message_id: activeFeedbackMsg.message_id ? String(activeFeedbackMsg.message_id) : undefined,
+        message_id: String(activeFeedbackMsg.message_id || activeFeedbackMsg.id || 'msg-1'),
         query: activeFeedbackMsg.userQuery || "Pertanyaan RAG",
         answer: activeFeedbackMsg.content,
-        rating: feedbackRatingType,
-        feedback_text: feedbackNote.trim() || undefined,
-        correction: correctionText.trim() || undefined,
+        rating: feedbackRatingType === "up" ? 1 : -1,
+        feedback_notes: feedbackNote.trim() || undefined,
+        correction_text: correctionText.trim() || undefined,
       });
 
       if (res.success) {
@@ -287,6 +287,7 @@ export function GeniusChatWorkspace({
     setIsSubmittingLearn(true);
     try {
       const res = await learnHeroGeniusFactAction({
+        content: quickFact.trim(),
         fact: quickFact.trim(),
         category: quickCategory,
         source: quickSource.trim() || "Chat Quick Input",

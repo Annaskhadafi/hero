@@ -180,7 +180,7 @@ export function LiveAttendanceMap({ initialData }: Props) {
 
   const handleAddManualSite = (siteIdStr: string) => {
     const siteId = Number(siteIdStr)
-    const existingMapSites = data.success && data.sites ? data.sites : []
+    const existingMapSites = data.success && (data as any).sites ? (data as any).sites : []
     
     if (manualSites.some(s => s.id === siteId) || existingMapSites.some((s: any) => s.id === siteId)) {
       return // Already on map
@@ -199,7 +199,7 @@ export function LiveAttendanceMap({ initialData }: Props) {
   }
 
   const mergedSites = useMemo(() => {
-    const mapSites = data.success && data.sites ? data.sites : []
+    const mapSites = data.success && (data as any).sites ? (data as any).sites : []
     const combined = [...mapSites]
     manualSites.forEach(ms => {
       if (!combined.some(cs => cs.id === ms.id)) {

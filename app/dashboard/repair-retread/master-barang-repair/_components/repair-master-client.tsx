@@ -366,7 +366,7 @@ export function RepairMasterClient({
     startTransition(async () => {
       const result = await bulkDeleteRepairMasterItems(selectedItemIds)
       if (result.success) {
-        toast.success(result.message)
+        toast.success((result as any).message || 'Barang repair berhasil dihapus')
         setSelectedItemIds([])
         await refreshData()
       } else {

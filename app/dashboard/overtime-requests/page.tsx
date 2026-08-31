@@ -26,7 +26,7 @@ export default async function OvertimeRequestsPage() {
   }
 
   const activeEmployee = await getCurrentEmployee()
-  const userRole = (session?.user?.role || '').toLowerCase()
+  const userRole = ((session?.user as any)?.role || '').toLowerCase()
   const accessRole = (activeEmployee?.accessRole || '').toLowerCase()
   const isAdmin =
     userRole === 'admin' ||
@@ -117,7 +117,7 @@ export default async function OvertimeRequestsPage() {
       : [],
   ])
 
-  const approvalsBySplMap = new Map<number, typeof rawApprovalsList>()
+  const approvalsBySplMap = new Map<number, (typeof rawApprovalsList)[number][]>()
   for (const a of rawApprovalsList) {
     if (!approvalsBySplMap.has(a.overtimeCommandLetterId)) {
       approvalsBySplMap.set(a.overtimeCommandLetterId, [])
@@ -125,7 +125,7 @@ export default async function OvertimeRequestsPage() {
     approvalsBySplMap.get(a.overtimeCommandLetterId)!.push(a)
   }
 
-  const participantsBySplMap = new Map<number, typeof rawParticipantsList>()
+  const participantsBySplMap = new Map<number, (typeof rawParticipantsList)[number][]>()
   for (const p of rawParticipantsList) {
     if (!participantsBySplMap.has(p.overtimeCommandLetterId)) {
       participantsBySplMap.set(p.overtimeCommandLetterId, [])
@@ -243,7 +243,7 @@ export default async function OvertimeRequestsPage() {
       id: Number(r.id),
       splNumber: r.splNumber || `SPL-${r.id}`,
       title: r.title || 'Surat Perintah Lembur',
-      workDate: r.workDate ? new Date(r.workDate).toISOString() : null,
+      workDate: r.workDate ? new Date(r.workDate).toISOString() : new Date().toISOString(),
       plannedStartAt: r.plannedStartAt ? new Date(r.plannedStartAt).toISOString() : null,
       plannedEndAt: r.plannedEndAt ? new Date(r.plannedEndAt).toISOString() : null,
       status: r.status || 'draft',
@@ -255,7 +255,7 @@ export default async function OvertimeRequestsPage() {
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
     }
-  })
+  }) as any
 
   const sanitizedEmployees = (allEmployees || []).map((e) => ({
     id: Number(e.id),

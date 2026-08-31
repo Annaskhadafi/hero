@@ -127,7 +127,7 @@ export function LmsGroupedTable({
     }
   }
 
-  const groupedCourses = Object.values(groups).map((group) => {
+  const groupedCourses = Object.values(groups || {}).map((group) => {
     const totalProg = group.students.reduce((sum, s) => sum + s.progress, 0)
     group.averageProgress = Math.round(totalProg / group.students.length)
     return group

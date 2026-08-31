@@ -8,22 +8,27 @@ import {
 } from "@/lib/notification-feed";
 
 export async function GET() {
-  const session = await getServerSession();
-  const email = session?.user?.email?.trim().toLowerCase();
+  try {
+    const session = await getServerSession();
+    const email = session?.user?.email?.trim().toLowerCase();
 
-  if (!email) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!email) {
+      return NextResponse.json({ message: "Unauthorized", count: 0, notifications: [] }, { status: 401 });
+    }
+
+    const [notifications, count] = await Promise.all([
+      getRecipientNotifications(email, 20),
+      getRecipientUnreadNotificationCount(email),
+    ]);
+
+    return NextResponse.json({
+      count: count || 0,
+      notifications: notifications || [],
+    });
+  } catch (error: any) {
+    console.error("Notifications API error:", error);
+    return NextResponse.json({ count: 0, notifications: [], error: error?.message }, { status: 200 });
   }
-
-  const [notifications, count] = await Promise.all([
-    getRecipientNotifications(email, 20),
-    getRecipientUnreadNotificationCount(email),
-  ]);
-
-  return NextResponse.json({
-    count,
-    notifications,
-  });
 }
 
 type NotificationActionBody = {

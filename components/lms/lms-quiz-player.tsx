@@ -96,7 +96,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
       formData.append('courseId', String(courseId))
       formData.append('lessonId', String(lessonId))
       formData.append('testPhase', testPhase)
-      Object.entries(answers).forEach(([questionId, answer]) => {
+      Object.entries(answers || {}).forEach(([questionId, answer]) => {
         formData.append(`answer_${questionId}`, answer)
       })
 

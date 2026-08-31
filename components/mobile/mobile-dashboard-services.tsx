@@ -342,7 +342,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
 
 
             {/* Dynamic RBAC Sidebar Items - Grouped and Rendered as Grid of Icons */}
-            {Object.keys(groupedSidebarItems).map((sectionName) => {
+            {Object.keys(groupedSidebarItems || {}).map((sectionName) => {
               const items = groupedSidebarItems[sectionName];
               return (
                 <div key={sectionName} className="border-t border-slate-100 pt-5 space-y-3">

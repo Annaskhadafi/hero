@@ -167,7 +167,7 @@ export async function saveWorkflowStudioApprovalAction(
     )
 
     const allEmployeeIds = parsedSiteEntries.flatMap((entry) =>
-      Object.entries(entry.values)
+      Object.entries(entry.values || {})
         .filter(([stepId, id]) => !sectionStepIds.has(stepId) && id != null && id > 0)
         .map(([, id]) => id as number)
     )
@@ -193,7 +193,7 @@ export async function saveWorkflowStudioApprovalAction(
             and(
               eq(approvalMatrices.isActive, true),
               eq(approvalMatrices.transactionType, payload.transactionType),
-              eq(approvalMatrices.siteId, entry.siteId),
+              eq(approvalMatrices.siteId, entry.siteId), // eq(approvalMatrices.siteId, payload.siteId)
               eq(approvalMatrices.activityType, '')
             )
           )
@@ -734,7 +734,10 @@ export async function resendWorkflowStudioReminderAction(formData: FormData) {
   }
 }
 
-export async function markWorkflowStudioInvestigatedAction(formData: FormData) {
+export async function markWorkflowStudioInvestigatedAction(
+  _prevState: { status: 'idle' | 'success' | 'error'; message: string },
+  formData: FormData
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
   try {
     await requireWorkflowStudioEdit()
     const parsed = investigateSchema.safeParse({
@@ -771,9 +774,9 @@ const presetBuilderSchema = z.object({
 })
 
 export async function saveWorkflowStudioPresetAction(
-  _state: any,
+  _state: { status: 'idle' | 'success' | 'error'; message: string },
   formData: FormData
-) {
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
   try {
     await requireWorkflowStudioEdit()
     const parsed = presetBuilderSchema.safeParse(Object.fromEntries(formData.entries()))
@@ -804,7 +807,7 @@ export async function saveWorkflowStudioPresetAction(
         stepsJson: stepsJsonParsed,
         isSystemPreset: false,
         isActive: payload.isActive === 'true',
-        createdBy: session.user.id,
+        createdBy: session?.user?.id ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -828,9 +831,9 @@ export async function saveWorkflowStudioPresetAction(
 }
 
 export async function deleteWorkflowStudioPresetAction(
-  _state: any,
+  _state: { status: 'idle' | 'success' | 'error'; message: string },
   formData: FormData
-) {
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
   try {
     await requireWorkflowStudioEdit()
     const id = formData.get('id')?.toString()

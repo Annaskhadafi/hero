@@ -41,7 +41,6 @@ import {
   IconUsers,
   IconUser,
   IconShieldHalfFilled,
-  IconShieldAlert,
   IconReport,
   IconChartBar,
   IconActivity,

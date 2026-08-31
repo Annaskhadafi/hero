@@ -750,14 +750,14 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    const rows = Object.values(grouped)
+    const rows = Object.values(grouped || {})
       .map((item) => ({
         ...item,
         workOrderCount: item.workOrders.size,
         activeDayCount: item.activeDays.size,
         averageMinutes: item.jobs > 0 ? item.minutes / item.jobs : 0,
         topJob:
-          Object.entries(item.jobCounts)
+          Object.entries(item.jobCounts || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.minutes - left.minutes || right.jobs - left.jobs || left.name.localeCompare(right.name))
@@ -787,7 +787,7 @@ export function WipRepairDashboardClient({
         {}
       )
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({ ...item, workOrderCount: item.workOrders.size }))
       .sort((left, right) => right.rows - left.rows || right.quantity - left.quantity || left.name.localeCompare(right.name))
   }, [detailRows])
@@ -911,13 +911,13 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         customersCount: item.customers.size,
         sitesCount: item.sites.size,
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.waitingWo - left.waitingWo || right.emptyWo - left.emptyWo || right.workOrders - left.workOrders || left.name.localeCompare(right.name))
@@ -1010,17 +1010,17 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         topSize:
-          Object.entries(item.sizes)
+          Object.entries(item.sizes || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
         topCustomer:
-          Object.entries(item.customers)
+          Object.entries(item.customers || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.workOrders - left.workOrders || right.totalMinutes - left.totalMinutes || left.name.localeCompare(right.name))
@@ -1090,12 +1090,12 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         name: `${item.brand} / ${item.size}`,
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.workOrders - left.workOrders || left.brand.localeCompare(right.brand) || left.size.localeCompare(right.size))
@@ -1124,7 +1124,7 @@ export function WipRepairDashboardClient({
       {}
     )
 
-    const prepared = Object.entries(buckets)
+    const prepared = Object.entries(buckets || {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([, value]) => value)
 

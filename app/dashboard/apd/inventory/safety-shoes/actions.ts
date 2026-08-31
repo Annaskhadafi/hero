@@ -39,7 +39,7 @@ export async function addManualSafetyShoes({
     size,
     attachmentUrl,
     status: "ACTIVE",
-  });
+  } as any);
   revalidatePath("/dashboard/apd/inventory/safety-shoes");
 }
 

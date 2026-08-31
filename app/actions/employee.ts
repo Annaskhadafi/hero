@@ -132,7 +132,7 @@ export async function createEmployee(data: {
 
   const [created] = await db
     .insert(employees)
-    .values(setData)
+    .values(setData as any)
     .returning();
 
   if (data.lastMcuDate && created) {
@@ -187,6 +187,7 @@ export async function updateEmployee(id: number, data: {
   expMinePermit?: string | null;
   accountStatus?: string;
   manpower?: string;
+  lastMcuDate?: string | null;
 }) {
   const [before] = await db
     .select()
@@ -240,7 +241,7 @@ export async function updateEmployee(id: number, data: {
     if (data.fullName !== undefined) userUpdate.name = data.fullName;
     if (data.email !== undefined) userUpdate.email = data.email;
     
-    if (Object.keys(userUpdate).length > 0) {
+    if (Object.keys(userUpdate || {}).length > 0) {
       await db.update(user).set(userUpdate).where(eq(user.id, updated.authUserId));
     }
   }
@@ -290,7 +291,7 @@ export async function deleteEmployee(id: number) {
 // Keep backward-compatible alias
 export const updateEmployeeContract = updateEmployee;
 
-export async function bulkUpdateEmployees(ids: number[], data: Partial<import("@/app/dashboard/hc/employee/client-page").EmployeeFormData>) {
+export async function bulkUpdateEmployees(ids: number[], data: Record<string, any>) {
   if (ids.length === 0) return 0;
   const setData: Record<string, any> = {};
   if (data.workLocationId !== undefined && data.workLocationId !== "") setData.siteId = Number(data.workLocationId);
@@ -298,7 +299,7 @@ export async function bulkUpdateEmployees(ids: number[], data: Partial<import("@
   if (data.expMinePermit !== undefined && data.expMinePermit !== "") setData.expMinePermit = data.expMinePermit;
   if (data.manpower !== undefined && data.manpower !== "") setData.manpower = data.manpower;
   
-  if (Object.keys(setData).length > 0) {
+  if (Object.keys(setData || {}).length > 0) {
     await db.update(employees).set(setData).where(inArray(employees.id, ids));
   }
 

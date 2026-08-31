@@ -100,7 +100,7 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
             </div>
             <iframe 
               ref={iframeRef}
-              src={`/print/apd/${item.activityId}`}
+              src={`/print/apd/${item.activityId}?t=${Date.now()}`}
               className="w-full flex-1 bg-white"
               title="Preview Dokumen"
             />

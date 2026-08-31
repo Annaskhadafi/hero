@@ -1122,11 +1122,11 @@ function CreateOrEditWoDialog({
         noWoCp: isService ? firstService?.noWoCp || undefined : firstRepair?.noWoCp || undefined,
       }
 
-      let result
+      let result: any
       if (editItem) {
-        result = await updateFormWo(editItem.id, payload)
+        result = await updateFormWo(editItem.id, payload as any)
       } else {
-        result = await createFormWo(payload)
+        result = await createFormWo(payload as any)
       }
 
       if (result.success) {
@@ -1716,7 +1716,7 @@ function ViewDetailDialog({
         <!DOCTYPE html>
         <html>
           <head>
-            <title>WO-${item.wo_number || item.id}</title>
+            <title>WO-{(item as any).wo_number || (item as any).noWoCp || item.idWo || item.id}</title>
             ${styles}
             <style>
               @page { size: landscape A4; margin: 10mm; }
@@ -2745,7 +2745,7 @@ function DaftarPengajuanTab({
     const firstSub = parsed[0]
     const res = await updateFormWo(item.id, {
       items: JSON.stringify(parsed),
-      totalAmount: newTotal > 0 ? String(newTotal) : item.totalAmount,
+      totalAmount: newTotal > 0 ? String(newTotal) : item.totalAmount || undefined,
       noPo: field === 'noPo' ? val : firstSub?.noPo || item.noPo || undefined,
     })
 
@@ -2983,7 +2983,7 @@ function DaftarPengajuanTab({
                                   ? 'Sembunyikan rincian item'
                                   : 'Tampilkan detail rincian item'
                               }
-                              onClick={() => toggleExpand(item.id)}
+                              onClick={() => toggleExpand(String(item.id))}
                             >
                               <ChevronRight className="h-4 w-4" />
                             </Button>
@@ -3299,7 +3299,7 @@ function DaftarPengajuanTab({
                                                 <Input
                                                   defaultValue={
                                                     sub.noWoCp ||
-                                                    item.noWoCp ||
+                                                    (item as any).noWoCp ||
                                                     item.noWoTerbit ||
                                                     ''
                                                   }
@@ -3419,7 +3419,7 @@ function DaftarPengajuanTab({
                                                 <Input
                                                   defaultValue={
                                                     sub.noWoCp ||
-                                                    item.noWoCp ||
+                                                    (item as any).noWoCp ||
                                                     item.noWoTerbit ||
                                                     ''
                                                   }

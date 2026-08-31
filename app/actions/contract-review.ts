@@ -951,7 +951,7 @@ export async function approveContractReviewStep(
     if (data.letterIssuance !== undefined) {
       updateFields.letterIssuance = data.letterIssuance
     }
-    if (Object.keys(updateFields).length > 0) {
+    if (Object.keys(updateFields || {}).length > 0) {
       await db
         .update(hcEmployeeContractReviews)
         .set(updateFields)

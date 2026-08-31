@@ -36,43 +36,45 @@ const accents = [
   "bg-primary-container/10 text-primary-container ring-primary-container/15 group-hover:bg-primary-container/15",
 ];
 
-function getMetricIcon(label: string, meta: string) {
-  const source = `${label} ${meta}`.toLowerCase();
+function getMetricIcon(label?: string, meta?: string) {
+  const source = `${label || ''} ${meta || ''}`.toLowerCase();
   return metricIcons.find((item) => item.match.some((keyword) => source.includes(keyword)))?.icon ?? BarChart3;
 }
 
 export function AdminMetricGrid({
-  items,
+  items = [],
   mode = "default",
 }: {
-  items: {
+  items?: {
     label: string;
     value: string;
     meta: string;
   }[];
   mode?: "default" | "compact";
 }) {
+  const safeItems = Array.isArray(items) ? items : [];
+
   if (mode === "compact") {
     return (
-      <div className="flex flex-wrap gap-2">
-        {items.map((item, index) => {
-          const Icon = getMetricIcon(item.label, item.meta);
+      <div className="flex flex-wrap gap-2.5 w-full">
+        {safeItems.map((item, index) => {
+          const Icon = getMetricIcon(item?.label, item?.meta);
           const accent = accents[index % accents.length];
 
           return (
             <div
               key={item.label}
-              className="group inline-flex min-h-11 min-w-[160px] items-center gap-2.5 rounded-[1rem] bg-surface-container-lowest px-3 py-2 shadow-[0_8px_20px_rgba(8,32,51,0.05)] ring-1 ring-[rgba(66,71,80,0.08)]"
+              className="group flex flex-1 min-w-[170px] min-h-11 items-center gap-2.5 rounded-[1rem] bg-surface-container-lowest px-3.5 py-2 shadow-[0_8px_20px_rgba(8,32,51,0.05)] ring-1 ring-[rgba(66,71,80,0.08)] transition-all hover:shadow-md"
             >
               <div className={`grid size-7 shrink-0 place-items-center rounded-xl ring-1 transition ${accent}`}>
                 <Icon className="size-3.5" aria-hidden="true" />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   {item.label}
                 </p>
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <p className="tabular-nums truncate font-display text-base font-semibold leading-none text-foreground">
+                <div className="flex min-w-0 items-baseline gap-1.5">
+                  <p className="tabular-nums font-display text-base font-semibold leading-none text-foreground shrink-0">
                     {item.value}
                   </p>
                   <p className="truncate text-[11px] text-muted-foreground">{item.meta}</p>
@@ -87,8 +89,8 @@ export function AdminMetricGrid({
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item, index) => {
-        const Icon = getMetricIcon(item.label, item.meta);
+      {safeItems.map((item, index) => {
+        const Icon = getMetricIcon(item?.label, item?.meta);
         const accent = accents[index % accents.length];
 
         return (

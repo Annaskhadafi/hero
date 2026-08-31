@@ -60,9 +60,9 @@ function getPool() {
     ssl: getSslConfig(connectionString),
     idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
     connectionTimeoutMillis: 30000,
-    max: 20,
+    max: 35,
     keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
+    keepAliveInitialDelayMillis: 5000,
   });
 
   pool.on("error", (error) => {
@@ -77,9 +77,12 @@ function getPool() {
   return pool;
 }
 
+let cachedPool: Pool | undefined;
+
 function getDb() {
   const currentPool = getPool();
-  if (!drizzleDb) {
+  if (!drizzleDb || cachedPool !== currentPool) {
+    cachedPool = currentPool;
     drizzleDb = drizzle({ client: currentPool });
   }
   return drizzleDb;

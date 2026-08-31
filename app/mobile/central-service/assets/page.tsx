@@ -54,7 +54,7 @@ export default async function MobileCentralServiceAssetsPage() {
         masterSections={masterSections}
         permissions={{
           canView: access.canView,
-          canCreate: access.canCreate,
+          canCreate: (access as any).canCreate ?? access.canEdit,
           canEdit: access.canEdit,
           canDelete: access.canDelete,
         }}

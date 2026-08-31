@@ -486,8 +486,8 @@ export function MobileDailyActivityForm({
             ...item,
             routeItemId: item.id,
             overtimeCommandLetterItemId: null,
-            requiresTireCount: item.requiresTireCount,
-            requiresMaterialUsed: item.requiresMaterialUsed,
+            requiresTireCount: (item as any).requiresTireCount ?? false,
+            requiresMaterialUsed: (item as any).requiresMaterialUsed ?? false,
           })),
         })),
       }
@@ -520,8 +520,8 @@ export function MobileDailyActivityForm({
           requiresRemark: true,
           requiresPhoto: item.requiresPhoto,
           requiresChecklistEvidence: true,
-          requiresTireCount: item.requiresTireCount,
-          requiresMaterialUsed: item.requiresMaterialUsed,
+          requiresTireCount: (item as any).requiresTireCount ?? false,
+          requiresMaterialUsed: (item as any).requiresMaterialUsed ?? false,
           pointOverride: item.plannedPoints,
           libraryCode: null,
           libraryName: null,
@@ -630,7 +630,7 @@ export function MobileDailyActivityForm({
   const selfInputNeedsGps = selectedLibraries.some((item) => item.requiresLocationGps)
   const assignmentNeedsGps = Boolean((selectedAssignment as any)?.requiresLocationGps)
   const checkedChecklistNeedsGps = checklistContext?.groups.some((group) =>
-    group.items.some((item) => routeItemState[item.id]?.isChecked && Boolean(item.requiresLocationGps))
+    group.items.some((item) => routeItemState[item.id]?.isChecked && Boolean((item as any).requiresLocationGps))
   ) ?? false
   const needsGps = selfInputNeedsGps || assignmentNeedsGps || checkedChecklistNeedsGps
 

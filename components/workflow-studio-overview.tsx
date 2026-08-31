@@ -45,7 +45,7 @@ import type { getWorkflowStudioConsoleData } from '@/lib/approval-blueprint'
 
 type WorkflowStudioData = Awaited<ReturnType<typeof getWorkflowStudioConsoleData>>
 
-const actionInitialState = { status: 'idle' as const, message: '' }
+const actionInitialState: { status: 'idle' | 'success' | 'error'; message: string } = { status: 'idle', message: '' }
 
 function formatDate(value: string) {
   if (!value) return '-'
@@ -944,7 +944,7 @@ function PresetBuilderDialog({
           <div className="border rounded-lg p-3 bg-slate-50 space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold">Langkah-langkah Preset</h4>
-              <Button type="button" size="xs" variant="outline" onClick={addStep} className="h-7 text-[10px]">
+              <Button type="button" size="sm" variant="outline" onClick={addStep} className="h-7 text-[10px]">
                 + Tambah Step
               </Button>
             </div>

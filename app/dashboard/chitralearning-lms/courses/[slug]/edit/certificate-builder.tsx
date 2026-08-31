@@ -25,7 +25,7 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
       })
       setCanvas(initCanvas)
 
-      if (initialTemplate?.canvasData && Object.keys(initialTemplate.canvasData).length > 0) {
+      if (initialTemplate?.canvasData && Object.keys(initialTemplate.canvasData || {}).length > 0) {
         let jsonData = JSON.stringify(initialTemplate.canvasData)
         jsonData = jsonData.replace(/https?:\/\/[^"'\s\\]+\/(upload|attendance-photos|profile-photos|curhat)\/([^"'\s\\]+)/g, '/api/uploads/$1/$2')
         initCanvas.loadFromJSON(JSON.parse(jsonData)).then(() => {
@@ -130,7 +130,7 @@ export function CertificateBuilder({ courseId, initialTemplate }: { courseId: nu
       name: 'qrcode_placeholder',
       left: canvas.width! - 150,
       top: canvas.height! - 150,
-    })
+    } as any)
 
     canvas.add(group)
     canvas.setActiveObject(group)

@@ -17,7 +17,7 @@ export default async function NavbarSettingsPage() {
         </p>
       </div>
 
-      <NavbarSettingsPanel theme={theme} menuItems={menuItems} />
+      <NavbarSettingsPanel theme={theme as any} menuItems={menuItems} />
 
       <GroupLabelStyleManager color={groupLabelColor} />
 

@@ -47,7 +47,7 @@ export async function runApdReminders() {
       await notifyWorkflowBellRecipients({
         recipientEmails: adminEmails,
         eventType: "apd.reminder.admin",
-        category: "system", 
+        category: "hse_alerts", 
         title: "Pengingat Pergantian Sepatu Safety",
         body: `Waktu pergantian ${asset.itemName} untuk karyawan ${asset.employeeName} sudah dekat (Jadwal 8 Bulan).`,
         url: "/dashboard/apd/inventory/safety-shoes", 

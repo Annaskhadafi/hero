@@ -257,7 +257,7 @@ export async function GET(req: NextRequest) {
     headers.set("Cache-Control", "public, max-age=3600, immutable");
     headers.set("X-Content-Type-Options", "nosniff");
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers,
     });

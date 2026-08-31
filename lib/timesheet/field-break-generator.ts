@@ -23,7 +23,7 @@ export type GeneratedFieldBreakPlan = {
   rosterSection: string
   period: string
   onSiteDate: string
-  dayCount: number
+  dayCount: number | null
   fieldBreakDate: string
   fieldBreakEndDate: string
   source: 'auto' | 'manual'

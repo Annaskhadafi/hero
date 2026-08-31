@@ -7617,58 +7617,6 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
       documents: [],
     }
   }
-  const permittedMenuItems = await db
-    .select({
-      id: navbarMenuItems.id,
-      canView: roleMenuPermissions.canView,
-      menuArea: navbarMenuItems.menuArea,
-      section: navbarMenuItems.section,
-      title: navbarMenuItems.title,
-      url: navbarMenuItems.url,
-      iconName: navbarMenuItems.iconName,
-      resource: navbarMenuItems.resource,
-      sortOrder: navbarMenuItems.sortOrder,
-      isVisible: navbarMenuItems.isVisible,
-      openInNewTab: navbarMenuItems.openInNewTab,
-      groupLabel: navbarMenuItems.groupLabel,
-      parentId: navbarMenuItems.parentId,
-      isIframe: navbarMenuItems.isIframe,
-    })
-    .from(roleMenuPermissions)
-    .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
-    .where(eq(roleMenuPermissions.roleId, role.id))
-    .orderBy(navbarMenuItems.menuArea, navbarMenuItems.section, navbarMenuItems.sortOrder)
-
-  const visibleItems = dedupeMenuItemsByPage(
-    permittedMenuItems
-      .map((item) => {
-        // Force core items to be always visible for all roles
-        if (
-          item.resource &&
-          [
-            'attendance',
-            'scheduling_timesheet_attendance',
-            'tire_service',
-            'overtime_requests',
-            'approval_inbox',
-          ].includes(item.resource)
-        ) {
-          return { ...item, canView: true }
-        }
-        return item
-      })
-      .filter((item) => item.isVisible && item.canView)
-      .map((item) => ({
-        ...item,
-        url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,
-      }))
-  )
-
-  return {
-    navMain: visibleItems.filter((item) => item.menuArea === 'main'),
-    navSecondary: visibleItems.filter((item) => item.menuArea === 'secondary'),
-    documents: visibleItems.filter((item) => item.menuArea === 'document'),
-  }
 })
 
 export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDisplayDataByEmail(email: string) {

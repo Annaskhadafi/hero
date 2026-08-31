@@ -360,7 +360,7 @@ export async function syncQuotationLabourAttendance(
       const overrideKey = `${item.employeeId}:${date}`
       if (attendanceOverridesByDay.has(overrideKey)) {
         return isQuotationAttendanceStatusBillable(
-          normalizeAttendanceStatus(attendanceOverridesByDay.get(overrideKey)),
+          normalizeAttendanceStatus(attendanceOverridesByDay.get(overrideKey)) as any,
           quotationBillingConfig
         )
       }

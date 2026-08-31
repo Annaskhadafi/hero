@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  turbopack: {},
   images: {
     remotePatterns: [
       {
@@ -27,6 +28,18 @@ const nextConfig: NextConfig = {
             value: 'public, max-age=31536000, immutable',
           },
         ],
+      },
+    ]
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/dashboard/scheduling/timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+      },
+      {
+        source: '/dashboard/scheduling/timesheet',
+        destination: '/dashboard/scheduling-timesheet/overview',
       },
     ]
   },

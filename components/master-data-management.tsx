@@ -3372,12 +3372,15 @@ function DepartmentManagement({
           </form>
         </DialogContent>
       </Dialog>
-      <DepartmentEmployeeDialog
-        department={employeeDialogDept}
+      <EmployeeListDialog
+        employees={employees}
+        entityId={employeeDialogDept?.id ?? null}
+        entityLabel={employeeDialogDept?.name ?? ""}
+        filterKey="departmentId"
         sections={sections}
         departments={departments}
         open={employeeDialogDept !== null}
-        onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
+        onOpenChange={(open: boolean) => { if (!open) setEmployeeDialogDept(null); }}
       />
     </Card>
   );

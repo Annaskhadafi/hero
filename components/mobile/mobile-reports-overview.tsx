@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useEffectEvent, useState } from "react";
+import React, { startTransition, useEffect, useEffectEvent, useState } from "react";
 import Link from "next/link";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { Download, FileCheck2, HardHat, UsersRound } from "lucide-react";
@@ -61,7 +61,7 @@ export function MobileReportsOverview({
   const [page, setPage] = useState(1);
   const pageSize = 5;
 
-  const refreshData = useEffectEvent(async () => {
+  const refreshData = React.useCallback(async () => {
     const response = await fetch("/api/mobile/reports", { cache: "no-store" });
     if (!response.ok) {
       return;
@@ -69,7 +69,7 @@ export function MobileReportsOverview({
 
     const next = (await response.json()) as ReportsPayload;
     startTransition(() => setData(next));
-  });
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {

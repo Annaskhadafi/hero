@@ -37,15 +37,15 @@ export async function POST(req: NextRequest) {
     try {
       const remoteRes = await sendRagFeedback({
         session_id,
-        message_id,
+        message_id: message_id ? String(message_id) : 'msg-1',
         query,
         answer,
-        rating: ratingNormalized,
-        feedback_text,
-        correction,
+        rating: ratingNormalized === "up" ? 1 : -1,
+        feedback_notes: feedback_text,
+        correction_text: correction,
         user_id: userId,
       });
-      remoteId = remoteRes.feedback_id;
+      remoteId = (remoteRes as any).feedback_id || (remoteRes as any).data?.message_id;
     } catch (e) {
       // Continue to local save
     }

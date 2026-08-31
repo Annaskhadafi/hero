@@ -35,7 +35,7 @@ async function saveAttendancePhoto(
   const filename = `${clientRequestId}-v2.${ext}`
 
   if (isS3UploadConfigured()) {
-    const file = new File([imageBuffer], filename, { type: mimeType })
+    const file = new File([new Uint8Array(imageBuffer)], filename, { type: mimeType })
     const result = await uploadAttendancePhotoToS3(file)
     return result.key
   }

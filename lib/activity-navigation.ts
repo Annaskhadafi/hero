@@ -4,6 +4,7 @@ export const activityMenuLabels = {
   library: "Kamus Aktivitas",
   routes: "Route Template Harian",
   configuration: "Rule Aktivitas Global",
+  approval: "Approval Workflow",
 } as const;
 
 export const activityHubTabs = [
@@ -22,6 +23,10 @@ export const activityHubTabs = [
   {
     label: activityMenuLabels.routes,
     href: "/dashboard/activity-hub/routes",
+  },
+  {
+    label: activityMenuLabels.approval,
+    href: "/dashboard/activity-hub/approval",
   },
   {
     label: activityMenuLabels.configuration,

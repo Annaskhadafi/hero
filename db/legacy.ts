@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import * as schema from "@/db/schema";
 
 const legacyPool = new Pool({
   connectionString:
@@ -11,4 +12,4 @@ const legacyPool = new Pool({
   max: 10,
 });
 
-export const legacyDb = drizzle({ client: legacyPool });
+export const legacyDb = drizzle({ client: legacyPool, schema });

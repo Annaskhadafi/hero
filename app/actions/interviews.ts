@@ -1,7 +1,14 @@
 "use server";
 
 import { db } from "@/db";
-import { hcCandidateInterviews, hcCandidates, hcRecruitments } from "@/db/schema/hero";
+import {
+  employees,
+  hcCandidateInterviews,
+  hcCandidatePanelEvaluations,
+  hcCandidates,
+  hcInterviewSettings,
+  hcRecruitments,
+} from "@/db/schema/hero";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
@@ -68,10 +75,10 @@ export async function getAvailableInterviewers() {
     id: employees.id,
     name: employees.name,
     email: employees.email,
-    employeeSn: employees.employee_sn,
+    employeeSn: employees.employeeSn,
   })
   .from(employees)
-  .where(eq(employees.employment_status, "ACTIVE"))
+  .where(eq(employees.employmentStatus, "ACTIVE"))
   .orderBy(employees.name);
   return empList;
 }

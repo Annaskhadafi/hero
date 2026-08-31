@@ -155,7 +155,7 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
                   <div className="flex items-center justify-between mb-1">
                     <div className="font-semibold text-sm text-gray-900">{step.approverName || "Approver"}</div>
                     <time className="text-[10px] text-gray-500">
-                      {step.resolvedAt ? step.resolvedAt.toLocaleString("id-ID") : "Menunggu"}
+                      {(step as any).resolvedAt ? new Date((step as any).resolvedAt).toLocaleString("id-ID") : "Menunggu"}
                     </time>
                   </div>
                   <div className="text-xs text-gray-600 capitalize">

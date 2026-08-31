@@ -218,32 +218,32 @@ export function OvertimeListingClient({
     () => initialSettings || DEFAULT_OVERTIME_SETTINGS
   )
 
-  const updateSectionHead = (key: 'repairRetread' | 'serviceMvc' | 'serviceOthers', employeeIdStr: string) => {
-    const emp = employees.find((e) => String(e.id) === employeeIdStr)
+  const updateSectionHead = (key: string, employeeIdStr: string) => {
+    const emp: any = employees.find((e) => String(e.id) === employeeIdStr)
     if (!emp) return
-    setSettingsForm((prev) => ({
+    setSettingsForm((prev: any) => ({
       ...prev,
       approvalMatrix: {
         ...prev.approvalMatrix,
         sectionHeads: {
-          ...prev.approvalMatrix.sectionHeads,
-          [key]: { name: emp.name, email: emp.email || prev.approvalMatrix.sectionHeads[key]?.email || '' },
+          ...(prev.approvalMatrix?.sectionHeads || {}),
+          [key]: { name: emp.name, email: emp.email || (prev.approvalMatrix?.sectionHeads as any)?.[key]?.email || '' },
         },
       },
     }))
   }
 
   const updateApproverField = (role: 'manager' | 'hr' | 'leader', employeeIdStr: string) => {
-    const emp = employees.find((e) => String(e.id) === employeeIdStr)
+    const emp: any = employees.find((e) => String(e.id) === employeeIdStr)
     if (!emp) return
-    setSettingsForm((prev) => {
+    setSettingsForm((prev: any) => {
       if (role === 'manager') {
         return {
           ...prev,
           approvalMatrix: {
             ...prev.approvalMatrix,
             managerName: emp.name,
-            managerEmail: emp.email || prev.approvalMatrix.managerEmail,
+            managerEmail: emp.email || prev.approvalMatrix?.managerEmail,
           },
         }
       }
@@ -253,7 +253,7 @@ export function OvertimeListingClient({
           approvalMatrix: {
             ...prev.approvalMatrix,
             hrName: emp.name,
-            hrEmail: emp.email || prev.approvalMatrix.hrEmail,
+            hrEmail: emp.email || prev.approvalMatrix?.hrEmail,
           },
         }
       }
@@ -262,7 +262,7 @@ export function OvertimeListingClient({
         approvalMatrix: {
           ...prev.approvalMatrix,
           leaderName: emp.name,
-          leaderEmail: emp.email || prev.approvalMatrix.leaderEmail,
+          leaderEmail: emp.email || (prev.approvalMatrix as any)?.leaderEmail,
         },
       }
     })
@@ -447,7 +447,7 @@ export function OvertimeListingClient({
           (row.title || '').toLowerCase().includes(q) ||
           (row.requesterDepartment || '').toLowerCase().includes(q) ||
           (row.requestNotes || '').toLowerCase().includes(q) ||
-          (row.workers || []).some((w) => (w.employeeName || '').toLowerCase().includes(q))
+          ((row as any).workers || row.participants || []).some((w: any) => (w.employeeName || '').toLowerCase().includes(q))
         if (!matchSearch) return false
       }
 
@@ -616,7 +616,7 @@ export function OvertimeListingClient({
         setIsBatchReviewOpen(false)
         setSelectedIds([])
         router.refresh()
-      } else if (res.needsSignatureRegistration) {
+      } else if ((res as any).needsSignatureRegistration) {
         setIsSignatureWarningOpen(true)
       } else {
         toast.error(res.error || 'Gagal melakukan approve all.')
@@ -826,11 +826,11 @@ export function OvertimeListingClient({
       'Jam Mulai': row.plannedStartAt ? new Date(row.plannedStartAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—',
       'Jam Selesai': row.plannedEndAt ? new Date(row.plannedEndAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—',
       'Pemohon': row.requesterName || '—',
-      'Site / Lokasi': row.siteName || '—',
-      'Jumlah Peserta': row.participantsCount || row.participants?.length || 0,
-      'Status Approval': row.approvalStatus,
+      'Site / Lokasi': (row as any).siteName || '—',
+      'Jumlah Peserta': (row as any).participantsCount || (row.participants?.length ?? 0),
+      'Status Approval': (row as any).approvalStatus || row.status,
       'Status Dokumen': row.status,
-      'Tanggal Dibuat': row.createdAt ? formatTimestamp(row.createdAt) : '—',
+      'Tanggal Dibuat': (row as any).createdAt ? formatTimestamp((row as any).createdAt) : '—',
     }))
 
     const ws = XLSX.utils.json_to_sheet(data)
@@ -1563,7 +1563,7 @@ export function OvertimeListingClient({
                         {(() => {
                           const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
                           return currentBatchDoc.approvals.map((step) => {
-                            const isCurrentActiveStep = step.status === 'pending' && (step.id === activeStep?.id || step.stepOrder === activeStep?.stepOrder)
+                            const isCurrentActiveStep = step.status === 'pending' && step.stepOrder === activeStep?.stepOrder
                             const liveRemark = isCurrentActiveStep && currentBatchDoc && approvalRemarks[currentBatchDoc.id]
                               ? approvalRemarks[currentBatchDoc.id]
                               : step.remarks || '—'
@@ -2557,7 +2557,7 @@ export function OvertimeListingClient({
                     serviceMvc: 'Service MVC',
                     serviceOthers: 'Service Others',
                   }
-                  const sh = settingsForm.approvalMatrix?.sectionHeads?.[key] || { name: '', email: '' }
+                  const sh = (settingsForm.approvalMatrix?.sectionHeads as any)?.[key] || { name: '', email: '' }
                   const matchedEmp = employees.find((e: any) => e.name === sh.name)
                   return (
                     <div key={key} className="space-y-1">
@@ -2578,7 +2578,7 @@ export function OvertimeListingClient({
                             approvalMatrix: {
                               ...settingsForm.approvalMatrix,
                               sectionHeads: {
-                                ...settingsForm.approvalMatrix.sectionHeads,
+                                ...((settingsForm.approvalMatrix?.sectionHeads as any) || {}),
                                 [key]: { ...sh, email: e.target.value },
                               },
                             },
@@ -2601,7 +2601,7 @@ export function OvertimeListingClient({
                     label="Leader"
                     placeholder="Pilih Leader..."
                     value={(() => {
-                      const emp = employees.find((e: any) => e.name === settingsForm.approvalMatrix?.leaderName)
+                      const emp = employees.find((e: any) => e.name === (settingsForm.approvalMatrix as any)?.leaderName)
                       return emp ? String(emp.id) : ''
                     })()}
                     onValueChange={(val) => updateApproverField('leader', val)}
@@ -2609,11 +2609,11 @@ export function OvertimeListingClient({
                     widthClassName="w-full"
                   />
                   <Input
-                    value={settingsForm.approvalMatrix?.leaderEmail || ''}
+                    value={(settingsForm.approvalMatrix as any)?.leaderEmail || ''}
                     onChange={(e) =>
                       setSettingsForm({
                         ...settingsForm,
-                        approvalMatrix: { ...settingsForm.approvalMatrix, leaderEmail: e.target.value },
+                        approvalMatrix: { ...settingsForm.approvalMatrix, leaderEmail: e.target.value } as any,
                       })
                     }
                     placeholder="Email..."

@@ -236,16 +236,16 @@ export function ApprovalListingClient({
     () => initialSettings || DEFAULT_DAILY_ACTIVITY_SETTINGS
   )
 
-  const updateSectionHead = (key: 'repairRetread' | 'serviceMvc' | 'serviceOthers', employeeIdStr: string) => {
+  const updateSectionHead = (key: string, employeeIdStr: string) => {
     const emp = employees.find((e) => String(e.id) === employeeIdStr)
     if (!emp) return
-    setSettingsForm((prev) => ({
+    setSettingsForm((prev: any) => ({
       ...prev,
       approvalMatrix: {
         ...prev.approvalMatrix,
         sectionHeads: {
-          ...prev.approvalMatrix.sectionHeads,
-          [key]: { name: emp.name, email: emp.email || prev.approvalMatrix.sectionHeads[key]?.email || '' },
+          ...(prev.approvalMatrix?.sectionHeads || {}),
+          [key]: { name: emp.name, email: emp.email || (prev.approvalMatrix?.sectionHeads as any)?.[key]?.email || '' },
         },
       },
     }))
@@ -254,14 +254,14 @@ export function ApprovalListingClient({
   const updateApproverField = (role: 'manager' | 'hr' | 'pjoTe', employeeIdStr: string) => {
     const emp = employees.find((e) => String(e.id) === employeeIdStr)
     if (!emp) return
-    setSettingsForm((prev) => {
+    setSettingsForm((prev: any) => {
       if (role === 'manager') {
         return {
           ...prev,
           approvalMatrix: {
             ...prev.approvalMatrix,
             managerName: emp.name,
-            managerEmail: emp.email || prev.approvalMatrix.managerEmail,
+            managerEmail: emp.email || prev.approvalMatrix?.managerEmail,
           },
         }
       }
@@ -271,7 +271,7 @@ export function ApprovalListingClient({
           approvalMatrix: {
             ...prev.approvalMatrix,
             hrName: emp.name,
-            hrEmail: emp.email || prev.approvalMatrix.hrEmail,
+            hrEmail: emp.email || prev.approvalMatrix?.hrEmail,
           },
         }
       }
@@ -279,7 +279,7 @@ export function ApprovalListingClient({
         ...prev,
         approvalMatrix: {
           ...prev.approvalMatrix,
-          pjoTe: { name: emp.name, email: emp.email || prev.approvalMatrix.pjoTe?.email || '' },
+          pjoTe: { name: emp.name, email: emp.email || (prev.approvalMatrix as any)?.pjoTe?.email || '' },
         },
       }
     })
@@ -378,8 +378,8 @@ export function ApprovalListingClient({
           (row.shiftCode || '').toLowerCase().includes(q) ||
           (row.department || '').toLowerCase().includes(q) ||
           (row.section || '').toLowerCase().includes(q) ||
-          (row.items || []).some((item) =>
-            (item.activityName || item.snapshotLabel || item.remark || '').toLowerCase().includes(q)
+          (row.items || []).some((item: any) =>
+            (item.activityName || item.snapshotLabel || item.label || item.remark || '').toLowerCase().includes(q)
           )
         if (!matchSearch) return false
       }
@@ -762,7 +762,7 @@ export function ApprovalListingClient({
     }
   }
 
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SessionApprovalRow | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
@@ -955,10 +955,10 @@ export function ApprovalListingClient({
       'Shift': row.shiftCode,
       'Site / Lokasi': row.siteName || '—',
       'Total Poin': row.totalPoints ?? 0,
-      'Status Sesi': row.sessionStatus,
-      'Status Approval': row.approvalStatus,
-      'Approver Terakhir': row.currentApproverName || '—',
-      'Tanggal Submit': row.submittedAt ? formatTimestamp(row.submittedAt) : '—',
+      'Status Sesi': (row as any).sessionStatus || (row as any).status || '—',
+      'Status Approval': (row as any).approvalStatus || (row as any).status || '—',
+      'Approver Terakhir': (row as any).currentApproverName || (row as any).firstApproverName || '—',
+      'Tanggal Submit': (row as any).submittedAt ? formatTimestamp((row as any).submittedAt) : '—',
     }))
 
     const ws = XLSX.utils.json_to_sheet(data)
@@ -1526,7 +1526,7 @@ export function ApprovalListingClient({
                         {(() => {
                           const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
                           return currentBatchDoc.approvals.map((step) => {
-                            const isCurrentActiveStep = step.status === 'pending' && (step.id === activeStep?.id || step.stepOrder === activeStep?.stepOrder)
+                            const isCurrentActiveStep = step.status === 'pending' && step.stepOrder === activeStep?.stepOrder
                             const liveRemark = isCurrentActiveStep && approvalRemarks[currentBatchDoc.sessionId]
                               ? approvalRemarks[currentBatchDoc.sessionId]
                               : step.remarks || '—'
@@ -1552,7 +1552,7 @@ export function ApprovalListingClient({
                       {(() => {
                         const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
                         const step1 = currentBatchDoc.approvals.find(a => a.stepOrder === 1)
-                        const isStep1Active = step1 && step1.status === 'pending' && (step1.id === activeStep?.id || step1.stepOrder === activeStep?.stepOrder)
+                        const isStep1Active = step1 && step1.status === 'pending' && step1.stepOrder === activeStep?.stepOrder
                         const remark1 = isStep1Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step1?.remarks
@@ -1578,7 +1578,7 @@ export function ApprovalListingClient({
                       {(() => {
                         const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
                         const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2)
-                        const isStep2Active = step2 && step2.status === 'pending' && (step2.id === activeStep?.id || step2.stepOrder === activeStep?.stepOrder)
+                        const isStep2Active = step2 && step2.status === 'pending' && step2.stepOrder === activeStep?.stepOrder
                         const remark2 = isStep2Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step2?.remarks
@@ -1604,7 +1604,7 @@ export function ApprovalListingClient({
                       {(() => {
                         const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
                         const step3 = currentBatchDoc.approvals.find(a => a.stepOrder === 3)
-                        const isStep3Active = step3 && step3.status === 'pending' && (step3.id === activeStep?.id || step3.stepOrder === activeStep?.stepOrder)
+                        const isStep3Active = step3 && step3.status === 'pending' && step3.stepOrder === activeStep?.stepOrder
                         const remark3 = isStep3Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step3?.remarks
@@ -2015,7 +2015,7 @@ export function ApprovalListingClient({
                     serviceMvc: 'Service MVC',
                     serviceOthers: 'Service Others',
                   }
-                  const sh = settingsForm.approvalMatrix?.sectionHeads?.[key] || { name: '', email: '' }
+                  const sh = (settingsForm.approvalMatrix?.sectionHeads as any)?.[key] || { name: '', email: '' }
                   const matchedEmp = employees.find((e: any) => e.name === sh.name)
                   return (
                     <div key={key} className="space-y-1">
@@ -2036,7 +2036,7 @@ export function ApprovalListingClient({
                             approvalMatrix: {
                               ...settingsForm.approvalMatrix,
                               sectionHeads: {
-                                ...settingsForm.approvalMatrix.sectionHeads,
+                                ...((settingsForm.approvalMatrix?.sectionHeads as any) || {}),
                                 [key]: { ...sh, email: e.target.value },
                               },
                             },

@@ -13,7 +13,6 @@ import {
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelSettings,
-  pwaPushSettings,
 } from "@/db/schema/hero";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
@@ -1143,7 +1142,7 @@ export async function runCsForecastDailyReportTickAction(): Promise<EmailSetting
       later_slot_sent: `Slot selanjutnya sudah pernah dikirim sebelumnya hari ini.`,
     };
 
-    const reasonMsg = ("reason" in result && reasonMap[result.reason]) || ("reason" in result ? result.reason : "Tick selesai tanpa pengiriman.");
+    const reasonMsg = ("reason" in result && (result as any).reason && (reasonMap as any)[(result as any).reason]) || ("reason" in result ? (result as any).reason : "Tick selesai tanpa pengiriman.");
 
     return {
       status: result.status === "skipped" ? "idle" : "error",

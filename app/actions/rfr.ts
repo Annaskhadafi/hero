@@ -8,6 +8,8 @@ import {
   hcRfrApprovals,
   hcRfrRequests,
   hcRfrSettings,
+  masterDepartments,
+  masterSections,
 } from '@/db/schema/hero'
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -96,7 +98,7 @@ async function resolveSectionHeadBySection(sectionDepartmentStr: string) {
       const headEmp = await db
         .select({
           name: employees.name,
-          position: employees.position,
+          position: employees.jobTitle,
           email: employees.email,
         })
         .from(employees)
@@ -150,7 +152,7 @@ async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
       const headEmp = await db
         .select({
           name: employees.name,
-          position: employees.position,
+          position: employees.jobTitle,
           email: employees.email,
         })
         .from(employees)
@@ -170,7 +172,7 @@ async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
     const managerRows = await db
       .select({
         name: employees.name,
-        position: employees.position,
+        position: employees.jobTitle,
         email: employees.email,
         deptName: masterDepartments.name,
       })
@@ -180,8 +182,8 @@ async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
         and(
           ilike(masterDepartments.name, `%${deptTerm}%`),
           or(
-            ilike(employees.position, '%manager%'),
-            ilike(employees.position, '%head%'),
+            ilike(employees.jobTitle, '%manager%'),
+            ilike(employees.jobTitle, '%head%'),
             ilike(employees.employmentStatus, '%manager%')
           )
         )
@@ -414,7 +416,7 @@ export async function createRfrRequest(data: {
   educationBackground?: string[]
   yearsOfExperience?: string
   fieldOfJobExperience?: string
-  functionalCompetencies?: Array<{ skillName: string; level: string; remarks: string }>
+  functionalCompetencies?: Array<{ id?: string; skillName: string; level: string; remarks: string }>
 }) {
   try {
     const year = new Date().getFullYear()
@@ -452,7 +454,7 @@ export async function createRfrRequest(data: {
         educationBackground: data.educationBackground || [],
         yearsOfExperience: data.yearsOfExperience || 'any',
         fieldOfJobExperience: data.fieldOfJobExperience || '',
-        functionalCompetencies: data.functionalCompetencies || [],
+        functionalCompetencies: (data.functionalCompetencies || []) as any,
         currentStepOrder: 1,
         status: 'in_progress',
       })
