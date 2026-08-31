@@ -5,6 +5,7 @@ import {
   sopWinDocuments,
   sopWinRevisions,
   sopWinDepartments,
+  sopWinRequests,
   employees,
   masterDepartments,
   masterSections,
@@ -1394,5 +1395,47 @@ export async function clearAllCompletedOrFailedQueueAction() {
   }
   return res;
 }
+
+/**
+ * 15. Update SOP/WIN Request Access Settings (expiryDays & canDownload)
+ */
+export async function updateSopWinRequestAccessSettingsAction({
+  requestId,
+  expiryDays,
+  canDownload,
+}: {
+  requestId: number | string;
+  expiryDays: number;
+  canDownload: boolean;
+}) {
+  try {
+    const id = typeof requestId === "string" ? parseInt(requestId, 10) : requestId;
+    if (isNaN(id)) throw new Error("ID request tidak valid.");
+
+    await db
+      .update(sopWinRequests)
+      .set({
+        expiryDays: Math.max(1, expiryDays),
+        canDownload,
+        updatedAt: new Date(),
+      })
+      .where(eq(sopWinRequests.id, id));
+
+    safeRevalidatePath("/dashboard/approval");
+    safeRevalidatePath("/mobile/approval");
+
+    return {
+      success: true,
+      message: "Pengaturan akses dokumen SOP/WIN berhasil disimpan.",
+    };
+  } catch (error: any) {
+    console.error("[updateSopWinRequestAccessSettingsAction] error:", error);
+    return {
+      success: false,
+      error: error.message || "Gagal menyimpan pengaturan akses.",
+    };
+  }
+}
+
 
 

@@ -33,7 +33,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
-import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
 // User signature action for approval workspace signoffs
