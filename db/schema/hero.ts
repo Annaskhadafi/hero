@@ -35,6 +35,7 @@ export const sites = pgTable('hero_sites', {
   contractNumber: text('contract_number').notNull(),
   headEmployeeId: integer('head_employee_id'),
   siteType: text('site_type').notNull().default('Site'),
+  timezone: text('timezone').notNull().default('WITA'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })

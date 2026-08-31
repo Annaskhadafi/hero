@@ -99,6 +99,11 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import {
+  INDONESIA_TIMEZONES,
+  IndonesiaTimezoneCode,
+  inferTimezoneFromLocation,
+} from '@/lib/indonesia-timezone'
+import {
   attendanceStatusLabel,
   calculateAttendanceOvertime,
   minutesFromTime,
@@ -174,6 +179,7 @@ type SiteOption = {
   location?: string | null
   customerName: string
   headEmployeeId?: number | null
+  timezone?: string | null
 }
 
 type FieldBreakTimelineView = 'month' | 'quarter' | 'semester' | 'year'
@@ -258,6 +264,7 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  timezone: IndonesiaTimezoneCode
   defaultShiftType: DefaultShiftType
   defaultClockIn: string
   defaultClockOut: string
@@ -459,6 +466,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
+  timezone: 'WITA',
   defaultShiftType: 'day-shift',
   defaultClockIn: '07:00',
   defaultClockOut: '17:00',
@@ -552,6 +560,7 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       fieldBreakWorkMonths,
       fieldBreakBreakDays,
       fieldBreakUnit: config.rosterType === '13:1' ? 'weeks' : 'legacy',
+      timezone: config.timezone,
       employeeBenefitConfig,
       quotationBillingConfig,
     },
@@ -1865,11 +1874,17 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return
 
     const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
+    const currentSiteObj = sites.find((s) => String(s.id) === siteId)
     const fieldBreakConfig =
       ((savedConfig as Record<string, unknown> | undefined)?.fieldBreakConfig as
         | Record<string, unknown>
         | undefined) ?? {}
     const savedRosterType = savedConfig?.rosterType as SiteRosterType | undefined
+    const siteTimezone =
+      (savedConfig as { timezone?: string } | undefined)?.timezone ||
+      currentSiteObj?.timezone ||
+      (fieldBreakConfig.timezone as string | undefined) ||
+      'WITA'
     const hasWeekBasedFieldBreak =
       savedRosterType === '13:1' && fieldBreakConfig.fieldBreakUnit === 'weeks'
     const hasIncorrectThirteenOneDefaults =
@@ -1887,6 +1902,7 @@ export function SchedulingTimesheetWorkspace({
               ? 'field-break'
               : 'workday') as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+          timezone: siteTimezone as IndonesiaTimezoneCode,
           defaultShiftType:
             (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
           defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
@@ -1968,7 +1984,7 @@ export function SchedulingTimesheetWorkspace({
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
     setRoster(config.rosterType)
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: config.scheduleType }))
-  }, [siteId, schedulingConfigs])
+  }, [siteId, schedulingConfigs, sites])
 
   useEffect(() => {
     if (!savedPlan) {
@@ -6723,12 +6739,55 @@ export function SchedulingTimesheetWorkspace({
                   )}
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
-                  <div className="mb-3">
-                    <p className="text-foreground text-sm font-semibold">Working Time</p>
-                    <p className="text-muted-foreground text-xs">
-                      Dipakai mobile attendance dan PDF Overtime. Jam berikut berlaku untuk{' '}
-                      <span className="font-semibold">Regular Day</span>.
-                    </p>
+                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-foreground text-sm font-semibold">Zonasi & Working Time</p>
+                      <p className="text-muted-foreground text-xs">
+                        Dipakai mobile attendance, toleransi presensi, dan PDF Overtime.
+                      </p>
+                    </div>
+                    {site && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                        onClick={() => {
+                          const detected = inferTimezoneFromLocation(site.location || site.name)
+                          updateSiteConfig('timezone', detected)
+                          toast.info(`Zonasi waktu otomatis disesuaikan ke ${detected} berdasarkan lokasi ${site.name}.`)
+                        }}
+                      >
+                        <RefreshCw className="size-3.5" />
+                        Auto Sync dari Lokasi
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="mb-4 rounded-lg bg-blue-50/70 p-3 border border-blue-100">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs font-semibold text-blue-950">
+                          Zonasi Waktu Site (Timezone)
+                        </Label>
+                        <p className="text-[11px] text-blue-700">
+                          Presensi, toleransi keterlambatan, dan jam shift otomatis sinkron dengan zona ini.
+                        </p>
+                      </div>
+                      <div className="w-full sm:w-56">
+                        <select
+                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          value={siteConfig.timezone || 'WITA'}
+                          onChange={(e) => updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)}
+                        >
+                          {Object.values(INDONESIA_TIMEZONES).map((tz) => (
+                            <option key={tz.code} value={tz.code}>
+                              {tz.code} ({tz.offsetString}) - {tz.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -7806,6 +7865,9 @@ export function SchedulingTimesheetWorkspace({
                       <Badge variant="outline">Roster: {siteConfig.rosterType}</Badge>
                       <Badge variant="outline">OT: {siteConfig.overtimeType}</Badge>
                       <Badge variant="outline">MSA: {siteConfig.msaType}</Badge>
+                      <Badge variant="outline" className="bg-blue-50/80 font-medium text-blue-700 border-blue-200">
+                        Zona: {siteConfig.timezone || 'WITA'}
+                      </Badge>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -7978,6 +8040,9 @@ export function SchedulingTimesheetWorkspace({
                           </h2>
                           <Badge variant="outline" className="bg-slate-50 font-mono text-xs font-semibold text-slate-700">
                             {formatMonthPeriod(period)}
+                          </Badge>
+                          <Badge variant="outline" className="bg-blue-50 font-mono text-xs font-semibold text-blue-700 border-blue-200">
+                            {siteConfig.timezone || site?.timezone || 'WITA'}
                           </Badge>
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">

@@ -32,6 +32,11 @@ import {
   ensureMasterCategoryTables,
   MASTER_CATEGORY_TYPES,
 } from "@/lib/master-categories";
+import {
+  normalizeIndonesiaTimezone,
+  inferTimezoneFromLocation,
+} from "@/lib/indonesia-timezone";
+import { resyncSiteAttendanceToTimesheet } from "@/lib/timesheet/face-attendance-sync";
 
 const optionalPositiveIntField = z.preprocess(
   (value) => {
@@ -118,6 +123,7 @@ const siteSchema = z.object({
   contractNumber: z.string().trim().min(1).max(100),
   headEmployeeId: optionalPositiveIntField,
   siteType: z.string().trim().max(50).optional().default("Site"),
+  timezone: z.string().trim().max(20).optional().default("WITA"),
   isActive: formBooleanField(true),
 });
 
@@ -417,8 +423,13 @@ export async function manageSiteAction(
     contractNumber,
     headEmployeeId,
     siteType,
+    timezone,
     isActive,
   } = parsed.data;
+
+  const resolvedTimezone = timezone
+    ? normalizeIndonesiaTimezone(timezone).code
+    : inferTimezoneFromLocation(provinceName || name || addressDetail);
 
   const location = buildSiteLocationLabel({
     provinceName,
@@ -448,6 +459,7 @@ export async function manageSiteAction(
           contractNumber,
           headEmployeeId: headEmployeeId || null,
           siteType: siteType || "Site",
+          timezone: resolvedTimezone,
           isActive,
         })
         .returning({ id: sites.id });
@@ -500,6 +512,7 @@ export async function manageSiteAction(
           contractNumber,
           headEmployeeId: headEmployeeId || null,
           siteType: siteType || "Site",
+          timezone: resolvedTimezone,
           isActive,
         })
         .where(eq(sites.id, id));
@@ -542,7 +555,16 @@ export async function manageSiteAction(
         }
       }
 
+      try {
+        await resyncSiteAttendanceToTimesheet(id);
+      } catch (e) {
+        console.error("Resync attendance warning on site update:", e);
+      }
+
       revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/scheduling-timesheet");
+      revalidatePath("/dashboard/attendance");
+      revalidatePath("/dashboard/attendance/records");
       return { status: "success", message: "Site updated successfully" };
     }
 

@@ -6224,6 +6224,7 @@ export async function getSchedulingTimesheetOptions() {
         location: sites.location,
         customerName: sites.customerName,
         headEmployeeId: sites.headEmployeeId,
+        timezone: sites.timezone,
       })
       .from(sites)
       .where(eq(sites.isActive, true))
@@ -6844,6 +6845,7 @@ function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$in
     msaType: config.msaType,
     mealsType: config.mealsType,
     overtimeType: config.overtimeType,
+    timezone: config.timezone ?? 'WITA',
     fieldBreakConfig: config.fieldBreakConfig,
     allowanceVariables: config.allowanceVariables,
     overtimeVariables: config.overtimeVariables,

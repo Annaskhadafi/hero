@@ -19,6 +19,8 @@ import {
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
 import { getCurrentEmployeeAccessRole, requireAdminOrHcManagerRole } from '@/lib/get-current-employee'
+import { normalizeIndonesiaTimezone } from '@/lib/indonesia-timezone'
+import { resyncSiteAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -2652,6 +2654,7 @@ const saveSchedulingConfigSchema = z.object({
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
   overtimeType: z.string().max(60),
+  timezone: z.string().max(20).optional().default('WITA'),
   fieldBreakConfig: schedulingFieldBreakConfigSchema.optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
@@ -2680,6 +2683,10 @@ export async function saveSchedulingConfigAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
+  const resolvedTimezone = payload.timezone
+    ? normalizeIndonesiaTimezone(payload.timezone).code
+    : 'WITA'
+
   // Validate site exists in sites table
   const [site] = await db
     .select({ id: sites.id, name: sites.name })
@@ -2747,6 +2754,7 @@ export async function saveSchedulingConfigAction(
         msaType: payload.msaType,
         mealsType: payload.mealsType,
         overtimeType: payload.overtimeType,
+        timezone: resolvedTimezone,
         fieldBreakConfig: payload.fieldBreakConfig,
         allowanceVariables: payload.allowanceVariables,
         overtimeVariables: payload.overtimeVariables,
@@ -2763,6 +2771,7 @@ export async function saveSchedulingConfigAction(
           msaType: payload.msaType,
           mealsType: payload.mealsType,
           overtimeType: payload.overtimeType,
+          timezone: resolvedTimezone,
           fieldBreakConfig: payload.fieldBreakConfig,
           allowanceVariables: payload.allowanceVariables,
           overtimeVariables: payload.overtimeVariables,
@@ -2772,6 +2781,12 @@ export async function saveSchedulingConfigAction(
           updatedAt: now,
         },
       })
+
+    // Synchronize timezone with hero_sites
+    await tx
+      .update(sites)
+      .set({ timezone: resolvedTimezone })
+      .where(eq(sites.id, payload.siteId))
 
     let structureId: number | null = null
     const getStructureId = async () => {
@@ -2993,10 +3008,29 @@ export async function saveSchedulingConfigAction(
     entityLabel: String(payload.siteId),
     description: 'Saved scheduling timesheet configuration.',
   })
+
+  // Automatically re-evaluate and sync timesheet attendance under the configured timezone
+  try {
+    await resyncSiteAttendanceToTimesheet(payload.siteId)
+  } catch (error) {
+    console.error(`[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`, error)
+  }
+
   revalidatePath('/dashboard/scheduling-timesheet')
   revalidatePath('/dashboard/scheduling-timesheet/setup')
   revalidatePath('/dashboard/master-data')
+  revalidatePath('/dashboard/attendance')
+  revalidatePath('/dashboard/attendance/records')
   return { ok: true }
+}
+
+export async function resyncSiteAttendanceAction(siteId: number, period?: string) {
+  await assertSchedulingSiteScope(siteId, 'edit')
+  const result = await resyncSiteAttendanceToTimesheet(siteId, period)
+  revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/attendance')
+  revalidatePath('/dashboard/attendance/records')
+  return { ok: true, ...result }
 }
 
 const applyMealsConfigToAllSitesSchema = z.object({
