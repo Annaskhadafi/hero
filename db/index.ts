@@ -3,7 +3,8 @@ import { Pool } from "pg";
 import { serverEnv } from "@/lib/server-env";
 
 declare global {
-  // Reuse the same pool during hot reloads in development.
+  // Reuse one pool for the process and across hot reloads. Creating a Pool per
+  // query quickly exhausts PostgreSQL connections and makes auth look invalid.
   var heroDbPool: Pool | undefined;
   var heroDbConnectionString: string | undefined;
 }
@@ -69,10 +70,8 @@ function getPool() {
     console.error("[db] idle client error", error);
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalThis.heroDbPool = pool;
-    globalThis.heroDbConnectionString = connectionString;
-  }
+  globalThis.heroDbPool = pool;
+  globalThis.heroDbConnectionString = connectionString;
 
   return pool;
 }

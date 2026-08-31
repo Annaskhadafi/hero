@@ -21,9 +21,18 @@ export const auth = betterAuth({
     secret: authSecret || undefined,
     baseURL: getServerAuthBaseUrl(),
     trustedOrigins: async (request) => getTrustedOrigins(request),
+    advanced: {
+        // Production is served through an HTTPS reverse proxy. Keep the session
+        // cookie secure even if an internal/container base URL uses http://.
+        useSecureCookies: process.env.NODE_ENV === "production",
+    },
     session: {
         cookieCache: {
-            enabled: false,
+            // Keep a short, signed copy of session data in the browser. Normal
+            // database validation resumes after five minutes, while a brief DB
+            // connection spike no longer appears to the user as a logout.
+            enabled: true,
+            maxAge: 5 * 60,
         },
     },
     plugins: [
