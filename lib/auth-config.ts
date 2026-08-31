@@ -1,4 +1,5 @@
 const FALLBACK_AUTH_ORIGINS = [
+    "https://hero.chitraparatama.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ];
@@ -49,13 +50,20 @@ function getConfiguredAuthOrigins() {
         process.env.NEXT_PUBLIC_APP_URL,
         process.env.VERCEL_PROJECT_PRODUCTION_URL,
         process.env.VERCEL_URL,
+        "https://hero.chitraparatama.com",
     ]
         .map(normalizeOrigin)
         .filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index);
 }
 
 export function getServerAuthBaseUrl() {
-    return getConfiguredAuthOrigins()[0];
+    const origins = getConfiguredAuthOrigins();
+    if (origins.length > 0) {
+        return origins[0];
+    }
+    return process.env.NODE_ENV === "production"
+        ? "https://hero.chitraparatama.com"
+        : "http://localhost:3000";
 }
 
 export function getClientAuthBaseUrl() {

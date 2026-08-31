@@ -12,11 +12,14 @@ async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350):
             const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase();
             const isNetworkError =
                 err?.code === 'ECONNRESET' ||
+                err?.code === 'ETIMEDOUT' ||
+                err?.code === 'ECONNREFUSED' ||
                 errStr.includes('econnreset') ||
                 errStr.includes('connection terminated') ||
                 errStr.includes('timeout exceeded') ||
                 errStr.includes('trying to connect') ||
                 errStr.includes('too many clients') ||
+                errStr.includes('remaining connection slots') ||
                 errStr.includes('connection reset');
             if (attempt <= retries && isNetworkError) {
                 await new Promise((res) => setTimeout(res, delayMs * attempt));

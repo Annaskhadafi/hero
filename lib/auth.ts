@@ -28,8 +28,14 @@ export const auth = betterAuth({
     },
     session: {
         cookieCache: {
-            enabled: false,
+            // Keep a short, signed copy of session data in the browser. Normal
+            // database validation resumes after five minutes, while a brief DB
+            // connection spike no longer appears to the user as a logout.
+            enabled: true,
+            maxAge: 5 * 60,
         },
+        expiresIn: 60 * 60 * 24 * 30, // 30 days
+        updateAge: 60 * 60 * 24, // 1 day
     },
     plugins: [
         nextCookies(),
