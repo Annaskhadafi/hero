@@ -4239,11 +4239,11 @@ export async function submitDailyActivityApprovalStepAction(
             eventType: 'daily_activity_approved',
             category: 'approval_requests',
             title: `Daily Activity Disetujui: ${session.sessionCode || ''}`,
-            body: `Laporan aktivitas harian Anda telah disetujui secara lengkap oleh seluruh approver.`,
-          url: `/dashboard/activity-hub/document/${payload.sessionId}`,
-          tagPrefix: 'daily-activity-approved',
-          metadata: { sessionId: payload.sessionId },
-        }).catch((bellErr) => console.error('Error notifying bell on completed:', bellErr))
+            url: `/dashboard/activity-hub/document/${payload.sessionId}`,
+            tagPrefix: 'daily-activity-approved',
+            metadata: { sessionId: payload.sessionId },
+          }).catch((bellErr) => console.error('Error notifying bell on completed:', bellErr))
+        }
       }
     }
 
