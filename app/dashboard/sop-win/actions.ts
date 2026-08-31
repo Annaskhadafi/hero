@@ -2810,7 +2810,9 @@ export async function updateSopWinAccessSettingsAction(input: {
   }
 }
 
-export const updateSopWinRequestExpiryDaysAction = updateSopWinAccessSettingsAction;
+export async function updateSopWinRequestExpiryDaysAction(input: Parameters<typeof updateSopWinAccessSettingsAction>[0]) {
+  return updateSopWinAccessSettingsAction(input);
+}
 
 function errorUserNotLoggedIn() {
   return "Sesi login Anda telah berakhir. Silakan login kembali.";

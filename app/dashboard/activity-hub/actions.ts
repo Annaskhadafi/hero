@@ -18,6 +18,14 @@ import {
   type DailyActivityWorkflowSettings,
   DEFAULT_DAILY_ACTIVITY_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path)
+  } catch {
+    // Ignore when executed outside Next.js request context (e.g. tests)
+  }
+}
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getServerSession } from '@/lib/auth-session'
 import {
@@ -435,7 +443,7 @@ const updateDailyActivitySessionDocumentSignoffSchema = z.object({
 
 function revalidateDailyActivitySurfaces() {
   for (const path of DAILY_ACTIVITY_REVALIDATE_PATHS) {
-    revalidatePath(path)
+    safeRevalidatePath(path)
   }
 }
 
@@ -2213,7 +2221,7 @@ export async function manageOvertimeRequestLeaderPermissionAction(formData: Form
   }
 
   revalidateDailyActivitySurfaces()
-  revalidatePath('/dashboard/overtime-requests')
+  safeRevalidatePath('/dashboard/overtime-requests')
 }
 
 export async function transitionOvertimeCommandLetterStatusAction(formData: FormData) {
@@ -3314,8 +3322,8 @@ export async function updateDailyActivitySessionDocumentSignoffAction(formData: 
   }
 
   revalidateDailyActivitySurfaces()
-  revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
-  revalidatePath(`/mobile/activity/document/${payload.sessionId}`)
+  safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
+  safeRevalidatePath(`/mobile/activity/document/${payload.sessionId}`)
 }
 
 export async function updateDailyActivitySessionDocumentSignoffWithStateAction(
@@ -3932,8 +3940,8 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
     }
   }
 
-  revalidatePath(`/dashboard/activity-hub/document/${sessionId}`)
-  revalidatePath(`/dashboard/activity-hub/document/${sessionId}/approval`)
+  safeRevalidatePath(`/dashboard/activity-hub/document/${sessionId}`)
+  safeRevalidatePath(`/dashboard/activity-hub/document/${sessionId}/approval`)
 }
 
 export async function submitDailyActivityApprovalStepAction(
@@ -4051,8 +4059,8 @@ export async function submitDailyActivityApprovalStepAction(
         })
       }
 
-      revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
-      revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
+      safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
 
       return {
         status: 'success',
@@ -4249,11 +4257,11 @@ export async function submitDailyActivityApprovalStepAction(
       }
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
-    revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
-    revalidatePath(`/dashboard/activity-hub/approval`)
-    revalidatePath(`/dashboard/approval`)
-    revalidatePath(`/dashboard/activity-hub/my-day`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/dashboard/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/my-day`)
 
     return {
       status: 'success',
@@ -4563,7 +4571,7 @@ export async function saveDailyActivityItemRemarksAction(
       }
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
     return { status: 'success', message: 'Remark berhasil disimpan.' }
   } catch (error) {
     return { status: 'error', message: getReadableActionError(error, 'Gagal menyimpan remark.') }
@@ -4980,12 +4988,12 @@ export async function approveDailyActivityStepByToken(
       }
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
-    revalidatePath(`/dashboard/activity-hub/approval`)
-    revalidatePath(`/dashboard/approval`)
-    revalidatePath(`/dashboard/activity-hub/my-day`)
-    revalidatePath(`/review/daily-activity/${token}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/dashboard/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/my-day`)
+    safeRevalidatePath(`/review/daily-activity/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -5075,10 +5083,10 @@ export async function rejectDailyActivityStepByToken(
       console.error('Error sending rejected approval email:', emailErr)
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
-    revalidatePath(`/dashboard/activity-hub/approval`)
-    revalidatePath(`/review/daily-activity/${token}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/review/daily-activity/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -5185,10 +5193,10 @@ export async function revertDailyActivityStepByToken(
       console.error('Error sending reverted approval email:', emailErr)
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
-    revalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
-    revalidatePath(`/dashboard/activity-hub/approval`)
-    revalidatePath(`/review/daily-activity/${token}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${approval.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/review/daily-activity/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -5593,9 +5601,9 @@ export async function saveDailyActivityApprovalForm(payload: {
       }
     }
 
-    revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
-    revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
-    revalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
+    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub/approval`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -5786,8 +5794,8 @@ export async function generateTestDailyActivityApproval() {
     }
 
     try {
-      revalidatePath(`/dashboard/activity-hub/approval`)
-      revalidatePath(`/dashboard/activity-hub/document/${testSessionId}/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/document/${testSessionId}/approval`)
     } catch {}
 
     return {
@@ -5895,8 +5903,8 @@ export async function sendDueDailyActivityReminders() {
     }
 
     try {
-      revalidatePath(`/dashboard/activity-hub/approval`)
-      revalidatePath(`/dashboard/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/approval`)
+      safeRevalidatePath(`/dashboard/approval`)
     } catch {}
 
     return { success: true as const, sent, skipped }
@@ -5929,9 +5937,9 @@ export async function deleteDailyActivitySessionAction(sessionId: number): Promi
     await db.delete(dailyActivitySessionItems).where(eq(dailyActivitySessionItems.sessionId, sessionId))
     await db.delete(dailyActivitySessions).where(eq(dailyActivitySessions.id, sessionId))
 
-    revalidatePath('/dashboard/activity-hub/approval')
-    revalidatePath('/dashboard/activity-hub/my-day')
-    revalidatePath('/dashboard/approval')
+    safeRevalidatePath('/dashboard/activity-hub/approval')
+    safeRevalidatePath('/dashboard/activity-hub/my-day')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error: any) {
     console.error('Error deleting daily activity session:', error)
@@ -5989,6 +5997,24 @@ export async function createDailyActivitySessionAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
+    let validDeptId: number | null = null
+    if (emp.departmentId) {
+      const [dept] = await db.select({ id: masterDepartments.id }).from(masterDepartments).where(eq(masterDepartments.id, emp.departmentId)).limit(1)
+      if (dept) validDeptId = dept.id
+    }
+
+    let validSecId: number | null = null
+    if (emp.sectionId) {
+      const [sec] = await db.select({ id: masterSections.id }).from(masterSections).where(eq(masterSections.id, emp.sectionId)).limit(1)
+      if (sec) validSecId = sec.id
+    }
+
+    let validPosId: number | null = null
+    if (emp.positionId) {
+      const [pos] = await db.select({ id: masterPositions.id }).from(masterPositions).where(eq(masterPositions.id, emp.positionId)).limit(1)
+      if (pos) validPosId = pos.id
+    }
+
     const [created] = await db
       .insert(dailyActivitySessions)
       .values({
@@ -5997,9 +6023,9 @@ export async function createDailyActivitySessionAction(input: {
         workDate: parsedWorkDate,
         shiftCode: input.shiftCode || 'ALL',
         siteId,
-        departmentId: emp.departmentId || null,
-        sectionId: emp.sectionId || null,
-        positionId: emp.positionId || null,
+        departmentId: validDeptId,
+        sectionId: validSecId,
+        positionId: validPosId,
         status: 'submitted',
         submittedAt: new Date(),
       })
@@ -6196,8 +6222,8 @@ export async function createDailyActivitySessionAction(input: {
     }
 
     try {
-      revalidatePath('/dashboard/activity-hub/approval')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return { success: true as const, sessionId: created.id }
@@ -6231,9 +6257,9 @@ export async function deleteUserSignatureAction() {
       })
       .where(eq(employees.id, emp.id))
 
-    revalidatePath('/dashboard/profile')
-    revalidatePath('/dashboard/activity-hub/approval')
-    revalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath('/dashboard/profile')
+    safeRevalidatePath('/dashboard/activity-hub/approval')
+    safeRevalidatePath('/dashboard/overtime-requests')
 
     return {
       success: true as const,
@@ -6428,9 +6454,9 @@ export async function batchApproveDailyActivitySessionsAction(sessionIds: number
     }
 
     try {
-      revalidatePath('/dashboard/activity-hub/approval')
-      revalidatePath('/dashboard/activity-hub/my-day')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/activity-hub/my-day')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return {
@@ -6552,9 +6578,9 @@ export async function batchRejectDailyActivitySessionsAction(sessionIds: number[
     }
 
     try {
-      revalidatePath('/dashboard/activity-hub/approval')
-      revalidatePath('/dashboard/activity-hub/my-day')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/activity-hub/my-day')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return { success: true as const, rejectedCount: sessionIds.length }
@@ -6659,9 +6685,9 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
     }
 
     try {
-      revalidatePath('/dashboard/activity-hub/approval')
-      revalidatePath('/dashboard/activity-hub/my-day')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/activity-hub/my-day')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return { success: true as const, revertedCount: sessionIds.length }
@@ -6795,8 +6821,8 @@ export async function saveDailyActivityWorkflowSettings(settings: DailyActivityW
     }
 
     try {
-      revalidatePath('/dashboard/activity-hub/approval')
-      revalidatePath('/dashboard/settings/email')
+      safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/settings/email')
     } catch {}
 
     return { success: true }

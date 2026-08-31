@@ -18,7 +18,7 @@ import {
   restoreSystemDatabaseBackupAction,
   saveBackupRetentionAction,
   cleanOldDatabaseBackupsAction,
-  INITIAL_SYSTEM_BACKUP_ACTION_STATE,
+  type SystemBackupActionState,
 } from "@/app/dashboard/settings/system-backup/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+const INITIAL_SYSTEM_BACKUP_ACTION_STATE: SystemBackupActionState = {
+  status: "idle",
+  message: "",
+};
 
 const PRESET_MONTHS = [1, 2, 3, 6, 12, 0];
 

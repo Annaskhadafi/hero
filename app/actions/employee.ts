@@ -305,7 +305,9 @@ export async function deleteEmployee(id: number) {
 }
 
 // Keep backward-compatible alias
-export const updateEmployeeContract = updateEmployee;
+export async function updateEmployeeContract(id: number, data: Parameters<typeof updateEmployee>[1]) {
+  return updateEmployee(id, data);
+}
 
 export async function bulkUpdateEmployees(ids: number[], data: Record<string, any>) {
   if (ids.length === 0) return 0;

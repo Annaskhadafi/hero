@@ -10,6 +10,7 @@ import {
   employees,
   masterDepartments,
   masterSections,
+  masterPositions,
   overtimeApprovals,
   overtimeCommandLetterItems,
   overtimeCommandLetterParticipants,
@@ -37,6 +38,14 @@ import {
   type OvertimeWorkflowSettings,
   DEFAULT_OVERTIME_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path)
+  } catch {
+    // Ignore when executed in test runner / background contexts
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -657,8 +666,8 @@ export async function saveOvertimeApprovalForm(params: {
       }
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath(`/dashboard/overtime-requests/${params.documentId}/approval`)
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${params.documentId}/approval`)
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
@@ -805,8 +814,8 @@ export async function submitOvertimeApprovalStepAction(
         }).catch((err) => console.error('Error notifying bell on revert:', err))
       }
 
-      revalidatePath('/dashboard/overtime-requests')
-      revalidatePath(`/dashboard/overtime-requests/${documentId}/approval`)
+      safeRevalidatePath('/dashboard/overtime-requests')
+      safeRevalidatePath(`/dashboard/overtime-requests/${documentId}/approval`)
       return { status: 'success', message: 'Dokumen SPL berhasil dikembalikan (revert) untuk revisi.' }
     }
 
@@ -1021,8 +1030,8 @@ export async function submitOvertimeApprovalStepAction(
       }
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath(`/dashboard/overtime-requests/${documentId}/approval`)
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${documentId}/approval`)
     return { status: 'success', message: 'Approval berhasil diproses.' }
   } catch (error) {
     return { status: 'error', message: error instanceof Error ? error.message : 'Terjadi kesalahan.' }
@@ -1066,8 +1075,8 @@ export async function deleteOvertimeCommandLetterAction(documentId: number): Pro
     // Delete main record
     await db.delete(overtimeCommandLetters).where(eq(overtimeCommandLetters.id, documentId))
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath('/dashboard/approval')
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error: any) {
     console.error('Error deleting overtime command letter:', error)
@@ -1254,8 +1263,8 @@ export async function generateTestOvertimeApproval() {
     }
 
     try {
-      revalidatePath('/dashboard/overtime-requests')
-      revalidatePath(`/dashboard/overtime-requests/${docId}/approval`)
+      safeRevalidatePath('/dashboard/overtime-requests')
+      safeRevalidatePath(`/dashboard/overtime-requests/${docId}/approval`)
     } catch {}
 
     return {
@@ -1388,18 +1397,62 @@ export async function createOvertimeCommandLetterAction(payload: {
 
     const nextNumber = `${prefix}${String((last?.id || 0) + 1).padStart(4, '0')}`
 
+    const parseDateTime = (dateVal?: Date | string | null, timeVal?: Date | string | null): Date => {
+      if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
+      if (typeof timeVal === 'string' && timeVal.trim()) {
+        const directDate = new Date(timeVal)
+        if (!isNaN(directDate.getTime()) && timeVal.includes('-')) return directDate
+        const baseDateStr = dateVal
+          ? (dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0])
+          : new Date().toISOString().split('T')[0]
+        const cleanTime = timeVal.trim().length === 5 ? `${timeVal.trim()}:00` : timeVal.trim()
+        const combined = new Date(`${baseDateStr}T${cleanTime}`)
+        if (!isNaN(combined.getTime())) return combined
+      }
+      if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal
+      if (typeof dateVal === 'string' && dateVal.trim()) {
+        const d = new Date(dateVal)
+        if (!isNaN(d.getTime())) return d
+      }
+      return new Date()
+    }
+
+    const safeWorkDate = payload.workDate ? parseDateTime(payload.workDate) : new Date()
+    const safePlannedStart = parseDateTime(payload.workDate, payload.plannedStartAt)
+    const safePlannedEnd = payload.plannedEndAt
+      ? parseDateTime(payload.workDate, payload.plannedEndAt)
+      : new Date(safePlannedStart.getTime() + 4 * 3600 * 1000)
+
+    let validDeptId: number | null = null
+    if (requesterEmp?.departmentId) {
+      const [dept] = await db.select({ id: masterDepartments.id }).from(masterDepartments).where(eq(masterDepartments.id, requesterEmp.departmentId)).limit(1)
+      if (dept) validDeptId = dept.id
+    }
+
+    let validSecId: number | null = null
+    if (requesterEmp?.sectionId) {
+      const [sec] = await db.select({ id: masterSections.id }).from(masterSections).where(eq(masterSections.id, requesterEmp.sectionId)).limit(1)
+      if (sec) validSecId = sec.id
+    }
+
+    let validPosId: number | null = null
+    if (requesterEmp?.positionId) {
+      const [pos] = await db.select({ id: masterPositions.id }).from(masterPositions).where(eq(masterPositions.id, requesterEmp.positionId)).limit(1)
+      if (pos) validPosId = pos.id
+    }
+
     const [inserted] = await db
       .insert(overtimeCommandLetters)
       .values({
         splNumber: nextNumber,
         siteId: siteId,
-        departmentId: requesterEmp?.departmentId || null,
-        sectionId: requesterEmp?.sectionId || null,
-        positionId: requesterEmp?.positionId || null,
+        departmentId: validDeptId,
+        sectionId: validSecId,
+        positionId: validPosId,
         title: payload.title || 'Penugasan Lembur Operasional',
-        workDate: payload.workDate ? new Date(payload.workDate) : new Date(),
-        plannedStartAt: payload.plannedStartAt ? new Date(payload.plannedStartAt) : new Date(),
-        plannedEndAt: payload.plannedEndAt ? new Date(payload.plannedEndAt) : new Date(Date.now() + 4 * 3600 * 1000),
+        workDate: safeWorkDate,
+        plannedStartAt: safePlannedStart,
+        plannedEndAt: safePlannedEnd,
         status: 'Submitted',
         requestNotes: payload.requestNotes || '',
         executionNotes: payload.executionNotes || '',
@@ -1540,8 +1593,8 @@ export async function createOvertimeCommandLetterAction(payload: {
       await ensureOvertimeApprovalsExist(inserted.id)
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    return { success: true as const, data: inserted }
+    safeRevalidatePath('/dashboard/overtime-requests')
+    return { success: true as const, documentId: inserted.id, data: inserted }
   } catch (error: any) {
     console.error('Error creating overtime command letter:', error)
     return { success: false as const, error: error.message || 'Gagal membuat Surat Perintah Lembur.' }
@@ -1638,8 +1691,8 @@ export async function sendDueOvertimeReminders() {
     }
 
     try {
-      revalidatePath('/dashboard/overtime-requests')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/overtime-requests')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return { success: true as const, sent, skipped }
@@ -1846,9 +1899,9 @@ export async function approveOvertimeStepByToken(
       }
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
-    revalidatePath(`/review/overtime/${token}`)
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
+    safeRevalidatePath(`/review/overtime/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -1928,9 +1981,9 @@ export async function rejectOvertimeStepByToken(
       console.error('Error sending overtime rejected email:', mailErr)
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
-    revalidatePath(`/review/overtime/${token}`)
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
+    safeRevalidatePath(`/review/overtime/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -2025,9 +2078,9 @@ export async function revertOvertimeStepByToken(
       console.error('Error sending overtime reverted email:', mailErr)
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
-    revalidatePath(`/review/overtime/${token}`)
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${approval.overtimeCommandLetterId}/approval`)
+    safeRevalidatePath(`/review/overtime/${token}`)
 
     return { success: true as const }
   } catch (error: any) {
@@ -2157,8 +2210,8 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
       approvedCount++
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath('/dashboard/approval')
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath('/dashboard/approval')
 
     return {
       success: true as const,
@@ -2280,8 +2333,8 @@ export async function batchRejectOvertimeRequestsAction(splIds: number[], remark
       }
     }
 
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath('/dashboard/approval')
+    safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath('/dashboard/approval')
 
     return { success: true as const, rejectedCount: splIds.length }
   } catch (error: any) {
@@ -2386,8 +2439,8 @@ export async function batchRevertOvertimeRequestsAction(splIds: number[], remark
     }
 
     try {
-      revalidatePath('/dashboard/overtime-requests')
-      revalidatePath('/dashboard/approval')
+      safeRevalidatePath('/dashboard/overtime-requests')
+      safeRevalidatePath('/dashboard/approval')
     } catch {}
 
     return { success: true as const, revertedCount: splIds.length }
@@ -2528,7 +2581,7 @@ export async function saveOvertimeWorkflowSettings(settings: OvertimeWorkflowSet
       }
     }
 
-    revalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath('/dashboard/overtime-requests')
     return { success: true }
   } catch (err: any) {
     console.error('Error saving Overtime workflow settings:', err)

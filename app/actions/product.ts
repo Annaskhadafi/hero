@@ -6,7 +6,7 @@ import { eq, sql, inArray, ilike } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-export const productSchema = z.record(z.string(), z.any())
+const productSchema = z.record(z.string(), z.any())
 import { normalizeSloc, normalizeSlocFields } from "@/lib/sloc"
 
 const DEFAULT_PRODUCT_CATEGORIES = [

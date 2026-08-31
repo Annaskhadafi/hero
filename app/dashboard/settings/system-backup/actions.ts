@@ -27,7 +27,7 @@ export type SystemBackupActionState = {
   message: string;
 };
 
-export const INITIAL_SYSTEM_BACKUP_ACTION_STATE: SystemBackupActionState = {
+const INITIAL_SYSTEM_BACKUP_ACTION_STATE: SystemBackupActionState = {
   status: "idle",
   message: "",
 };
