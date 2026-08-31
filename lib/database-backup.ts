@@ -26,9 +26,37 @@ function quoteSafeTimestamp(date = new Date()) {
 }
 
 function getBackupDir() {
-  const dir = path.join(process.cwd(), "backups");
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const primaryDir = path.join(process.cwd(), "backups");
+  try {
+    fs.mkdirSync(primaryDir, { recursive: true });
+    const testFile = path.join(primaryDir, `.write-test-${Date.now()}`);
+    fs.writeFileSync(testFile, "ok");
+    fs.unlinkSync(testFile);
+    return primaryDir;
+  } catch {
+    const fallbackDir = path.join(os.tmpdir(), "hero-backups");
+    fs.mkdirSync(fallbackDir, { recursive: true });
+    return fallbackDir;
+  }
+}
+
+function getPgEnv(databaseUrl: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  try {
+    const parsed = new URL(databaseUrl);
+    if (parsed.username) env.PGUSER = decodeURIComponent(parsed.username);
+    if (parsed.password) env.PGPASSWORD = decodeURIComponent(parsed.password);
+    if (parsed.hostname) env.PGHOST = parsed.hostname;
+    if (parsed.port) env.PGPORT = parsed.port;
+    if (parsed.pathname && parsed.pathname.length > 1) {
+      env.PGDATABASE = decodeURIComponent(parsed.pathname.slice(1));
+    }
+    const sslmode = parsed.searchParams.get("sslmode");
+    if (sslmode) env.PGSSLMODE = sslmode;
+  } catch {
+    // If URL parsing fails, ignore and let --dbname handle it
+  }
+  return env;
 }
 
 function findExecutable(envName: string, command: string, knownPaths: string[]) {
@@ -123,13 +151,32 @@ export async function createDatabaseBackup(reason = "manual") {
   const fileName = path.basename(gzFile);
   const key = makeBackupKey(fileName);
 
-  execFileSync(
-    pgDump,
-    ["--dbname", databaseUrl, "--clean", "--if-exists", "--no-owner", "--no-privileges", "--file", sqlFile],
-    { stdio: "inherit", env: process.env },
-  );
+  const pgEnv = getPgEnv(databaseUrl);
 
-  fs.writeFileSync(gzFile, gzipSync(fs.readFileSync(sqlFile), { level: 9 }));
+  try {
+    execFileSync(
+      pgDump,
+      ["--dbname", databaseUrl, "--clean", "--if-exists", "--no-owner", "--no-privileges", "--file", sqlFile],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, ...pgEnv },
+        timeout: 300000,
+        maxBuffer: 100 * 1024 * 1024,
+      },
+    );
+  } catch (err: any) {
+    const stderr = err.stderr?.toString("utf-8") || err.message;
+    console.error("[database-backup] pg_dump failed:", stderr);
+    throw new Error(`pg_dump gagal: ${stderr}`);
+  }
+
+  const uncompressedBytes = fs.readFileSync(sqlFile);
+  fs.writeFileSync(gzFile, gzipSync(uncompressedBytes, { level: 9 }));
+  try {
+    fs.unlinkSync(sqlFile); // Remove uncompressed raw sql to save disk space
+  } catch {
+    // ignore
+  }
   const buffer = fs.readFileSync(gzFile);
 
   await getS3Client().send(
@@ -331,27 +378,29 @@ export async function cleanOldDatabaseBackups(customMonths?: number): Promise<Ba
 
   // 2. Clean local backup directory
   let localDeletedCount = 0;
-  try {
-    const localDir = getBackupDir();
-    if (fs.existsSync(localDir)) {
-      const files = fs.readdirSync(localDir);
-      for (const file of files) {
-        if (file.startsWith("hero-") && (file.endsWith(".sql") || file.endsWith(".sql.gz"))) {
-          const filePath = path.join(localDir, file);
-          try {
-            const stat = fs.statSync(filePath);
-            if (stat.mtimeMs < cutoffTime) {
-              fs.unlinkSync(filePath);
-              localDeletedCount++;
+  const candidateDirs = [path.join(process.cwd(), "backups"), path.join(os.tmpdir(), "hero-backups")];
+  for (const localDir of candidateDirs) {
+    try {
+      if (fs.existsSync(localDir)) {
+        const files = fs.readdirSync(localDir);
+        for (const file of files) {
+          if (file.startsWith("hero-") && (file.endsWith(".sql") || file.endsWith(".sql.gz"))) {
+            const filePath = path.join(localDir, file);
+            try {
+              const stat = fs.statSync(filePath);
+              if (stat.mtimeMs < cutoffTime) {
+                fs.unlinkSync(filePath);
+                localDeletedCount++;
+              }
+            } catch {
+              // ignore cleanup failure for single file
             }
-          } catch {
-            // ignore cleanup failure for single file
           }
         }
       }
+    } catch (err) {
+      console.error("[database-backup] Failed to clean local backup dir", err);
     }
-  } catch (err) {
-    console.error("[database-backup] Failed to clean local backup dir", err);
   }
 
   const remainingCount = allContents.length - deletedKeys.length;
@@ -410,10 +459,20 @@ export async function restoreDatabaseBackup(input: string, options: { confirmed?
     fs.writeFileSync(sqlFile, gunzipSync(fs.readFileSync(source)));
   }
 
-  execFileSync(psql, [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
-    stdio: "inherit",
-    env: process.env,
-  });
+  const pgEnv = getPgEnv(databaseUrl);
+
+  try {
+    execFileSync(psql, [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...pgEnv },
+      timeout: 600000,
+      maxBuffer: 100 * 1024 * 1024,
+    });
+  } catch (err: any) {
+    const stderr = err.stderr?.toString("utf-8") || err.message;
+    console.error("[database-backup] psql restore failed:", stderr);
+    throw new Error(`psql restore gagal: ${stderr}`);
+  }
 
   return { restoredFrom: input, sqlFile };
 }

@@ -5,15 +5,37 @@ import {
   getDatabaseBackupEnvStatus,
   listDatabaseBackups,
 } from "@/lib/database-backup";
-import { getCurrentMenuPermission } from "@/lib/hero-access";
+import { getCurrentEmployeeAccessRole, getCurrentMenuPermission } from "@/lib/hero-access";
+import { getServerSession } from "@/lib/auth-session";
 
 export const dynamic = "force-dynamic";
 
 const RESOURCE = "settings_system_backup";
 
 export default async function SystemBackupPage() {
+  const session = await getServerSession();
+  if (!session?.user) {
+    redirect("/login");
+  }
+
+  const roleName = await getCurrentEmployeeAccessRole();
+  const isAdminOrSuper = ["super_admin", "developer", "admin", "superadmin"].includes(roleName.toLowerCase());
   const permission = await getCurrentMenuPermission(RESOURCE);
-  if (!permission.canView) redirect("/dashboard");
+
+  const canView = permission.canView || isAdminOrSuper;
+  const canBackup = permission.canEdit || isAdminOrSuper;
+  const canRestore = permission.canDelete || isAdminOrSuper;
+
+  if (!canView) {
+    return (
+      <AdminPageShell title="System Backup">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">
+          <p className="font-semibold">Akses Terbatas</p>
+          <p className="text-sm">Halaman Backup & Restore hanya dapat diakses oleh Administrator.</p>
+        </div>
+      </AdminPageShell>
+    );
+  }
 
   const envStatus = await getDatabaseBackupEnvStatus();
   let backups: Awaited<ReturnType<typeof listDatabaseBackups>> = [];
@@ -31,8 +53,8 @@ export default async function SystemBackupPage() {
         backups={backups}
         envStatus={envStatus}
         listError={listError}
-        canBackup={permission.canEdit}
-        canRestore={permission.canDelete}
+        canBackup={canBackup}
+        canRestore={canRestore}
       />
     </AdminPageShell>
   );

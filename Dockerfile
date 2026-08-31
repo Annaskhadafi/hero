@@ -60,8 +60,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json /app/migration/packa
 COPY --chown=nextjs:nodejs docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Create .next directory with correct permissions for caching
-RUN mkdir -p .next && chown nextjs:nodejs .next
+# Create .next and backups directories with correct permissions
+RUN mkdir -p .next /app/backups && chown -R nextjs:nodejs .next /app/backups
 
 USER nextjs
 
