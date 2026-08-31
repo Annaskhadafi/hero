@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { runApprovalAutomationTick } from "@/lib/approval-blueprint";
 import { runApdReminders } from "@/lib/apd-reminder";
 
-// ponytail: open cron endpoint for Dokploy / simple GET execution (CRON_SECRET optional)
-export async function GET(_request: Request) {
+export async function GET(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  const headerSecret = request.headers.get("x-cron-secret");
+  if (secret && headerSecret && headerSecret !== secret) {
+    return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const result = await runApprovalAutomationTick();
     const apdResult = await runApdReminders();

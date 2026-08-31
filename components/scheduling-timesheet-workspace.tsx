@@ -1426,16 +1426,16 @@ export function SchedulingTimesheetWorkspace({
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
     if (typeof window === 'undefined') return false
-    return localStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+    return sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
   })
 
   function setConflictsDismissed(value: boolean) {
     setConflictsDismissedState(value)
     if (typeof window !== 'undefined') {
       if (value) {
-        localStorage.setItem(conflictsDismissKey, 'true')
+        sessionStorage.setItem(conflictsDismissKey, 'true')
       } else {
-        localStorage.removeItem(conflictsDismissKey)
+        sessionStorage.removeItem(conflictsDismissKey)
       }
     }
   }
@@ -1847,7 +1847,7 @@ export function SchedulingTimesheetWorkspace({
     setSelectedAttendanceKeys([])
     // Reset conflict dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
-    const isDismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true'
+    const isDismissed = typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, period, siteId])

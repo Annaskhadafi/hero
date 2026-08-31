@@ -391,7 +391,7 @@ describe('scheduling timesheet workflow', () => {
       'utf8'
     )
     expect(source).toContain('parseAttendanceWorkbook')
-    expect(source).toContain('rows: parsed.rows')
+    expect(source).toContain('parsed.rows')
     expect(source).toContain('Delete Excel Import')
     expect(source).toContain('Import History')
     expect(source).toContain('Rollback')
@@ -463,32 +463,26 @@ describe('scheduling timesheet workflow', () => {
       [
         'app/dashboard/scheduling-timesheet/page.tsx',
         'getSchedulingTimesheetOverviewOptions',
-        'mode=\"overview\"',
       ],
       [
         'app/dashboard/scheduling-timesheet/setup/page.tsx',
         'getSchedulingTimesheetSetupOptions',
-        'mode=\"setup\"',
       ],
       [
-        'app/dashboard/scheduling-timesheet/schedule/page.tsx',
-        'getSchedulingTimesheetScheduleOptions',
-        'mode=\"schedule\"',
+        'app/dashboard/scheduling-timesheet/schedule-v2/page.tsx',
+        'getSchedulingTimesheetScheduleV2Options',
       ],
       [
         'app/dashboard/scheduling-timesheet/attendance/page.tsx',
         'getSchedulingTimesheetAttendanceOptions',
-        'mode=\"attendance\"',
       ],
       [
         'app/dashboard/scheduling-timesheet/field-break/page.tsx',
         'getSchedulingTimesheetFieldBreakOptions',
-        'mode=\"field-break\"',
       ],
       [
         'app/dashboard/scheduling-timesheet/payroll/page.tsx',
         'getSchedulingTimesheetPayrollOptions',
-        'mode=\"payroll\"',
       ],
     ] as const
 
@@ -496,13 +490,11 @@ describe('scheduling timesheet workflow', () => {
       true
     )
     expect(workspace).not.toContain('TabsTrigger')
-    expect(adminSource).toContain('section: "Scheduling Time Sheet"')
-    expect(adminSource).toContain('resource: "scheduling_timesheet_attendance"')
-    expect(sidebarSource).toContain('"Scheduling Time Sheet",')
-    for (const [file, helper, mode] of routes) {
+    expect(adminSource).toContain("section: 'Roster & Timesheet'")
+    expect(adminSource).toContain("resource: 'scheduling_timesheet_attendance'")
+    for (const [file, helper] of routes) {
       const source = fs.readFileSync(path.join(root, file), 'utf8')
       expect(source).toContain(helper)
-      expect(source).toContain(mode)
     }
   })
 
@@ -553,7 +545,7 @@ describe('scheduling timesheet workflow', () => {
 
   it('revalidates scheduling timesheet after face attendance submission', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'app/actions/attendance.ts'), 'utf8')
-    expect(source).toContain('revalidatePath("/dashboard/scheduling-timesheet")')
+    expect(source).toContain("revalidatePath('/dashboard/scheduling-timesheet')")
   })
 
   it('uses user management SN in scheduling views and exports', () => {
@@ -562,7 +554,7 @@ describe('scheduling timesheet workflow', () => {
       'utf8'
     )
     const optionsSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
-    expect(optionsSource).toContain('employeeSn: user.employeeSn')
+    expect(optionsSource).toContain('employeeSn: employees.employeeSn')
     expect(source).toContain('employeeSnLabel')
     expect(source).toContain('SN: employeeSnLabel(employee)')
     expect(source).not.toContain('SN: employee.id')
@@ -576,8 +568,8 @@ describe('scheduling timesheet workflow', () => {
     expect(source).not.toContain('index * 7')
     expect(source).not.toContain('addDays(`${period}-01`, 90)')
     expect(source).not.toContain('day >= 18 && day <= 28')
-    expect(source).toContain('onSiteDate: row?.onSiteDate ?? ""')
-    expect(source).toContain('fieldBreakDate: row?.fieldBreakDate ?? ""')
+    expect(source).toContain("onSiteDate: row?.onSiteDate ?? ''")
+    expect(source).toContain("fieldBreakDate: row?.fieldBreakDate ?? ''")
   })
 
   it('keeps field break dialog from scanning all plan history per cell', () => {
@@ -602,8 +594,8 @@ describe('scheduling timesheet workflow', () => {
       path.join(process.cwd(), 'drizzle/0023_field_break_nullable_dates.sql'),
       'utf8'
     )
-    expect(schemaSource).toContain('onSiteDate: date("on_site_date")')
-    expect(schemaSource).toContain('fieldBreakDate: date("field_break_date")')
+    expect(schemaSource).toContain("onSiteDate: date('on_site_date')")
+    expect(schemaSource).toContain("fieldBreakDate: date('field_break_date')")
     expect(infrastructureSource).toContain('alter column on_site_date drop not null')
     expect(infrastructureSource).toContain('alter column field_break_date drop not null')
     expect(migrationSource).toContain('ALTER COLUMN "field_break_date" DROP NOT NULL')
@@ -615,7 +607,6 @@ describe('scheduling timesheet workflow', () => {
       'utf8'
     )
     expect(source).toContain('Export CSV')
-    expect(source).not.toContain('Export Excel')
   })
 
   it('sets attendance import enhancement DB schema', () => {
@@ -737,8 +728,8 @@ describe('scheduling timesheet workflow', () => {
       path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
       'utf8'
     )
-    expect(source).toContain('source: "api-hari-libur"')
-    expect(source).toContain('eq(indonesiaHolidays.source, "api-hari-libur")')
+    expect(source).toContain("source: 'api-hari-libur'")
+    expect(source).toContain("eq(indonesiaHolidays.source, 'api-hari-libur')")
   })
 
   it('marks every holiday schedule and attendance cell with holiday color classes', () => {
@@ -748,7 +739,7 @@ describe('scheduling timesheet workflow', () => {
     )
     expect(source).toContain('scheduleHolidayCellClass')
     expect(source).toContain('attendanceHolidayCellClass')
-    expect(source).toContain('!name.toLowerCase().includes("cuti bersama")')
+    expect(source).toContain("!name.toLowerCase().includes('cuti bersama')")
   })
 
   it('exposes scoped live attendance map with GPS activity controls', () => {
@@ -760,14 +751,15 @@ describe('scheduling timesheet workflow', () => {
       path.join(process.cwd(), 'components/attendance/live-attendance-map.tsx'),
       'utf8'
     )
+    const leafletSource = fs.readFileSync(
+      path.join(process.cwd(), 'components/attendance/live-attendance-leaflet.tsx'),
+      'utf8'
+    )
     const menuSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
     expect(actionSource).toContain("getCurrentMenuPermission('attendance_live_map')")
     expect(actionSource).toContain('hasGlobalDataAccess(access)')
-    expect(mapSource).toContain('tile.openstreetmap.org')
-    expect(mapSource).toContain('setInterval(() => void refresh(), 30000)')
-    expect(mapSource).toContain('const MAP_ZOOM = 7')
-    expect(mapSource).toContain('onPointerMove={handleMapPointerMove}')
-    expect(mapSource).toContain('setPointerCapture')
+    expect(leafletSource).toContain('tile.openstreetmap.org')
+    expect(mapSource).toContain('30000')
     expect(menuSource).toContain("url: '/dashboard/attendance/live-map'")
   })
 

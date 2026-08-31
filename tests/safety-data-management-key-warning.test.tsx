@@ -6,6 +6,15 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: jest.fn() }),
 }))
 
+jest.mock("@/app/actions/upload", () => ({
+  uploadFileAction: jest.fn(),
+}))
+
+jest.mock("@/lib/auth-session", () => ({
+  getServerSession: jest.fn(),
+  getCurrentSessionUser: jest.fn(),
+}))
+
 jest.mock("@/app/dashboard/safety/actions", () => ({
   manageSafetyCertificationAction: jest.fn(),
   manageSafetyIncidentReportAction: jest.fn(),

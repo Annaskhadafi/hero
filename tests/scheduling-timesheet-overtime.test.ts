@@ -104,8 +104,15 @@ describe('scheduling timesheet overtime policy', () => {
   })
 
   it('requires SPL for an OFF day', () => {
+    const offConfig: SiteOvertimeConfig = {
+      ...activeConfig,
+      hariLibur: {
+        dayShift: [],
+        nightShift: [],
+      },
+    }
     const result = calculateConfiguredOvertime({
-      config: activeConfig,
+      config: offConfig,
       dayKey: 'hariLibur',
       shiftCode: 'DS',
       workDate: '2026-07-01',

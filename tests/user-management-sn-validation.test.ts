@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { describe, it, expect } from 'vitest'
 
 function read(file: string) {
   return fs.readFileSync(path.join(process.cwd(), file), 'utf8')
@@ -26,8 +25,7 @@ describe('User Management SAP SN Validation and Search Visibility', () => {
     expect(createSection).toContain('existingEmployeeBySn')
     expect(createSection).toContain('existingEmployeeByEmail')
     expect(createSection).toContain('lower(trim(')
-    expect(createSection).toContain('sudah digunakan oleh pengguna aktif')
-    expect(createSection).toContain('sudah terdaftar pada pengguna non-aktif')
+    expect(createSection).toContain('sudah terdaftar atas nama')
   })
 
   it('uses clear SAP NIK/SN label in SecurityUserCreateDialog', () => {
