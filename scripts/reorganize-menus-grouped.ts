@@ -115,6 +115,7 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Navbar Setting", url: "/dashboard/settings/navbar", section: "Pengaturan", iconName: "settings", resource: "settings_navbar", sortOrder: 3, menuArea: "secondary" },
     { title: "Portal Chitra Settings", url: "/dashboard/settings/portal-chitra", section: "Pengaturan", iconName: "settings", resource: "settings_portal_chitra", sortOrder: 4, menuArea: "secondary" },
     { title: "Email Delivery Log", url: "/dashboard/settings/email", section: "Pengaturan", iconName: "mail", resource: "settings_email", sortOrder: 5, menuArea: "secondary" },
+    { title: "Backup & Restore", url: "/dashboard/settings/system-backup", section: "Pengaturan", iconName: "database", resource: "settings_system_backup", sortOrder: 6, menuArea: "secondary" },
   ],
 };
 

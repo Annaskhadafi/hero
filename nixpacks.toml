@@ -5,7 +5,7 @@ PORT = "3000"
 HOSTNAME = "0.0.0.0"
 
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "postgresql"]
 
 [phases.install]
 cmds = ["npm install --ignore-scripts"]

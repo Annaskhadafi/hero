@@ -45,6 +45,9 @@ function findExecutable(envName: string, command: string, knownPaths: string[]) 
 
 function findPgDump() {
   return findExecutable("PG_DUMP_BIN", "pg_dump", [
+    "/usr/bin/pg_dump",
+    "/usr/local/bin/pg_dump",
+    "/bin/pg_dump",
     "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe",
     "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe",
     "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe",
@@ -56,6 +59,9 @@ function findPgDump() {
 
 function findPsql() {
   return findExecutable("PSQL_BIN", "psql", [
+    "/usr/bin/psql",
+    "/usr/local/bin/psql",
+    "/bin/psql",
     "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
     "C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe",
     "C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe",

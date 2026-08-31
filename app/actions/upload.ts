@@ -18,6 +18,28 @@ const OFFICE_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ]);
 const OFFICE_EXTENSIONS = new Set(["doc", "docx", "ppt", "pptx"]);
+const BANNED_EXTENSIONS = new Set([
+  "html", "htm", "xhtml", "svg", "exe", "js", "mjs", "ts", "php", "phtml",
+  "sh", "bash", "bat", "cmd", "ps1", "vbs", "cgi", "pl", "py", "jsp", "asp", "aspx"
+]);
+
+function isPrivateIpOrHost(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "169.254.169.254" ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+    );
+  } catch {
+    return true;
+  }
+}
 
 async function requireUploadSession() {
   const session = await getServerSession();
@@ -35,10 +57,14 @@ export async function uploadFile(formData: FormData) {
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
 
-    const isImage = file.type.startsWith("image/");
+    const fileExt = getCurhatFileExtension(file.name, file.type);
+    if (BANNED_EXTENSIONS.has(fileExt) || file.type === "image/svg+xml") {
+      return { success: false, error: "Tipe file ini dilarang demi alasan keamanan." };
+    }
+
+    const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
     const isPdf = file.type === "application/pdf";
     const isVideo = file.type.startsWith("video/");
-    const fileExt = getCurhatFileExtension(file.name, file.type);
     const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt);
 
     if (!isImage && !isPdf && !isVideo && !isOffice) {
@@ -93,6 +119,10 @@ export async function uploadImageFromUrl(imageUrl: string) {
     const access = await requireUploadSession();
     if (!access.success) return access;
 
+    if (isPrivateIpOrHost(imageUrl)) {
+      return { success: false, error: "Access to internal IP address is forbidden." };
+    }
+
     if (!isS3UploadConfigured()) {
       return { success: false, error: "S3 Upload Driver is not properly configured." };
     }
@@ -103,7 +133,7 @@ export async function uploadImageFromUrl(imageUrl: string) {
     }
 
     const blob = await response.blob();
-    if (!blob.type.startsWith("image/")) {
+    if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
       return { success: false, error: "URL does not point to a valid image." };
     }
 
@@ -127,24 +157,24 @@ export async function uploadImageFromUrl(imageUrl: string) {
   }
 }
 
+function sanitizeFileName(fileName: string) {
+  return fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 function getCurhatFileExtension(fileName: string, contentType: string) {
   const ext = fileName.split(".").pop()?.toLowerCase();
-  if (ext && /^[a-z0-9]{1,10}$/.test(ext)) return ext;
+  if (ext && !BANNED_EXTENSIONS.has(ext) && /^[a-z0-9]{1,10}$/.test(ext)) return ext;
   if (contentType === "application/pdf") return "pdf";
-  if (contentType.startsWith("image/")) {
+  if (contentType.startsWith("image/") && contentType !== "image/svg+xml") {
     if (contentType === "image/jpeg") return "jpg";
     if (contentType === "image/png") return "png";
     if (contentType === "image/webp") return "webp";
     if (contentType === "image/gif") return "gif";
   }
   return "bin";
-}
-
-function sanitizeFileName(fileName: string) {
-  return fileName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 export async function uploadCurhatAttachment(formData: FormData) {
@@ -155,7 +185,12 @@ export async function uploadCurhatAttachment(formData: FormData) {
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
 
-    const isImage = file.type.startsWith("image/");
+    const fileExt = getCurhatFileExtension(file.name, file.type);
+    if (BANNED_EXTENSIONS.has(fileExt) || file.type === "image/svg+xml") {
+      return { success: false, error: "Tipe file ini dilarang demi alasan keamanan." };
+    }
+
+    const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
     const isPdf = file.type === "application/pdf";
     const isDoc =
       file.type === "application/msword" ||
@@ -187,9 +222,8 @@ export async function uploadCurhatAttachment(formData: FormData) {
     const uploadDir = join(process.cwd(), "public", "uploads", "curhat");
     await mkdir(uploadDir, { recursive: true });
 
-    const ext = getCurhatFileExtension(file.name, file.type);
     const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, "")) || "attachment";
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`;
+    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${fileExt}`;
     const filePath = join(uploadDir, uniqueName);
     const buffer = Buffer.from(await file.arrayBuffer());
 

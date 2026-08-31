@@ -26,6 +26,7 @@ interface RarayRecognizeResult {
   employee_id?: string
   employee_name?: string
   confidence?: number
+  threshold?: number
   message?: string
 }
 
@@ -74,8 +75,11 @@ function getBaseUrl(): string {
 }
 
 function getCredentials() {
-  const email = process.env.RARAY_VISION_EMAIL || 'mochamad.khadafi@chitraparatama.co.id'
-  const password = process.env.RARAY_VISION_PASSWORD || 'Wusthochq2018-'
+  const email = process.env.RARAY_VISION_EMAIL || ''
+  const password = process.env.RARAY_VISION_PASSWORD || ''
+  if (!email || !password) {
+    console.warn('[raray-vision] Warning: RARAY_VISION_EMAIL or RARAY_VISION_PASSWORD environment variables are not configured.')
+  }
   return { email, password }
 }
 
@@ -203,7 +207,7 @@ export async function rarayRegisterFace(params: {
     if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('employee_name', employeeName)
     formData.append('force', force ? 'true' : 'false')
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
 
     const res = await fetch(`${baseUrl}/api/v1/hero/register`, {
       method: 'POST',
@@ -225,7 +229,7 @@ export async function rarayRegisterFace(params: {
     formData.append('user_id', faceId)
     formData.append('user_name', employeeName)
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
 
     const endpoint = force ? `${baseUrl}/api/v1/faces/${faceId}` : `${baseUrl}/api/v1/faces/live`
     const method = force ? 'PUT' : 'POST'
@@ -279,7 +283,7 @@ export async function rarayRecognizeFace(params: {
   const authHeader = await getAuthHeader()
 
   const formData = new FormData()
-  formData.append('file', new Blob([imageBuffer], { type: mimeType }), 'frame.jpg')
+  formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), 'frame.jpg')
 
   // 1. Try HERO endpoint
   try {
@@ -369,7 +373,7 @@ export async function rarayVerifyFace(params: {
     const formData = new FormData()
     formData.append('employee_id', String(employeeId))
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
 
     const res = await fetch(`${baseUrl}/api/v1/hero/verify`, {
       method: 'POST',
@@ -410,7 +414,7 @@ export async function rarayVerifyFace(params: {
     try {
       const formData = new FormData()
       formData.append('user_id', faceId)
-      formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
+      formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
 
       const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
         method: 'POST',
@@ -559,7 +563,7 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
 
   try {
     const formData = new FormData()
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), 'face.jpg')
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), 'face.jpg')
 
     const res = await fetch(`${baseUrl}/api/v1/anti-spoof/uniface-v2`, {
       method: 'POST',
@@ -689,7 +693,7 @@ export async function rarayPdfInspectorProcess(params: {
 
   try {
     const formData = new FormData()
-    formData.append('file', new Blob([fileBuffer], { type: mimeType }), fileName)
+    formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
     formData.append('auto_ocr', autoOcr ? 'true' : 'false')
 
     console.log(`[PDF-Inspector] Sending ${fileName} (${fileBuffer.length} bytes, ${mimeType}) to ${baseUrl}/api/v1/pdf-inspector/process...`)

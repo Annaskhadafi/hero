@@ -5,7 +5,7 @@
 
 # Stage 1: Base image
 FROM node:20.19-alpine AS base
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto
+RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN npm run build
 
 # Stage 4: Production runner
 FROM node:20.19-alpine AS runner
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto
+RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 WORKDIR /app
 
 ENV NODE_ENV=production

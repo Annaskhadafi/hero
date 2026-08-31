@@ -4,7 +4,7 @@ import { legacyDb as db } from "@/db/legacy"
 import { getAuthenticatedSession } from "@/lib/rbac"
 import { sql } from "drizzle-orm"
 
-const REVENUE_DOC_CURR_AMOUNT = "COALESCE(NULLIF(revenue_in_doc_curr, 'NaN'::float8), 0)"
+const REVENUE_DOC_CURR_SQL = sql`COALESCE(NULLIF(revenue_in_doc_curr, 'NaN'::float8), 0)`
 
 export type TrendData = {
     period: string
@@ -69,6 +69,13 @@ export type SlowMovingDashboardResult = {
     }
 }
 
+// Extractor for Tire Size from material_description
+const TIRE_SIZE_EXTRACTOR = sql`COALESCE(
+    SUBSTRING(material_description FROM '^[0-9]+(?:\\.[0-9]+)?(?:/[0-9]+)?\\s*[R\\-]\\s*[0-9]+(?:\\.[0-9]+)?(?:\\s*/[0-9]+(?:\\.[0-9]+)?)?'),
+    size_dimen,
+    'UNKNOWN'
+)`
+
 export async function getSlowMovingDashboardData(
     selectedYears: string[] = ["2025", "2026"],
     selectedTireSize?: string,
@@ -115,32 +122,33 @@ export async function getSlowMovingDashboardData(
     // Get slow moving material keys
     const products = await db.execute(sql`SELECT material_key FROM slow_moving_products`)
     const keys = (products.rows as { material_key: string }[]).map(r => r.material_key)
-    
-    const upperKeys = keys.map(k => k.toUpperCase())
-    const safeList = upperKeys.map(k => k.replace(/'/g, "''")).map(k => "'" + k + "'").join(",")
 
-    // Base conditions (only if we have product keys)
-    const baseWhere = keys.length > 0
-        ? `billing_date IS NOT NULL AND (cancelled IS NULL OR cancelled = '') AND UPPER(TRIM(material_no)) = ANY(ARRAY[${safeList}])`
-        : `billing_date IS NOT NULL AND (cancelled IS NULL OR cancelled = '')`
-    
-    // Extractor for Tire Size from material_description
-    const TIRE_SIZE_EXTRACTOR = `COALESCE(
-        SUBSTRING(material_description FROM '^[0-9]+(?:\\.[0-9]+)?(?:/[0-9]+)?\\s*[R\\-]\\s*[0-9]+(?:\\.[0-9]+)?(?:\\s*/[0-9]+(?:\\.[0-9]+)?)?'),
-        size_dimen,
-        'UNKNOWN'
-    )`
+    // Base conditions
+    const baseConditions = [
+        sql`billing_date IS NOT NULL`,
+        sql`(cancelled IS NULL OR cancelled = '')`
+    ]
+    if (keys.length > 0) {
+        const upperKeys = keys.map(k => k.toUpperCase())
+        baseConditions.push(
+            sql`UPPER(TRIM(material_no)) = ANY(ARRAY[${sql.join(upperKeys.map(k => sql`${k}`), sql`, `)}])`
+        )
+    }
+    const baseWhereSql = sql.join(baseConditions, sql` AND `)
 
     // Filter by selected years
-    const yearCondition = selectedYears.length > 0 
-        ? ` AND TO_CHAR(billing_date, 'YYYY') = ANY(ARRAY[${selectedYears.map(y => `'${y.replace(/'/g, "''")}'`).join(",")}])` 
-        : ""
+    const yearFilterSql = selectedYears && selectedYears.length > 0 
+        ? sql` AND TO_CHAR(billing_date, 'YYYY') = ANY(ARRAY[${sql.join(selectedYears.map(y => sql`${y}`), sql`, `)}])`
+        : sql``
 
     // Filter by Tire Size and Category
-    const filtersCondition = `
-        ${selectedTireSize && selectedTireSize !== "ALL" ? ` AND ${TIRE_SIZE_EXTRACTOR} = '${selectedTireSize.replace(/'/g, "''")}'` : ""}
-        ${selectedCategory && selectedCategory !== "ALL" ? ` AND COALESCE(mat_grp_desc, 'UNKNOWN') = '${selectedCategory.replace(/'/g, "''")}'` : ""}
-    `
+    const tireSizeFilterSql = (selectedTireSize && selectedTireSize !== "ALL")
+        ? sql` AND ${TIRE_SIZE_EXTRACTOR} = ${selectedTireSize}`
+        : sql``
+
+    const categoryFilterSql = (selectedCategory && selectedCategory !== "ALL")
+        ? sql` AND COALESCE(mat_grp_desc, 'UNKNOWN') = ${selectedCategory}`
+        : sql``
 
     // If no slow moving products, return early with empty result
     if (keys.length === 0) {
@@ -148,20 +156,19 @@ export async function getSlowMovingDashboardData(
         let monthlyTireDetail: MonthlyTireDetail[] = []
         if (filterMonth) {
             try {
-                const monthCondition = ` AND TO_CHAR(billing_date, 'YYYY-MM') = '${filterMonth.replace(/'/g, "''")}'`
-                const monthlyTireResult = await db.execute(sql.raw(`
+                const monthlyTireResult = await db.execute(sql`
                     SELECT 
                         COALESCE(NULLIF(material_description, ''), material_no) AS product_name,
                         ${TIRE_SIZE_EXTRACTOR} AS tireSize, 
-                        COALESCE(salesman, 'Unknown') AS sales,
+                        COALESCE(salesman, 'Unknown') AS sales, 
                         SUM(qty) AS total_qty, 
-                        SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+                        SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
                     FROM sales_revenue_sap 
-                    WHERE ${baseWhere} ${monthCondition}
+                    WHERE ${baseWhereSql} AND TO_CHAR(billing_date, 'YYYY-MM') = ${filterMonth}
                     GROUP BY COALESCE(NULLIF(material_description, ''), material_no), ${TIRE_SIZE_EXTRACTOR}, COALESCE(salesman, 'Unknown')
-                    ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+                    ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
                     LIMIT 15
-                `))
+                `)
                 monthlyTireDetail = monthlyTireResult.rows.map(r => ({
                     tireSize: String(r.tiresize),
                     productName: String(r.product_name || "-"),
@@ -185,107 +192,106 @@ export async function getSlowMovingDashboardData(
     }
 
     // 1. Yearly Trend (Always get all years for high-level view)
-    const yearlyTrendResult = await db.execute(sql.raw(`
+    const yearlyTrendResult = await db.execute(sql`
         SELECT 
             TO_CHAR(billing_date, 'YYYY') AS period, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql}
         GROUP BY TO_CHAR(billing_date, 'YYYY')
         ORDER BY TO_CHAR(billing_date, 'YYYY')
-    `))
+    `)
 
     // 2. Monthly Trend (Based on selected year, or all if none)
-    const monthlyTrendResult = await db.execute(sql.raw(`
+    const monthlyTrendResult = await db.execute(sql`
         SELECT 
             TO_CHAR(billing_date, 'YYYY-MM') AS period, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
         GROUP BY TO_CHAR(billing_date, 'YYYY-MM')
         ORDER BY TO_CHAR(billing_date, 'YYYY-MM')
-    `))
+    `)
 
     // 3. Top Salesman
-    const salesmanResult = await db.execute(sql.raw(`
+    const salesmanResult = await db.execute(sql`
         SELECT 
             COALESCE(salesman, 'UNKNOWN') AS salesman, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
         GROUP BY COALESCE(salesman, 'UNKNOWN')
-        ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+        ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
         LIMIT 15
-    `))
+    `)
 
     // 4. Top Customers
-    const customerResult = await db.execute(sql.raw(`
+    const customerResult = await db.execute(sql`
         SELECT 
             COALESCE(customer_name, 'UNKNOWN') AS customer_name, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
         GROUP BY COALESCE(customer_name, 'UNKNOWN')
-        ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+        ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
         LIMIT 10
-    `))
+    `)
 
     // 5. Summary Total
-    const summaryResult = await db.execute(sql.raw(`
+    const summaryResult = await db.execute(sql`
         SELECT 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
-    `))
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
+    `)
 
     // 6. Top Categories
-    const categoryResult = await db.execute(sql.raw(`
+    const categoryResult = await db.execute(sql`
         SELECT 
             COALESCE(mat_grp_desc, 'UNKNOWN') AS category, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
         GROUP BY COALESCE(mat_grp_desc, 'UNKNOWN')
-        ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+        ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
         LIMIT 10
-    `))
+    `)
 
     // 7. Top Tire Sizes
-    const tireSizeResult = await db.execute(sql.raw(`
+    const tireSizeResult = await db.execute(sql`
         SELECT 
             ${TIRE_SIZE_EXTRACTOR} AS tireSize, 
             SUM(qty) AS total_qty, 
-            SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+            SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
         FROM sales_revenue_sap 
-        WHERE ${baseWhere} ${filtersCondition} ${yearCondition}
+        WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} ${yearFilterSql}
         GROUP BY ${TIRE_SIZE_EXTRACTOR}
-        ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+        ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
         LIMIT 10
-    `))
+    `)
 
     // 8. Monthly Tire Detail (filtered by month if provided)
     let monthlyTireDetail: MonthlyTireDetail[] = []
     if (filterMonth) {
-        const monthCondition = ` AND TO_CHAR(billing_date, 'YYYY-MM') = '${filterMonth.replace(/'/g, "''")}'`
-        const monthlyTireResult = await db.execute(sql.raw(`
+        const monthlyTireResult = await db.execute(sql`
             SELECT 
                 COALESCE(NULLIF(material_description, ''), material_no) AS product_name,
                 ${TIRE_SIZE_EXTRACTOR} AS tireSize, 
-                COALESCE(salesman, 'Unknown') AS sales,
+                COALESCE(salesman, 'Unknown') AS sales, 
                 SUM(qty) AS total_qty, 
-                SUM(${REVENUE_DOC_CURR_AMOUNT}) AS total_amount
+                SUM(${REVENUE_DOC_CURR_SQL}) AS total_amount
             FROM sales_revenue_sap 
-            WHERE ${baseWhere} ${filtersCondition} ${monthCondition}
+            WHERE ${baseWhereSql} ${tireSizeFilterSql} ${categoryFilterSql} AND TO_CHAR(billing_date, 'YYYY-MM') = ${filterMonth}
             GROUP BY COALESCE(NULLIF(material_description, ''), material_no), ${TIRE_SIZE_EXTRACTOR}, COALESCE(salesman, 'Unknown')
-            ORDER BY SUM(${REVENUE_DOC_CURR_AMOUNT}) DESC
+            ORDER BY SUM(${REVENUE_DOC_CURR_SQL}) DESC
             LIMIT 15
-        `))
+        `)
         monthlyTireDetail = monthlyTireResult.rows.map(r => ({
             tireSize: String(r.tiresize),
             productName: String(r.product_name || "-"),
@@ -380,28 +386,26 @@ export async function getSlowMovingFilters() {
     if (keys.length === 0) return { tireSizes: [], categories: [] }
 
     const upperKeys = keys.map(k => k.toUpperCase())
-    const safeList = upperKeys.map(k => k.replace(/'/g, "''")).map(k => "'" + k + "'").join(",")
-    const baseWhere = `billing_date IS NOT NULL AND (cancelled IS NULL OR cancelled = '') AND UPPER(TRIM(material_no)) = ANY(ARRAY[${safeList}])`
+    const baseConditions = [
+        sql`billing_date IS NOT NULL`,
+        sql`(cancelled IS NULL OR cancelled = '')`,
+        sql`UPPER(TRIM(material_no)) = ANY(ARRAY[${sql.join(upperKeys.map(k => sql`${k}`), sql`, `)}])`
+    ]
+    const baseWhereSql = sql.join(baseConditions, sql` AND `)
 
-    const TIRE_SIZE_EXTRACTOR = `COALESCE(
-        SUBSTRING(material_description FROM '^[0-9]+(?:\\.[0-9]+)?(?:/[0-9]+)?\\s*[R\\-]\\s*[0-9]+(?:\\.[0-9]+)?(?:\\s*/[0-9]+(?:\\.[0-9]+)?)?'),
-        size_dimen,
-        'UNKNOWN'
-    )`
-
-    const sizesResult = await db.execute(sql.raw(`
+    const sizesResult = await db.execute(sql`
         SELECT DISTINCT ${TIRE_SIZE_EXTRACTOR} AS size_dimen
         FROM sales_revenue_sap
-        WHERE ${baseWhere} AND ${TIRE_SIZE_EXTRACTOR} != 'UNKNOWN'
+        WHERE ${baseWhereSql} AND ${TIRE_SIZE_EXTRACTOR} != 'UNKNOWN'
         ORDER BY size_dimen
-    `))
+    `)
 
-    const categoriesResult = await db.execute(sql.raw(`
+    const categoriesResult = await db.execute(sql`
         SELECT DISTINCT COALESCE(mat_grp_desc, 'UNKNOWN') AS category
         FROM sales_revenue_sap
-        WHERE ${baseWhere}
+        WHERE ${baseWhereSql}
         ORDER BY category
-    `))
+    `)
 
     return {
         tireSizes: sizesResult.rows.map(r => String(r.size_dimen)),

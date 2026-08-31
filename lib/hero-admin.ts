@@ -1666,6 +1666,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
+    menuArea: 'secondary',
+    section: 'Pengaturan',
+    title: 'Backup & Restore',
+    url: '/dashboard/settings/system-backup',
+    iconName: 'database',
+    resource: 'settings_system_backup',
+    sortOrder: 6,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
     menuArea: 'main',
     section: 'Command Center',
     title: 'Command Center',
@@ -4259,11 +4270,12 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
   }
 
   if (resource === 'settings_system_backup') {
+    const isPermitted = roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi'
     return {
-      canView: roleName === 'Super Admin',
-      canEdit: roleName === 'Super Admin',
-      canDelete: roleName === 'Super Admin',
-      canSelectAll: roleName === 'Super Admin',
+      canView: isPermitted,
+      canEdit: isPermitted,
+      canDelete: isPermitted,
+      canSelectAll: isPermitted,
       dataScope: 'global',
     }
   }

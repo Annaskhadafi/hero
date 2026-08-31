@@ -51,10 +51,8 @@ export function getClientAuthBaseUrl() {
     return undefined;
 }
 
-export function getTrustedOrigins(request?: Request) {
-    const requestOrigin = request ? normalizeOrigin(request.headers.get("origin")) : undefined;
-
-    return [...getConfiguredAuthOrigins(), ...FALLBACK_AUTH_ORIGINS, requestOrigin].filter(
+export function getTrustedOrigins(_request?: Request) {
+    return [...getConfiguredAuthOrigins(), ...FALLBACK_AUTH_ORIGINS].filter(
         (value, index, list): value is string => Boolean(value) && list.indexOf(value) === index,
     );
 }

@@ -21,6 +21,8 @@ import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { getServerSession } from '@/lib/auth-session'
+import { getCurrentEmployeeAccessRole } from '@/lib/hero-access'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -38,7 +40,6 @@ async function getBaseUrl(): Promise<string> {
   }
   return baseUrl || 'http://localhost:3000'
 }
-
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
   const [settings] = await db
@@ -267,6 +268,23 @@ export async function getContractReviewSettings() {
 }
 
 export async function saveContractReviewSettings(settings: ContractReviewSettings) {
+  const session = await getServerSession()
+  if (!session?.user) {
+    return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+  }
+
+  const role = await getCurrentEmployeeAccessRole()
+  const isAuthorized =
+    role === 'Super Admin' ||
+    role === 'HC Manager' ||
+    role === 'Khusus Mas Rendi' ||
+    role === 'System Administrator' ||
+    Boolean(role?.toLowerCase().includes('admin'))
+
+  if (!isAuthorized) {
+    return { success: false, error: 'Forbidden: Hanya Super Admin dan HC Manager yang dapat mengubah pengaturan.' }
+  }
+
   await ensureContractReviewWorkflowTables()
   const [existing] = await db
     .select({ id: hcContractReviewSettings.id })
@@ -773,6 +791,11 @@ export async function getContractReviewById(id: number) {
 
 export async function saveContractReview(data: Partial<typeof hcEmployeeContractReviews.$inferInsert>) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+    }
+
     await ensureContractReviewWorkflowTables()
     let saved: any
     if (data.id) {
@@ -884,6 +907,23 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
 
 export async function deleteContractReview(id: number) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+    }
+
+    const role = await getCurrentEmployeeAccessRole()
+    const isAuthorized =
+      role === 'Super Admin' ||
+      role === 'HC Manager' ||
+      role === 'Khusus Mas Rendi' ||
+      role === 'System Administrator' ||
+      Boolean(role?.toLowerCase().includes('admin'))
+
+    if (!isAuthorized) {
+      return { success: false, error: 'Forbidden: Hanya Super Admin dan HC Manager yang dapat menghapus contract review.' }
+    }
+
     await db.delete(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
     revalidatePath('/dashboard/hc/contract-review')
     return { success: true }
