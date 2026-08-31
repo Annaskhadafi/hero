@@ -1,5 +1,6 @@
 'use client'
 
+// Universal Centralized Approval Workbench
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -76,11 +77,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import {
@@ -1232,24 +1235,6 @@ function InboxTab({
                                       </Button>
                                     </div>
                                   </form>
-                                  {group.items.length > 1 ? (
-                                    <form
-                                      action={approveApprovalGroupAction}
-                                      className="border-outline-ghost/70 mt-3 border-t pt-3"
-                                    >
-                                      {group.items.map((approvalItem) => (
-                                        <input
-                                          key={approvalItem.approvalId}
-                                          type="hidden"
-                                          name="approvalIds"
-                                          value={approvalItem.approvalId}
-                                        />
-                                      ))}
-                                      <Button type="submit" variant="outline" size="dense" className="w-full text-xs">
-                                        Setujui semua milik {group.requesterName}
-                                      </Button>
-                                    </form>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>

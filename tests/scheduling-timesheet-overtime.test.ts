@@ -236,4 +236,39 @@ describe('scheduling timesheet overtime policy', () => {
     expect(result.unauthorizedMinutes).toBe(120)
     expect(result.splNumbers).toEqual([])
   })
+
+  it('generates overtime PDF with Total Overtime column and without Total Overtime column dynamically', async () => {
+    const { generateOvertimeRecordPdf } = await import('@/lib/timesheet/generate-attendance-pdf')
+    
+    const baseInput = {
+      period: '2026-07',
+      employeeName: 'Budi Santoso',
+      employeeSn: '123456',
+      department: 'Operation',
+      section: 'Workshop',
+      siteName: 'Site Tabang',
+      signatures: { preparedBy: 'Budi Santoso' },
+      days: [
+        {
+          day: 1,
+          dayName: 'Wed',
+          status: 'present',
+          clockIn: '06:00',
+          clockOut: '18:00',
+          scheduleCode: 'DS',
+          isHoliday: false,
+          overtime: { totalHours: 2, splNumbers: ['SPL-001'], intervals: [] } as any,
+        },
+      ],
+      isNonStaff: true,
+    }
+
+    const pdfWithTotal = await generateOvertimeRecordPdf({ ...baseInput, showTotalOvertime: true })
+    expect(pdfWithTotal).toBeInstanceOf(Uint8Array)
+    expect(pdfWithTotal.length).toBeGreaterThan(1000)
+
+    const pdfWithoutTotal = await generateOvertimeRecordPdf({ ...baseInput, showTotalOvertime: false })
+    expect(pdfWithoutTotal).toBeInstanceOf(Uint8Array)
+    expect(pdfWithoutTotal.length).toBeGreaterThan(1000)
+  })
 })

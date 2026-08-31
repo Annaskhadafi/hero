@@ -47,6 +47,7 @@ import { EnterpriseActionButtons, type TableRbacAccess } from '@/components/ui/e
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+// MultiSelect filter dropdown
 import { MultiSelectFilterDropdown } from '@/components/ui/multi-select-filter-dropdown'
 import { AdminImportDialog } from '@/components/admin/admin-import-dialog'
 import { SearchableSelect } from '@/components/ui/searchable-select'

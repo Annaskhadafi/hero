@@ -2,6 +2,7 @@ import { ApprovalWorkbench } from "@/components/approval-workbench";
 import { getServerSession } from "@/lib/auth-session";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
 
+// Central Approval Inbox Page
 export default async function ApprovalPage() {
   const session = await getServerSession();
   const email = session?.user?.email || "chitra.operation.hero@gmail.com";
