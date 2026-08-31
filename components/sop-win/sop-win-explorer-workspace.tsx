@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   FileCheck,
   Filter,
+  Play,
 } from "lucide-react";
 import {
   Dialog,
@@ -66,6 +67,9 @@ import {
   retrySopWinRagItemAction,
   retryAllFailedSopWinRagAction,
   syncAndAutoChunkSopWinAction,
+  deleteSopWinRagQueueItemAction,
+  clearAllCompletedOrFailedQueueAction,
+  triggerSopWinRagWorkerAction,
 } from "@/app/dashboard/sop-win/actions";
 import { STANDARD_DEPARTMENTS } from "@/lib/sop-win-constants";
 import {
@@ -341,7 +345,7 @@ export function SopWinExplorerWorkspace({
     };
   }, [selectedDocId]);
 
-  // Queue stats state
+  // Queue stats & modal state
   const [queueStatus, setQueueStatus] = useState<{
     isWorkerRunning: boolean;
     pendingCount: number;
@@ -353,8 +357,12 @@ export function SopWinExplorerWorkspace({
     processingCount: 0,
     failedCount: 0,
   });
+  const [queueDetails, setQueueDetails] = useState<any[]>([]);
+  const [isRagQueueModalOpen, setIsRagQueueModalOpen] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isClearingQueue, setIsClearingQueue] = useState(false);
+  const [isTriggeringWorker, setIsTriggeringWorker] = useState(false);
 
   // Calculate unchunked documents count
   const unchunkedDocsCount = useMemo(() => {
@@ -376,10 +384,11 @@ export function SopWinExplorerWorkspace({
             processingCount: res.processingCount,
             failedCount: res.failedCount,
           });
+          setQueueDetails(res.queue || []);
 
-          // If items are in queue, poll again in 3.5 seconds
+          // If items are in queue, poll again in 3 seconds
           if (res.pendingCount > 0 || res.processingCount > 0) {
-            timer = setTimeout(checkQueue, 3500);
+            timer = setTimeout(checkQueue, 3000);
           } else {
             // Re-fetch document list once queue is empty
             if (onRefreshData) onRefreshData();
@@ -405,7 +414,15 @@ export function SopWinExplorerWorkspace({
       if (res.success) {
         toast.success(res.message || "Sinkronisasi AI & Auto-Chunking berhasil dipicu!");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal sinkronisasi data RAG AI.");
@@ -424,7 +441,15 @@ export function SopWinExplorerWorkspace({
       if (res.success) {
         toast.success(res.message || "Dokumen dimasukkan ke antrian chunking AI.");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal memasukkan dokumen ke antrian.");
@@ -441,9 +466,17 @@ export function SopWinExplorerWorkspace({
       setIsRetrying(true);
       const res = await retryAllFailedSopWinRagAction();
       if (res.success) {
-        toast.success(res.message || "Semua dokumen belum di-chunk dimasukkan ke antrian AI.");
+        toast.success(res.message || "Semua dokumen berhasil dimasukkan ke antrian AI.");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal retry antrian.");
@@ -452,6 +485,72 @@ export function SopWinExplorerWorkspace({
       toast.error(err.message || "Gagal retry semua dokumen.");
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const handleTriggerWorkerNow = async () => {
+    try {
+      setIsTriggeringWorker(true);
+      const res = await triggerSopWinRagWorkerAction();
+      toast.success(res.message || "Worker AI chunking dijalankan.");
+      const qRes = await getSopWinRagQueueStatusAction();
+      if (qRes.success) {
+        setQueueStatus({
+          isWorkerRunning: qRes.isWorkerRunning,
+          pendingCount: qRes.pendingCount,
+          processingCount: qRes.processingCount,
+          failedCount: qRes.failedCount,
+        });
+        setQueueDetails(qRes.queue || []);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menjalankan worker.");
+    } finally {
+      setIsTriggeringWorker(false);
+    }
+  };
+
+  const handleClearQueueHistory = async () => {
+    try {
+      setIsClearingQueue(true);
+      const res = await clearAllCompletedOrFailedQueueAction();
+      toast.success(res.message || "Riwayat antrian berhasil dibersihkan.");
+      const qRes = await getSopWinRagQueueStatusAction();
+      if (qRes.success) {
+        setQueueStatus({
+          isWorkerRunning: qRes.isWorkerRunning,
+          pendingCount: qRes.pendingCount,
+          processingCount: qRes.processingCount,
+          failedCount: qRes.failedCount,
+        });
+        setQueueDetails(qRes.queue || []);
+      }
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membersihkan riwayat.");
+    } finally {
+      setIsClearingQueue(false);
+    }
+  };
+
+  const handleDeleteQueueItem = async (queueId: number) => {
+    try {
+      const res = await deleteSopWinRagQueueItemAction(queueId);
+      if (res.success) {
+        toast.success(res.message);
+        const qRes = await getSopWinRagQueueStatusAction();
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus item antrian.");
     }
   };
 
@@ -753,29 +852,41 @@ export function SopWinExplorerWorkspace({
               <span>
                 <strong>Antrian RAG AI:</strong>{" "}
                 {queueStatus.processingCount > 0
-                  ? "1 dokumen sedang diproses OCR & chunking"
+                  ? "Sedang memproses ekstraksi & chunking AI..."
                   : "Menunggu giliran antrian"}
                 {queueStatus.pendingCount > 0 && `, ${queueStatus.pendingCount} dalam antrian`}
                 {queueStatus.failedCount > 0 && (
                   <span className="text-rose-600 font-semibold ml-1">
-                    ({queueStatus.failedCount} gagal sinkron)
+                    ({queueStatus.failedCount} gagal)
                   </span>
                 )}
               </span>
             </div>
-            {queueStatus.failedCount > 0 && (
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={isRetrying}
-                onClick={handleRetryAllFailed}
-                className="h-6 px-2 text-[10px] font-bold text-rose-700 bg-white border-rose-200 hover:bg-rose-50 dark:bg-slate-900 dark:text-rose-300 dark:border-rose-800 shrink-0"
+                onClick={() => setIsRagQueueModalOpen(true)}
+                className="h-6 px-2 text-[10px] font-semibold text-[#003461] bg-white border-blue-200 hover:bg-blue-50 dark:bg-slate-900 dark:text-sky-300 dark:border-slate-700 shrink-0"
               >
-                <RefreshCw className={`size-2.5 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
-                Retry Gagal ({queueStatus.failedCount})
+                <Layers className="size-2.5 mr-1" />
+                Kelola Antrian
               </Button>
-            )}
+              {queueStatus.failedCount > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRetrying}
+                  onClick={handleRetryAllFailed}
+                  className="h-6 px-2 text-[10px] font-bold text-rose-700 bg-white border-rose-200 hover:bg-rose-50 dark:bg-slate-900 dark:text-rose-300 dark:border-rose-800 shrink-0"
+                >
+                  <RefreshCw className={`size-2.5 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
+                  Retry Gagal ({queueStatus.failedCount})
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1284,6 +1395,242 @@ export function SopWinExplorerWorkspace({
               className="w-full bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 sm:w-auto"
             >
               Mengerti & Pilih Ulang
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* RAG AI Queue Manager Modal Dialog */}
+      <Dialog open={isRagQueueModalOpen} onOpenChange={setIsRagQueueModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-slate-900 p-0 gap-0 shadow-2xl overflow-hidden border-slate-200 dark:border-slate-800">
+          <DialogHeader className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-[#003461] text-white shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center text-sky-300">
+                  <Layers className="size-4" />
+                </div>
+                <div>
+                  <DialogTitle className="text-sm sm:text-base font-bold text-white">
+                    Manajemen Antrian Pemrosesan RAG AI
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-blue-200 mt-0.5">
+                    Pantau status ekstraksi OCR, embedding vektor, dan antrian latar belakang AI.
+                  </DialogDescription>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Queue Summary Cards */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <span className="text-[10px] text-slate-500 font-medium">Status Worker</span>
+                <div className="flex items-center gap-1.5 mt-1 font-bold text-xs">
+                  {queueStatus.isWorkerRunning ? (
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <Loader2 className="size-3 animate-spin" /> Aktif Bekerja
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <Clock className="size-3" /> Siaga (Idle)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-100 dark:border-blue-900/40 shadow-xs">
+                <span className="text-[10px] text-blue-600 font-medium">Dalam Antrian</span>
+                <div className="text-base font-bold text-blue-700 dark:text-blue-400 mt-0.5">
+                  {queueStatus.pendingCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-900/40 shadow-xs">
+                <span className="text-[10px] text-amber-600 font-medium">Sedang Diproses</span>
+                <div className="text-base font-bold text-amber-700 dark:text-amber-400 mt-0.5">
+                  {queueStatus.processingCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/40 shadow-xs">
+                <span className="text-[10px] text-rose-600 font-medium">Gagal / Perlu Retry</span>
+                <div className="text-base font-bold text-rose-700 dark:text-rose-400 mt-0.5">
+                  {queueStatus.failedCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Toolbar in Modal */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isTriggeringWorker}
+                  onClick={handleTriggerWorkerNow}
+                  className="h-7 px-2.5 text-xs font-semibold text-[#003461] bg-white border-blue-200 hover:bg-blue-50 dark:bg-slate-900 dark:text-sky-300 dark:border-slate-700"
+                >
+                  <Play className={`size-3 mr-1.5 ${isTriggeringWorker ? "animate-spin" : ""}`} />
+                  Jalankan Worker Sekarang
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRetrying}
+                  onClick={handleRetryAllFailed}
+                  className="h-7 px-2.5 text-xs font-semibold text-amber-700 bg-white border-amber-200 hover:bg-amber-50 dark:bg-slate-900 dark:text-amber-300 dark:border-amber-800"
+                >
+                  <RefreshCw className={`size-3 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
+                  Retry Semua Gagal
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isSyncing}
+                  onClick={handleSyncAndAutoChunk}
+                  className="h-7 px-2.5 text-xs font-semibold text-emerald-700 bg-white border-emerald-200 hover:bg-emerald-50 dark:bg-slate-900 dark:text-emerald-300 dark:border-emerald-800"
+                >
+                  <Sparkles className={`size-3 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                  Sync & Auto-Chunk Semua
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={isClearingQueue}
+                onClick={handleClearQueueHistory}
+                className="h-7 px-2 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                title="Hapus riwayat antrian selesai dan gagal"
+              >
+                <Trash2 className="size-3 mr-1 text-slate-400" />
+                Bersihkan Riwayat
+              </Button>
+            </div>
+          </div>
+
+          {/* Queue Items Table */}
+          <div className="flex-1 min-h-0 overflow-y-auto max-h-[360px] p-0">
+            {queueDetails.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
+                <CheckCircle2 className="size-10 text-emerald-500 mb-2 opacity-80" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Antrian Bersih & Tidak Ada Tugas Tertunda
+                </p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                  Semua dokumen telah selesai diproses atau belum ada dokumen baru yang dimasukkan ke antrian.
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-slate-100/90 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-500 tracking-wider">
+                  <tr>
+                    <th className="py-2 px-3">No. Dokumen & Judul</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3">Percobaan</th>
+                    <th className="py-2 px-3">Keterangan / Pesan</th>
+                    <th className="py-2 px-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {queueDetails.map((q) => (
+                    <tr key={q.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                      <td className="py-2.5 px-3 min-w-[200px]">
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          {q.documentNumber || `Doc #${q.documentId}`}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                          {q.documentTitle || q.fileName || "-"}
+                        </div>
+                      </td>
+
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        {q.status === "completed" ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                            Selesai
+                          </Badge>
+                        ) : q.status === "processing" ? (
+                          <Badge className="bg-blue-500/15 text-blue-700 border-blue-200 text-[10px] font-semibold animate-pulse">
+                            Memproses...
+                          </Badge>
+                        ) : q.status === "pending_retry" ? (
+                          <Badge className="bg-amber-500/15 text-amber-700 border-amber-200 text-[10px] font-semibold">
+                            Antri Ulang
+                          </Badge>
+                        ) : q.status === "failed" ? (
+                          <Badge className="bg-rose-500/15 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                            Gagal
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px] font-semibold">
+                            Menunggu
+                          </Badge>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-[11px] font-mono text-slate-600 dark:text-slate-400">
+                        {q.attempts || 0}x
+                      </td>
+
+                      <td className="py-2.5 px-3 text-[11px] text-slate-600 dark:text-slate-400 max-w-xs truncate">
+                        {q.errorMessage ? (
+                          <span className="text-rose-600 dark:text-rose-400" title={q.errorMessage}>
+                            {q.errorMessage}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Siap diproses</span>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          {(q.status === "failed" || q.status === "pending_retry") && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRetryItem(q.documentId)}
+                              className="size-7 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                              title="Retry dokumen ini"
+                            >
+                              <RefreshCw className="size-3" />
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteQueueItem(q.id)}
+                            className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            title="Hapus dari antrian"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shrink-0 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRagQueueModalOpen(false)}
+              className="text-xs"
+            >
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>

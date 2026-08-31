@@ -1411,6 +1411,14 @@ export async function clearAllCompletedOrFailedQueueAction() {
   return res;
 }
 
+/**
+ * 15. Trigger Background RAG Queue Worker Action
+ */
+export async function triggerSopWinRagWorkerAction() {
+  triggerSopWinRagWorker();
+  return { success: true, message: "Worker pemrosesan AI chunking dimulai di latar belakang." };
+}
+
 // ─── SOP & WIN Approval Engine Actions ────────────────────────────────────────
 const DEFAULT_SOP_WIN_STEPS = [
   { stepOrder: 1, stepLabel: "Verifikasi Draftek & SOP Admin", approverRole: "Admin SOP", approverName: "Ria Annisa", approverEmail: "ria.annisa@chitraparatama.co.id" },

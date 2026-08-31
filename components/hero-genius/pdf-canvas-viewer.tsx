@@ -50,10 +50,11 @@ export function PdfCanvasViewer({
   const [loadingProgress, setLoadingProgress] = useState<string>("Memuat engine viewer...");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [renderedPages, setRenderedPages] = useState<{ [pageNum: number]: boolean }>({});
-  const [useNativeViewer, setUseNativeViewer] = useState<boolean>(true);
+  const [useNativeViewer, setUseNativeViewer] = useState<boolean>(false);
 
-  // Refs to canvas elements
+  // Refs to canvas elements & active render tasks
   const canvasRefs = useRef<{ [pageNum: number]: HTMLCanvasElement | null }>({});
+  const renderTasksRef = useRef<{ [pageNum: number]: any }>({});
 
   // 1. Ensure PDF.js is loaded dynamically
   useEffect(() => {
@@ -75,10 +76,14 @@ export function PdfCanvasViewer({
             // Check if script already injected
             const existingScript = document.querySelector('script[data-pdfjs="true"]');
             if (existingScript) {
-              existingScript.addEventListener("load", () => resolve());
-              existingScript.addEventListener("error", () =>
-                reject(new Error("Gagal mengunduh script PDF.js"))
-              );
+              if (window.pdfjsLib) {
+                resolve();
+              } else {
+                existingScript.addEventListener("load", () => resolve());
+                existingScript.addEventListener("error", () =>
+                  reject(new Error("Gagal mengunduh script PDF.js"))
+                );
+              }
               return;
             }
 
@@ -98,7 +103,7 @@ export function PdfCanvasViewer({
               reject(new Error("Tidak dapat terhubung ke server PDF.js lokal"));
             document.head.appendChild(script);
           });
-        } else if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        } else if (!window.pdfjsLib.GlobalWorkerOptions?.workerSrc) {
           window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
         }
 
@@ -109,8 +114,9 @@ export function PdfCanvasViewer({
         const loadingTask = window.pdfjsLib.getDocument({
           url,
           withCredentials: true,
-          cMapUrl: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/",
+          cMapUrl: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
           cMapPacked: true,
+          standardFontDataUrl: "https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/",
         });
 
         loadingTask.onProgress = (progressData: { loaded: number; total: number }) => {
@@ -140,6 +146,13 @@ export function PdfCanvasViewer({
 
     return () => {
       isMounted = false;
+      // Cancel any ongoing render tasks on unmount
+      Object.values(renderTasksRef.current).forEach((task) => {
+        try {
+          task?.cancel();
+        } catch (_) {}
+      });
+      renderTasksRef.current = {};
     };
   }, [url, onLoaded, useNativeViewer]);
 
@@ -152,6 +165,14 @@ export function PdfCanvasViewer({
       if (!canvas) return;
 
       try {
+        // Cancel existing render task on this canvas if any
+        if (renderTasksRef.current[pageNum]) {
+          try {
+            renderTasksRef.current[pageNum].cancel();
+          } catch (_) {}
+          delete renderTasksRef.current[pageNum];
+        }
+
         const page = await pdfDoc.getPage(pageNum);
         const containerWidth =
           containerRef.current?.clientWidth || window.innerWidth - 32;
@@ -198,13 +219,19 @@ export function PdfCanvasViewer({
           viewport: viewport,
         };
 
-        await page.render(renderContext).promise;
+        const renderTask = page.render(renderContext);
+        renderTasksRef.current[pageNum] = renderTask;
+
+        await renderTask.promise;
+        delete renderTasksRef.current[pageNum];
         setRenderedPages((prev) => ({ ...prev, [pageNum]: true }));
-      } catch (err) {
-        console.warn(`[PdfCanvasViewer] Error rendering page ${pageNum}:`, err);
+      } catch (err: any) {
+        if (err?.name !== "RenderingCancelledException") {
+          console.warn(`[PdfCanvasViewer] Error rendering page ${pageNum}:`, err);
+        }
       }
     },
-    [pdfDoc, scale, fitToWidth, rotation, useNativeViewer]
+    [pdfDoc, scale, fitToWidth, rotation, viewMode, useNativeViewer]
   );
 
   // Re-render pages when scale, rotation, viewMode, or doc changes
@@ -423,9 +450,21 @@ export function PdfCanvasViewer({
             </>
           ) : (
             <span className="text-[10px] text-slate-400 italic hidden xs:inline pr-2">
-              Gunakan kontrol bawaan browser
+              Mode Browser Native
             </span>
           )}
+
+          {/* Quick Open in New Tab Action */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => window.open(url, "_blank")}
+            className="size-7 text-slate-600 hover:text-[#003461] hover:bg-slate-200/80 dark:text-slate-300 dark:hover:text-sky-300 dark:hover:bg-slate-800 rounded-lg"
+            title="Buka Dokumen di Tab Baru"
+          >
+            <ExternalLink className="size-3.5" />
+          </Button>
         </div>
       </div>
 

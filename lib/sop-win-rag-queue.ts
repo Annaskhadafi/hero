@@ -6,6 +6,7 @@ import {
 } from "@/db/schema/hero";
 import { eq, asc, sql, desc, or, and, inArray } from "drizzle-orm";
 import { ingestRagDocument, getRagDocumentChunks, listRagDocuments } from "@/lib/hero-genius/client";
+import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
 import { readFile } from "fs/promises";
 import { join } from "path";
 
@@ -37,6 +38,18 @@ export async function enqueueSopWinRag(params: {
     let queueId: number;
     if (existing.length > 0) {
       queueId = existing[0].id;
+      // Reset attempts and status if it was pending_retry
+      await db
+        .update(sopWinRagQueue)
+        .set({
+          status: "pending",
+          fileUrl: params.fileUrl,
+          fileName: params.fileName,
+          fileType: params.fileType,
+          errorMessage: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(sopWinRagQueue.id, queueId));
     } else {
       const [inserted] = await db
         .insert(sopWinRagQueue)
@@ -96,8 +109,7 @@ export function triggerSopWinRagWorker() {
 }
 
 /**
- * Sequential FIFO worker (Processes strictly 1 document at a time)
- * If a document fails, it continues immediately to the next document, and retries failed items at the end of the queue.
+ * Sequential FIFO worker with S3 proxy support & smart chunk polling
  */
 export async function processSopWinRagQueue() {
   if (isWorkerProcessing) {
@@ -158,13 +170,38 @@ export async function processSopWinRagQueue() {
       }
 
       try {
-        let fileBuffer: Buffer;
-        try {
-          const rawFilename = item.fileUrl.split("/").pop() || "";
-          const filePath = join(process.cwd(), "public", "uploads", rawFilename);
-          fileBuffer = await readFile(filePath);
-        } catch (fsErr) {
-          // If not in local filesystem, fetch directly via HTTP
+        let fileBuffer: Buffer | null = null;
+
+        // 1. Primary: Try S3 Object storage proxy (handles is3.cloudhost.id, cloud storage, etc.)
+        if (isS3UploadConfigured() && item.fileUrl) {
+          try {
+            const s3Obj = await getS3ObjectForProxy(item.fileUrl);
+            if (s3Obj?.body) {
+              fileBuffer = Buffer.from(s3Obj.body);
+            }
+          } catch (s3Err) {
+            console.warn(`[SOP/WIN RAG Queue] S3 proxy fetch error for #${item.id}:`, s3Err);
+          }
+        }
+
+        // 2. Secondary: Try local filesystem (public/uploads)
+        if (!fileBuffer && item.fileUrl) {
+          try {
+            const rawFilename = item.fileUrl.split("/").pop() || "";
+            const decodedFilename = decodeURIComponent(rawFilename);
+            const filePath = join(process.cwd(), "public", "uploads", decodedFilename);
+            fileBuffer = await readFile(filePath);
+          } catch (_) {
+            try {
+              const rawFilename = item.fileUrl.split("/").pop() || "";
+              const filePath = join(process.cwd(), "public", "uploads", rawFilename);
+              fileBuffer = await readFile(filePath);
+            } catch (_) {}
+          }
+        }
+
+        // 3. Fallback: Authenticated HTTP fetch via Vision proxy
+        if (!fileBuffer && item.fileUrl) {
           const resolvedUrl = item.fileUrl.startsWith("http")
             ? item.fileUrl
             : `https://vision.chitraparatama.com${item.fileUrl.startsWith("/") ? "" : "/"}${item.fileUrl}`;
@@ -174,6 +211,10 @@ export async function processSopWinRagQueue() {
           }
           const arrayBuf = await resp.arrayBuffer();
           fileBuffer = Buffer.from(arrayBuf);
+        }
+
+        if (!fileBuffer || fileBuffer.length === 0) {
+          throw new Error("File dokumen tidak ditemukan di penyimpanan server (S3 / Local).");
         }
 
         const mimeType =
@@ -194,23 +235,27 @@ export async function processSopWinRagQueue() {
         const ragDocumentId = ragRes.document_id || ragRes.data?.document_id || null;
         let totalChunks = ragRes.total_chunks ?? ragRes.data?.total_chunks ?? 0;
 
-        // If chunk count in ingestion response is 0, verify with getRagDocumentChunks
+        // If chunk count in ingestion response is 0, poll getRagDocumentChunks up to 3 times
         if (ragDocumentId && totalChunks === 0) {
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            const chunksRes = await getRagDocumentChunks(ragDocumentId);
-            if (chunksRes?.chunks && chunksRes.chunks.length > 0) {
-              totalChunks = chunksRes.chunks.length;
-            } else if (chunksRes?.total_chunks && chunksRes.total_chunks > 0) {
-              totalChunks = chunksRes.total_chunks;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 2500));
+              const chunksRes = await getRagDocumentChunks(ragDocumentId);
+              if (chunksRes?.chunks && chunksRes.chunks.length > 0) {
+                totalChunks = chunksRes.chunks.length;
+                break;
+              } else if (chunksRes?.total_chunks && chunksRes.total_chunks > 0) {
+                totalChunks = chunksRes.total_chunks;
+                break;
+              }
+            } catch (chunkErr) {
+              console.warn(`[SOP/WIN RAG Queue] Polling chunks attempt ${attempt}/3 for doc ${ragDocumentId}:`, chunkErr);
             }
-          } catch (chunkErr) {
-            console.warn(`[SOP/WIN RAG Queue] Could not fetch chunks for doc ${ragDocumentId}:`, chunkErr);
           }
         }
 
-        // If chunks are still 0 or no document_id, throw error to trigger end-of-queue retry
-        if (!ragDocumentId || totalChunks === 0) {
+        // If chunks are still 0 and no document_id, throw error to trigger retry
+        if (!ragDocumentId && totalChunks === 0) {
           throw new Error(
             `Hasil ekstraksi/chunking 0 chunk (RAG belum menghasilkan data vektor).`
           );
@@ -232,7 +277,7 @@ export async function processSopWinRagQueue() {
         await db
           .update(sopWinDocuments)
           .set({
-            ragDocumentId,
+            ragDocumentId: ragDocumentId || undefined,
             ragChunksCount: totalChunks,
             ragStatus: "ready",
             ragErrorMessage: null,
@@ -246,7 +291,7 @@ export async function processSopWinRagQueue() {
           await db
             .update(sopWinRevisions)
             .set({
-              ragDocumentId,
+              ragDocumentId: ragDocumentId || undefined,
               ragChunksCount: totalChunks,
               ragStatus: "ready",
               ragErrorMessage: null,
@@ -349,8 +394,8 @@ export async function processSopWinRagQueue() {
  */
 export async function getSopWinRagQueueStatus() {
   try {
-    // Auto-recover stale 'processing' jobs that exceeded 10 minutes (e.g. from server reboot)
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    // Auto-recover stale 'processing' jobs that exceeded 3 minutes (e.g. from server restart or hung requests)
+    const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000);
     const staleItems = await db
       .select()
       .from(sopWinRagQueue)
@@ -358,8 +403,8 @@ export async function getSopWinRagQueueStatus() {
         and(
           eq(sopWinRagQueue.status, "processing"),
           or(
-            sql`${sopWinRagQueue.startedAt} < ${tenMinutesAgo}`,
-            sql`${sopWinRagQueue.createdAt} < ${tenMinutesAgo}`
+            sql`${sopWinRagQueue.startedAt} < ${threeMinutesAgo}`,
+            sql`${sopWinRagQueue.createdAt} < ${threeMinutesAgo}`
           )
         )
       );
@@ -367,21 +412,22 @@ export async function getSopWinRagQueueStatus() {
     for (const stale of staleItems) {
       // If the doc is already ready in sopWinDocuments, mark queue completed
       const [doc] = await db
-        .select({ ragStatus: sopWinDocuments.ragStatus })
+        .select({ ragStatus: sopWinDocuments.ragStatus, ragChunksCount: sopWinDocuments.ragChunksCount })
         .from(sopWinDocuments)
         .where(eq(sopWinDocuments.id, stale.documentId));
 
-      if (doc?.ragStatus === "ready") {
+      if (doc?.ragStatus === "ready" && (doc.ragChunksCount ?? 0) > 0) {
         await db
           .update(sopWinRagQueue)
           .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
           .where(eq(sopWinRagQueue.id, stale.id));
       } else {
+        // Reset to pending_retry
         await db
           .update(sopWinRagQueue)
           .set({
-            status: "failed",
-            errorMessage: "Waktu pemrosesan melebihi batas (stale timeout)",
+            status: "pending_retry",
+            errorMessage: "Waktu pemrosesan melebihi batas (stale auto-recovery)",
             updatedAt: new Date(),
           })
           .where(eq(sopWinRagQueue.id, stale.id));
@@ -407,13 +453,18 @@ export async function getSopWinRagQueueStatus() {
       .from(sopWinRagQueue)
       .leftJoin(sopWinDocuments, eq(sopWinRagQueue.documentId, sopWinDocuments.id))
       .orderBy(desc(sopWinRagQueue.createdAt))
-      .limit(30);
+      .limit(50);
 
     const pendingCount = queueRows.filter(
       (r) => r.status === "pending" || r.status === "pending_retry"
     ).length;
     const processingCount = queueRows.filter((r) => r.status === "processing").length;
     const failedCount = queueRows.filter((r) => r.status === "failed").length;
+
+    // If there are pending items and worker is not currently running, trigger it
+    if ((pendingCount > 0 || processingCount > 0) && !isWorkerProcessing) {
+      triggerSopWinRagWorker();
+    }
 
     return {
       success: true,
@@ -575,10 +626,22 @@ export async function retrySopWinRagItem(documentId: number) {
 }
 
 /**
- * Retry all failed queue items
+ * Retry all failed queue items and re-enqueue unchunked documents
  */
 export async function retryAllFailedSopWinRag() {
   try {
+    // 1. Reset all existing failed / pending_retry queue records to pending
+    await db
+      .update(sopWinRagQueue)
+      .set({
+        status: "pending",
+        attempts: 0,
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(or(eq(sopWinRagQueue.status, "failed"), eq(sopWinRagQueue.status, "pending_retry")));
+
+    // 2. Find any docs that are failed or have 0 chunks
     const failedDocs = await db
       .select({
         id: sopWinDocuments.id,
@@ -592,6 +655,7 @@ export async function retryAllFailedSopWinRag() {
 
     for (const d of failedDocs) {
       const fileUrl = d.docxFileUrl || d.pdfFileUrl;
+      if (!fileUrl) continue;
       const fileType = d.docxFileUrl ? "docx" : "pdf";
       const fileName = `${d.documentNumber}-${d.title}.${fileType}`;
 
@@ -603,9 +667,11 @@ export async function retryAllFailedSopWinRag() {
       });
     }
 
+    triggerSopWinRagWorker();
+
     return {
       success: true,
-      message: `${failedDocs.length} dokumen berhasil dimasukkan ke antrian AI.`,
+      message: `${failedDocs.length} dokumen berhasil dimasukkan ke antrian AI dan worker dijalankan.`,
     };
   } catch (error: any) {
     return { success: false, error: error.message };

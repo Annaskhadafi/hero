@@ -285,14 +285,36 @@ export async function GET(req: NextRequest) {
 
     const headers = new Headers();
     headers.set("Content-Type", contentType);
-    headers.set("Content-Length", buffer.length.toString());
-    // Inline disposition so browser renders it in preview instead of downloading
+    headers.set("Accept-Ranges", "bytes");
     headers.set(
       "Content-Disposition",
       `inline; filename="${encodeURIComponent(requestedFilename)}"`
     );
-    headers.set("Cache-Control", "public, max-age=3600, immutable");
+    headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
     headers.set("X-Content-Type-Options", "nosniff");
+
+    // Handle HTTP Range header for streaming large PDFs and partial rendering
+    const rangeHeader = req.headers.get("range");
+    if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+      const parts = rangeHeader.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : buffer.length - 1;
+
+      if (!isNaN(start) && start < buffer.length) {
+        const safeEnd = Math.min(isNaN(end) ? buffer.length - 1 : end, buffer.length - 1);
+        const chunk = buffer.subarray(start, safeEnd + 1);
+
+        headers.set("Content-Range", `bytes ${start}-${safeEnd}/${buffer.length}`);
+        headers.set("Content-Length", chunk.length.toString());
+
+        return new NextResponse(new Uint8Array(chunk), {
+          status: 206,
+          headers,
+        });
+      }
+    }
+
+    headers.set("Content-Length", buffer.length.toString());
 
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
