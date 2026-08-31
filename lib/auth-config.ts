@@ -21,6 +21,26 @@ function normalizeOrigin(value?: string | null) {
     return trimmedValue.replace(/\/+$/, "").replace(/\/api\/auth$/i, "");
 }
 
+function getRequestOrigin(request?: Request) {
+    if (!request) {
+        return undefined;
+    }
+
+    const origin = normalizeOrigin(request.headers.get("origin"));
+    if (!origin) {
+        return undefined;
+    }
+
+    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const requestHost = forwardedHost || request.headers.get("host") || new URL(request.url).host;
+
+    try {
+        return new URL(origin).host === requestHost ? origin : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 function getConfiguredAuthOrigins() {
     return [
         process.env.BETTER_AUTH_URL,
@@ -39,20 +59,29 @@ export function getServerAuthBaseUrl() {
 }
 
 export function getClientAuthBaseUrl() {
+    // Browser authentication must stay on the origin that served the page. A stale
+    // public build variable must never send the login request (and cookie) to a
+    // different deployment.
+    if (typeof window !== "undefined") {
+        return window.location.origin;
+    }
+
     const configured = normalizeOrigin(
         process.env.NEXT_PUBLIC_BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL
     );
     if (configured) {
         return configured;
     }
-    if (typeof window !== "undefined") {
-        return window.location.origin;
-    }
     return undefined;
 }
 
-export function getTrustedOrigins(_request?: Request) {
-    return [...getConfiguredAuthOrigins(), ...FALLBACK_AUTH_ORIGINS].filter(
+export function getTrustedOrigins(request?: Request) {
+    // Trust the live deployment origin only when it matches the host seen by the
+    // application/proxy. This supports Dokploy host changes without accepting an
+    // arbitrary Origin header.
+    const requestOrigin = getRequestOrigin(request);
+
+    return [...getConfiguredAuthOrigins(), ...FALLBACK_AUTH_ORIGINS, requestOrigin].filter(
         (value, index, list): value is string => Boolean(value) && list.indexOf(value) === index,
     );
 }
@@ -75,4 +104,3 @@ export function getPublicAppUrl() {
     }
     return "https://hero.chitraparatama.com"
 }
-

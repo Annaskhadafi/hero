@@ -47,5 +47,6 @@
 - 2026-06-18: Legacy HC offering/onboarding now use centralized template overrides and HC policy CC, legacy HC email settings page redirects to central Email Settings, legacy attendance/leave/offboarding now emit bell events, and legacy HSE JSA/HIRADC/PTW now emit centralized HSE email + bell notifications
 - 2026-06-18: Dev environment now bootstrapped with npm install, type-check is green, and audit shows full Approval Engine reuse for non-activity legacy workflows is still blocked by hero_approvals/activity-linked schema assumptions
 - 2026-06-18: Approval Engine refactor now supports submission-based legacy workflows by adding approvals.submissionId + legacy approvalSubmissionId links, introducing lib/legacy-approval-engine.ts, binding attendance/leave/offboarding submission creation into centralized approval flow, and teaching approval workspace/admin review flow to process non-activity submissions
+- 2026-08-31: Login session persistence hardened for reverse-proxy deployments: browser auth requests now stay same-origin, live origins are trusted only when matching the forwarded host, and production session cookies remain Secure even with an internal HTTP base URL.
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard
