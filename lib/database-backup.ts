@@ -4,12 +4,16 @@ import os from "os";
 import path from "path";
 import { gunzipSync, gzipSync } from "zlib";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { loadEnvConfig } from "@next/env";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { settings } from "@/db/schema";
 import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "@/lib/database-url";
 import { serverEnv } from "@/lib/server-env";
 
@@ -183,7 +187,194 @@ function resolveLocalBackup(input: string) {
   return fs.existsSync(backupPath) ? backupPath : input;
 }
 
-export function getDatabaseBackupEnvStatus() {
+const BACKUP_RETENTION_SETTING_KEY = "backup_retention_months";
+const DEFAULT_RETENTION_MONTHS = 3;
+
+export async function getBackupRetentionMonths(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ value: settings.value })
+      .from(settings)
+      .where(eq(settings.key, BACKUP_RETENTION_SETTING_KEY))
+      .limit(1);
+
+    if (row?.value !== undefined && row?.value !== null && row.value.trim() !== "") {
+      const parsed = parseInt(row.value.trim(), 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.warn("[database-backup] Failed to read backup_retention_months from DB:", error);
+  }
+
+  const envVal = process.env.DB_BACKUP_RETENTION_MONTHS?.trim();
+  if (envVal) {
+    const parsed = parseInt(envVal, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return DEFAULT_RETENTION_MONTHS;
+}
+
+export async function setBackupRetentionMonths(months: number): Promise<number> {
+  const safeMonths = Math.max(0, Math.floor(months));
+  await db
+    .insert(settings)
+    .values({
+      key: BACKUP_RETENTION_SETTING_KEY,
+      value: String(safeMonths),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: {
+        value: String(safeMonths),
+        updatedAt: new Date(),
+      },
+    });
+
+  return safeMonths;
+}
+
+export type BackupCleanupResult = {
+  retentionMonths: number;
+  cutoffDate: string;
+  deletedCount: number;
+  deletedKeys: string[];
+  freedBytes: number;
+  freedMb: string;
+  remainingCount: number;
+  localDeletedCount: number;
+  message: string;
+};
+
+export async function cleanOldDatabaseBackups(customMonths?: number): Promise<BackupCleanupResult> {
+  const retentionMonths = customMonths !== undefined ? customMonths : await getBackupRetentionMonths();
+
+  if (retentionMonths <= 0) {
+    return {
+      retentionMonths: 0,
+      cutoffDate: "",
+      deletedCount: 0,
+      deletedKeys: [],
+      freedBytes: 0,
+      freedMb: "0.00",
+      remainingCount: 0,
+      localDeletedCount: 0,
+      message: "Kebijakan retensi dinonaktifkan (0 bulan: simpan semua backup).",
+    };
+  }
+
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
+  const cutoffTime = cutoffDate.getTime();
+
+  // 1. Fetch all backups from S3 under prefix
+  const allContents: Array<{ Key: string; LastModified?: Date; Size?: number }> = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await getS3Client().send(
+      new ListObjectsV2Command({
+        Bucket: serverEnv.s3BucketName,
+        Prefix: `${BACKUP_PREFIX}/`,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    if (response.Contents) {
+      for (const item of response.Contents) {
+        if (item.Key && (item.Key.endsWith(".sql.gz") || item.Key.endsWith(".sql"))) {
+          allContents.push({
+            Key: item.Key,
+            LastModified: item.LastModified,
+            Size: item.Size,
+          });
+        }
+      }
+    }
+
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+
+  // Sort descending by LastModified (newest first)
+  allContents.sort((a, b) => (b.LastModified?.getTime() ?? 0) - (a.LastModified?.getTime() ?? 0));
+
+  // SAFETY GUARD: Always preserve at least 1 newest backup no matter how old!
+  const candidateOldItems = allContents.slice(1);
+
+  const toDelete = candidateOldItems.filter((item) => {
+    const itemTime = item.LastModified ? item.LastModified.getTime() : 0;
+    return itemTime > 0 && itemTime < cutoffTime;
+  });
+
+  const deletedKeys: string[] = [];
+  let freedBytes = 0;
+
+  for (const item of toDelete) {
+    try {
+      await getS3Client().send(
+        new DeleteObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: item.Key,
+        }),
+      );
+      deletedKeys.push(item.Key);
+      freedBytes += item.Size ?? 0;
+    } catch (err) {
+      console.error(`[database-backup] Failed to delete S3 backup: ${item.Key}`, err);
+    }
+  }
+
+  // 2. Clean local backup directory
+  let localDeletedCount = 0;
+  try {
+    const localDir = getBackupDir();
+    if (fs.existsSync(localDir)) {
+      const files = fs.readdirSync(localDir);
+      for (const file of files) {
+        if (file.startsWith("hero-") && (file.endsWith(".sql") || file.endsWith(".sql.gz"))) {
+          const filePath = path.join(localDir, file);
+          try {
+            const stat = fs.statSync(filePath);
+            if (stat.mtimeMs < cutoffTime) {
+              fs.unlinkSync(filePath);
+              localDeletedCount++;
+            }
+          } catch {
+            // ignore cleanup failure for single file
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[database-backup] Failed to clean local backup dir", err);
+  }
+
+  const remainingCount = allContents.length - deletedKeys.length;
+  const freedMb = (freedBytes / 1024 / 1024).toFixed(2);
+
+  return {
+    retentionMonths,
+    cutoffDate: cutoffDate.toISOString(),
+    deletedCount: deletedKeys.length,
+    deletedKeys,
+    freedBytes,
+    freedMb,
+    remainingCount,
+    localDeletedCount,
+    message:
+      deletedKeys.length > 0
+        ? `Berhasil membersihkan ${deletedKeys.length} file backup lama (> ${retentionMonths} bulan). Ruang dibebaskan: ${freedMb} MB.`
+        : `Tidak ada file backup yang lebih lama dari ${retentionMonths} bulan untuk dihapus.`,
+  };
+}
+
+export async function getDatabaseBackupEnvStatus() {
+  const retentionMonths = await getBackupRetentionMonths();
   return {
     s3BucketConfigured: Boolean(serverEnv.s3BucketName),
     s3RegionConfigured: Boolean(serverEnv.s3Region),
@@ -194,6 +385,7 @@ export function getDatabaseBackupEnvStatus() {
     psqlConfigured: Boolean(findPsql()),
     prefix: BACKUP_PREFIX,
     cronPath: "/api/cron/database-backup",
+    retentionMonths,
   };
 }
 

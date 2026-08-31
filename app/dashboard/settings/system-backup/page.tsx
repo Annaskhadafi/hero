@@ -15,7 +15,7 @@ export default async function SystemBackupPage() {
   const permission = await getCurrentMenuPermission(RESOURCE);
   if (!permission.canView) redirect("/dashboard");
 
-  const envStatus = getDatabaseBackupEnvStatus();
+  const envStatus = await getDatabaseBackupEnvStatus();
   let backups: Awaited<ReturnType<typeof listDatabaseBackups>> = [];
   let listError = "";
 

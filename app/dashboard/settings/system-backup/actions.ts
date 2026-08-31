@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createDatabaseBackup, restoreDatabaseBackup } from "@/lib/database-backup";
+import {
+  cleanOldDatabaseBackups,
+  createDatabaseBackup,
+  restoreDatabaseBackup,
+  setBackupRetentionMonths,
+} from "@/lib/database-backup";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -89,3 +94,75 @@ export async function restoreSystemDatabaseBackupAction(
     };
   }
 }
+
+export async function saveBackupRetentionAction(
+  _state: SystemBackupActionState = INITIAL_SYSTEM_BACKUP_ACTION_STATE,
+  formData: FormData,
+): Promise<SystemBackupActionState> {
+  try {
+    await assertSystemBackupPermission("backup");
+    const session = await getServerSession();
+    const rawMonths = formData.get("retentionMonths");
+    const months = parseInt(String(rawMonths ?? "3"), 10);
+
+    if (isNaN(months) || months < 0) {
+      return { status: "error", message: "Jumlah bulan harus angka bulat 0 atau lebih." };
+    }
+
+    await setBackupRetentionMonths(months);
+
+    await logAuditEvent({
+      actorEmail: session?.user?.email ?? undefined,
+      action: "database.backup_retention_updated",
+      entityType: "database_backup",
+      entityLabel: `retention_${months}_months`,
+      description: `Backup retention policy updated to ${months} month(s).`,
+      severity: "info",
+    });
+
+    revalidatePath(PATH);
+    return {
+      status: "success",
+      message:
+        months === 0
+          ? "Kebijakan retensi berhasil disimpan: Simpan Selamanya (Tanpa Batas Waktu)."
+          : `Kebijakan retensi berhasil disimpan: Maksimal ${months} Bulan. Data lebih lama akan otomatis dihapus.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal menyimpan kebijakan retensi.",
+    };
+  }
+}
+
+export async function cleanOldDatabaseBackupsAction(
+  _state: SystemBackupActionState = INITIAL_SYSTEM_BACKUP_ACTION_STATE,
+): Promise<SystemBackupActionState> {
+  try {
+    await assertSystemBackupPermission("backup");
+    const session = await getServerSession();
+    const result = await cleanOldDatabaseBackups();
+
+    await logAuditEvent({
+      actorEmail: session?.user?.email ?? undefined,
+      action: "database.backup_cleaned",
+      entityType: "database_backup",
+      entityLabel: `deleted_${result.deletedCount}_backups`,
+      description: `Old database backups cleaned. Deleted: ${result.deletedCount} files, Freed: ${result.freedMb} MB.`,
+      severity: "warning",
+    });
+
+    revalidatePath(PATH);
+    return {
+      status: "success",
+      message: result.message,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal membersihkan backup lama.",
+    };
+  }
+}
+
