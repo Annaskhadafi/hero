@@ -6124,6 +6124,8 @@ export async function importSecurityUsersAction(
 const importUpdateUsersSchema = z.object({
   rawCsv: z.string().trim().min(1, 'CSV file is required.'),
   confirmLocationChanges: z.preprocess((value) => value === 'true' || value === 'on' || value === true, z.boolean().default(false)),
+  selectedColumnsJson: z.string().optional(),  // JSON array of header strings; empty = update all
+  importMode: z.enum(['new', 'update']).default('update'),
 })
 
 const IMPORT_UPDATE_HEADERS = [
@@ -6179,7 +6181,21 @@ export async function importUpdateUsersAction(
     const payload = importUpdateUsersSchema.parse({
       rawCsv: formData.get('rawCsv'),
       confirmLocationChanges: formData.get('confirmLocationChanges'),
+      selectedColumnsJson: formData.get('selectedColumnsJson'),
+      importMode: formData.get('importMode') ?? 'update',
     })
+
+    // Parse selected columns: if provided and non-empty, only those headers will be updated
+    let selectedColumns: string[] = []
+    if (payload.selectedColumnsJson) {
+      try {
+        const parsed = JSON.parse(payload.selectedColumnsJson)
+        if (Array.isArray(parsed)) selectedColumns = parsed.filter((s): s is string => typeof s === 'string')
+      } catch { /* ignore malformed JSON */ }
+    }
+    const isUpdateMode = payload.importMode === 'update'
+    const isNewMode = payload.importMode === 'new'
+
 
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
 
@@ -6292,6 +6308,16 @@ export async function importUpdateUsersAction(
     let updatedCount = 0
     let skippedCount = 0
     const errors: string[] = []
+    let createdCount = 0
+
+    // Helper: checks if a CSV column header is included in the selectedColumns list
+    // When selectedColumns is empty (new mode or update-all), always returns true
+    const isColumnSelected = (headerName: string): boolean => {
+      if (!isUpdateMode || selectedColumns.length === 0) return true
+      return selectedColumns.some(
+        (sel) => sel.trim().toLowerCase() === headerName.trim().toLowerCase()
+      )
+    }
 
     type RecordType = (typeof records)[number]
     for (const record of records) {
@@ -6303,6 +6329,90 @@ export async function importUpdateUsersAction(
       }
 
       const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+
+      // --- NEW MODE: only create records that don't exist yet ---
+      if (isNewMode) {
+        if (existing) {
+          skippedCount++ // already exists — skip
+          continue
+        }
+
+        // Build a minimal employee record from available columns
+        const nameIdx   = col('name')
+        const deptIdx   = col('department')
+        const sectionIdx = col('section')
+        const jobTitleIdx = col('job title')
+        const levelNameIdx = col('level staff')
+        const peranIdx  = col('peran')
+        const lokasiSiteIdx = col('lokasi site')
+        const tipeStatusIdx = col('tipe status')
+        const genderIdx = col('gender')
+        const agamaIdx  = col('agama')
+        const pendidikanIdx = col('pendidikan')
+        const maritalIdx = col('marital status')
+        const pohIdx    = col('poh')
+        const joinDateIdx = col('join date')
+        const contractStartIdx = col('contract start')
+        const contractEndIdx   = col('contract end')
+        const permanentDateIdx = col('permanent date')
+        const tglLahirIdx      = col('tgl lahir')
+        const emailIdx   = col('email')
+        const phoneIdx   = col('phone number')
+        const domicileIdx = col('domicile')
+        const statusAkunIdx = col('status akun')
+
+        const getValue = (idx: number | undefined): string =>
+          idx !== undefined ? (recordValues[idx] ?? '').trim() : ''
+        const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
+
+        const newName = getValue(nameIdx)
+        if (!newName) { skippedCount++; continue }
+
+        const fallbackSite: ImportSiteLookup = siteRows[0] ?? { id: 1, name: '', location: '' }
+        const resolvedSite = lokasiVal
+          ? resolveSiteFromImportedLocation(lokasiVal, siteRows, fallbackSite)
+          : fallbackSite
+
+        const statusVal = getValue(statusAkunIdx).toLowerCase()
+        const isActive = statusVal.includes('active') || statusVal === 'aktif' ? true
+          : statusVal.includes('non') || statusVal.includes('inactive') ? false
+          : true
+
+        const resolvedSiteId = resolvedSite.id
+
+        await db.insert(employees).values({
+          employeeSn,
+          name: newName,
+          email: getValue(emailIdx) || `import-${employeeSn.toLowerCase()}@placeholder.local`,
+          role: getValue(peranIdx) || 'Site Admin',
+          department: getValue(deptIdx) || '',
+          section: getValue(sectionIdx) || '',
+          jobTitle: getValue(jobTitleIdx) || '',
+          levelName: getValue(levelNameIdx) || '',
+          accessRole: getValue(peranIdx) || 'Site Admin',
+          workLocation: lokasiVal || '',
+          siteId: resolvedSiteId,
+          employeeStatusType: getValue(tipeStatusIdx) || '',
+          gender: getValue(genderIdx) || '',
+          religion: getValue(agamaIdx) || '',
+          education: getValue(pendidikanIdx) || '',
+          maritalStatus: getValue(maritalIdx) || '',
+          pointOfHire: getValue(pohIdx) || '',
+          joinDate: getDate(joinDateIdx),
+          contractDurationStart: getDate(contractStartIdx),
+          contractDurationEnd: getDate(contractEndIdx),
+          permanentDate: getDate(permanentDateIdx),
+          birthDate: getDate(tglLahirIdx),
+          phoneNumber: getValue(phoneIdx) || '',
+          domicile: getValue(domicileIdx) || '',
+          isActive,
+          employmentStatus: isActive ? 'active' : 'inactive',
+        })
+        createdCount++
+        continue
+      }
+
+      // --- UPDATE MODE: update only selected columns on existing records ---
       if (!existing) {
         skippedCount++
         continue
@@ -6336,33 +6446,34 @@ export async function importUpdateUsersAction(
 
       const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
 
+      // Build update payload — skip fields whose CSV column is not in selectedColumns
       const employeeUpdate: Record<string, unknown> = {}
 
-      if (nameIdx !== undefined) {
+      if (nameIdx !== undefined && isColumnSelected(headers[nameIdx])) {
         const v = getValue(nameIdx)
         if (v) employeeUpdate.name = v
       }
-      if (deptIdx !== undefined) {
+      if (deptIdx !== undefined && isColumnSelected(headers[deptIdx])) {
         const v = getValue(deptIdx)
         if (v) employeeUpdate.department = v
       }
-      if (sectionIdx !== undefined) {
+      if (sectionIdx !== undefined && isColumnSelected(headers[sectionIdx])) {
         const v = getValue(sectionIdx)
         if (v) employeeUpdate.section = v
       }
-      if (jobTitleIdx !== undefined) {
+      if (jobTitleIdx !== undefined && isColumnSelected(headers[jobTitleIdx])) {
         const v = getValue(jobTitleIdx)
         if (v) employeeUpdate.jobTitle = v
       }
-      if (levelNameIdx !== undefined) {
+      if (levelNameIdx !== undefined && isColumnSelected(headers[levelNameIdx])) {
         const v = getValue(levelNameIdx)
         if (v) employeeUpdate.levelName = v
       }
-      if (peranIdx !== undefined) {
+      if (peranIdx !== undefined && isColumnSelected(headers[peranIdx])) {
         const v = getValue(peranIdx)
         if (v) employeeUpdate.accessRole = v
       }
-      if (lokasiSiteIdx !== undefined) {
+      if (lokasiSiteIdx !== undefined && isColumnSelected(headers[lokasiSiteIdx])) {
         const v = getValue(lokasiSiteIdx)
         if (v) {
           const resolvedSite = resolveSiteFromImportedLocation(v, siteRows, {
@@ -6374,63 +6485,63 @@ export async function importUpdateUsersAction(
           employeeUpdate.siteId = resolvedSite.id
         }
       }
-      if (tipeStatusIdx !== undefined) {
+      if (tipeStatusIdx !== undefined && isColumnSelected(headers[tipeStatusIdx])) {
         const v = getValue(tipeStatusIdx)
         if (v) employeeUpdate.employeeStatusType = v
       }
-      if (genderIdx !== undefined) {
+      if (genderIdx !== undefined && isColumnSelected(headers[genderIdx])) {
         const v = getValue(genderIdx)
         if (v && v !== '-') employeeUpdate.gender = v
       }
-      if (agamaIdx !== undefined) {
+      if (agamaIdx !== undefined && isColumnSelected(headers[agamaIdx])) {
         const v = getValue(agamaIdx)
         if (v && v !== '-') employeeUpdate.religion = v
       }
-      if (pendidikanIdx !== undefined) {
+      if (pendidikanIdx !== undefined && isColumnSelected(headers[pendidikanIdx])) {
         const v = getValue(pendidikanIdx)
         if (v && v !== '-') employeeUpdate.education = v
       }
-      if (maritalIdx !== undefined) {
+      if (maritalIdx !== undefined && isColumnSelected(headers[maritalIdx])) {
         const v = getValue(maritalIdx)
         employeeUpdate.maritalStatus = v && v !== '-' ? v : ''
       }
-      if (pohIdx !== undefined) {
+      if (pohIdx !== undefined && isColumnSelected(headers[pohIdx])) {
         const v = getValue(pohIdx)
         if (v && v !== '-') employeeUpdate.pointOfHire = v
       }
-      if (joinDateIdx !== undefined) {
+      if (joinDateIdx !== undefined && isColumnSelected(headers[joinDateIdx])) {
         const d = getDate(joinDateIdx)
         if (d) employeeUpdate.joinDate = d
       }
-      if (contractStartIdx !== undefined) {
+      if (contractStartIdx !== undefined && isColumnSelected(headers[contractStartIdx])) {
         const d = getDate(contractStartIdx)
         if (d) employeeUpdate.contractDurationStart = d
       }
-      if (contractEndIdx !== undefined) {
+      if (contractEndIdx !== undefined && isColumnSelected(headers[contractEndIdx])) {
         const d = getDate(contractEndIdx)
         if (d) employeeUpdate.contractDurationEnd = d
       }
-      if (permanentDateIdx !== undefined) {
+      if (permanentDateIdx !== undefined && isColumnSelected(headers[permanentDateIdx])) {
         const d = getDate(permanentDateIdx)
         if (d) employeeUpdate.permanentDate = d
       }
-      if (tglLahirIdx !== undefined) {
+      if (tglLahirIdx !== undefined && isColumnSelected(headers[tglLahirIdx])) {
         const d = getDate(tglLahirIdx)
         if (d) employeeUpdate.birthDate = d
       }
-      if (emailIdx !== undefined) {
+      if (emailIdx !== undefined && isColumnSelected(headers[emailIdx])) {
         const v = getValue(emailIdx)
         if (v && v !== '-') employeeUpdate.email = v
       }
-      if (phoneIdx !== undefined) {
+      if (phoneIdx !== undefined && isColumnSelected(headers[phoneIdx])) {
         const v = getValue(phoneIdx)
         if (v && v !== '-') employeeUpdate.phoneNumber = v
       }
-      if (domicileIdx !== undefined) {
+      if (domicileIdx !== undefined && isColumnSelected(headers[domicileIdx])) {
         const v = getValue(domicileIdx)
         if (v && v !== '-') employeeUpdate.domicile = v
       }
-      if (statusAkunIdx !== undefined) {
+      if (statusAkunIdx !== undefined && isColumnSelected(headers[statusAkunIdx])) {
         const v = getValue(statusAkunIdx).toLowerCase()
         if (v.includes('active') || v === 'aktif') {
           employeeUpdate.isActive = true
@@ -6464,18 +6575,22 @@ export async function importUpdateUsersAction(
     const actorEmail = await getCurrentActorEmail()
     await logAuditEvent({
       actorEmail,
-      action: 'user.bulk_updated',
+      action: isNewMode ? 'user.bulk_imported' : 'user.bulk_updated',
       entityType: 'user_import',
-      entityLabel: 'import_update_users',
-      description: `Updated ${updatedCount} users from CSV import, skipped ${skippedCount}.`,
+      entityLabel: isNewMode ? 'import_new_users' : 'import_update_users',
+      description: isNewMode
+        ? `Created ${createdCount} new employees from CSV import, skipped ${skippedCount}.`
+        : `Updated ${updatedCount} employees from CSV import (${selectedColumns.length > 0 ? selectedColumns.length + ' columns selected' : 'all columns'}), skipped ${skippedCount}.`,
     })
 
     revalidateAdminSurfaces()
 
     return {
       status: 'success',
-      message: `Update selesai: ${updatedCount} diperbarui, ${skippedCount} dilewati.`,
-      importedCount: 0,
+      message: isNewMode
+        ? `Import selesai: ${createdCount} data baru ditambahkan, ${skippedCount} dilewati (SN sudah ada).`
+        : `Update selesai: ${updatedCount} diperbarui${selectedColumns.length > 0 ? ` (${selectedColumns.length} kolom)` : ''}, ${skippedCount} dilewati.`,
+      importedCount: createdCount,
       updatedCount,
       skippedCount,
     }

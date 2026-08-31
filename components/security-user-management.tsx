@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { Fragment, useActionState, useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
@@ -324,6 +324,8 @@ export function SecurityUserManagement({
   const [isImportUpdateOpen, setIsImportUpdateOpen] = useState(false)
   const [importUpdateRawCsv, setImportUpdateRawCsv] = useState('')
   const [confirmLocationChanges, setConfirmLocationChanges] = useState(false)
+  const [selectedUpdateColumns, setSelectedUpdateColumns] = useState<string[]>([])
+  const [importMode, setImportMode] = useState<'new' | 'update'>('update')
   const [importUpdateActionState, importUpdateFormAction] = useActionState(
     importUpdateUsersAction,
     INITIAL_IMPORT_STATE
@@ -334,7 +336,9 @@ export function SecurityUserManagement({
   const importUpdateLocationChanges = useMemo(() => {
     const snHeader = parsedImportUpdate.headers.find((header) => normalizeImportValue(header) === 'sn')
     const siteHeader = parsedImportUpdate.headers.find((header) => normalizeImportValue(header) === 'lokasi site')
+    // Only check location changes if the site column is selected for update
     if (!snHeader || !siteHeader) return []
+    if (selectedUpdateColumns.length > 0 && !selectedUpdateColumns.includes(siteHeader)) return []
 
     const usersBySn = new Map(
       users
@@ -355,7 +359,48 @@ export function SecurityUserManagement({
 
       return [{ sn, name: user.name, before: currentLocation, after: nextLocation }]
     })
-  }, [parsedImportUpdate.headers, parsedImportUpdate.records, users])
+  }, [parsedImportUpdate.headers, parsedImportUpdate.records, users, selectedUpdateColumns])
+
+  // Scan parsed rows for empty fields — shown as info warnings (does not block submit)
+  const missingFieldWarnings = useMemo(() => {
+    if (parsedImportUpdate.records.length === 0) return []
+
+    // Key fields to check — map from normalized header alias to display label
+    const IMPORTANT_FIELDS: Array<{ label: string; aliases: string[] }> = [
+      { label: 'SN', aliases: ['sn'] },
+      { label: 'Name', aliases: ['name', 'nama'] },
+      { label: 'Department', aliases: ['department', 'departemen', 'dept'] },
+      { label: 'Section', aliases: ['section', 'seksi'] },
+      { label: 'Job Title', aliases: ['job title', 'jabatan', 'position'] },
+      { label: 'Lokasi Site', aliases: ['lokasi site', 'site', 'lokasi'] },
+      { label: 'Tipe Status', aliases: ['tipe status', 'tipe status karyawan'] },
+    ]
+
+    const normalizedHeaders = parsedImportUpdate.headers.map((h) => ({
+      raw: h,
+      normalized: normalizeImportValue(h),
+    }))
+
+    const warnings: Array<{ field: string; count: number }> = []
+
+    for (const field of IMPORTANT_FIELDS) {
+      const matched = normalizedHeaders.find((h) =>
+        field.aliases.some((alias) => h.normalized === alias)
+      )
+      if (!matched) continue // column not in file — skip
+
+      const emptyCount = parsedImportUpdate.records.filter(
+        (rec) => !(rec[matched.raw] ?? '').trim()
+      ).length
+
+      if (emptyCount > 0) {
+        warnings.push({ field: field.label, count: emptyCount })
+      }
+    }
+
+    return warnings
+  }, [parsedImportUpdate.headers, parsedImportUpdate.records])
+
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
     [users]
@@ -416,6 +461,8 @@ export function SecurityUserManagement({
       setIsImportUpdateOpen(false)
       setImportUpdateRawCsv('')
       setConfirmLocationChanges(false)
+      setSelectedUpdateColumns([])
+      setImportMode('update')
       startRefreshTransition(() => router.refresh())
     }
   }, [importUpdateActionState.status, router, startRefreshTransition])
@@ -986,7 +1033,7 @@ export function SecurityUserManagement({
             </div>
           ) : null}
 
-          {/* Collapsible Import Update Data */}
+          {/* Unified Import Data Pengguna Panel */}
           <div className="surface-module-card rounded-[1.2rem] mb-5 overflow-hidden">
             <button
               type="button"
@@ -995,7 +1042,12 @@ export function SecurityUserManagement({
             >
               <div className="flex items-center gap-3">
                 <Upload className="text-muted-foreground size-4" />
-                <span className="text-foreground text-sm font-semibold">Import Update Data Pengguna</span>
+                <div>
+                  <span className="text-foreground text-sm font-semibold">Import Data Pengguna</span>
+                  <span className="text-muted-foreground text-xs ml-2">
+                    {importMode === 'new' ? '· Mode: Tambah Data Baru' : '· Mode: Update Data yang Ada'}
+                  </span>
+                </div>
               </div>
               <ChevronDown
                 className={cn(
@@ -1006,129 +1058,322 @@ export function SecurityUserManagement({
             </button>
 
             {isImportUpdateOpen ? (
-              <div className="border-border/50 border-t px-5 pb-5 pt-4">
-                <div className="mb-4 space-y-2">
-                  <p className="text-muted-foreground text-xs">
-                    Download semua data pengguna, edit di Excel, lalu upload kembali. Data akan
-                    dicocokkan berdasarkan <strong>SN</strong> dan diperbarui otomatis.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={exportAllUsers}
-                    className="bg-surface-container-lowest text-foreground h-9 rounded-xl border-0 px-4 text-xs font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-                  >
-                    <Download className="mr-2 size-3.5" />
-                    Download All Users Excel
-                  </Button>
+              <div className="border-border/50 border-t px-5 pb-6 pt-5 space-y-5">
+
+                {/* STEP 1 — Mode Selector */}
+                <div className="space-y-2">
+                  <p className="text-foreground text-xs font-semibold">Pilih Tipe Import</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('update')
+                        setImportUpdateRawCsv('')
+                        setSelectedUpdateColumns([])
+                        setConfirmLocationChanges(false)
+                      }}
+                      className={cn(
+                        'flex flex-col items-start gap-1.5 rounded-xl border px-4 py-3 text-left transition-all',
+                        importMode === 'update'
+                          ? 'border-primary/40 bg-primary/5 ring-1 ring-primary/30'
+                          : 'border-border/60 bg-white/60 hover:bg-white'
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          'size-3.5 rounded-full border-2 flex items-center justify-center',
+                          importMode === 'update' ? 'border-primary' : 'border-muted-foreground/40'
+                        )}>
+                          {importMode === 'update' && <div className="size-1.5 rounded-full bg-primary" />}
+                        </div>
+                        <span className={cn('text-xs font-semibold', importMode === 'update' ? 'text-primary' : 'text-foreground')}>
+                          Update Data yang Ada
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px] pl-5.5">
+                        Perbarui data karyawan existing. Cocokkan via SN dan pilih kolom mana yang diupdate.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportMode('new')
+                        setImportUpdateRawCsv('')
+                        setSelectedUpdateColumns([])
+                        setConfirmLocationChanges(false)
+                      }}
+                      className={cn(
+                        'flex flex-col items-start gap-1.5 rounded-xl border px-4 py-3 text-left transition-all',
+                        importMode === 'new'
+                          ? 'border-emerald-500/40 bg-emerald-50/60 ring-1 ring-emerald-500/30'
+                          : 'border-border/60 bg-white/60 hover:bg-white'
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          'size-3.5 rounded-full border-2 flex items-center justify-center',
+                          importMode === 'new' ? 'border-emerald-600' : 'border-muted-foreground/40'
+                        )}>
+                          {importMode === 'new' && <div className="size-1.5 rounded-full bg-emerald-600" />}
+                        </div>
+                        <span className={cn('text-xs font-semibold', importMode === 'new' ? 'text-emerald-700' : 'text-foreground')}>
+                          Tambah Data Baru
+                        </span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px] pl-5.5">
+                        Tambahkan karyawan baru dari file. SN yang sudah ada akan dilewati secara otomatis.
+                      </p>
+                    </button>
+                  </div>
                 </div>
 
-                <form action={importUpdateFormAction} className="space-y-4">
-                  <input type="hidden" name="rawCsv" value={importUpdateRawCsv} />
-                  <input
-                    type="hidden"
-                    name="confirmLocationChanges"
-                    value={confirmLocationChanges ? 'true' : 'false'}
-                  />
-                  <div className="space-y-2">
-                    <p className="text-foreground text-xs font-semibold">Upload File Excel/CSV</p>
-                    <Input
-                      type="file"
-                      accept=".csv,.xls,.xlsx,text/csv"
-                      onChange={async (event) => {
-                        const file = event.target.files?.[0]
-                        if (!file) return
-                        setConfirmLocationChanges(false)
-                        const lowerName = file.name.toLowerCase()
-                        if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
-                          const buffer = await file.arrayBuffer()
-                          const XLSX = await import('xlsx')
-                          const workbook = XLSX.read(buffer, { type: 'array' })
-                          const firstSheet = workbook.SheetNames[0]
-                          const worksheet = workbook.Sheets[firstSheet]
-                          const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(
-                            worksheet,
-                            { header: 1, raw: false, defval: '', blankrows: false }
-                          )
-                          const normalized = rows
-                            .map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim()))
-                            .filter((r: string[]) => r.some((c: string) => c.length > 0))
-                          const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
-                          setImportUpdateRawCsv(csv)
-                        } else {
-                          setImportUpdateRawCsv(await file.text())
-                        }
-                      }}
-                      className="bg-surface-container-lowest h-9 rounded-xl border-0 text-xs shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-                    />
+                {/* STEP 2 — File Upload + Download Template */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-foreground text-xs font-semibold">Upload File Excel / CSV</p>
+                    <button
+                      type="button"
+                      onClick={exportAllUsers}
+                      className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Download className="size-3" />
+                      Download template / data existing
+                    </button>
                   </div>
+                  <Input
+                    type="file"
+                    accept=".csv,.xls,.xlsx,text/csv"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) return
+                      setConfirmLocationChanges(false)
+                      setSelectedUpdateColumns([])
+                      const lowerName = file.name.toLowerCase()
+                      if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+                        const buffer = await file.arrayBuffer()
+                        const XLSX = await import('xlsx')
+                        const workbook = XLSX.read(buffer, { type: 'array' })
+                        const firstSheet = workbook.SheetNames[0]
+                        const worksheet = workbook.Sheets[firstSheet]
+                        const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(
+                          worksheet,
+                          { header: 1, raw: false, defval: '', blankrows: false }
+                        )
+                        const normalized = rows
+                          .map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim()))
+                          .filter((r: string[]) => r.some((c: string) => c.length > 0))
+                        const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
+                        setImportUpdateRawCsv(csv)
+                      } else {
+                        setImportUpdateRawCsv(await file.text())
+                      }
+                    }}
+                    className="bg-surface-container-lowest h-9 rounded-xl border-0 text-xs shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                  />
+                </div>
 
+                {/* STEP 3 — Preview Table */}
+                {parsedImportUpdate.records.length > 0 ? (
                   <div className="space-y-2">
-                    <p className="text-foreground text-xs font-semibold">Pratinjau ({parsedImportUpdate.records.length} baris)</p>
-                    {parsedImportUpdate.records.length > 0 ? (
-                      <div className="bg-surface-container-low overflow-x-auto rounded-[0.95rem] p-2">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="hover:bg-transparent">
+                    <div className="flex items-center justify-between">
+                      <p className="text-foreground text-xs font-semibold">
+                        Pratinjau Data
+                      </p>
+                      <span className="text-muted-foreground text-[11px]">
+                        {parsedImportUpdate.records.length} baris · {parsedImportUpdate.headers.length} kolom
+                      </span>
+                    </div>
+                    <div className="bg-surface-container-low overflow-x-auto rounded-[0.95rem] p-2">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            {parsedImportUpdate.headers.map((header) => (
+                              <TableHead key={header} className="whitespace-nowrap text-[10px]">{header}</TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {parsedImportUpdate.records.slice(0, 5).map((record, idx) => (
+                            <TableRow key={idx} className="hover:bg-transparent">
                               {parsedImportUpdate.headers.map((header) => (
-                                <TableHead key={header} className="whitespace-nowrap text-[10px]">{header}</TableHead>
+                                <TableCell
+                                  key={header}
+                                  className={cn(
+                                    'text-[11px]',
+                                    !(record[header] ?? '').trim() && 'text-rose-400'
+                                  )}
+                                >
+                                  {record[header] || '—'}
+                                </TableCell>
                               ))}
                             </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {parsedImportUpdate.records.slice(0, 5).map((record, idx) => (
-                              <TableRow key={idx} className="hover:bg-transparent">
-                                {parsedImportUpdate.headers.map((header) => (
-                                  <TableCell key={header} className="text-[11px]">{record[header] || '-'}</TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {parsedImportUpdate.records.length > 5 && (
+                        <p className="text-muted-foreground text-center text-[10px] pt-1">
+                          + {parsedImportUpdate.records.length - 5} baris lainnya tidak ditampilkan
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Missing field warnings — info only */}
+                    {missingFieldWarnings.length > 0 && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 space-y-1.5">
+                        <p className="text-amber-800 text-xs font-semibold flex items-center gap-1.5">
+                          <span>⚠</span> Kolom dengan data kosong (informasi saja)
+                        </p>
+                        <ul className="space-y-0.5">
+                          {missingFieldWarnings.map((w) => (
+                            <li key={w.field} className="text-amber-700 text-[11px] flex items-center gap-2">
+                              <span className="inline-block size-1 rounded-full bg-amber-400 shrink-0" />
+                              <strong>{w.field}</strong>: {w.count} baris tidak terisi
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-amber-600 text-[10px]">Data ini tetap bisa diimport. Kolom kosong akan diabaikan.</p>
                       </div>
-                    ) : (
-                      <p className="text-muted-foreground text-xs">Upload file untuk melihat pratinjau.</p>
                     )}
                   </div>
+                ) : importUpdateRawCsv ? (
+                  <p className="text-muted-foreground text-xs rounded-xl border border-border/50 bg-white/40 px-4 py-3">
+                    File terbaca tapi tidak ada baris data yang valid.
+                  </p>
+                ) : null}
 
-                  {importUpdateLocationChanges.length > 0 ? (
-                    <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-700">
-                      <AlertDescription className="space-y-3 text-xs">
-                        <p>
-                          Ada {importUpdateLocationChanges.length} perubahan Lokasi Site. Cek dulu sebelum update.
-                        </p>
-                        <div className="max-h-36 overflow-auto rounded-lg bg-white/60 p-2">
-                          {importUpdateLocationChanges.slice(0, 10).map((item) => (
-                            <div key={`${item.sn}-${item.after}`} className="grid gap-1 py-1 sm:grid-cols-[8rem_1fr_1fr]">
-                              <span className="font-semibold">{item.sn}</span>
-                              <span>{item.before || '-'}</span>
-                              <span>{item.after || '-'}</span>
-                            </div>
-                          ))}
+                {/* STEP 4 — Column Selection (Update mode only) */}
+                {importMode === 'update' && parsedImportUpdate.headers.length > 0 && (() => {
+                  const updatableHeaders = parsedImportUpdate.headers.filter(
+                    (h) => normalizeImportValue(h) !== 'sn'
+                  )
+                  const noneSelected = selectedUpdateColumns.length === 0
+
+                  return (
+                    <div className="rounded-[0.95rem] border border-border/70 bg-white/50 p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-foreground text-xs font-semibold">Pilih Kolom yang Diupdate</p>
+                          <p className="text-muted-foreground text-[11px] mt-0.5">
+                            Hanya kolom yang dicentang yang diperbarui di database.{' '}
+                            <span className={cn(
+                              'font-semibold',
+                              selectedUpdateColumns.length > 0 ? 'text-primary' : 'text-amber-600'
+                            )}>
+                              {selectedUpdateColumns.length}/{updatableHeaders.length} dipilih
+                            </span>
+                          </p>
                         </div>
-                        <label className="flex items-center gap-2 font-semibold">
-                          <Checkbox
-                            checked={confirmLocationChanges}
-                            onCheckedChange={(checked) => setConfirmLocationChanges(checked === true)}
-                          />
-                          Saya setuju update Lokasi Site sesuai file import.
-                        </label>
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUpdateColumns(updatableHeaders)}
+                            className="text-[10px] font-semibold text-primary hover:underline"
+                          >
+                            Pilih Semua
+                          </button>
+                          <span className="text-muted-foreground/40 text-[10px]">·</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedUpdateColumns([])
+                              setConfirmLocationChanges(false)
+                            }}
+                            className="text-[10px] font-semibold text-muted-foreground hover:underline"
+                          >
+                            Bersihkan
+                          </button>
+                        </div>
+                      </div>
 
-                  {importUpdateActionState.status !== 'idle' ? (
-                    <Alert
-                      className={
-                        importUpdateActionState.status === 'error'
-                          ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                          : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
-                      }
-                    >
-                      <AlertDescription className="text-xs">{importUpdateActionState.message}</AlertDescription>
-                    </Alert>
-                  ) : null}
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {updatableHeaders.map((header) => {
+                          const isChecked = selectedUpdateColumns.includes(header)
+                          return (
+                            <label
+                              key={header}
+                              className={cn(
+                                'flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-xs transition-all',
+                                isChecked
+                                  ? 'border-primary/30 bg-primary/8 text-primary font-semibold'
+                                  : 'border-border/50 bg-white/80 text-foreground hover:bg-white hover:border-border'
+                              )}
+                            >
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedUpdateColumns((prev) => [...prev, header])
+                                  } else {
+                                    setSelectedUpdateColumns((prev) => prev.filter((c) => c !== header))
+                                    if (normalizeImportValue(header) === 'lokasi site') {
+                                      setConfirmLocationChanges(false)
+                                    }
+                                  }
+                                }}
+                                className="size-3.5 shrink-0"
+                              />
+                              <span className="truncate leading-tight">{header}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+
+                      {noneSelected && (
+                        <p className="text-amber-600 text-[11px] font-medium">
+                          ⚠ Pilih minimal 1 kolom yang ingin diperbarui.
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Lokasi Site change confirmation */}
+                {importUpdateLocationChanges.length > 0 ? (
+                  <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-700">
+                    <AlertDescription className="space-y-3 text-xs">
+                      <p>
+                        Ada {importUpdateLocationChanges.length} perubahan Lokasi Site. Cek dulu sebelum update.
+                      </p>
+                      <div className="max-h-36 overflow-auto rounded-lg bg-white/60 p-2">
+                        {importUpdateLocationChanges.slice(0, 10).map((item) => (
+                          <div key={`${item.sn}-${item.after}`} className="grid gap-1 py-1 sm:grid-cols-[8rem_1fr_1fr]">
+                            <span className="font-semibold">{item.sn}</span>
+                            <span>{item.before || '-'}</span>
+                            <span>{item.after || '-'}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-2 font-semibold">
+                        <Checkbox
+                          checked={confirmLocationChanges}
+                          onCheckedChange={(checked) => setConfirmLocationChanges(checked === true)}
+                        />
+                        Saya setuju update Lokasi Site sesuai file import.
+                      </label>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {/* Action result alert */}
+                {importUpdateActionState.status !== 'idle' ? (
+                  <Alert
+                    className={
+                      importUpdateActionState.status === 'error'
+                        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                    }
+                  >
+                    <AlertDescription className="text-xs">{importUpdateActionState.message}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {/* Form submit */}
+                <form action={importUpdateFormAction}>
+                  <input type="hidden" name="rawCsv" value={importUpdateRawCsv} />
+                  <input type="hidden" name="confirmLocationChanges" value={confirmLocationChanges ? 'true' : 'false'} />
+                  <input type="hidden" name="selectedColumnsJson" value={JSON.stringify(selectedUpdateColumns)} />
+                  <input type="hidden" name="importMode" value={importMode} />
 
                   <div className="flex justify-end gap-2">
                     <Button
@@ -1138,6 +1383,8 @@ export function SecurityUserManagement({
                       onClick={() => {
                         setImportUpdateRawCsv('')
                         setConfirmLocationChanges(false)
+                        setSelectedUpdateColumns([])
+                        setImportMode('update')
                         setIsImportUpdateOpen(false)
                       }}
                       className="h-9 rounded-xl px-4 text-xs"
@@ -1147,10 +1394,22 @@ export function SecurityUserManagement({
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={parsedImportUpdate.records.length === 0 || (importUpdateLocationChanges.length > 0 && !confirmLocationChanges)}
-                      className="h-9 rounded-xl px-4 text-xs"
+                      disabled={
+                        parsedImportUpdate.records.length === 0 ||
+                        (importMode === 'update' && selectedUpdateColumns.length === 0) ||
+                        (importUpdateLocationChanges.length > 0 && !confirmLocationChanges)
+                      }
+                      className={cn(
+                        'h-9 rounded-xl px-4 text-xs',
+                        importMode === 'new' && 'bg-emerald-600 hover:bg-emerald-700'
+                      )}
                     >
-                      {importUpdateActionState.status === 'error' ? 'Coba Lagi' : 'Update Data'}
+                      {importMode === 'new'
+                        ? `Tambah ${parsedImportUpdate.records.length > 0 ? parsedImportUpdate.records.length + ' ' : ''}Data Baru`
+                        : importUpdateActionState.status === 'error'
+                          ? 'Coba Lagi'
+                          : `Update ${selectedUpdateColumns.length > 0 ? selectedUpdateColumns.length + ' Kolom' : 'Data'}`
+                      }
                     </Button>
                   </div>
                 </form>
