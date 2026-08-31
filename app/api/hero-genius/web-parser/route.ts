@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseWebUrl } from "@/lib/hero-genius/web-parser";
+import { getServerSession } from "@/lib/auth-session";
 
 /**
  * POST /api/hero-genius/web-parser
@@ -7,6 +8,11 @@ import { parseWebUrl } from "@/lib/hero-genius/web-parser";
  */
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { url, chunkSize, chunkOverlap, timeoutMs } = body || {};
 

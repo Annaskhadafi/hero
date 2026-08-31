@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from '@/lib/auth-session'
 import { getEmailSmtpSettingsData } from '@/lib/hero-admin'
 import { sendEmailViaSmtp } from '@/lib/email-delivery'
 import { getHcEmailTemplateByType } from '@/app/actions/hc-email-templates'
@@ -6,6 +7,11 @@ import { renderHcTemplate } from '@/lib/hc-email-utils'
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized: Session required.' }, { status: 401 })
+    }
+
     const body = await req.json()
     const {
       clinicName,

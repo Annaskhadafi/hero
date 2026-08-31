@@ -4,12 +4,16 @@ import os from "os";
 import path from "path";
 import { gunzipSync, gzipSync } from "zlib";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { loadEnvConfig } from "@next/env";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { settings } from "@/db/schema";
 import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "@/lib/database-url";
 import { serverEnv } from "@/lib/server-env";
 
@@ -22,9 +26,37 @@ function quoteSafeTimestamp(date = new Date()) {
 }
 
 function getBackupDir() {
-  const dir = path.join(process.cwd(), "backups");
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const primaryDir = path.join(process.cwd(), "backups");
+  try {
+    fs.mkdirSync(primaryDir, { recursive: true });
+    const testFile = path.join(primaryDir, `.write-test-${Date.now()}`);
+    fs.writeFileSync(testFile, "ok");
+    fs.unlinkSync(testFile);
+    return primaryDir;
+  } catch {
+    const fallbackDir = path.join(os.tmpdir(), "hero-backups");
+    fs.mkdirSync(fallbackDir, { recursive: true });
+    return fallbackDir;
+  }
+}
+
+function getPgEnv(databaseUrl: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  try {
+    const parsed = new URL(databaseUrl);
+    if (parsed.username) env.PGUSER = decodeURIComponent(parsed.username);
+    if (parsed.password) env.PGPASSWORD = decodeURIComponent(parsed.password);
+    if (parsed.hostname) env.PGHOST = parsed.hostname;
+    if (parsed.port) env.PGPORT = parsed.port;
+    if (parsed.pathname && parsed.pathname.length > 1) {
+      env.PGDATABASE = decodeURIComponent(parsed.pathname.slice(1));
+    }
+    const sslmode = parsed.searchParams.get("sslmode");
+    if (sslmode) env.PGSSLMODE = sslmode;
+  } catch {
+    // If URL parsing fails, ignore and let --dbname handle it
+  }
+  return env;
 }
 
 function findExecutable(envName: string, command: string, knownPaths: string[]) {
@@ -45,6 +77,9 @@ function findExecutable(envName: string, command: string, knownPaths: string[]) 
 
 function findPgDump() {
   return findExecutable("PG_DUMP_BIN", "pg_dump", [
+    "/usr/bin/pg_dump",
+    "/usr/local/bin/pg_dump",
+    "/bin/pg_dump",
     "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe",
     "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe",
     "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe",
@@ -56,6 +91,9 @@ function findPgDump() {
 
 function findPsql() {
   return findExecutable("PSQL_BIN", "psql", [
+    "/usr/bin/psql",
+    "/usr/local/bin/psql",
+    "/bin/psql",
     "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
     "C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe",
     "C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe",
@@ -113,13 +151,32 @@ export async function createDatabaseBackup(reason = "manual") {
   const fileName = path.basename(gzFile);
   const key = makeBackupKey(fileName);
 
-  execFileSync(
-    pgDump,
-    ["--dbname", databaseUrl, "--clean", "--if-exists", "--no-owner", "--no-privileges", "--file", sqlFile],
-    { stdio: "inherit", env: process.env },
-  );
+  const pgEnv = getPgEnv(databaseUrl);
 
-  fs.writeFileSync(gzFile, gzipSync(fs.readFileSync(sqlFile), { level: 9 }));
+  try {
+    execFileSync(
+      pgDump,
+      ["--dbname", databaseUrl, "--clean", "--if-exists", "--no-owner", "--no-privileges", "--file", sqlFile],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, ...pgEnv },
+        timeout: 300000,
+        maxBuffer: 100 * 1024 * 1024,
+      },
+    );
+  } catch (err: any) {
+    const stderr = err.stderr?.toString("utf-8") || err.message;
+    console.error("[database-backup] pg_dump failed:", stderr);
+    throw new Error(`pg_dump gagal: ${stderr}`);
+  }
+
+  const uncompressedBytes = fs.readFileSync(sqlFile);
+  fs.writeFileSync(gzFile, gzipSync(uncompressedBytes, { level: 9 }));
+  try {
+    fs.unlinkSync(sqlFile); // Remove uncompressed raw sql to save disk space
+  } catch {
+    // ignore
+  }
   const buffer = fs.readFileSync(gzFile);
 
   await getS3Client().send(
@@ -177,7 +234,196 @@ function resolveLocalBackup(input: string) {
   return fs.existsSync(backupPath) ? backupPath : input;
 }
 
-export function getDatabaseBackupEnvStatus() {
+const BACKUP_RETENTION_SETTING_KEY = "backup_retention_months";
+const DEFAULT_RETENTION_MONTHS = 3;
+
+export async function getBackupRetentionMonths(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ value: settings.value })
+      .from(settings)
+      .where(eq(settings.key, BACKUP_RETENTION_SETTING_KEY))
+      .limit(1);
+
+    if (row?.value !== undefined && row?.value !== null && row.value.trim() !== "") {
+      const parsed = parseInt(row.value.trim(), 10);
+      if (!isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+  } catch (error) {
+    console.warn("[database-backup] Failed to read backup_retention_months from DB:", error);
+  }
+
+  const envVal = process.env.DB_BACKUP_RETENTION_MONTHS?.trim();
+  if (envVal) {
+    const parsed = parseInt(envVal, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return DEFAULT_RETENTION_MONTHS;
+}
+
+export async function setBackupRetentionMonths(months: number): Promise<number> {
+  const safeMonths = Math.max(0, Math.floor(months));
+  await db
+    .insert(settings)
+    .values({
+      key: BACKUP_RETENTION_SETTING_KEY,
+      value: String(safeMonths),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: {
+        value: String(safeMonths),
+        updatedAt: new Date(),
+      },
+    });
+
+  return safeMonths;
+}
+
+export type BackupCleanupResult = {
+  retentionMonths: number;
+  cutoffDate: string;
+  deletedCount: number;
+  deletedKeys: string[];
+  freedBytes: number;
+  freedMb: string;
+  remainingCount: number;
+  localDeletedCount: number;
+  message: string;
+};
+
+export async function cleanOldDatabaseBackups(customMonths?: number): Promise<BackupCleanupResult> {
+  const retentionMonths = customMonths !== undefined ? customMonths : await getBackupRetentionMonths();
+
+  if (retentionMonths <= 0) {
+    return {
+      retentionMonths: 0,
+      cutoffDate: "",
+      deletedCount: 0,
+      deletedKeys: [],
+      freedBytes: 0,
+      freedMb: "0.00",
+      remainingCount: 0,
+      localDeletedCount: 0,
+      message: "Kebijakan retensi dinonaktifkan (0 bulan: simpan semua backup).",
+    };
+  }
+
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(cutoffDate.getMonth() - retentionMonths);
+  const cutoffTime = cutoffDate.getTime();
+
+  // 1. Fetch all backups from S3 under prefix
+  const allContents: Array<{ Key: string; LastModified?: Date; Size?: number }> = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await getS3Client().send(
+      new ListObjectsV2Command({
+        Bucket: serverEnv.s3BucketName,
+        Prefix: `${BACKUP_PREFIX}/`,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    if (response.Contents) {
+      for (const item of response.Contents) {
+        if (item.Key && (item.Key.endsWith(".sql.gz") || item.Key.endsWith(".sql"))) {
+          allContents.push({
+            Key: item.Key,
+            LastModified: item.LastModified,
+            Size: item.Size,
+          });
+        }
+      }
+    }
+
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
+
+  // Sort descending by LastModified (newest first)
+  allContents.sort((a, b) => (b.LastModified?.getTime() ?? 0) - (a.LastModified?.getTime() ?? 0));
+
+  // SAFETY GUARD: Always preserve at least 1 newest backup no matter how old!
+  const candidateOldItems = allContents.slice(1);
+
+  const toDelete = candidateOldItems.filter((item) => {
+    const itemTime = item.LastModified ? item.LastModified.getTime() : 0;
+    return itemTime > 0 && itemTime < cutoffTime;
+  });
+
+  const deletedKeys: string[] = [];
+  let freedBytes = 0;
+
+  for (const item of toDelete) {
+    try {
+      await getS3Client().send(
+        new DeleteObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: item.Key,
+        }),
+      );
+      deletedKeys.push(item.Key);
+      freedBytes += item.Size ?? 0;
+    } catch (err) {
+      console.error(`[database-backup] Failed to delete S3 backup: ${item.Key}`, err);
+    }
+  }
+
+  // 2. Clean local backup directory
+  let localDeletedCount = 0;
+  const candidateDirs = [path.join(process.cwd(), "backups"), path.join(os.tmpdir(), "hero-backups")];
+  for (const localDir of candidateDirs) {
+    try {
+      if (fs.existsSync(localDir)) {
+        const files = fs.readdirSync(localDir);
+        for (const file of files) {
+          if (file.startsWith("hero-") && (file.endsWith(".sql") || file.endsWith(".sql.gz"))) {
+            const filePath = path.join(localDir, file);
+            try {
+              const stat = fs.statSync(filePath);
+              if (stat.mtimeMs < cutoffTime) {
+                fs.unlinkSync(filePath);
+                localDeletedCount++;
+              }
+            } catch {
+              // ignore cleanup failure for single file
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[database-backup] Failed to clean local backup dir", err);
+    }
+  }
+
+  const remainingCount = allContents.length - deletedKeys.length;
+  const freedMb = (freedBytes / 1024 / 1024).toFixed(2);
+
+  return {
+    retentionMonths,
+    cutoffDate: cutoffDate.toISOString(),
+    deletedCount: deletedKeys.length,
+    deletedKeys,
+    freedBytes,
+    freedMb,
+    remainingCount,
+    localDeletedCount,
+    message:
+      deletedKeys.length > 0
+        ? `Berhasil membersihkan ${deletedKeys.length} file backup lama (> ${retentionMonths} bulan). Ruang dibebaskan: ${freedMb} MB.`
+        : `Tidak ada file backup yang lebih lama dari ${retentionMonths} bulan untuk dihapus.`,
+  };
+}
+
+export async function getDatabaseBackupEnvStatus() {
+  const retentionMonths = await getBackupRetentionMonths();
   return {
     s3BucketConfigured: Boolean(serverEnv.s3BucketName),
     s3RegionConfigured: Boolean(serverEnv.s3Region),
@@ -188,6 +434,7 @@ export function getDatabaseBackupEnvStatus() {
     psqlConfigured: Boolean(findPsql()),
     prefix: BACKUP_PREFIX,
     cronPath: "/api/cron/database-backup",
+    retentionMonths,
   };
 }
 
@@ -212,10 +459,20 @@ export async function restoreDatabaseBackup(input: string, options: { confirmed?
     fs.writeFileSync(sqlFile, gunzipSync(fs.readFileSync(source)));
   }
 
-  execFileSync(psql, [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
-    stdio: "inherit",
-    env: process.env,
-  });
+  const pgEnv = getPgEnv(databaseUrl);
+
+  try {
+    execFileSync(psql, [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...pgEnv },
+      timeout: 600000,
+      maxBuffer: 100 * 1024 * 1024,
+    });
+  } catch (err: any) {
+    const stderr = err.stderr?.toString("utf-8") || err.message;
+    console.error("[database-backup] psql restore failed:", stderr);
+    throw new Error(`psql restore gagal: ${stderr}`);
+  }
 
   return { restoredFrom: input, sqlFile };
 }

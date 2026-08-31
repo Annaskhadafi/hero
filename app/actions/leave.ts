@@ -22,6 +22,7 @@ import {
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 import { getEmployeeTargetByEmail } from "@/lib/push-notifications";
 import { createLegacyApprovalRequest } from "@/lib/legacy-approval-engine";
+import { getServerSession } from "@/lib/auth-session";
 
 // ─── Leave Types ────────────────────────────────────────────────────────
 
@@ -408,42 +409,46 @@ export async function updateLeaveRequestStatus(
   approvedBy?: string,
   rejectionReason?: string,
 ) {
-  const [updated] = await db
-    .update(hcLeaveRequests)
-    .set({
-      status,
-      approvedBy: approvedBy || "",
-      approvedAt: new Date(),
-      rejectionReason: rejectionReason || "",
-      updatedAt: new Date(),
-    })
-    .where(eq(hcLeaveRequests.id, id))
-    .returning();
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
 
-  // If approved, update the leave balance
-  if (status === "approved" && updated) {
-    const [balance] = await db
-      .select()
-      .from(hcLeaveBalances)
-      .where(
-        and(
-          eq(hcLeaveBalances.employeeId, updated.employeeId),
-          eq(hcLeaveBalances.leaveTypeId, updated.leaveTypeId),
-          eq(hcLeaveBalances.year, new Date(updated.startDate).getFullYear()),
-        ),
-      )
-      .limit(1);
+  const updated = await db.transaction(async (tx) => {
+    const [req] = await tx
+      .update(hcLeaveRequests)
+      .set({
+        status,
+        approvedBy: approvedBy || "",
+        approvedAt: new Date(),
+        rejectionReason: rejectionReason || "",
+        updatedAt: new Date(),
+      })
+      .where(eq(hcLeaveRequests.id, id))
+      .returning();
 
-    if (balance) {
-      await db
+    if (!req) return null;
+
+    // If approved, update the leave balance atomically
+    if (status === "approved") {
+      const leaveYear = new Date(req.startDate).getFullYear();
+      await tx
         .update(hcLeaveBalances)
         .set({
-          usedDays: balance.usedDays + updated.totalDays,
+          usedDays: sql`${hcLeaveBalances.usedDays} + ${req.totalDays}`,
           updatedAt: new Date(),
         })
-        .where(eq(hcLeaveBalances.id, balance.id));
+        .where(
+          and(
+            eq(hcLeaveBalances.employeeId, req.employeeId),
+            eq(hcLeaveBalances.leaveTypeId, req.leaveTypeId),
+            eq(hcLeaveBalances.year, leaveYear),
+          ),
+        );
     }
-  }
+
+    return req;
+  });
 
   revalidatePath("/dashboard/hc/leave");
 
@@ -494,6 +499,11 @@ export async function updateLeaveRequestStatus(
 // ─── Delete Leave Request ───────────────────────────────────────────────
 
 export async function deleteLeaveRequest(id: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   await db.delete(hcLeaveRequests).where(eq(hcLeaveRequests.id, id));
   revalidatePath("/dashboard/hc/leave");
   return { success: true };
@@ -502,6 +512,11 @@ export async function deleteLeaveRequest(id: number) {
 // ─── Init Leave Balances ────────────────────────────────────────────────
 
 export async function initLeaveBalances(employeeId: number, year?: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const targetYear = year ?? new Date().getFullYear();
   const activeTypes = await db
     .select()
@@ -553,6 +568,11 @@ export async function updateLeaveBalance(
     carryOverDays?: number;
   },
 ) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const [updated] = await db
     .update(hcLeaveBalances)
     .set({

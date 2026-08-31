@@ -10,6 +10,7 @@ import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { user } from "@/db/schema/auth";
 import { revalidatePath } from "next/cache";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
+import { getServerSession } from "@/lib/auth-session";
 
 export async function getEmployeesForContract(filters?: {
   departmentId?: number;
@@ -110,6 +111,11 @@ export async function createEmployee(data: {
   manpower?: string;
   lastMcuDate?: string | null;
 }) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Session required to create employee");
+  }
+
   const setData = {
     employeeSn: data.employeeId,
     name: data.fullName,
@@ -189,6 +195,11 @@ export async function updateEmployee(id: number, data: {
   manpower?: string;
   lastMcuDate?: string | null;
 }) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Session required to update employee");
+  }
+
   const [before] = await db
     .select()
     .from(employees)
@@ -276,6 +287,11 @@ export async function updateEmployee(id: number, data: {
 }
 
 export async function deleteEmployee(id: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Session required to delete employee");
+  }
+
   const [deleted] = await db
     .update(employees)
     .set({

@@ -19,11 +19,7 @@ type RegistrationState = 'capturing' | 'submitting' | 'success' | 'error'
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
 function getAuthToken(): string {
-  // Prefer env variable for mobile API key, fall back to localStorage
   if (typeof window !== 'undefined') {
-    const envToken = process.env.NEXT_PUBLIC_MOBILE_API_KEY
-    if (envToken) return envToken
-
     const stored = localStorage.getItem('mobile_api_token')
     if (stored) return stored
   }

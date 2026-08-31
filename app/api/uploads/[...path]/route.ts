@@ -86,10 +86,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     if (existsSync(localPath)) {
       try {
         const fileBuffer = readFileSync(localPath)
+        const contentType = getContentType(fileName)
+        const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
         return new NextResponse(fileBuffer, {
           headers: {
-            "Content-Type": getContentType(fileName),
+            "Content-Type": contentType,
             "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
           },
         })
       } catch (e) {
@@ -112,10 +116,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       try {
         const object = await getS3ObjectForProxy(key)
         if (object && object.body) {
+          const contentType = object.contentType || getContentType(fileName)
+          const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
           return new NextResponse(Buffer.from(object.body), {
             headers: {
-              "Content-Type": object.contentType || getContentType(fileName),
+              "Content-Type": contentType,
               "Cache-Control": "private, max-age=300",
+              "X-Content-Type-Options": "nosniff",
+              "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
             },
           })
         }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { heroGeniusMessages, heroGeniusSessions } from "@/db/schema";
 import { getRagSessionMessages } from "@/lib/hero-genius/client";
+import { getServerSession } from "@/lib/auth-session";
 import { asc, eq } from "drizzle-orm";
 
 export async function GET(
@@ -9,9 +10,32 @@ export async function GET(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
+    const session = await getServerSession();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { status: "error", message: "Unauthorized", messages: [] },
+        { status: 401 }
+      );
+    }
+    const userId = session.user.id;
+
     const { sessionId } = await params;
     if (!sessionId) {
       return NextResponse.json({ status: "error", message: "Session ID is required" }, { status: 400 });
+    }
+
+    // Verify session ownership if session exists locally
+    const [existingSession] = await db
+      .select({ userId: heroGeniusSessions.userId })
+      .from(heroGeniusSessions)
+      .where(eq(heroGeniusSessions.id, sessionId))
+      .limit(1);
+
+    if (existingSession && existingSession.userId && existingSession.userId !== userId) {
+      return NextResponse.json(
+        { status: "error", message: "Forbidden: You do not have access to this session", messages: [] },
+        { status: 403 }
+      );
     }
 
     // 1. Try remote RAG endpoint

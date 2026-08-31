@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getRfrDetail } from '@/app/actions/rfr'
 import { generateRfrPdf } from '@/lib/rfr-pdf'
+import { getServerSession } from '@/lib/auth-session'
 
 export const runtime = 'nodejs'
 
@@ -9,6 +10,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { id } = await params
     const rfrId = parseInt(id, 10)
     if (isNaN(rfrId)) {

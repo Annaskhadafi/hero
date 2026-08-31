@@ -12,6 +12,7 @@ import {
   hasCandidateApplicationIdentity,
   mergeCandidateApplicationIdentity,
 } from "@/lib/hc-application-form-identity";
+import { getServerSession } from "@/lib/auth-session";
 
 export async function getTestByAccessKey(accessKey: string) {
   const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.accessKey, accessKey)).limit(1);
@@ -241,6 +242,11 @@ export async function registerForPublicTest(testId: number, data: { fullName: st
 }
 
 export async function getCandidateTestResults(candidateId: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const assignments = await db
     .select({
       id: hcOnlineTestAssignments.id,

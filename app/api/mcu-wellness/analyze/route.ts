@@ -3,11 +3,17 @@ import { extractTextViaOcr, analyzeTextViaAi } from "@/lib/mcu-wellness-ocr";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
 import { saveAiResultForEmployee } from "@/app/actions/mcu-wellness";
 import { type McuAiExtraction } from "@/lib/mcu-wellness-ai";
+import { getServerSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const startTime = Date.now();
   try {
     let buffer: Buffer;

@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
 import { timesheetSummaryOutputs } from "@/db/schema/timesheet";
+import { getServerSession } from "@/lib/auth-session";
 import { eq } from "drizzle-orm";
 import { readFile } from "fs/promises";
+
+async function requireTimesheetAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin", "Payroll Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
 
 /**
  * GET /api/timesheet/download/[id]
@@ -13,6 +36,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const access = await requireTimesheetAccess();
+    if (access.error) return access.error;
+
     const { id: idStr } = await params;
     const outputId = parseInt(idStr);
 

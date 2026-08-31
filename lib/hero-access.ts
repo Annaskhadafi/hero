@@ -71,11 +71,11 @@ export async function getMenuPermissionForRole(
   if (!roleName) {
     return {
       roleName: null,
-      canView: true,
-      canEdit: true,
-      canDelete: true,
-      canSelectAll: true,
-      dataScope: 'global',
+      canView: false,
+      canEdit: false,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'own',
     }
   }
 
@@ -114,11 +114,11 @@ export async function getMenuPermissionForRole(
 
   return {
     roleName,
-    canView: permission?.canView ?? true,
-    canEdit: permission?.canEdit ?? true,
-    canDelete: permission?.canDelete ?? true,
-    canSelectAll: permission?.canSelectAll ?? true,
-    dataScope: permission?.dataScope ?? 'global',
+    canView: permission?.canView ?? false,
+    canEdit: permission?.canEdit ?? false,
+    canDelete: permission?.canDelete ?? false,
+    canSelectAll: permission?.canSelectAll ?? false,
+    dataScope: permission?.dataScope ?? 'own',
   }
 }
 

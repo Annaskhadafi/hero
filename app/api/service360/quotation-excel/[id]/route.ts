@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateQuotationExcel } from '@/lib/quotation-excel'
+import { getServerSession } from '@/lib/auth-session'
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { id } = await params
     const quotationId = parseInt(id)
     if (isNaN(quotationId)) {

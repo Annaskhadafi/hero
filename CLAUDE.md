@@ -121,3 +121,13 @@ task-manager cancel-task <task_id> "Reason for cancellation"
 ✅ **ALWAYS complete one task fully before starting the next**
 ✅ **ALWAYS provide completion details in the complete command**
 ✅ **ALWAYS follow the exact 3-step sequence: list → start → complete (or cancel if not required)**
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context repo. See `docs/agents/domain.md`.

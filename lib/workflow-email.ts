@@ -36,20 +36,32 @@ function uniqueEmails(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map(normalizeEmail).filter(Boolean)))
 }
 
-function stringifyTemplateValue(value: TemplateVariables[string]) {
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+function stringifyTemplateValue(value: TemplateVariables[string], isHtml = false) {
   if (value == null) return ''
+  let str = ''
   if (value instanceof Date) {
-    return value.toLocaleString('id-ID', {
+    str = value.toLocaleString('id-ID', {
       dateStyle: 'medium',
       timeStyle: 'short',
     })
+  } else {
+    str = String(value)
   }
-  return String(value)
+  return isHtml ? escapeHtml(str) : str
 }
 
-function renderTemplate(text: string, variables: TemplateVariables) {
+function renderTemplate(text: string, variables: TemplateVariables, isHtml = false) {
   return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
-    return stringifyTemplateValue(variables[token])
+    return stringifyTemplateValue(variables[token], isHtml)
   })
 }
 
@@ -359,7 +371,7 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
   }
   const ccList = uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
   const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
-  const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables)
+  const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables, true)
   const text = renderTemplate(template?.textContent || request.fallbackText, variables)
 
   return {

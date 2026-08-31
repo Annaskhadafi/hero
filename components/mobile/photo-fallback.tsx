@@ -163,9 +163,6 @@ export function PhotoFallback({
 
       const response = await fetch('/api/mobile/face-attendance', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_MOBILE_API_KEY || ''}`,
-        },
         body: formData,
         signal: abortControllerRef.current?.signal,
       })

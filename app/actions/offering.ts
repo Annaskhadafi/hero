@@ -12,6 +12,7 @@ import { generateOfferingLetterPdf } from "@/lib/offering-letter-pdf";
 import { getNextLetterNumber } from "@/app/actions/surat";
 import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
 import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
+import { getServerSession } from "@/lib/auth-session";
 
 export type OfferingData = {
   position: string;
@@ -34,6 +35,11 @@ export type OfferingData = {
 };
 
 export async function getOfferingByCandidate(candidateId: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const [offering] = await db
     .select()
     .from(hcCandidateOfferings)
@@ -43,6 +49,11 @@ export async function getOfferingByCandidate(candidateId: number) {
 }
 
 export async function saveOffering(candidateId: number, data: OfferingData) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const [existing] = await db
     .select({ id: hcCandidateOfferings.id })
     .from(hcCandidateOfferings)
@@ -69,6 +80,10 @@ export async function saveOffering(candidateId: number, data: OfferingData) {
 }
 
 export async function sendOfferingEmail(candidateId: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
   const [candidate] = await db
     .select()
     .from(hcCandidates)
@@ -213,6 +228,11 @@ export async function sendOfferingEmail(candidateId: number) {
 }
 
 export async function respondToOffering(candidateId: number, response: "Accepted" | "Rejected") {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   await db
     .update(hcCandidateOfferings)
     .set({

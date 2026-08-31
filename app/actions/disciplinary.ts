@@ -13,6 +13,7 @@ import {
 } from "@/db/schema/hero";
 import { getHrEmployeeContactById } from "@/lib/workflow-email";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
+import { getServerSession } from "@/lib/auth-session";
 
 const DISCIPLINARY_PATH = "/dashboard/hc/disciplinary";
 
@@ -109,12 +110,16 @@ export async function getViolationCategories() {
 }
 
 export async function createViolationCategory(data: ViolationCategoryInput) {
+  const session = await getServerSession();
+  if (!session?.user) throw new Error("Unauthorized: Session required");
   const [created] = await db.insert(hcViolationCategories).values(categoryValues(data)).returning();
   revalidatePath(DISCIPLINARY_PATH);
   return normalizeCategory(created);
 }
 
 export async function updateViolationCategory(id: IdInput, data: ViolationCategoryInput) {
+  const session = await getServerSession();
+  if (!session?.user) throw new Error("Unauthorized: Session required");
   const [updated] = await db
     .update(hcViolationCategories)
     .set(categoryValues(data))
@@ -125,6 +130,8 @@ export async function updateViolationCategory(id: IdInput, data: ViolationCatego
 }
 
 export async function deleteViolationCategory(id: IdInput) {
+  const session = await getServerSession();
+  if (!session?.user) throw new Error("Unauthorized: Session required");
   await db.delete(hcViolationCategories).where(eq(hcViolationCategories.id, toId(id)));
   revalidatePath(DISCIPLINARY_PATH);
   return { success: true };
@@ -194,6 +201,8 @@ export async function getDisciplinaryById(id: IdInput) {
 }
 
 export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
+  const session = await getServerSession();
+  if (!session?.user) throw new Error("Unauthorized: Session required");
   const [created] = await db.insert(hcDisciplinaryActions).values(disciplinaryValues(data)).returning();
   const employee = await getHrEmployeeContactById(created.employeeId);
   const [category] = created.violationCategoryId

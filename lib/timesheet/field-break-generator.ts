@@ -176,7 +176,7 @@ export function generateFieldBreakYearPlans(input: {
         rosterSection: employee.rosterSection,
         period,
         onSiteDate: onSiteDate ?? '',
-        dayCount: onSiteDate ? workDays : null,
+        dayCount: onSiteDate ? workDays : 0,
         fieldBreakDate: shiftedStart,
         fieldBreakEndDate: shiftedEnd,
         source: onSiteDate ? 'auto' : 'manual',
