@@ -3,11 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { user, verification } from "@/db/schema/auth";
-import { eq, isNotNull, and, or } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import crypto from "crypto";
 import { rarayRecognizeFace, rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from "@/lib/raray-vision/client";
-import { extractServerFaceEmbedding } from "@/lib/face-recognition/server-face-api";
-import { cosineSimilarity } from "@/lib/face-recognition/cosine-similarity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -147,29 +145,8 @@ export async function POST(request: NextRequest) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);
       }
 
-      // If Raray 1:1 failed, try local embedding as last resort — but ONLY against the same employee
-      if (!matchedEmployee) {
-        console.log("[face-login] Raray 1:1 failed. Trying local embedding for same employee:", emp.name);
-        try {
-          const extraction = await extractServerFaceEmbedding(imageBuffer);
-          if (extraction && extraction.embedding && Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
-            const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
-            console.log("[face-login] Local 1:1 embedding similarity for", emp.name, ":", sim);
-            if (sim >= 0.65) {
-              matchedEmployee = emp;
-              confidenceScore = sim;
-              verificationMode = "local-1:1";
-              console.log("[face-login] Local 1:1 embedding match succeeded for:", emp.name);
-            } else {
-              console.log("[face-login] Local 1:1 embedding similarity too low:", sim);
-            }
-          }
-        } catch (err) {
-          console.error("[face-login] Local 1:1 embedding failed:", err);
-        }
-      }
-
-      // If still no match, reject — do NOT fall through to 1:N against other employees
+      // Raray Vision owns the configured threshold and liveness decision.
+      // If it rejects, do not authenticate through a separate local model.
       if (!matchedEmployee) {
         return NextResponse.json(
           {
@@ -195,8 +172,7 @@ export async function POST(request: NextRequest) {
         if (
           rarayResult.status === "success" &&
           rarayResult.recognized &&
-          (rarayResult.employee_id || rarayResult.face_id) &&
-          (rarayResult.confidence ?? 0) >= 0.45
+          (rarayResult.employee_id || rarayResult.face_id)
         ) {
           const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
           const numericId = Number(rawIdOrSn);
@@ -256,47 +232,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Anonymous fallback: Local embedding comparison across all employees (no identifier)
-    if (!matchedEmployee && !identifierBoundEmployee) {
-      console.log("[face-login] Anonymous: Raray Vision could not match. Trying local embedding...");
-      try {
-        const extraction = await extractServerFaceEmbedding(imageBuffer);
-        if (extraction && extraction.embedding) {
-          console.log("[face-login] Local embedding extracted. Score:", extraction.detectionScore);
-          const registeredEmployees = await db
-            .select()
-            .from(employees)
-            .where(and(eq(employees.isActive, true), isNotNull(employees.faceEmbedding)));
-
-          let highestSimilarity = 0;
-          let bestMatch: typeof employees.$inferSelect | null = null;
-
-          for (const emp of registeredEmployees) {
-            if (Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
-              const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
-              if (sim > highestSimilarity) {
-                highestSimilarity = sim;
-                bestMatch = emp;
-              }
-            }
-          }
-
-          console.log("[face-login] Local embedding best match:", bestMatch ? bestMatch.name : "None", "Similarity:", highestSimilarity);
-
-          if (bestMatch && highestSimilarity >= 0.65) {
-            matchedEmployee = bestMatch;
-            confidenceScore = highestSimilarity;
-          }
-        } else {
-          console.log("[face-login] Local face-api did not detect any face.");
-        }
-      } catch (err) {
-        console.error("[face-login] Local embedding matching failed:", err);
-      }
-    }
-
-
-    // 4. Verification failed response
+    // 3. Verification failed response
     if (!matchedEmployee) {
       return NextResponse.json(
         {
@@ -307,7 +243,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Check if user has login account and get their registered email
+    // 4. Check if user has login account and get their registered email
     let targetAuthUserId = matchedEmployee.authUserId;
     let targetUserEmail = "";
 
@@ -347,7 +283,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // NATIVE AUTHENTICATION WAY: Generate a temporary magic link login token
+    // 5. Generate a temporary magic link login token
     const magicToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes validity
 

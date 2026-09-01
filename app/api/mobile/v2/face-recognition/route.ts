@@ -13,7 +13,6 @@ import path from 'path'
 
 
 // --- Constants ---
-const CONFIDENCE_THRESHOLD = 0.45
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out', 'auto'] as const
 type EventType = (typeof ALLOWED_EVENT_TYPES)[number]
 
@@ -268,14 +267,14 @@ export async function POST(request: NextRequest) {
 
     const confidence = rvResult.confidence ?? 0
 
-    // 10. Threshold check
-    if (!rvResult.verified || confidence < CONFIDENCE_THRESHOLD) {
+    // 10. Raray Vision owns the configured identity threshold.
+    if (!rvResult.verified) {
       return NextResponse.json(
         {
           success: false,
           verified: false,
           confidence,
-          threshold: CONFIDENCE_THRESHOLD,
+          threshold: rvResult.threshold,
           resolvedEventType,
           error: {
             code: 'FACE_NOT_MATCHED',
