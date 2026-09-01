@@ -112,6 +112,8 @@ export async function saveUserSignatureAction(signatureDataUrl: string) {
     revalidatePath('/dashboard/overtime-requests')
     revalidatePath('/dashboard/hse/izin-kerja-ptw')
     revalidatePath('/dashboard/sop-win')
+    revalidatePath('/mobile/profile')
+    revalidatePath('/mobile/approval')
 
     return { success: true as const }
   } catch (error: any) {
@@ -119,3 +121,60 @@ export async function saveUserSignatureAction(signatureDataUrl: string) {
     return { success: false as const, error: error.message || 'Gagal menyimpan tanda tangan.' }
   }
 }
+
+export async function deleteUserSignatureAction() {
+  try {
+    let emp = await getCurrentEmployee()
+    if (!emp) {
+      const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
+      const targetEmail = session?.user?.email?.trim().toLowerCase()
+      if (targetEmail) {
+        const [emailEmp] = await db
+          .select()
+          .from(employees)
+          .where(ilike(employees.email, targetEmail))
+          .limit(1)
+        if (emailEmp) {
+          emp = emailEmp
+        }
+      }
+    }
+
+    if (!emp) {
+      return { success: false as const, error: 'Sesi login tidak ditemukan.' }
+    }
+
+    await db
+      .update(employees)
+      .set({
+        signatureDataUrl: null,
+        signatureRegisteredAt: null,
+      })
+      .where(eq(employees.id, emp.id))
+
+    if (emp.email) {
+      await db
+        .update(employees)
+        .set({
+          signatureDataUrl: null,
+          signatureRegisteredAt: null,
+        })
+        .where(ilike(employees.email, emp.email.trim()))
+    }
+
+    revalidatePath('/dashboard/profile')
+    revalidatePath('/dashboard/approval')
+    revalidatePath('/dashboard/activity-hub/approval')
+    revalidatePath('/dashboard/overtime-requests')
+    revalidatePath('/dashboard/hse/izin-kerja-ptw')
+    revalidatePath('/dashboard/sop-win')
+    revalidatePath('/mobile/profile')
+    revalidatePath('/mobile/approval')
+
+    return { success: true as const }
+  } catch (error: any) {
+    console.error('Error deleting user signature:', error)
+    return { success: false as const, error: error.message || 'Gagal menghapus tanda tangan.' }
+  }
+}
+

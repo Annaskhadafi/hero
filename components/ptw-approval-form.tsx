@@ -119,14 +119,19 @@ function formatDateInput(value: Date | string | null | undefined) {
   if (!value) return ''
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return ''
-  return d.toISOString().split('T')[0]
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatTimeInput(value: Date | string | null | undefined) {
   if (!value) return ''
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return ''
-  return d.toTimeString().slice(0, 5)
+  const hours = String(d.getHours()).padStart(2, '0')
+  const mins = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${mins}`
 }
 
 function fmtDt(v: Date | string | null | undefined) {

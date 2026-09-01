@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
-import { KeyRound, Mail, PencilLine, X } from "lucide-react";
+import { KeyRound, Mail, PencilLine, PenTool, X } from "lucide-react";
 
 import {
   updateMobileProfileAction,
@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { MobileSignaturePadDialog } from "@/components/mobile/mobile-signature-pad-dialog";
 
 type MobileProfileSettingsProps = {
   profile: {
@@ -46,6 +47,7 @@ export function MobileProfileSettings({ profile, showEmailPrompt }: MobileProfil
   const [passwordError, setPasswordError] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [isPasswordPending, setIsPasswordPending] = useState(false);
+  const [signatureOpen, setSignatureOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailDismissed, setEmailDismissed] = useState(false);
   const [emailValue, setEmailValue] = useState('');
@@ -116,15 +118,15 @@ export function MobileProfileSettings({ profile, showEmailPrompt }: MobileProfil
   }
 
   return (
-    <section className="grid grid-cols-2 gap-3">
+    <section className="grid grid-cols-3 gap-2">
       <Dialog>
         <DialogTrigger asChild>
           <button
             type="button"
-            className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-white px-3 text-[11px] font-black uppercase text-[#003461] shadow-[0_12px_28px_rgba(8,32,51,0.08)] active:scale-[0.98]"
+            className="flex min-h-12 items-center justify-center gap-1.5 rounded-lg bg-white px-2 text-[11px] font-black uppercase text-[#003461] shadow-[0_12px_28px_rgba(8,32,51,0.08)] active:scale-[0.98]"
           >
-            <PencilLine className="size-4" />
-            Edit Profile
+            <PencilLine className="size-3.5 shrink-0" />
+            Profile
           </button>
         </DialogTrigger>
         <DialogContent className="max-w-[calc(100vw-2rem)] rounded-lg bg-white p-5">
@@ -139,6 +141,7 @@ export function MobileProfileSettings({ profile, showEmailPrompt }: MobileProfil
               fallbackName={profile.name}
               label="Foto Profile"
             />
+
 
             <div className="grid gap-2">
               <Label htmlFor="mobile-profile-name">Name</Label>
@@ -284,8 +287,23 @@ export function MobileProfileSettings({ profile, showEmailPrompt }: MobileProfil
         </DialogContent>
       </Dialog>
 
+      <button
+        type="button"
+        onClick={() => setSignatureOpen(true)}
+        className="flex min-h-12 items-center justify-center gap-1.5 rounded-lg bg-[#eef2ff] px-2 text-[11px] font-black uppercase text-[#3730a3] shadow-[inset_0_0_0_1px_rgba(79,70,229,0.12)] active:scale-[0.98]"
+      >
+        <PenTool className="size-3.5 shrink-0" />
+        TTD Digital
+      </button>
+
+      <MobileSignaturePadDialog
+        isOpen={signatureOpen}
+        onClose={() => setSignatureOpen(false)}
+      />
+
       {emailOpen ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => { setEmailOpen(false); setEmailDismissed(true) }}>
+
           <div className="w-full max-w-[430px] mx-auto" onClick={(e) => e.stopPropagation()}>
             <div className="max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white px-5 pb-8 pt-5">
               <div className="mb-5 flex items-center justify-between">

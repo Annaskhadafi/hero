@@ -6402,6 +6402,7 @@ export async function importUpdateUsersAction(
         const newName = getValue(nameIdx)
         if (!newName) { skippedCount++; continue }
 
+        const lokasiVal = getValue(lokasiSiteIdx)
         const fallbackSite: ImportSiteLookup = siteRows[0] ?? { id: 1, name: '', location: '' }
         const resolvedSite = lokasiVal
           ? resolveSiteFromImportedLocation(lokasiVal, siteRows, fallbackSite)

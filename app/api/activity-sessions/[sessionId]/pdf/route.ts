@@ -75,7 +75,7 @@ export async function GET(
     }
 
     drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length);
-    drawWorkTable(page, pageRows, boldFont, regularFont);
+    await drawWorkTable(page, pdfDoc, pageRows, boldFont, regularFont);
 
     if (pageIndex === rowPages.length - 1) {
       await drawSignatureArea(page, pdfDoc, data, boldFont, regularFont);
@@ -207,8 +207,9 @@ function drawDocumentHeader(
   }
 }
 
-function drawWorkTable(
+async function drawWorkTable(
   page: PDFPage,
+  pdfDoc: PDFDocument,
   rows: Array<{
     id: number;
     dateLabel: string;
@@ -218,6 +219,7 @@ function drawWorkTable(
     durationLabel: string;
     workSummary: string;
     actualPoints: number;
+    photoUrl?: string | null;
   }>,
   boldFont: PDFFont,
   regularFont: PDFFont,
@@ -228,12 +230,13 @@ function drawWorkTable(
   const headerHeight = 22;
 
   const columns = [
-    { title: "No", width: 26, align: "center" as const },
-    { title: "Hari / Tgl", width: 72, align: "center" as const },
-    { title: "Jam", width: 70, align: "center" as const },
-    { title: "Durasi", width: 44, align: "center" as const },
-    { title: "Poin", width: 34, align: "center" as const },
-    { title: "Uraian Pekerjaan / Unit / Remark", width: 277.28, align: "left" as const },
+    { title: "No", width: 24, align: "center" as const },
+    { title: "Hari / Tgl", width: 68, align: "center" as const },
+    { title: "Jam", width: 64, align: "center" as const },
+    { title: "Durasi", width: 42, align: "center" as const },
+    { title: "Poin", width: 32, align: "center" as const },
+    { title: "Foto", width: 48, align: "center" as const },
+    { title: "Uraian Pekerjaan / Unit / Remark", width: 245.28, align: "left" as const },
   ];
 
   page.drawRectangle({
@@ -283,32 +286,54 @@ function drawWorkTable(
       `${item.startLabel} -\n${item.endLabel}`,
       item.durationLabel,
       String(item.actualPoints || 0),
+      item.photoUrl ? "[Foto]" : "-",
       item.workSummary || "-",
     ];
 
     let valueX = startX;
-    values.forEach((value, index) => {
+    for (const [index, value] of values.entries()) {
       const col = columns[index];
-      const lines = splitText(value, index === 5 ? 52 : 14);
-      let lineY = rowTopY - 14;
+      
+      if (index === 5 && item.photoUrl) {
+        const photoImg = await loadSignatureImage(pdfDoc, item.photoUrl);
+        if (photoImg) {
+          page.drawImage(photoImg, {
+            x: valueX + 4,
+            y: rowTopY - rowHeight + 4,
+            width: 40,
+            height: 36,
+          });
+        } else {
+          page.drawText("-", {
+            x: valueX + 20,
+            y: rowTopY - 24,
+            size: 7.8,
+            font: regularFont,
+            color: rgb(0.36, 0.44, 0.49),
+          });
+        }
+      } else {
+        const lines = splitText(value, index === 6 ? 48 : 12);
+        let lineY = rowTopY - 14;
 
-      for (const line of lines.slice(0, 3)) {
-        const textX =
-          col.align === "center"
-            ? valueX + (col.width - regularFont.widthOfTextAtSize(line, 7.8)) / 2
-            : valueX + 4;
+        for (const line of lines.slice(0, 3)) {
+          const textX =
+            col.align === "center"
+              ? valueX + (col.width - regularFont.widthOfTextAtSize(line, 7.8)) / 2
+              : valueX + 4;
 
-        page.drawText(line, {
-          x: textX,
-          y: lineY,
-          size: index === 5 ? 7.6 : 7.8,
-          font: regularFont,
-          color: rgb(0.08, 0.12, 0.16),
-        });
-        lineY -= 9;
+          page.drawText(line, {
+            x: textX,
+            y: lineY,
+            size: index === 6 ? 7.6 : 7.8,
+            font: regularFont,
+            color: rgb(0.08, 0.12, 0.16),
+          });
+          lineY -= 9;
+        }
       }
       valueX += col.width;
-    });
+    }
 
     rowTopY -= rowHeight;
   }

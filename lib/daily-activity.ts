@@ -2095,7 +2095,13 @@ async function seedDailyActivityReferenceData() {
   }
 }
 
+const globalDailyActivityState = globalThis as unknown as { __heroDailyActivitySeedReady?: boolean }
+
 export async function ensureDailyActivitySeedData() {
+  if (globalDailyActivityState.__heroDailyActivitySeedReady) {
+    return
+  }
+
   if (dailyActivitySeedPromise) {
     return dailyActivitySeedPromise
   }
@@ -2104,6 +2110,7 @@ export async function ensureDailyActivitySeedData() {
     await ensureHeroGovernanceSeedData()
     await ensureDailyActivityTables()
     await seedDailyActivityReferenceData()
+    globalDailyActivityState.__heroDailyActivitySeedReady = true
   })().catch((error) => {
     dailyActivitySeedPromise = null
     throw error

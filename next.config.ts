@@ -31,6 +31,20 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/scheduling%20timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling%20timesheet',
+        destination: '/dashboard/scheduling-timesheet',
+        permanent: false,
+      },
+    ]
+  },
   async rewrites() {
     return [
       {
@@ -39,7 +53,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/dashboard/scheduling/timesheet',
-        destination: '/dashboard/scheduling-timesheet/overview',
+        destination: '/dashboard/scheduling-timesheet',
       },
     ]
   },

@@ -91,6 +91,7 @@ type OvertimeApprovalData = {
   requestNotes: string
   executionNotes: string
   origin: string
+  requestedByEmployeeId?: number | null
   requesterName: string
   requesterDepartment: string
   requesterJobTitle: string
@@ -143,6 +144,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
           directManagerId: employees.directManagerId,
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
+          siteId: employees.siteId,
           department: employees.department,
           section: employees.section,
         })
@@ -206,12 +208,18 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
   }
 
   // Fallback to database masterSections headEmployeeId if not matched in workflow settings
-  if (!sectionHeadName && requester?.sectionId) {
-    const [sectionRow] = await db
-      .select({ headEmployeeId: masterSections.headEmployeeId })
-      .from(masterSections)
-      .where(eq(masterSections.id, requester.sectionId))
-      .limit(1)
+  if (!sectionHeadName && (requester?.sectionId || requester?.section)) {
+    const [sectionRow] = requester.sectionId
+      ? await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(eq(masterSections.id, requester.sectionId))
+          .limit(1)
+      : await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(sql`LOWER(TRIM(${masterSections.name})) = ${(requester.section || '').trim().toLowerCase()}`)
+          .limit(1)
 
     if (sectionRow?.headEmployeeId) {
       const [secEmp] = await db
@@ -227,15 +235,74 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     }
   }
 
+  // Fallback to masterDepartments headEmployeeId if still empty
+  if (!sectionHeadName && (requester?.departmentId || requester?.department)) {
+    const [deptRow] = requester.departmentId
+      ? await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(eq(masterDepartments.id, requester.departmentId))
+          .limit(1)
+      : await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(sql`LOWER(TRIM(${masterDepartments.name})) = ${(requester.department || '').trim().toLowerCase()}`)
+          .limit(1)
+
+    if (deptRow?.headEmployeeId) {
+      const [deptEmp] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, deptRow.headEmployeeId))
+        .limit(1)
+      if (deptEmp) {
+        sectionHeadEmployeeId = deptEmp.id
+        sectionHeadName = deptEmp.name
+        sectionHeadEmail = deptEmp.email || ''
+      }
+    }
+  }
+
+  // Fallback to Site Head / PJO if still empty
+  if (!sectionHeadName && requester?.siteId) {
+    const [siteRow] = await db
+      .select({ headEmployeeId: sites.headEmployeeId })
+      .from(sites)
+      .where(eq(sites.id, requester.siteId))
+      .limit(1)
+
+    if (siteRow?.headEmployeeId) {
+      const [siteEmp] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, siteRow.headEmployeeId))
+        .limit(1)
+      if (siteEmp) {
+        sectionHeadEmployeeId = siteEmp.id
+        sectionHeadName = siteEmp.name
+        sectionHeadEmail = siteEmp.email || ''
+      }
+    }
+  }
+
   // Resolve leader approver
   let leaderEmployeeId = directManager?.id ?? null
-  let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? 'Leader Lapangan'
+  let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
   let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
+
+  if (!leaderEmployeeId && sectionHeadEmployeeId) {
+    leaderEmployeeId = sectionHeadEmployeeId
+    leaderName = sectionHeadName
+    leaderEmail = sectionHeadEmail
+  }
 
   // If section head still empty, fallback to settings.approvalMatrix.managerName or Section Head default
   if (!sectionHeadName) {
     sectionHeadName = settings.approvalMatrix?.managerName || 'Section Head'
     sectionHeadEmail = settings.approvalMatrix?.managerEmail || ''
+  }
+  if (!leaderName) {
+    leaderName = 'Leader Lapangan'
   }
 
   const step1Token = randomUUID()
@@ -360,6 +427,7 @@ export async function getOvertimeApprovalData(documentId: number): Promise<Overt
     requestNotes: document.requestNotes,
     executionNotes: document.executionNotes,
     origin: document.origin,
+    requestedByEmployeeId: document.requestedByEmployeeId,
     requesterName: requester?.name ?? '',
     requesterDepartment: requester?.department ?? '',
     requesterJobTitle: requester?.jobTitle ?? '',
@@ -418,6 +486,7 @@ const saveOvertimeApprovalFormSchema = z.object({
 
 export async function saveOvertimeApprovalForm(params: {
   documentId: number
+  requestedByEmployeeId?: number | null
   title?: string
   workDate?: string | Date
   plannedStartAt?: string | Date | null
@@ -450,7 +519,8 @@ export async function saveOvertimeApprovalForm(params: {
   signatures?: Record<number, string>
   stepRemarks?: Record<number, string>
   signatories?: Array<{
-    id: number
+    id?: number
+    stepOrder?: number
     name?: string
     email?: string
     employeeId?: number
@@ -459,6 +529,7 @@ export async function saveOvertimeApprovalForm(params: {
 }) {
   try {
     const updateData: Record<string, any> = { updatedAt: new Date() }
+    if (params.requestedByEmployeeId) updateData.requestedByEmployeeId = params.requestedByEmployeeId
     if (params.title !== undefined) updateData.title = params.title
     if (params.workDate && !isNaN(new Date(params.workDate).getTime())) updateData.workDate = new Date(params.workDate)
     if (params.plannedStartAt && !isNaN(new Date(params.plannedStartAt).getTime())) updateData.plannedStartAt = new Date(params.plannedStartAt)
@@ -583,6 +654,97 @@ export async function saveOvertimeApprovalForm(params: {
       }
     }
 
+    // If signatories provided, sync approver names and employee IDs in overtimeApprovals
+    if (params.signatories && Array.isArray(params.signatories)) {
+      for (const sig of params.signatories) {
+        if (!sig) continue
+        const updateSig: Record<string, any> = {}
+        if (sig.name) updateSig.approverName = sig.name
+        if (sig.email) updateSig.approverEmail = sig.email
+        if (sig.employeeId) {
+          updateSig.approverEmployeeId = sig.employeeId
+          const [emp] = await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, sig.employeeId))
+            .limit(1)
+          if (emp) {
+            if (!sig.email && emp.email) updateSig.approverEmail = emp.email
+            if (!sig.name && emp.name) updateSig.approverName = emp.name
+          }
+        }
+        if (sig.signatureDataUrl) {
+          updateSig.signatureDataUrl = sig.signatureDataUrl
+          updateSig.signedAt = new Date()
+        }
+        if (Object.keys(updateSig).length > 0) {
+          if (sig.id) {
+            await db.update(overtimeApprovals).set(updateSig).where(eq(overtimeApprovals.id, sig.id))
+          } else if (sig.stepOrder) {
+            await db
+              .update(overtimeApprovals)
+              .set(updateSig)
+              .where(
+                and(
+                  eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
+                  eq(overtimeApprovals.stepOrder, sig.stepOrder)
+                )
+              )
+          }
+        }
+      }
+    }
+
+    // Direct role updates if passed
+    if (params.leaderName || params.superiorName || params.managerName) {
+      if (params.leaderName) {
+        await db
+          .update(overtimeApprovals)
+          .set({ approverName: params.leaderName })
+          .where(
+            and(
+              eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('leader', 'pjo_or_te_initial')`
+            )
+          )
+      }
+      if (params.superiorName) {
+        await db
+          .update(overtimeApprovals)
+          .set({ approverName: params.superiorName })
+          .where(
+            and(
+              eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('section_head', 'section_head_confirmation')`
+            )
+          )
+      }
+      if (params.managerName) {
+        await db
+          .update(overtimeApprovals)
+          .set({ approverName: params.managerName })
+          .where(
+            and(
+              eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('manager', 'department_head')`
+            )
+          )
+      }
+    }
+
+    // If stepRemarks provided alone, save remarks to step approvals
+    if (params.stepRemarks && typeof params.stepRemarks === 'object') {
+      for (const [stepIdStr, remark] of Object.entries(params.stepRemarks)) {
+        const stepId = Number(stepIdStr)
+        if (stepId && remark !== undefined) {
+          await db
+            .update(overtimeApprovals)
+            .set({ remarks: remark })
+            .where(eq(overtimeApprovals.id, stepId))
+        }
+      }
+    }
+
     if (params.signatures && typeof params.signatures === 'object') {
       for (const [stepIdStr, sigUrl] of Object.entries(params.signatures || {})) {
         const stepId = Number(stepIdStr)
@@ -667,7 +829,10 @@ export async function saveOvertimeApprovalForm(params: {
     }
 
     safeRevalidatePath('/dashboard/overtime-requests')
+    safeRevalidatePath(`/dashboard/overtime-requests/${params.documentId}`)
     safeRevalidatePath(`/dashboard/overtime-requests/${params.documentId}/approval`)
+    safeRevalidatePath('/mobile/overtime')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }

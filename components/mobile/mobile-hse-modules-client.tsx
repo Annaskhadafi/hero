@@ -2,8 +2,12 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Download, Eye, FileText, Flame, HardHat, Loader2, Plus, Search, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { AlertTriangle, CheckCheck, CheckCircle2, ChevronDown, Clock, Clock3, Download, Eye, FileCheck, FileSignature, FileText, Flame, HardHat, History, Loader2, MapPin, Pencil, Plus, PlusCircle, Search, ShieldAlert, ShieldCheck, Sparkles, Trash2, UserCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 
 import { createIncidentRecord, deleteIncidentRecord, updateIncidentRecord } from '@/app/dashboard/hse/incident-report/actions'
 import { deleteJsa, getJsaById, saveJsa } from '@/app/dashboard/hse/jsa/actions'
@@ -11,34 +15,974 @@ import { deleteMobileCorrectiveAction, saveMobileCorrectiveAction } from '@/app/
 import { deleteMobilePtwPermit, saveMobilePtwPermit } from '@/app/mobile/hse/ptw/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import {
+  PERMIT_TYPE_OPTIONS,
+  EQUIPMENT_CHECKLIST_PER_TYPE,
+  HIRADC_PRESETS,
+  getActivePermitTypeKeys,
+  isItemChecked,
+} from '@/lib/ptw-helpers'
 
 type Access = { canView: boolean; canEdit: boolean; canDelete: boolean; canSelectAll?: boolean }
 type Incident = { id: number; title: string; category: string; severity: string; description: string; investigationStatus: string; incidentDate: Date; picName: string; rootCauseAnalysis: string; immediateCorrectiveAction: string; documentationUrl: string }
 type JsaRow = { id: string; jsaNumber: string; jobDescription: string; equipmentNumber: string; teamMembers: string; riskLevel: string; createdAt: Date }
 type HiradcEntry = { id: number; activityName: string; department: string; location: string; hazardCategory: string; hazardDetails: string; riskConsequence: string; riskLevelBefore: string; riskLevelAfter: string; existingControl: string; additionalControl: string }
-type PtwRecord = { id: number; permitNumber: string; projectName: string; permitType: string; location: string; area: string; status: string; riskLevel: string; description: string; controlSteps: string }
+type PtwRecord = { id: number; permitNumber: string; projectName: string; permitType: string; location: string; area: string; status: string; riskLevel: string; description: string; controlSteps: string; applicantName?: string; fieldPicName?: string; authorizedByName?: string; ppe?: string[]; startAt?: any; endAt?: any }
 type CorrectiveAction = { id: number; sourceType: string; sourceId: string; title: string; description: string; actionPlan: string; assigneeName: string; priority: string; status: string; closeOutNote: string }
 
 function formatDate(value: Date | string) {
-  return new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })
+  return new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 }
+
+const APD_OPTIONS = [
+  'Helmet',
+  'Safety Shoes',
+  'Respirator',
+  'Full Body Harness',
+  'Safety Glasses',
+  'Ear Plug',
+  'Face Shield',
+  'Welding Gloves',
+  'Leather Gloves',
+  'Dust Mask',
+]
 
 function CardShell({ title, subtitle, icon: Icon, children }: { title: string; subtitle: string; icon: typeof ShieldCheck; children: React.ReactNode }) {
   return (
     <div className="space-y-4 pb-6">
-      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
+      <section className="rounded-2xl bg-gradient-to-br from-blue-800 via-blue-900 to-slate-900 p-5 text-white shadow-md">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE Mobile</p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight">{title}</h1>
-            <p className="mt-1.5 text-sm leading-relaxed text-blue-200">{subtitle}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">HSE Mobile • Permit to Work</p>
+            <h1 className="mt-1 text-xl font-black tracking-tight">{title}</h1>
+            <p className="mt-1 text-xs leading-relaxed text-blue-100">{subtitle}</p>
           </div>
-          <span className="flex size-10 items-center justify-center rounded-xl bg-white/10"><Icon className="size-5 text-blue-200" /></span>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 shadow-inner">
+            <Icon className="size-5 text-blue-200" />
+          </span>
         </div>
       </section>
       {children}
+    </div>
+  )
+}
+
+function PtwStatusBadge({ status }: { status: string }) {
+  const s = (status || '').toLowerCase()
+  if (s === 'approved' || s === 'completed') {
+    return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Approved</span>
+  }
+  if (s === 'rejected') {
+    return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Rejected</span>
+  }
+  if (s === 'reverted') {
+    return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">Reverted</span>
+  }
+  if (s === 'submitted') {
+    return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">Submitted</span>
+  }
+  if (s === 'draft') {
+    return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Draft</span>
+  }
+  return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Pending Approval</span>
+}
+
+function PtwRiskBadge({ risk }: { risk: string }) {
+  const r = (risk || '').toLowerCase()
+  if (r === 'critical') return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">Critical</span>
+  if (r === 'high') return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">High</span>
+  if (r === 'medium') return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Medium</span>
+  return <span className="rounded-md px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">Low</span>
+}
+
+export function MobilePtwClient({
+  sources,
+  access,
+  permits = [],
+  employees = [],
+  approvalData,
+  initialExtendPermit,
+}: {
+  sources: HiradcEntry[]
+  access: Access
+  permits: PtwRecord[]
+  employees?: Array<{ id: number; name: string; email?: string; jobTitle?: string; employeeSn?: string }>
+  approvalData?: any
+  initialExtendPermit?: PtwRecord | null
+}) {
+  const router = useRouter()
+  const [isFormOpen, setIsFormOpen] = React.useState(Boolean(initialExtendPermit))
+  const [editingId, setEditingId] = React.useState<number | null>(initialExtendPermit?.id ?? null)
+  const [viewTarget, setViewTarget] = React.useState<PtwRecord | null>(null)
+  const [isSaving, setIsSaving] = React.useState(false)
+
+  const [searchQuery, setSearchQuery] = React.useState('')
+  const [typeFilter, setTypeFilter] = React.useState('all')
+  const [statusFilter, setStatusFilter] = React.useState('all')
+
+  const initialForm = {
+    projectName: '',
+    hiradcReference: '',
+    permitType: 'Hot Work Permit',
+    location: '',
+    area: '',
+    startDate: new Date().toISOString().slice(0, 10),
+    startTime: '08:00',
+    endDate: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),
+    endTime: '17:00',
+    description: '',
+    controlSteps: '',
+    applicantName: '',
+    fieldPicName: '',
+    authorizedByName: '',
+    status: 'Pending Approval',
+    riskLevel: 'High',
+    ppe: ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+  }
+
+  const [form, setForm] = React.useState(initialForm)
+  const [checkedEquipment, setCheckedEquipment] = React.useState<string[]>([])
+
+  const resetForm = () => {
+    setForm(initialForm)
+    setCheckedEquipment([])
+    setEditingId(null)
+  }
+
+  // Auto-populate form when editing a reverted PTW permit
+  React.useEffect(() => {
+    if (!initialExtendPermit) return
+    const p = initialExtendPermit
+    setForm({
+      projectName: (p as any).projectName || '',
+      hiradcReference: (p as any).hiradcReference || '',
+      permitType: (p as any).permitType || 'Hot Work Permit',
+      location: (p as any).location || '',
+      area: (p as any).area || '',
+      startDate: (p as any).startDate || new Date().toISOString().slice(0, 10),
+      startTime: (p as any).startTime || '08:00',
+      endDate: (p as any).endDate || new Date().toISOString().slice(0, 10),
+      endTime: (p as any).endTime || '17:00',
+      description: (p as any).description || '',
+      controlSteps: (p as any).controlSteps || '',
+      applicantName: (p as any).applicantName || '',
+      fieldPicName: (p as any).fieldPicName || '',
+      authorizedByName: (p as any).authorizedByName || '',
+      status: 'Pending Approval',
+      riskLevel: (p as any).riskLevel || 'High',
+      ppe: (p as any).ppe || ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+    })
+    if ((p as any).checkedEquipment) {
+      setCheckedEquipment((p as any).checkedEquipment)
+    }
+    setEditingId(p.id)
+  }, [initialExtendPermit])
+
+  const handleHiradcPresetSelect = (presetValue: string) => {
+    const preset = HIRADC_PRESETS.find((p) => p.value === presetValue)
+    if (!preset) return
+    setForm((prev) => ({
+      ...prev,
+      hiradcReference: preset.value,
+      permitType: preset.permitType,
+      location: preset.location,
+      area: preset.area,
+      riskLevel: preset.riskLevel,
+      description: preset.description,
+      controlSteps: preset.controlSteps,
+      ppe: preset.ppe,
+    }))
+  }
+
+  const togglePermitType = (typeValue: string) => {
+    const currentTypes = form.permitType ? form.permitType.split(', ').map((t) => t.trim()) : []
+    const isSelected = currentTypes.includes(typeValue)
+    let updated: string[]
+    if (isSelected) {
+      updated = currentTypes.filter((t) => t !== typeValue)
+    } else {
+      updated = [...currentTypes, typeValue]
+    }
+    setForm((prev) => ({ ...prev, permitType: updated.join(', ') || 'Hot Work Permit' }))
+  }
+
+  const togglePpe = (item: string) => {
+    setForm((prev) => {
+      const isChecked = prev.ppe.includes(item)
+      return {
+        ...prev,
+        ppe: isChecked ? prev.ppe.filter((p) => p !== item) : [...prev.ppe, item],
+      }
+    })
+  }
+
+  const toggleEquipmentItem = (itemLabel: string) => {
+    setCheckedEquipment((prev) => {
+      const isChecked = isItemChecked(itemLabel, prev)
+      if (isChecked) {
+        return prev.filter((i) => i.toLowerCase().trim() !== itemLabel.toLowerCase().trim())
+      }
+      return [...prev, itemLabel]
+    })
+  }
+
+  const handleEdit = (row: PtwRecord) => {
+    setEditingId(row.id)
+    setForm({
+      projectName: row.projectName || '',
+      hiradcReference: '',
+      permitType: row.permitType || 'Hot Work Permit',
+      location: row.location || '',
+      area: row.area || '',
+      startDate: row.startAt ? new Date(row.startAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      startTime: row.startAt ? new Date(row.startAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':') : '08:00',
+      endDate: row.endAt ? new Date(row.endAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      endTime: row.endAt ? new Date(row.endAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':') : '17:00',
+      description: row.description || '',
+      controlSteps: row.controlSteps || '',
+      applicantName: row.applicantName || '',
+      fieldPicName: row.fieldPicName || '',
+      authorizedByName: row.authorizedByName || '',
+      status: row.status || 'Pending Approval',
+      riskLevel: row.riskLevel || 'High',
+      ppe: Array.isArray(row.ppe) ? row.ppe : ['Helmet', 'Safety Shoes'],
+    })
+    setIsFormOpen(true)
+  }
+
+  const save = async () => {
+    if (!access.canEdit) return toast.error('Role Anda tidak berhak mengubah PTW.')
+    if (!form.projectName.trim()) return toast.error('Nama pekerjaan / proyek wajib diisi.')
+    setIsSaving(true)
+    try {
+      const finalDescription = form.hiradcReference.trim()
+        ? `[Referensi HIRADC: ${form.hiradcReference.trim()}]\n${form.description}`
+        : form.description
+
+      const finalControlSteps = checkedEquipment.length > 0
+        ? checkedEquipment.map((l, i) => `${i + 1}. ${l}`).join('\n')
+        : form.controlSteps
+
+      await saveMobilePtwPermit({
+        id: editingId || undefined,
+        projectName: form.projectName,
+        permitType: form.permitType,
+        location: form.location,
+        area: form.area,
+        status: form.status,
+        riskLevel: form.riskLevel,
+        description: finalDescription,
+        controlSteps: finalControlSteps,
+        applicantName: form.applicantName,
+        fieldPicName: form.fieldPicName,
+        authorizedByName: form.authorizedByName,
+      })
+      toast.success(editingId ? 'Permit PTW berhasil diperbarui!' : 'Permit PTW berhasil diajukan!')
+      resetForm()
+      setIsFormOpen(false)
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyimpan PTW.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    if (!access.canDelete) return toast.error('Role Anda tidak berhak menghapus PTW.')
+    if (!confirm('Apakah Anda yakin ingin menghapus Izin Kerja PTW ini?')) return
+    try {
+      await deleteMobilePtwPermit(id)
+      toast.success('Izin Kerja PTW berhasil dihapus.')
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menghapus PTW.')
+    }
+  }
+
+  const totalPtw = permits.length
+  const pendingCount = permits.filter((r) => ['pending', 'submitted'].includes((r.status || '').toLowerCase())).length
+  const approvedCount = permits.filter((r) => (r.status || '').toLowerCase() === 'approved').length
+  const criticalCount = permits.filter((r) => (r.riskLevel || '').toLowerCase() === 'critical').length
+
+  const applicantOptions = React.useMemo(() => employees.map((emp) => ({
+    value: `${emp.name} — ${emp.jobTitle || 'Technician'}`,
+    label: `${emp.name.toUpperCase()} — ${(emp.jobTitle || 'TECHNICIAN').toUpperCase()}`,
+  })), [employees])
+
+  const fieldPicOptions = React.useMemo(() => employees.map((emp) => ({
+    value: `${emp.name} — ${emp.jobTitle || 'Supervisor'}`,
+    label: `${emp.name.toUpperCase()} — ${(emp.jobTitle || 'SUPERVISOR').toUpperCase()}`,
+  })), [employees])
+
+  const safetyDeptOptions = React.useMemo(() => employees.map((emp) => ({
+    value: `${emp.name} — ${emp.jobTitle || 'HSE Dept'}`,
+    label: `${emp.name.toUpperCase()} — ${(emp.jobTitle || 'HSE DEPT').toUpperCase()}`,
+  })), [employees])
+
+  const filteredPermits = permits.filter((r) => {
+    const textMatch = `${r.permitNumber} ${r.projectName} ${r.location} ${r.area} ${r.applicantName}`.toLowerCase().includes(searchQuery.toLowerCase())
+    const typeMatch = typeFilter === 'all' || (r.permitType || '').toLowerCase().includes(typeFilter.toLowerCase())
+    const statusMatch = statusFilter === 'all' || (r.status || '').toLowerCase() === statusFilter.toLowerCase()
+    return textMatch && typeMatch && statusMatch
+  })
+
+  return (
+    <div className="space-y-4 pb-6">
+      {/* Header section persis SPL Mobile */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black tracking-[0.24em] text-[#486275] uppercase">
+              Izin Kerja Aman
+            </p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">PTW Mobile</h1>
+          </div>
+          <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] font-bold text-xs">{totalPtw} PTW</Badge>
+        </div>
+        <p className="text-sm leading-6 font-semibold text-[#486275]">
+          Ajukan, approve, pantau PTW aktif, dan kelola riwayat Izin Kerja Aman tanpa membuka desktop.
+        </p>
+      </section>
+
+      {/* Sub-Navbar Tabs Bar persis SPL Mobile */}
+      <Tabs defaultValue="apply" className="w-full space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+          <TabsTrigger
+            value="apply"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
+          >
+            <PlusCircle className="size-4 shrink-0" />
+            <span>Ajukan</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="approval"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative"
+          >
+            <div className="relative flex items-center">
+              <CheckCheck className="size-4 shrink-0" />
+              {pendingCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-black text-white ring-2 ring-white animate-pulse">
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+            <span>Approval</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="active"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative"
+          >
+            <div className="relative flex items-center">
+              <Clock3 className="size-4 shrink-0" />
+              {approvedCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white ring-2 ring-white">
+                  {approvedCount}
+                </span>
+              )}
+            </div>
+            <span>PTW Aktif</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="history"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
+          >
+            <History className="size-4 shrink-0" />
+            <span>Riwayat</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="apply">
+          {access.canEdit ? (
+            <section className="space-y-3.5 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+              <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-extrabold text-slate-900">
+                    {editingId ? 'Edit Izin Kerja Aman (PTW)' : 'Formulir Izin Kerja Aman (PTW)'}
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Isi formulir resmi PTW untuk kontrol pekerjaan berisiko tinggi.
+                  </p>
+                </div>
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                  18 FIELDS
+                </span>
+              </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">
+              Nama Pekerjaan / Proyek / Kontrak *
+            </label>
+            <Input
+              className="h-10 rounded-xl border-slate-200 bg-slate-50/60 text-xs font-medium"
+              placeholder="Contoh: Pengelasan Rangka Dump Body HD"
+              value={form.projectName}
+              onChange={(e) => setForm({ ...form, projectName: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700">Referensi HIRADC</label>
+            <Input
+              className="h-10 rounded-xl border-slate-200 bg-slate-50/60 text-xs font-medium"
+              placeholder="Ketik referensi HIRADC / judul aktivitas..."
+              value={form.hiradcReference}
+              onChange={(e) => setForm({ ...form, hiradcReference: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-900">
+                Tipe Izin Kerja (Multi-Select)
+              </label>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                {form.permitType ? form.permitType.split(', ').length : 0} Terpilih
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {PERMIT_TYPE_OPTIONS.map((opt) => {
+                const activeTypes = form.permitType ? form.permitType.split(', ').map(t => t.trim()) : []
+                const isSelected = activeTypes.includes(opt.value)
+                return (
+                  <button
+                    type="button"
+                    key={opt.value}
+                    onClick={() => togglePermitType(opt.value)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold transition-all border shadow-2xs flex items-center gap-1",
+                      isSelected
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    <span>{isSelected ? "☑" : "☐"}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {(() => {
+              const activeTypes = getActivePermitTypeKeys(form.permitType)
+              if (activeTypes.length === 0) return null
+              return (
+                <div className="mt-3 pt-2.5 border-t border-slate-200 space-y-2">
+                  <p className="text-xs font-bold text-slate-900">Peralatan & Checklist K3 Terkait</p>
+                  <div className="space-y-2">
+                    {activeTypes.map((pType) => {
+                      const data = EQUIPMENT_CHECKLIST_PER_TYPE[pType]
+                      if (!data) return null
+                      return (
+                        <div key={pType} className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1.5">
+                          <div className="font-bold text-[11px] text-slate-900 uppercase border-b border-slate-100 pb-1 flex justify-between">
+                            <span>{pType}</span>
+                            <span className="text-[9px] text-slate-400 font-normal">{data.items.length} Item</span>
+                          </div>
+                          <div className="space-y-1 pt-0.5">
+                            {data.items.map((item) => {
+                              const isChecked = isItemChecked(item.label, checkedEquipment)
+                              return (
+                                <label
+                                  key={item.id}
+                                  className={cn(
+                                    "flex items-center gap-2 p-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all",
+                                    isChecked
+                                      ? "bg-slate-900 border-slate-900 text-white font-bold"
+                                      : "bg-slate-50 border-slate-200 text-slate-700"
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => toggleEquipmentItem(item.label)}
+                                    className="size-3.5 rounded border-slate-300 text-slate-900 shrink-0"
+                                  />
+                                  <span>{item.label}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Lokasi Spesifik *</label>
+              <Input
+                className="h-10 rounded-xl border-slate-200 bg-slate-50/60 text-xs font-medium"
+                placeholder="Lokasi (mis: Silo Material)"
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Area Kerja</label>
+              <Input
+                className="h-10 rounded-xl border-slate-200 bg-slate-50/60 text-xs font-medium"
+                placeholder="Area (mis: Sector Utara)"
+                value={form.area}
+                onChange={(e) => setForm({ ...form, area: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Tgl & Jam Mulai</label>
+              <div className="grid grid-cols-2 gap-1">
+                <Input
+                  type="date"
+                  className="h-9 px-1.5 rounded-lg border-slate-200 bg-slate-50/60 text-[11px] font-medium"
+                  value={form.startDate}
+                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                />
+                <Input
+                  type="time"
+                  className="h-9 px-1.5 rounded-lg border-slate-200 bg-slate-50/60 text-[11px] font-medium"
+                  value={form.startTime}
+                  onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Tgl & Jam Selesai</label>
+              <div className="grid grid-cols-2 gap-1">
+                <Input
+                  type="date"
+                  className="h-9 px-1.5 rounded-lg border-slate-200 bg-slate-50/60 text-[11px] font-medium"
+                  value={form.endDate}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                />
+                <Input
+                  type="time"
+                  className="h-9 px-1.5 rounded-lg border-slate-200 bg-slate-50/60 text-[11px] font-medium"
+                  value={form.endTime}
+                  onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">Deskripsi Kerja</label>
+            <Textarea
+              className="rounded-xl border-slate-200 bg-slate-50/60 px-3 py-2 text-xs font-medium min-h-20"
+              placeholder="Jelaskan detail aktivitas pekerjaan berisiko..."
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
+              <span className="size-2 rounded-full bg-amber-600" />
+              <p className="text-xs font-bold text-slate-900">Penandatangan Signatories</p>
+            </div>
+            
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">Pelaksana Kerja (Applicant)</label>
+              <SearchableSelect
+                label="Pelaksana Kerja"
+                value={form.applicantName}
+                onValueChange={(val) => setForm({ ...form, applicantName: val })}
+                options={applicantOptions}
+                placeholder="-- PILIH PELAKSANA KERJA --"
+                widthClassName="w-full"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">Pemberi Kerja / Field PIC</label>
+              <SearchableSelect
+                label="Pemberi Kerja"
+                value={form.fieldPicName}
+                onValueChange={(val) => setForm({ ...form, fieldPicName: val })}
+                options={fieldPicOptions}
+                placeholder="-- PILIH PEMBERI KERJA --"
+                widthClassName="w-full"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">Safety Dept / Pengawas</label>
+              <SearchableSelect
+                label="Safety Dept"
+                value={form.authorizedByName}
+                onValueChange={(val) => setForm({ ...form, authorizedByName: val })}
+                options={safetyDeptOptions}
+                placeholder="-- PILIH SAFETY DEPT --"
+                widthClassName="w-full"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Status Approval</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Pending Approval">Pending Approval</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Approved">Approved</option>
+                <option value="Draft">Draft</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Risk Level</label>
+              <select
+                value={form.riskLevel}
+                onChange={(e) => setForm({ ...form, riskLevel: e.target.value })}
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700">APD Wajib (Multi-Select)</label>
+            <div className="flex flex-wrap gap-1 p-2 rounded-xl border border-slate-200 bg-slate-50/60">
+              {APD_OPTIONS.map((item) => {
+                const isChecked = form.ppe.includes(item)
+                return (
+                  <button
+                    type="button"
+                    key={item}
+                    onClick={() => togglePpe(item)}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold transition-all',
+                      isChecked
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    )}
+                  >
+                    {item} {isChecked && <span className="text-[10px]">×</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">Langkah Pengendalian K3 / LOTO / Gas Test</label>
+            <Textarea
+              className="rounded-xl border-slate-200 bg-slate-50/60 px-3 py-2 text-xs font-medium min-h-16"
+              placeholder="Instruksi pengendalian keselamatan, isolasi energi (LOTO), atau gas test..."
+              value={form.controlSteps}
+              onChange={(e) => setForm({ ...form, controlSteps: e.target.value })}
+            />
+          </div>
+
+          <Button
+            type="button"
+            className="h-11 w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-md transition-all"
+            disabled={isSaving}
+            onClick={() => void save()}
+          >
+            {isSaving ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="size-4 animate-spin" /> MENYIMPAN PTW...
+              </span>
+            ) : (
+              'SIMPAN PTW'
+            )}
+          </Button>
+        </section>
+      ) : null}
+      </TabsContent>
+
+        <TabsContent value="approval" className="space-y-3">
+          {approvalData ? (
+            <MobileApprovalCenter data={approvalData} categoryFilter="PTW" hideHeader />
+          ) : (
+            <>
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex items-center justify-between text-xs font-bold text-amber-900">
+                <span>Daftar PTW Menunggu Approval / Verifikasi ({pendingCount})</span>
+                <Badge className="bg-amber-600 text-white border-0 text-[10px]">{pendingCount} PENDING</Badge>
+              </div>
+              {permits.filter((r) => ['pending', 'submitted'].includes((r.status || '').toLowerCase())).length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs font-semibold text-slate-500">
+                  Tidak ada Izin Kerja PTW yang menunggu approval.
+                </div>
+              ) : (
+                permits.filter((r) => ['pending', 'submitted'].includes((r.status || '').toLowerCase())).map((row) => (
+                  <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono text-[11px] font-extrabold text-blue-700">{row.permitNumber}</span>
+                        <h2 className="text-xs font-extrabold text-slate-900 mt-0.5 leading-tight">{row.projectName}</h2>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <PtwStatusBadge status={row.status} />
+                        <PtwRiskBadge risk={row.riskLevel} />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-600 space-y-0.5 bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                      <div className="flex items-center gap-1 font-semibold text-slate-800">
+                        <MapPin className="size-3 text-blue-600 shrink-0" />
+                        <span className="truncate">{row.permitType}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 pl-4">{row.location}{row.area ? ` • ${row.area}` : ''}</div>
+                      {row.applicantName && (
+                        <div className="text-[10px] text-slate-500 pl-4">Pelaksana: <span className="font-semibold text-slate-800">{row.applicantName}</span></div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+                      <Button
+                        asChild
+                        size="sm"
+                        className="h-8.5 w-full rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-extrabold text-xs shadow-xs"
+                      >
+                        <Link href={`/mobile/approval?category=PTW&doc=${row.permitNumber || row.id}`}>
+                          <FileSignature className="size-4 mr-1.5 text-amber-400" /> BUKA TTD ↗
+                        </Link>
+                      </Button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="active" className="space-y-3">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between text-xs font-bold text-emerald-900">
+            <span>Daftar PTW Approved / Aktif Berjalan ({approvedCount})</span>
+            <Badge className="bg-emerald-600 text-white border-0 text-[10px]">{approvedCount} APPROVED</Badge>
+          </div>
+          {permits.filter((r) => (r.status || '').toLowerCase() === 'approved').length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs font-semibold text-slate-500">
+              Tidak ada Izin Kerja PTW yang sedang aktif approved.
+            </div>
+          ) : (
+            permits.filter((r) => (r.status || '').toLowerCase() === 'approved').map((row) => (
+              <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono text-[11px] font-extrabold text-blue-700">{row.permitNumber}</span>
+                    <h2 className="text-xs font-extrabold text-slate-900 mt-0.5 leading-tight">{row.projectName}</h2>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <PtwStatusBadge status={row.status} />
+                    <PtwRiskBadge risk={row.riskLevel} />
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-600 space-y-0.5 bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                  <div className="flex items-center gap-1 font-semibold text-slate-800">
+                    <MapPin className="size-3 text-blue-600 shrink-0" />
+                    <span className="truncate">{row.permitType}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 pl-4">{row.location}{row.area ? ` • ${row.area}` : ''}</div>
+                </div>
+                <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+                  <Button size="sm" variant="outline" className="h-7 px-2.5 rounded-lg text-[10.5px] font-bold text-slate-700" onClick={() => setViewTarget(row)}>
+                    <Eye className="size-3 text-slate-500 mr-1" /> VIEW
+                  </Button>
+                </div>
+              </article>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className="h-10 rounded-xl border-slate-200 bg-slate-50/60 pl-9 text-xs font-medium"
+                placeholder="Cari No. PTW / Pekerjaan / Lokasi / Pelaksana..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-1.5 overflow-x-auto pb-1 text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => { setTypeFilter('all'); setStatusFilter('all'); }}
+                className={cn('h-7 shrink-0 rounded-lg px-2.5', typeFilter === 'all' && statusFilter === 'all' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600')}
+              >
+                Semua PTW ({permits.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('hot work')}
+                className={cn('h-7 shrink-0 rounded-lg px-2.5', typeFilter === 'hot work' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}
+              >
+                Hot Work
+              </button>
+              <button
+                type="button"
+                onClick={() => setTypeFilter('confined space')}
+                className={cn('h-7 shrink-0 rounded-lg px-2.5', typeFilter === 'confined space' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}
+              >
+                Confined Space
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('pending approval')}
+                className={cn('h-7 shrink-0 rounded-lg px-2.5', statusFilter === 'pending approval' ? 'bg-amber-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}
+              >
+                Pending ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('approved')}
+                className={cn('h-7 shrink-0 rounded-lg px-2.5', statusFilter === 'approved' ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}
+              >
+                Approved ({approvedCount})
+              </button>
+            </div>
+          </section>
+
+          <section className="space-y-2.5">
+            {filteredPermits.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-xs font-semibold text-slate-500">
+                Belum ada Izin Kerja PTW yang cocok.
+              </div>
+            ) : (
+              filteredPermits.map((row) => (
+                <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-[11px] font-extrabold text-blue-700">{row.permitNumber}</span>
+                      <h2 className="text-xs font-extrabold text-slate-900 mt-0.5 leading-tight">{row.projectName}</h2>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <PtwStatusBadge status={row.status} />
+                      <PtwRiskBadge risk={row.riskLevel} />
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-600 space-y-0.5 bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                    <div className="flex items-center gap-1 font-semibold text-slate-800">
+                      <MapPin className="size-3 text-blue-600 shrink-0" />
+                      <span className="truncate">{row.permitType}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 pl-4">{row.location}{row.area ? ` • ${row.area}` : ''}</div>
+                    {row.applicantName ? (
+                      <div className="text-[10px] text-slate-500 pl-4">
+                        Pelaksana: <span className="font-semibold text-slate-800">{row.applicantName}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2.5 rounded-lg text-[10.5px] font-bold text-slate-700 border-slate-200 hover:bg-slate-50"
+                      onClick={() => setViewTarget(row)}
+                    >
+                      <Eye className="size-3 text-slate-500 mr-1" /> VIEW
+                    </Button>
+                    {access.canEdit ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 rounded-lg text-[10.5px] font-bold text-blue-700 border-blue-200 hover:bg-blue-50"
+                        onClick={() => handleEdit(row)}
+                      >
+                        <Pencil className="size-3 text-blue-600 mr-1" /> EDIT
+                      </Button>
+                    ) : null}
+                    {access.canDelete ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 rounded-lg text-[10.5px] font-bold text-rose-600 border-rose-200 hover:bg-rose-50"
+                        onClick={() => void handleDelete(row.id)}
+                      >
+                        <Trash2 className="size-3 text-rose-500 mr-1" /> HAPUS
+                      </Button>
+                    ) : null}
+                  </div>
+                </article>
+              ))
+            )}
+          </section>
+        </TabsContent>
+      </Tabs>
+
+      {viewTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs">
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <div>
+                <span className="font-mono text-xs font-bold text-blue-700">{viewTarget.permitNumber}</span>
+                <h3 className="text-sm font-extrabold text-slate-900">{viewTarget.projectName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewTarget(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <PtwStatusBadge status={viewTarget.status} />
+              <PtwRiskBadge risk={viewTarget.riskLevel} />
+              <span className="text-xs font-semibold text-slate-700">{viewTarget.permitType}</span>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1.5 border border-slate-200">
+              <p><span className="font-bold text-slate-500">Lokasi:</span> <span className="font-semibold text-slate-900">{viewTarget.location} {viewTarget.area ? `(${viewTarget.area})` : ''}</span></p>
+              <p><span className="font-bold text-slate-500">Pelaksana:</span> <span className="font-semibold text-slate-900">{viewTarget.applicantName || '—'}</span></p>
+              <p><span className="font-bold text-slate-500">Pemberi Kerja:</span> <span className="font-semibold text-slate-900">{viewTarget.fieldPicName || '—'}</span></p>
+              <p><span className="font-bold text-slate-500">Safety Dept:</span> <span className="font-semibold text-slate-900">{viewTarget.authorizedByName || '—'}</span></p>
+            </div>
+
+            {viewTarget.description ? (
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-700">Deskripsi Pekerjaan:</p>
+                <p className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 whitespace-pre-wrap">
+                  {viewTarget.description}
+                </p>
+              </div>
+            ) : null}
+
+            {viewTarget.controlSteps ? (
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-700">Langkah Pengendalian / Checklist K3:</p>
+                <p className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 whitespace-pre-wrap">
+                  {viewTarget.controlSteps}
+                </p>
+              </div>
+            ) : null}
+
+            <Button
+              type="button"
+              className="w-full h-10 rounded-xl bg-slate-900 text-white font-bold text-xs"
+              onClick={() => setViewTarget(null)}
+            >
+              TUTUP DETAIL PTW
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -266,40 +1210,7 @@ export function MobileJsaClient({ rows, access }: { rows: JsaRow[]; access: Acce
   )
 }
 
-export function MobilePtwClient({ sources, access, permits }: { sources: HiradcEntry[]; access: Access; permits: PtwRecord[] }) {
-  const router = useRouter()
-  const [form, setForm] = React.useState({ projectName: '', permitType: 'Hot Work', location: '', area: '', riskLevel: 'High', description: '', controlSteps: '' })
-  const save = async () => { if (!access.canEdit) return toast.error('Role tidak boleh buat PTW.'); await saveMobilePtwPermit(form); toast.success('PTW tersimpan ke database.'); setForm({ projectName: '', permitType: 'Hot Work', location: '', area: '', riskLevel: 'High', description: '', controlSteps: '' }); router.refresh() }
-  return (
-    <CardShell title="PTW Mobile" subtitle="" icon={HardHat}>
-      {access.canEdit ? (
-        <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
-          <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Nama pekerjaan" value={form.projectName} onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
-          <div className="grid grid-cols-2 gap-2">
-            <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Lokasi" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-            <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Area" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
-          </div>
-          <Textarea className="rounded-xl border border-gray-200 bg-white px-3 py-2.5" placeholder="Deskripsi kerja" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <Textarea className="rounded-xl border border-gray-200 bg-white px-3 py-2.5" placeholder="Kontrol kerja / LOTO / gas test" value={form.controlSteps} onChange={(e) => setForm({ ...form, controlSteps: e.target.value })} />
-          <Button className="h-11 w-full rounded-xl bg-blue-600 text-white" onClick={() => void save()}>Simpan PTW</Button>
-        </section>
-      ) : null}
-      <section className="grid gap-2">
-        {permits.map((row) => (
-          <article key={row.id} className="rounded-xl border border-gray-100 bg-white p-4">
-            <div className="flex justify-between gap-3">
-              <h2 className="text-sm font-semibold text-gray-900">{row.projectName}</h2>
-              <StatusPill value={row.status} />
-            </div>
-            <p className="mt-1 text-xs text-gray-500">{row.permitNumber} &bull; {row.riskLevel}</p>
-            <p className="mt-2 text-xs text-gray-500">{row.location}</p>
-            {access.canDelete ? <Button variant="outline" className="mt-3 h-9 rounded-lg text-orange-600" onClick={() => void deleteMobilePtwPermit(row.id).then(() => router.refresh())}>Hapus</Button> : null}
-          </article>
-        ))}
-      </section>
-    </CardShell>
-  )
-}
+
 
 export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
   const [query, setQuery] = React.useState('')

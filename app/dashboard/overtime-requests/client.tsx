@@ -81,6 +81,10 @@ import {
   type OvertimeWorkflowSettings,
   DEFAULT_OVERTIME_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
+import {
+  resolveEmployeeApproverHierarchy,
+  type EmployeeHierarchyInfo,
+} from '@/lib/overtime-hierarchy'
 
 export type OvertimeListingRow = {
   id: number
@@ -182,18 +186,7 @@ export function OvertimeListingClient({
   initialSettings,
 }: {
   rows: OvertimeListingRow[]
-  employees?: Array<{
-    id: number
-    name: string
-    employeeId?: string
-    position?: string
-    rank?: string
-    department?: string | null
-    section?: string | null
-    directManagerId?: number | null
-    sectionId?: number | null
-    departmentId?: number | null
-  }>
+  employees?: EmployeeHierarchyInfo[]
   initialSettings?: OvertimeWorkflowSettings
 }) {
   const router = useRouter()
@@ -333,6 +326,14 @@ export function OvertimeListingClient({
   const updateWorkerRow = (idx: number, field: string, val: any) => {
     setCreateForm((p) => {
       const newWorkers = [...p.workers]
+      let autoRequester = p.requesterEmployeeId
+      let autoRequesterName = p.requesterName
+      let autoDepartment = p.requesterDepartment
+      let autoLeaderId = p.leaderEmployeeId
+      let autoLeaderName = p.leaderName
+      let autoSuperiorId = p.superiorEmployeeId
+      let autoSuperiorName = p.superiorName
+
       if (field === 'employeeId') {
         const emp = employees.find((e) => String(e.id) === val)
         newWorkers[idx] = {
@@ -340,13 +341,39 @@ export function OvertimeListingClient({
           employeeId: val,
           employeeName: emp?.name || '',
         }
+        if (val) {
+          const hierarchy = resolveEmployeeApproverHierarchy(val, employees, settingsForm)
+          if (idx === 0 && (!p.requesterEmployeeId || p.requesterEmployeeId === p.workers[0]?.employeeId)) {
+            autoRequester = val
+            autoRequesterName = hierarchy.requester?.name || ''
+            if (hierarchy.department) autoDepartment = hierarchy.department
+          }
+          if (hierarchy.leader && (!autoLeaderId || idx === 0)) {
+            autoLeaderId = String(hierarchy.leader.id)
+            autoLeaderName = hierarchy.leader.name
+          }
+          if (hierarchy.superior && (!autoSuperiorId || idx === 0)) {
+            autoSuperiorId = String(hierarchy.superior.id)
+            autoSuperiorName = hierarchy.superior.name
+          }
+        }
       } else {
         newWorkers[idx] = {
           ...newWorkers[idx],
           [field]: val,
         }
       }
-      return { ...p, workers: newWorkers }
+      return {
+        ...p,
+        workers: newWorkers,
+        requesterEmployeeId: autoRequester,
+        requesterName: autoRequesterName,
+        requesterDepartment: autoDepartment,
+        leaderEmployeeId: autoLeaderId,
+        leaderName: autoLeaderName,
+        superiorEmployeeId: autoSuperiorId,
+        superiorName: autoSuperiorName,
+      }
     })
   }
 
@@ -2121,18 +2148,17 @@ export function OvertimeListingClient({
                     placeholder="PILIH PEMOHON..."
                     value={createForm.requesterEmployeeId}
                     onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      if (emp) {
-                        const defLeader = emp.directManagerId ? employees.find((e) => e.id === emp.directManagerId) : null
-                        setCreateForm((p) => ({
-                          ...p,
-                          requesterEmployeeId: val,
-                          requesterName: emp.name,
-                          requesterDepartment: emp.department || '',
-                          leaderEmployeeId: defLeader ? String(defLeader.id) : p.leaderEmployeeId,
-                          leaderName: defLeader?.name || p.leaderName,
-                        }))
-                      }
+                      const hierarchy = resolveEmployeeApproverHierarchy(val, employees, settingsForm)
+                      setCreateForm((p) => ({
+                        ...p,
+                        requesterEmployeeId: val,
+                        requesterName: hierarchy.requester?.name || '',
+                        requesterDepartment: hierarchy.department || p.requesterDepartment,
+                        leaderEmployeeId: hierarchy.leader ? String(hierarchy.leader.id) : p.leaderEmployeeId,
+                        leaderName: hierarchy.leader?.name || p.leaderName,
+                        superiorEmployeeId: hierarchy.superior ? String(hierarchy.superior.id) : p.superiorEmployeeId,
+                        superiorName: hierarchy.superior?.name || p.superiorName,
+                      }))
                     }}
                     options={employeeOptions}
                     widthClassName="w-full"
@@ -2313,25 +2339,7 @@ export function OvertimeListingClient({
                 </Badge>
               </div>
 
-              {/* Quick Presets */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 font-semibold mr-1">Preset Cepat:</span>
-                {[
-                  { name: 'Overtime Pemasangan & Dismounting Tyre OTR', unit: '1 Unit HD', dur: 120, pts: 10 },
-                  { name: 'Emergency Callout Breakdown Unit Lapangan', unit: '1 Unit', dur: 180, pts: 15 },
-                  { name: 'Perbaikan Struktur Curing Ban Workshop', unit: '2 Tyre', dur: 90, pts: 10 },
-                  { name: 'Inspection & Tyre Maintenance Overtime', unit: '4 Unit', dur: 60, pts: 5 },
-                ].map((preset, pIdx) => (
-                  <button
-                    key={pIdx}
-                    type="button"
-                    onClick={() => addPresetLineItem(preset.name, preset.unit, preset.dur, preset.pts)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-900 transition-colors shadow-2xs"
-                  >
-                    <Plus className="size-3 text-emerald-600" /> {preset.name}
-                  </button>
-                ))}
-              </div>
+
 
               {/* Line Items Table */}
               <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">

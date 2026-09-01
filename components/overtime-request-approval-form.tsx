@@ -94,6 +94,7 @@ type OvertimeApprovalData = {
   requestNotes: string
   executionNotes: string
   origin: string
+  requestedByEmployeeId?: number | null
   requesterName: string
   requesterDepartment: string
   requesterJobTitle: string
@@ -115,14 +116,19 @@ function formatDateInput(value: Date | string | null | undefined) {
   if (!value) return ''
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return ''
-  return d.toISOString().split('T')[0]
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatTimeInput(value: Date | string | null | undefined) {
   if (!value) return ''
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return ''
-  return d.toTimeString().slice(0, 5)
+  const hours = String(d.getHours()).padStart(2, '0')
+  const mins = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${mins}`
 }
 
 function fmtDt(v: Date | string | null | undefined) {
@@ -264,6 +270,7 @@ export function OvertimeRequestApprovalForm({
   const initialManager = data.approvals.find((a) => a.approverRole === 'manager' || a.approverRole === 'department_head')
 
   const [selectedRequesterId, setSelectedRequesterId] = useState<string>(() => {
+    if (data.requestedByEmployeeId) return String(data.requestedByEmployeeId)
     const matched = employeesProp.find((e) => e.name === data.requesterName || e.name === initialRequester?.approverName)
     return matched ? String(matched.id) : ''
   })
@@ -273,6 +280,7 @@ export function OvertimeRequestApprovalForm({
   })
 
   const [selectedLeaderId, setSelectedLeaderId] = useState<string>(() => {
+    if (initialLeader?.approverEmployeeId) return String(initialLeader.approverEmployeeId)
     const matched = employeesProp.find((e) => e.name === initialLeader?.approverName)
     return matched ? String(matched.id) : ''
   })
@@ -282,6 +290,7 @@ export function OvertimeRequestApprovalForm({
   })
 
   const [selectedSectionHeadId, setSelectedSectionHeadId] = useState<string>(() => {
+    if (initialSectionHead?.approverEmployeeId) return String(initialSectionHead.approverEmployeeId)
     const matched = employeesProp.find((e) => e.name === initialSectionHead?.approverName)
     return matched ? String(matched.id) : ''
   })
@@ -291,6 +300,7 @@ export function OvertimeRequestApprovalForm({
   })
 
   const [selectedManagerId, setSelectedManagerId] = useState<string>(() => {
+    if (initialManager?.approverEmployeeId) return String(initialManager.approverEmployeeId)
     const matched = employeesProp.find((e) => e.name === initialManager?.approverName)
     return matched ? String(matched.id) : ''
   })
@@ -387,6 +397,7 @@ export function OvertimeRequestApprovalForm({
 
       const res = await saveOvertimeApprovalForm({
         documentId: data.documentId,
+        requestedByEmployeeId: selectedRequester ? selectedRequester.id : undefined,
         title,
         workDate,
         plannedStartAt,
@@ -397,11 +408,14 @@ export function OvertimeRequestApprovalForm({
         lineItems,
         signatures: signaturesByStepId,
         stepRemarks,
+        leaderName: selectedLeader?.name,
+        superiorName: selectedSectionHead?.name,
+        managerName: selectedManager?.name,
         signatories: [
-          ...(initialRequester ? [{ id: initialRequester.id, name: selectedRequester?.name || data.requesterName, employeeId: selectedRequester?.id }] : []),
-          ...(initialLeader ? [{ id: initialLeader.id, name: selectedLeader?.name, employeeId: selectedLeader?.id }] : []),
-          ...(initialSectionHead ? [{ id: initialSectionHead.id, name: selectedSectionHead?.name, employeeId: selectedSectionHead?.id }] : []),
-          ...(initialManager ? [{ id: initialManager.id, name: selectedManager?.name, employeeId: selectedManager?.id }] : []),
+          ...(initialRequester ? [{ id: initialRequester.id, stepOrder: initialRequester.stepOrder, name: selectedRequester?.name || data.requesterName, employeeId: selectedRequester?.id, email: selectedRequester?.email }] : []),
+          ...(initialLeader ? [{ id: initialLeader.id, stepOrder: initialLeader.stepOrder, name: selectedLeader?.name, employeeId: selectedLeader?.id, email: selectedLeader?.email }] : []),
+          ...(initialSectionHead ? [{ id: initialSectionHead.id, stepOrder: initialSectionHead.stepOrder, name: selectedSectionHead?.name, employeeId: selectedSectionHead?.id, email: selectedSectionHead?.email }] : []),
+          ...(initialManager ? [{ id: initialManager.id, stepOrder: initialManager.stepOrder, name: selectedManager?.name, employeeId: selectedManager?.id, email: selectedManager?.email }] : []),
         ],
       })
 

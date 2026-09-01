@@ -9,6 +9,7 @@ export type PdfSignatureNames = {
   preparedBy: string
   pjoLeader: string
   approvedBy: string
+  hrName?: string
   customSigners?: PdfSigner[]
   logoUrl?: string
 }
@@ -49,10 +50,11 @@ export function drawPdfSignatures(
   y: number,
   names: PdfSignatureNames
 ) {
-  const labels = [
+  const labels: [string, string][] = [
     ['Dibuat oleh :', names.preparedBy],
-    ['PJO/ Leader :', names.pjoLeader],
+    ['Approved by:', names.pjoLeader],
     ['Approved by:', names.approvedBy],
+    ['Diketahui oleh:', names.hrName || ''],
     ...(names.customSigners ?? [])
       .filter((s) => s.label.trim() && s.name.trim())
       .map((s) => [s.label.trim(), s.name.trim()] as [string, string]),

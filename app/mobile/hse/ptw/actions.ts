@@ -15,6 +15,7 @@ import {
 } from '@/lib/hse-safety-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getAppUrl } from '@/lib/workflow-email'
+import { ensurePtwApprovalsExist, syncPtwApproverNames } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 
 async function requirePtwPermission(action: 'view' | 'edit' | 'delete') {
   const permission = await getCurrentMenuPermission('hse_izin_kerja_ptw')
@@ -170,6 +171,14 @@ export async function saveMobilePtwPermit(params: {
       .set(payload)
       .where(eq(hsePtwPermits.id, params.id))
       .returning()
+    await ensurePtwApprovalsExist(updated.id)
+    await syncPtwApproverNames(
+      updated.id,
+      updated.applicantName || undefined,
+      updated.fieldPicName || undefined,
+      updated.authorizedByName || undefined
+    )
+
     try {
       const emailContent = buildHseSafetyEmail({
         title: `PTW diperbarui: ${updated.permitNumber}`,
@@ -221,7 +230,16 @@ export async function saveMobilePtwPermit(params: {
     .insert(hsePtwPermits)
     .values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId })
     .returning()
-  try {
+
+  await ensurePtwApprovalsExist(created.id)
+  await syncPtwApproverNames(
+    created.id,
+    created.applicantName || undefined,
+    created.fieldPicName || undefined,
+    created.authorizedByName || undefined
+  )
+
+    try {
     const emailContent = buildHseSafetyEmail({
       title: `PTW baru: ${created.permitNumber}`,
       intro: `${created.projectName} telah dibuat di sistem Permit To Work.`,

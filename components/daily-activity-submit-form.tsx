@@ -554,28 +554,54 @@ export function DailyActivitySubmitForm({
   ) : null;
 
   const libraryField = showLibrary ? (
-    <Label className={labelClass}>
-      <span className={labelTextClass}>Library activity</span>
-      <select
-        name="libraryActivityId"
-        value={libraryActivityId}
-        required={showLibrary}
-        onChange={(event) => setLibraryActivityId(event.target.value)}
-        className={fieldClass}
-      >
-        <option value="">Pilih activity library</option>
-        {availableLibrary.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.activityCode} - {item.activityName} ({item.basePoints} pts)
-          </option>
-        ))}
-      </select>
-      <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
-        {selectedLibrary?.requiresPhoto
-          ? "Library ini wajib upload foto evidence."
-          : "Pilih activity library sesuai pekerjaan real di lapangan."}
-      </span>
-    </Label>
+    <div className="space-y-3">
+      <Label className={labelClass}>
+        <span className={labelTextClass}>Library activity</span>
+        <select
+          name="libraryActivityId"
+          value={libraryActivityId}
+          required={showLibrary}
+          onChange={(event) => setLibraryActivityId(event.target.value)}
+          className={fieldClass}
+        >
+          <option value="">Pilih activity library</option>
+          {availableLibrary.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.activityCode} - {item.activityName} ({item.basePoints} pts)
+            </option>
+          ))}
+        </select>
+      </Label>
+
+      {selectedLibrary ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-xs text-blue-900">
+              {selectedLibrary.activityCode} • {selectedLibrary.activityName}
+            </span>
+            <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">
+              {selectedLibrary.basePoints} pts
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {selectedLibrary.requiresPhoto ? (
+              <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                FOTO EVIDENCE WAJIB
+              </span>
+            ) : null}
+            {selectedLibrary.requiresTireCount ? (
+              <span className="rounded-md bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                TIRE COUNT
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
+          Pilih activity library sesuai pekerjaan real di lapangan.
+        </span>
+      )}
+    </div>
   ) : null;
 
   const customFields =

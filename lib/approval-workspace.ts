@@ -27,6 +27,7 @@ import {
   sites,
   apdRequests,
 } from '@/db/schema/hero'
+import { ensurePtwApprovalsExist, syncPtwApproverNames } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import type { ApprovalRouteResolution } from '@/lib/approval-engine'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
@@ -1748,6 +1749,18 @@ async function getPtwInboxItems(
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
+  try {
+    const allPermits = await db
+      .select({ id: hsePtwPermits.id, applicantName: hsePtwPermits.applicantName, fieldPicName: hsePtwPermits.fieldPicName, authorizedByName: hsePtwPermits.authorizedByName })
+      .from(hsePtwPermits)
+    for (const p of allPermits) {
+      await ensurePtwApprovalsExist(p.id)
+      await syncPtwApproverNames(p.id, p.applicantName || undefined, p.fieldPicName || undefined, p.authorizedByName || undefined)
+    }
+  } catch (err) {
+    console.error('[getPtwInboxItems] PTW approval sync error:', err)
+  }
+
   const rows = await db
     .select({
       approvalId: ptwApprovals.id,
@@ -1782,7 +1795,7 @@ async function getPtwInboxItems(
       hsePtwPermits,
       eq(ptwApprovals.ptwPermitId, hsePtwPermits.id)
     )
-    .where(eq(ptwApprovals.status, 'pending'))
+    .where(inArray(ptwApprovals.status, ['pending', 'reverted']))
     .orderBy(desc(ptwApprovals.createdAt))
 
   const filtered = rows.filter((row) => {
@@ -1820,7 +1833,14 @@ async function getPtwInboxItems(
       ) &&
       (row.approverRole === "safety_officer" || row.approverRole === "authorized" || row.stepLabel?.toLowerCase().includes("hse") || row.stepLabel?.toLowerCase().includes("safety"))
 
-    return emailMatches || employeeMatches || nameMatches || permitSignatoryMatches || isHseRole
+    const isAdminOrSuperUser = Boolean(
+      !currentEmployee ||
+      ['Super Admin', 'Site Admin', 'Admin', 'HC Manager', 'HSE Manager', 'Safety Officer', 'Site Manager'].includes(
+        currentEmployee?.accessRole || ''
+      )
+    )
+
+    return emailMatches || employeeMatches || nameMatches || permitSignatoryMatches || isHseRole || isAdminOrSuperUser
   })
 
   const ptwIds = Array.from(new Set(filtered.map((r) => r.ptwId)))
@@ -1868,6 +1888,7 @@ async function getPtwInboxItems(
         signedAt: null,
       },
     ]
+    const isReverted = (row as any).stepStatus === 'reverted' || approvals.some((a: any) => a.status === 'reverted')
     return {
       id: `ptw-${row.approvalId}`,
       category: 'PTW' as const,
@@ -1877,6 +1898,7 @@ async function getPtwInboxItems(
       ptwId: row.ptwId,
       documentNumber: row.permitNumber,
       title: `Izin Kerja: ${row.projectName} (${row.permitType})`,
+      isReverted,
       employeeName: row.applicantName || 'Pelaksana Kerja',
       applicantName: row.applicantName || 'Pelaksana Kerja',
       fieldPicName: row.fieldPicName || 'Safety Dept',
@@ -2142,7 +2164,7 @@ export async function getSopWinRequestInboxItems(
   })
 }
 
-async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
   let attempt = 0
   while (true) {
     try {
@@ -2152,12 +2174,15 @@ async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350):
       const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase()
       const isNetworkError =
         err?.code === 'ECONNRESET' ||
+        err?.code === '53300' ||
         errStr.includes('econnreset') ||
         errStr.includes('connection terminated') ||
         errStr.includes('timeout exceeded') ||
         errStr.includes('trying to connect') ||
         errStr.includes('too many clients') ||
-        errStr.includes('connection reset')
+        errStr.includes('sorry, too many clients') ||
+        errStr.includes('connection reset') ||
+        errStr.includes('remaining connection slots are reserved')
       if (attempt <= retries && isNetworkError) {
         await new Promise((res) => setTimeout(res, delayMs * attempt))
         continue
@@ -2491,146 +2516,189 @@ export async function getApprovalCenterData(email: string) {
   }
 
   // ─── Fetch All Workflow Domain Histories & Associated Step Approvals ──────
-  const [
-    allDaSessions,
-    allOtRequests,
-    allPtwPermits,
-    allCrReviews,
-    allSopWinReqs,
-    allDaApprovals,
-    allOtApprovals,
-    allPtwApprovals,
-    allSopWinApprovals,
-  ] = await Promise.all([
-    db.select({
-      id: dailyActivitySessions.id,
-      sessionCode: dailyActivitySessions.sessionCode,
-      workDate: dailyActivitySessions.workDate,
-      shiftCode: dailyActivitySessions.shiftCode,
-      status: dailyActivitySessions.status,
-      createdAt: dailyActivitySessions.createdAt,
-      updatedAt: dailyActivitySessions.updatedAt,
-      employeeName: employees.name,
-      employeeEmail: employees.email,
-      employeeId: dailyActivitySessions.employeeId,
-      siteName: sites.name,
-    })
-    .from(dailyActivitySessions)
-    .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .orderBy(desc(dailyActivitySessions.createdAt)),
+  const [allDaSessions, allOtRequests, allPtwPermits, allCrReviews, allSopWinReqs] = await Promise.all([
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: dailyActivitySessions.id,
+            sessionCode: dailyActivitySessions.sessionCode,
+            workDate: dailyActivitySessions.workDate,
+            shiftCode: dailyActivitySessions.shiftCode,
+            status: dailyActivitySessions.status,
+            createdAt: dailyActivitySessions.createdAt,
+            updatedAt: dailyActivitySessions.updatedAt,
+            employeeName: employees.name,
+            employeeEmail: employees.email,
+            employeeId: dailyActivitySessions.employeeId,
+            siteName: sites.name,
+          })
+          .from(dailyActivitySessions)
+          .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+          .leftJoin(sites, eq(employees.siteId, sites.id))
+          .orderBy(desc(dailyActivitySessions.createdAt)),
+      [],
+      "allDaSessions"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: overtimeCommandLetters.id,
+            splNumber: overtimeCommandLetters.splNumber,
+            title: overtimeCommandLetters.title,
+            workDate: overtimeCommandLetters.workDate,
+            status: overtimeCommandLetters.status,
+            createdAt: overtimeCommandLetters.createdAt,
+            updatedAt: overtimeCommandLetters.updatedAt,
+            requesterName: employees.name,
+            requesterEmail: employees.email,
+            requesterId: overtimeCommandLetters.requestedByEmployeeId,
+            siteName: sites.name,
+          })
+          .from(overtimeCommandLetters)
+          .leftJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
+          .leftJoin(sites, eq(employees.siteId, sites.id))
+          .orderBy(desc(overtimeCommandLetters.createdAt)),
+      [],
+      "allOtRequests"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: hsePtwPermits.id,
+            permitNumber: hsePtwPermits.permitNumber,
+            projectName: hsePtwPermits.projectName,
+            location: hsePtwPermits.location,
+            status: hsePtwPermits.status,
+            createdAt: hsePtwPermits.createdAt,
+            updatedAt: hsePtwPermits.updatedAt,
+            applicantName: hsePtwPermits.applicantName,
+            applicantEmail: employees.email,
+            applicantId: hsePtwPermits.createdByEmployeeId,
+          })
+          .from(hsePtwPermits)
+          .leftJoin(employees, eq(hsePtwPermits.createdByEmployeeId, employees.id))
+          .orderBy(desc(hsePtwPermits.createdAt)),
+      [],
+      "allPtwPermits"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: hcEmployeeContractReviews.id,
+            employeeName: hcEmployeeContractReviews.employeeNameStr,
+            reviewType: hcEmployeeContractReviews.reviewType,
+            status: hcEmployeeContractReviews.status,
+            createdAt: hcEmployeeContractReviews.createdAt,
+            updatedAt: hcEmployeeContractReviews.updatedAt,
+          })
+          .from(hcEmployeeContractReviews)
+          .orderBy(desc(hcEmployeeContractReviews.createdAt)),
+      [],
+      "allCrReviews"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: sopWinRequests.id,
+            requestNumber: sopWinRequests.requestNumber,
+            documentTitle: sopWinRequests.requestedDocTitleAndNumber,
+            status: sopWinRequests.status,
+            createdAt: sopWinRequests.createdAt,
+            updatedAt: sopWinRequests.updatedAt,
+            employeeName: employees.name,
+            employeeEmail: employees.email,
+            requesterEmployeeId: sopWinRequests.requesterEmployeeId,
+          })
+          .from(sopWinRequests)
+          .leftJoin(employees, eq(sopWinRequests.requesterEmployeeId, employees.id))
+          .orderBy(desc(sopWinRequests.createdAt)),
+      [],
+      "allSopWinReqs"
+    ),
+  ])
 
-    db.select({
-      id: overtimeCommandLetters.id,
-      splNumber: overtimeCommandLetters.splNumber,
-      title: overtimeCommandLetters.title,
-      workDate: overtimeCommandLetters.workDate,
-      status: overtimeCommandLetters.status,
-      createdAt: overtimeCommandLetters.createdAt,
-      updatedAt: overtimeCommandLetters.updatedAt,
-      requesterName: employees.name,
-      requesterEmail: employees.email,
-      requesterId: overtimeCommandLetters.requestedByEmployeeId,
-      siteName: sites.name,
-    })
-    .from(overtimeCommandLetters)
-    .leftJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .orderBy(desc(overtimeCommandLetters.createdAt)),
-
-    db.select({
-      id: hsePtwPermits.id,
-      permitNumber: hsePtwPermits.permitNumber,
-      projectName: hsePtwPermits.projectName,
-      location: hsePtwPermits.location,
-      status: hsePtwPermits.status,
-      createdAt: hsePtwPermits.createdAt,
-      updatedAt: hsePtwPermits.updatedAt,
-      applicantName: hsePtwPermits.applicantName,
-      applicantEmail: employees.email,
-      applicantId: hsePtwPermits.createdByEmployeeId,
-    })
-    .from(hsePtwPermits)
-    .leftJoin(employees, eq(hsePtwPermits.createdByEmployeeId, employees.id))
-    .orderBy(desc(hsePtwPermits.createdAt)),
-
-    db.select({
-      id: hcEmployeeContractReviews.id,
-      employeeName: hcEmployeeContractReviews.employeeNameStr,
-      reviewType: hcEmployeeContractReviews.reviewType,
-      status: hcEmployeeContractReviews.status,
-      createdAt: hcEmployeeContractReviews.createdAt,
-      updatedAt: hcEmployeeContractReviews.updatedAt,
-    })
-    .from(hcEmployeeContractReviews)
-    .orderBy(desc(hcEmployeeContractReviews.createdAt)),
-
-    db.select({
-      id: sopWinRequests.id,
-      requestNumber: sopWinRequests.requestNumber,
-      documentTitle: sopWinRequests.requestedDocTitleAndNumber,
-      status: sopWinRequests.status,
-      createdAt: sopWinRequests.createdAt,
-      updatedAt: sopWinRequests.updatedAt,
-      employeeName: employees.name,
-      employeeEmail: employees.email,
-      requesterEmployeeId: sopWinRequests.requesterEmployeeId,
-    })
-    .from(sopWinRequests)
-    .leftJoin(employees, eq(sopWinRequests.requesterEmployeeId, employees.id))
-    .orderBy(desc(sopWinRequests.createdAt)),
-
-    db.select({
-      id: dailyActivityApprovals.id,
-      sessionId: dailyActivityApprovals.sessionId,
-      stepOrder: dailyActivityApprovals.stepOrder,
-      stepLabel: dailyActivityApprovals.stepLabel,
-      status: dailyActivityApprovals.status,
-      remarks: dailyActivityApprovals.remarks,
-      signedAt: dailyActivityApprovals.signedAt,
-      approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
-      approverEmail: dailyActivityApprovals.approverEmail,
-      approverName: dailyActivityApprovals.approverName,
-    }).from(dailyActivityApprovals),
-
-    db.select({
-      id: overtimeApprovals.id,
-      splId: overtimeApprovals.overtimeCommandLetterId,
-      stepOrder: overtimeApprovals.stepOrder,
-      stepLabel: overtimeApprovals.stepLabel,
-      status: overtimeApprovals.status,
-      remarks: overtimeApprovals.remarks,
-      signedAt: overtimeApprovals.signedAt,
-      approverEmployeeId: overtimeApprovals.approverEmployeeId,
-      approverEmail: overtimeApprovals.approverEmail,
-      approverName: overtimeApprovals.approverName,
-    }).from(overtimeApprovals),
-
-    db.select({
-      id: ptwApprovals.id,
-      permitId: ptwApprovals.ptwPermitId,
-      stepOrder: ptwApprovals.stepOrder,
-      stepLabel: ptwApprovals.stepLabel,
-      status: ptwApprovals.status,
-      remarks: ptwApprovals.remarks,
-      signedAt: ptwApprovals.signedAt,
-      approverEmployeeId: ptwApprovals.approverEmployeeId,
-      approverEmail: ptwApprovals.approverEmail,
-      approverName: ptwApprovals.approverName,
-    }).from(ptwApprovals),
-
-    db.select({
-      id: sopWinRequestApprovals.id,
-      requestId: sopWinRequestApprovals.requestId,
-      stepOrder: sopWinRequestApprovals.stepOrder,
-      stepLabel: sopWinRequestApprovals.stepLabel,
-      status: sopWinRequestApprovals.status,
-      remarks: sopWinRequestApprovals.remarks,
-      signedAt: sopWinRequestApprovals.signedAt,
-      approverEmployeeId: sopWinRequestApprovals.approverEmployeeId,
-      approverEmail: sopWinRequestApprovals.approverEmail,
-      approverName: sopWinRequestApprovals.approverName,
-    }).from(sopWinRequestApprovals),
+  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals] = await Promise.all([
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: dailyActivityApprovals.id,
+            sessionId: dailyActivityApprovals.sessionId,
+            stepOrder: dailyActivityApprovals.stepOrder,
+            stepLabel: dailyActivityApprovals.stepLabel,
+            status: dailyActivityApprovals.status,
+            remarks: dailyActivityApprovals.remarks,
+            signedAt: dailyActivityApprovals.signedAt,
+            approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
+            approverEmail: dailyActivityApprovals.approverEmail,
+            approverName: dailyActivityApprovals.approverName,
+          })
+          .from(dailyActivityApprovals),
+      [],
+      "allDaApprovals"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: overtimeApprovals.id,
+            splId: overtimeApprovals.overtimeCommandLetterId,
+            stepOrder: overtimeApprovals.stepOrder,
+            stepLabel: overtimeApprovals.stepLabel,
+            status: overtimeApprovals.status,
+            remarks: overtimeApprovals.remarks,
+            signedAt: overtimeApprovals.signedAt,
+            approverEmployeeId: overtimeApprovals.approverEmployeeId,
+            approverEmail: overtimeApprovals.approverEmail,
+            approverName: overtimeApprovals.approverName,
+          })
+          .from(overtimeApprovals),
+      [],
+      "allOtApprovals"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: ptwApprovals.id,
+            permitId: ptwApprovals.ptwPermitId,
+            stepOrder: ptwApprovals.stepOrder,
+            stepLabel: ptwApprovals.stepLabel,
+            status: ptwApprovals.status,
+            remarks: ptwApprovals.remarks,
+            signedAt: ptwApprovals.signedAt,
+            approverEmployeeId: ptwApprovals.approverEmployeeId,
+            approverEmail: ptwApprovals.approverEmail,
+            approverName: ptwApprovals.approverName,
+          })
+          .from(ptwApprovals),
+      [],
+      "allPtwApprovals"
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: sopWinRequestApprovals.id,
+            requestId: sopWinRequestApprovals.requestId,
+            stepOrder: sopWinRequestApprovals.stepOrder,
+            stepLabel: sopWinRequestApprovals.stepLabel,
+            status: sopWinRequestApprovals.status,
+            remarks: sopWinRequestApprovals.remarks,
+            signedAt: sopWinRequestApprovals.signedAt,
+            approverEmployeeId: sopWinRequestApprovals.approverEmployeeId,
+            approverEmail: sopWinRequestApprovals.approverEmail,
+            approverName: sopWinRequestApprovals.approverName,
+          })
+          .from(sopWinRequestApprovals),
+      [],
+      "allSopWinApprovals"
+    ),
   ])
 
   const daApprovalsBySessionId = new Map<number, typeof allDaApprovals>()
@@ -3338,9 +3406,9 @@ export async function getFormStudioOverviewData() {
   await ensureHeroSeedData()
 
   const [structures, matrices, steps] = await Promise.all([
-    db.select().from(orgChartStructures),
-    db.select().from(approvalMatrices),
-    db.select().from(approvalMatrixSteps),
+    safeQuery(() => db.select().from(orgChartStructures), [], "orgChartStructures"),
+    safeQuery(() => db.select().from(approvalMatrices), [], "approvalMatrices"),
+    safeQuery(() => db.select().from(approvalMatrixSteps), [], "approvalMatrixSteps"),
   ])
 
   return {
@@ -3435,9 +3503,9 @@ export async function getWorkflowStudioOverviewData() {
   await ensureHeroSeedData()
 
   const [structures, matrices, steps] = await Promise.all([
-    db.select().from(orgChartStructures),
-    db.select().from(approvalMatrices),
-    db.select().from(approvalMatrixSteps),
+    safeQuery(() => db.select().from(orgChartStructures), [], "orgChartStructures"),
+    safeQuery(() => db.select().from(approvalMatrices), [], "approvalMatrices"),
+    safeQuery(() => db.select().from(approvalMatrixSteps), [], "approvalMatrixSteps"),
   ])
 
   return {

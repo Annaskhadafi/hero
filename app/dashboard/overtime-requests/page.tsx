@@ -4,10 +4,12 @@ import { db } from '@/db'
 import {
   employees,
   masterDepartments,
+  masterSections,
   overtimeApprovals,
   overtimeCommandLetters,
   overtimeCommandLetterItems,
   overtimeCommandLetterParticipants,
+  sites,
 } from '@/db/schema/hero'
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { OvertimeListingClient, type OvertimeListingRow } from './client'
@@ -42,7 +44,7 @@ export default async function OvertimeRequestsPage() {
 
   const isSiteAdmin = accessRole === 'site admin'
 
-  const [rawSplRecords, allEmployees] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -67,6 +69,7 @@ export default async function OvertimeRequestsPage() {
       .select({
         id: employees.id,
         name: employees.name,
+        email: employees.email,
         employeeId: employees.employeeSn,
         position: employees.jobTitle,
         rank: employees.role,
@@ -75,10 +78,27 @@ export default async function OvertimeRequestsPage() {
         directManagerId: employees.directManagerId,
         sectionId: employees.sectionId,
         departmentId: employees.departmentId,
+        siteId: employees.siteId,
       })
       .from(employees)
       .where(eq(employees.isActive, true)),
+    db.select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId }).from(masterSections),
+    db.select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId }).from(masterDepartments),
+    db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites),
   ])
+
+  const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
+  const sectionHeadByName = new Map(rawSections.map((s) => [s.name.toLowerCase().trim(), s.headEmployeeId]))
+  const deptHeadById = new Map(rawDepartments.map((d) => [d.id, d.headEmployeeId]))
+  const deptHeadByName = new Map(rawDepartments.map((d) => [d.name.toLowerCase().trim(), d.headEmployeeId]))
+  const siteHeadById = new Map(rawSites.map((s) => [s.id, s.headEmployeeId]))
+
+  const enrichedEmployees = allEmployees.map((e) => ({
+    ...e,
+    sectionHeadId: e.sectionId ? (sectionHeadById.get(e.sectionId) ?? null) : (e.section ? (sectionHeadByName.get(e.section.toLowerCase().trim()) ?? null) : null),
+    deptHeadId: e.departmentId ? (deptHeadById.get(e.departmentId) ?? null) : (e.department ? (deptHeadByName.get(e.department.toLowerCase().trim()) ?? null) : null),
+    siteHeadId: e.siteId ? (siteHeadById.get(e.siteId) ?? null) : null,
+  }))
 
   const rawSplIds = rawSplRecords.map((r) => r.id)
 
@@ -257,9 +277,10 @@ export default async function OvertimeRequestsPage() {
     }
   }) as any
 
-  const sanitizedEmployees = (allEmployees || []).map((e) => ({
+  const sanitizedEmployees = (enrichedEmployees || []).map((e) => ({
     id: Number(e.id),
     name: e.name || '',
+    email: e.email || '',
     employeeId: e.employeeId || '',
     position: e.position || '',
     rank: e.rank || '',
@@ -268,6 +289,10 @@ export default async function OvertimeRequestsPage() {
     directManagerId: e.directManagerId ? Number(e.directManagerId) : null,
     sectionId: e.sectionId ? Number(e.sectionId) : null,
     departmentId: e.departmentId ? Number(e.departmentId) : null,
+    siteId: e.siteId ? Number(e.siteId) : null,
+    sectionHeadId: e.sectionHeadId ? Number(e.sectionHeadId) : null,
+    deptHeadId: e.deptHeadId ? Number(e.deptHeadId) : null,
+    siteHeadId: e.siteHeadId ? Number(e.siteHeadId) : null,
   }))
 
   const initialSettings = await getOvertimeWorkflowSettings()

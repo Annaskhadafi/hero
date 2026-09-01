@@ -502,9 +502,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     let remark = ''
     if (overtime?.splNumbers.length) remark = `SPL ${overtime.splNumbers.join(', ')}`
-    if (overtime?.unauthorizedMinutes) {
-      remark = remark ? `${remark} / Perlu SPL` : 'Perlu SPL'
-    }
+
     if (!remark && day.status === 'standby') remark = 'ST'
     else if (!remark && day.status === 'field_break') remark = 'FB'
     else if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName

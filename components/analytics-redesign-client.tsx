@@ -50,8 +50,6 @@ import { submitAttendance } from "@/app/actions/attendance"
 import { verifyAndSubmitFaceAttendanceAction } from "@/app/actions/face-attendance-actions"
 import { FaceAttendanceV2Client } from "@/app/mobile/attendance/face-v2/face-v2-client"
 import { PermissionRequestForm } from "@/components/attendance/permission-request-form"
-import { MobileOvertimeRequestForm } from "@/components/mobile/mobile-overtime-request-form"
-import { submitMobileOvertimeRequestAction } from "@/app/dashboard/activity-hub/actions"
 import { uploadFile } from "@/app/actions/upload"
 import { changeMyPasswordDirectAction } from "@/app/dashboard/profile/actions"
 import {
@@ -1414,14 +1412,11 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                 <PermissionRequestForm variant="desktop" />
               </div>
             ) : modalMode === "overtime" ? (
-              <div className="p-6 bg-slate-50/70 dark:bg-slate-900/90 text-slate-900 dark:text-white">
-                <MobileOvertimeRequestForm
-                  action={submitMobileOvertimeRequestAction}
-                  libraryActivities={data.libraryActivities || []}
-                  submitLabel="Ajukan Lembur (SPL Mobile)"
-                  currentEmployeeId={userProfile.id || 1}
-                />
-              </div>
+              <iframe
+                src="/mobile/overtime?tab=form"
+                className="w-full h-[78vh] min-h-[550px] rounded-b-3xl border-0 bg-white dark:bg-slate-900 shadow-inner"
+                title="Form Lembur (SPL)"
+              />
             ) : modalMode === "progress" ? (
               <iframe
                 src="/mobile/activity/input"

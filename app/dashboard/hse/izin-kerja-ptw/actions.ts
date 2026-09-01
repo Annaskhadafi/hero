@@ -80,9 +80,53 @@ type PtwApprovalData = {
   }
 }
 
+export async function syncPtwApproverNames(
+  permitId: number,
+  applicantName?: string,
+  fieldPicName?: string,
+  authorizedByName?: string
+) {
+  const syncStepApprover = async (stepOrder: number, rawName: string) => {
+    if (!rawName) return
+    const cleanName = rawName.includes(' — ') ? rawName.split(' — ')[0].trim() : rawName.trim()
+    const [emp] = cleanName
+      ? await db
+          .select({ id: employees.id, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(eq(employees.name, cleanName))
+          .limit(1)
+      : []
+
+    const sigUrl = emp?.signatureDataUrl || null
+    await db
+      .update(ptwApprovals)
+      .set({
+        approverName: cleanName,
+        ...(emp ? { approverEmail: emp.email, approverEmployeeId: emp.id } : {}),
+        ...(sigUrl ? { signatureDataUrl: sigUrl } : {}),
+      })
+      .where(
+        and(
+          eq(ptwApprovals.ptwPermitId, permitId),
+          eq(ptwApprovals.stepOrder, stepOrder)
+        )
+      )
+  }
+
+  if (applicantName !== undefined) {
+    await syncStepApprover(1, applicantName)
+  }
+  if (fieldPicName !== undefined) {
+    await syncStepApprover(2, fieldPicName)
+  }
+  if (authorizedByName !== undefined) {
+    await syncStepApprover(3, authorizedByName)
+  }
+}
+
 // ── Ensure Approval Steps Exist ────────────────────────────────────────────
 
-async function ensurePtwApprovalsExist(permitId: number) {
+export async function ensurePtwApprovalsExist(permitId: number) {
   const [existing] = await db
     .select({ count: sql<number>`count(*)` })
     .from(ptwApprovals)
@@ -156,32 +200,62 @@ async function ensurePtwApprovalsExist(permitId: number) {
   let step1Token = ''
   let step1Name = ''
   let step1Email = ''
+  let step2Token = ''
+  let step2Name = ''
+  let step2Email = ''
+  const applicantHasSig = Boolean(steps[0]?.signatureDataUrl)
 
   for (const step of steps) {
     const token = randomUUID()
+    const hasSig = Boolean(step.signatureDataUrl)
     if (step.stepOrder === 1) {
       step1Token = token
       step1Name = step.name
       step1Email = step.email
     }
-    const hasSig = Boolean(step.signatureDataUrl)
-    await db.insert(ptwApprovals).values({
-      ptwPermitId: permitId,
-      stepOrder: step.stepOrder,
-      stepLabel: step.stepLabel,
-      approvalToken: token,
-      approverName: step.name,
-      approverEmail: step.email,
-      approverEmployeeId: step.empId,
-      approverRole: step.approverRole,
-      status: step.stepOrder === 1 ? (hasSig ? 'approved' : 'pending') : (step.stepOrder === 2 && hasSig ? 'pending' : 'waiting'),
-      signatureDataUrl: step.signatureDataUrl || null,
-      signedAt: hasSig ? new Date() : null,
-      createdAt: new Date(),
-    })
+    if (step.stepOrder === 2) {
+      step2Token = token
+      step2Name = step.name
+      step2Email = step.email
+    }
+    try {
+      await db.insert(ptwApprovals).values({
+        ptwPermitId: permitId,
+        stepOrder: step.stepOrder,
+        stepLabel: step.stepLabel,
+        approvalToken: token,
+        approverName: step.name,
+        approverEmail: step.email,
+        approverEmployeeId: step.empId,
+        approverRole: step.approverRole,
+        status: step.stepOrder === 1 ? (hasSig ? 'approved' : 'pending') : (step.stepOrder === 2 && applicantHasSig ? 'pending' : 'waiting'),
+        signatureDataUrl: (step.stepOrder === 1 && hasSig) ? step.signatureDataUrl : null,
+        signedAt: (step.stepOrder === 1 && hasSig) ? new Date() : null,
+        createdAt: new Date(),
+      }).onConflictDoNothing()
+    } catch {
+      // Ignore concurrent insertion conflict
+    }
   }
 
-  if (step1Token && step1Email) {
+  if (applicantHasSig && step2Token && step2Email) {
+    try {
+      await sendPtwStepApprovalEmail({
+        permitId,
+        permitNumber: permit.permitNumber || '',
+        projectName: permit.projectName || 'Izin Kerja PTW',
+        location: permit.location,
+        permitType: permit.permitType,
+        applicantName: permit.applicantName || creator?.name || 'Pemohon',
+        approverName: step2Name || 'Pemberi Kerja',
+        approverEmail: step2Email,
+        approvalStep: 'Pemberi Kerja Sign',
+        approvalToken: step2Token,
+      })
+    } catch (mailErr) {
+      console.error('Error sending step 2 PTW step approval email:', mailErr)
+    }
+  } else if (step1Token && step1Email) {
     try {
       await sendPtwStepApprovalEmail({
         permitId,
@@ -360,41 +434,23 @@ export async function savePtwApprovalForm(params: {
       .set(updates)
       .where(eq(hsePtwPermits.id, params.permitId))
 
-    // Sync ptwApprovals step approver names & employee IDs when signatories are updated
-    const syncStepApprover = async (stepOrder: number, rawName: string) => {
-      const cleanName = rawName.includes(' — ') ? rawName.split(' — ')[0].trim() : rawName.trim()
-      const [emp] = cleanName
-        ? await db
-            .select({ id: employees.id, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
-            .from(employees)
-            .where(eq(employees.name, cleanName))
-            .limit(1)
-        : []
+    await syncPtwApproverNames(
+      params.permitId,
+      params.applicantName,
+      params.fieldPicName,
+      params.authorizedByName
+    )
 
-      const sigUrl = emp?.signatureDataUrl || null
-      await db
-        .update(ptwApprovals)
-        .set({
-          approverName: cleanName,
-          ...(emp ? { approverEmail: emp.email, approverEmployeeId: emp.id } : {}),
-          ...(sigUrl ? { signatureDataUrl: sigUrl } : {}),
-        })
-        .where(
-          and(
-            eq(ptwApprovals.ptwPermitId, params.permitId),
-            eq(ptwApprovals.stepOrder, stepOrder)
-          )
-        )
-    }
-
-    if (params.applicantName !== undefined) {
-      await syncStepApprover(1, params.applicantName)
-    }
-    if (params.fieldPicName !== undefined) {
-      await syncStepApprover(2, params.fieldPicName)
-    }
-    if (params.authorizedByName !== undefined) {
-      await syncStepApprover(3, params.authorizedByName)
+    if (params.stepRemarks && typeof params.stepRemarks === 'object') {
+      for (const [stepIdStr, remark] of Object.entries(params.stepRemarks)) {
+        const stepId = Number(stepIdStr)
+        if (stepId && remark !== undefined) {
+          await db
+            .update(ptwApprovals)
+            .set({ remarks: remark })
+            .where(eq(ptwApprovals.id, stepId))
+        }
+      }
     }
 
     if (params.signatures && typeof params.signatures === 'object') {
@@ -415,7 +471,10 @@ export async function savePtwApprovalForm(params: {
     }
 
     safeRevalidatePath('/dashboard/hse/izin-kerja-ptw')
+    safeRevalidatePath(`/dashboard/hse/izin-kerja-ptw/${params.permitId}`)
     safeRevalidatePath(`/dashboard/hse/izin-kerja-ptw/${params.permitId}/approval`)
+    safeRevalidatePath('/mobile/hse/ptw')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }

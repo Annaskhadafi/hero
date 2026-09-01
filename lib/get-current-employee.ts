@@ -1,11 +1,10 @@
-import { headers } from "next/headers"
 import { eq, or, sql, asc } from "drizzle-orm"
 import { db } from "@/db"
 import { employees } from "@/db/schema/hero"
-import { auth } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth-session"
 
 export async function getCurrentEmployee() {
-  const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
+  const session = await getServerSession()
   
   if (session?.user?.id || session?.user?.email) {
     const conditions = []

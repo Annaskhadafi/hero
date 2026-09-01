@@ -5,14 +5,19 @@ import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   Bug,
+  Camera,
+  Check,
   CheckCheck,
   CheckCircle2,
   CheckSquare,
+  ChevronRight,
   Download,
   FileCheck,
   FileDown,
   FileSpreadsheet,
   FileText,
+  ImagePlus,
+  ListFilter,
   PenTool,
   Plus,
   Printer,
@@ -226,10 +231,12 @@ export function ApprovalListingClient({
     superiorName: '',
     managerEmployeeId: '',
     managerName: '',
-    items: [
-      { label: 'P5M & Briefing Keselamatan Kerja', unitNumber: '', duration: '30m', points: 5, remark: 'Selesai briefing & hazard review' },
-      { label: 'Pemeriksaan / Inspeksi Lapangan Rutin', unitNumber: 'WS-01', duration: '60m', points: 10, remark: 'Kondisi operasional normal' },
-    ],
+    sourceMode: 'self_input' as 'self_input' | 'assigned' | 'custom',
+    assignmentId: '',
+    customName: '',
+    customDescription: '',
+    customUnit: '',
+    items: [] as Array<{ label: string; unitNumber?: string; duration?: string; points?: number; remark?: string }>,
   })
 
   const [settingsForm, setSettingsForm] = useState<DailyActivityWorkflowSettings>(
@@ -292,6 +299,42 @@ export function ApprovalListingClient({
   const [isSummaryOpen, setIsSummaryOpen] = useState(false)
   const [openDirectSignatureModal, setOpenDirectSignatureModal] = useState(false)
   const [hasRegisteredSignature, setHasRegisteredSignature] = useState(true)
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set())
+
+  const handleOpenCreateModal = () => {
+    const firstEmp = employees && employees.length > 0 ? employees[0] : null
+    const matchedSite = firstEmp?.siteId ? sites.find((s) => s.id === firstEmp.siteId) : null
+    setCreateForm({
+      employeeId: String(firstEmp?.id || ''),
+      employeeName: firstEmp?.name || '',
+      employeeSn: firstEmp?.employeeId || '',
+      jobTitle: firstEmp?.jobTitle || 'Staff',
+      department: firstEmp?.department || '',
+      section: firstEmp?.section || '',
+      siteId: String(firstEmp?.siteId || ''),
+      siteName: matchedSite?.name || '',
+      customerName: '',
+      workDate: new Date().toISOString().split('T')[0],
+      shiftCode: 'ALL',
+      leaderEmployeeId: '',
+      leaderName: '',
+      superiorEmployeeId: '',
+      superiorName: '',
+      managerEmployeeId: '',
+      managerName: '',
+      items: [],
+      sourceMode: 'self_input',
+      assignmentId: '',
+      customName: '',
+      customDescription: '',
+      customUnit: '',
+    } as any)
+    setPickerSearch('')
+    setExpandedPickerGroups(new Set())
+    setCreateOpen(true)
+  }
 
   useEffect(() => {
     getUserSignatureAction().then((res) => {
@@ -1197,7 +1240,7 @@ export function ApprovalListingClient({
             <Button variant="outline" onClick={handleSendReminders} disabled={isReminderRunning}>
               <Send className="size-4 mr-1.5" /> {isReminderRunning ? 'Sending...' : 'Send Reminders'}
             </Button>
-            <Button onClick={() => setCreateOpen(true)} className={hcPrimaryActionClassName}>
+            <Button onClick={handleOpenCreateModal} className={hcPrimaryActionClassName}>
               <Plus className="size-4 mr-1.5" /> TAMBAH AKTIVITAS
             </Button>
           </div>
@@ -2413,141 +2456,517 @@ export function ApprovalListingClient({
               </div>
             </div>
 
-            {/* 2. Daftar Aktivitas Harian (Items) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-blue-600"></span>
-                  A. Daily Activity Items (Aktivitas & Pekerjaan)
-                </span>
-                <Badge variant="secondary" className="text-[11px] font-semibold bg-blue-50 text-blue-700 border-blue-200">
-                  {(createForm.items || []).filter((i) => i?.label?.trim()).length} Aktivitas • {(createForm.items || []).reduce((s, i) => s + (Number(i?.points) || 0), 0)} Poin
-                </Badge>
-              </div>
+            {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
+              <select
+                value={createForm.sourceMode || 'self_input'}
+                onChange={(e) => setCreateForm((p) => ({ ...p, sourceMode: e.target.value as 'self_input' | 'assigned' | 'custom' }))}
+                className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="self_input">Self-input activity</option>
+                <option value="assigned">Assigned activity</option>
+                <option value="custom">Custom activity</option>
+              </select>
+            </div>
 
-              {/* Quick Preset Buttons */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 font-semibold mr-1">Preset Cepat:</span>
-                {[
-                  { name: 'P5M & Safety Briefing Awal Shift', pts: 5 },
-                  { name: 'P2H & Pemeriksaan Alat Kerja', pts: 5 },
-                  { name: 'Inspeksi Tekanan & Kondisi Tyre Unit HD', pts: 10 },
-                  { name: 'Pemasangan & Dismounting Tyre OTR', pts: 15 },
-                  { name: 'Housekeeping & 5R Area Workshop', pts: 5 },
-                ].map((preset, pIdx) => (
-                  <button
-                    key={pIdx}
-                    type="button"
-                    onClick={() => addPresetActivity(preset.name, preset.pts)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-900 transition-colors shadow-2xs"
-                  >
-                    <Plus className="size-3 text-teal-600" /> {preset.name}
-                  </button>
-                ))}
-              </div>
-
-              {/* Items Table */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                <div className="grid grid-cols-12 gap-2 bg-slate-100/80 px-3 py-2 text-[11px] font-bold text-slate-700 border-b border-slate-200">
-                  <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-4">Uraian Aktivitas / Pekerjaan *</div>
-                  <div className="col-span-2">No. Unit</div>
-                  <div className="col-span-1 text-center">Durasi</div>
-                  <div className="col-span-1 text-center">Poin</div>
-                  <div className="col-span-2">Remark / Catatan</div>
-                  <div className="col-span-1 text-center">Aksi</div>
+            {/* CONDITIONAL RENDER: ASSIGNED ACTIVITY MODE */}
+            {createForm.sourceMode === 'assigned' && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-700">Assigned Activity (Assignment Penugasan)</span>
+                  <Badge className="bg-blue-600 text-white border-0 text-[10px]">Tugas Resmi</Badge>
                 </div>
 
-                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                  {createForm.items.map((item, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 items-center hover:bg-slate-50/50">
-                      <div className="col-span-1 text-center font-bold text-slate-500 text-[11px]">
-                        {idx + 1}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">ASSIGNMENT *</Label>
+                  <select
+                    value={createForm.assignmentId || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, assignmentId: e.target.value }))}
+                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Pilih assignment</option>
+                    <option value="1">ASG-001 • Perbaikan Tire Unit HD-785 (Andana Gustafianto)</option>
+                    <option value="2">ASG-002 • Mounting OTR Wheel Workshop Site Pekanbaru (Rizal Mahendra)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500">Pilih assignment yang sedang dikerjakan.</p>
+                </div>
+
+                {/* Photo Evidence Section */}
+                <div className="rounded-lg border border-blue-100 bg-white p-3 space-y-2">
+                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
+                      <Camera className="size-3.5 text-blue-700" /> Kamera
+                      <input type="file" accept="image/*" capture="environment" className="hidden" />
+                    </label>
+                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
+                      <ImagePlus className="size-3.5 text-blue-700" /> Galeri
+                      <input type="file" accept="image/*" className="hidden" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Start Time</Label>
+                    <Input
+                      type="time"
+                      defaultValue="08:00"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">End Time</Label>
+                    <Input
+                      type="time"
+                      defaultValue="17:00"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                    <Input
+                      placeholder="Contoh: DT-451 / BAY-03"
+                      className="bg-white border-slate-200 h-9 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                    <Input
+                      placeholder="Material / tools dipakai"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja</Label>
+                  <Textarea
+                    placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
+                    className="bg-white border-slate-200 text-xs"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* CONDITIONAL RENDER: CUSTOM ACTIVITY MODE */}
+            {createForm.sourceMode === 'custom' && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-sky-700">Custom Activity (Aktivitas Mandiri)</span>
+                  <Badge className="bg-sky-600 text-white border-0 text-xs">Custom Mode</Badge>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Custom Activity *</Label>
+                  <Input
+                    placeholder="Custom activity name"
+                    value={createForm.customName || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, customName: e.target.value }))}
+                    className="bg-white border-slate-200 h-9 text-xs font-semibold text-slate-800"
+                  />
+                </div>
+
+                {/* Photo Evidence Section */}
+                <div className="rounded-lg border border-sky-100 bg-white p-3 space-y-2">
+                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
+                      <Camera className="size-3.5 text-sky-700" /> Kamera
+                      <input type="file" accept="image/*" capture="environment" className="hidden" />
+                    </label>
+                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
+                      <ImagePlus className="size-3.5 text-sky-700" /> Galeri
+                      <input type="file" accept="image/*" className="hidden" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Description</Label>
+                  <Textarea
+                    placeholder="Jelaskan aktivitas custom."
+                    value={createForm.customDescription || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, customDescription: e.target.value }))}
+                    className="bg-white border-slate-200 text-xs"
+                    rows={2}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Start Time</Label>
+                    <Input
+                      type="time"
+                      defaultValue="08:00"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">End Time</Label>
+                    <Input
+                      type="time"
+                      defaultValue="17:00"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                    <Input
+                      placeholder="Contoh: DT-451 / BAY-03"
+                      value={createForm.customUnit || ''}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, customUnit: e.target.value }))}
+                      className="bg-white border-slate-200 h-9 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                    <Input
+                      placeholder="Material / tools dipakai"
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja</Label>
+                  <Textarea
+                    placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
+                    className="bg-white border-slate-200 text-xs"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* CONDITIONAL RENDER: SELF INPUT ACTIVITY MODE */}
+            {(!createForm.sourceMode || createForm.sourceMode === 'self_input') && (
+              <div className="space-y-4">
+                {/* LIBRARY ACTIVITY & GROUP KAMUS AKTIVITAS */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Library Activity & Group Kamus Aktivitas</span>
+                    <span className="rounded-full bg-slate-200/80 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+                      {(createForm.items || []).filter(i => i?.label?.trim()).length} DIPILIH
+                    </span>
+                  </div>
+
+                  {/* Trigger Button Buka Kamus Aktivitas (Route Group Tree Modal) */}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => setIsPickerModalOpen(true)}
+                      className="h-9 text-xs font-bold gap-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg shadow-xs px-4"
+                    >
+                      <ListFilter className="size-4 text-white" /> Buka Kamus Aktivitas (Route Group Tree)
+                    </Button>
+                  </div>
+                </div>
+
+                {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS (CLEAN MINIMALIST PARITY) */}
+                <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
+                  <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                    {/* Header Dark Minimalist */}
+                    <div className="bg-slate-900 px-5 py-3.5 text-white flex items-center justify-between">
+                      <div>
+                        <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas</DialogTitle>
+                        <p className="text-xs text-slate-300 mt-0.5">Pilih aktivitas berdasarkan route group & kategori pekerjaan</p>
                       </div>
-                      <div className="col-span-4">
-                        <Input
-                          placeholder="Nama aktivitas / pekerjaan..."
-                          value={item.label}
-                          onChange={(e) => updateItemRow(idx, 'label', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
+                      <button
+                        type="button"
+                        onClick={() => setIsPickerModalOpen(false)}
+                        className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                      {/* Search Bar */}
+                      <div className="rounded-lg bg-slate-100 px-3.5 py-2 flex items-center gap-2 border border-slate-200">
+                        <Search className="size-4 text-slate-500" />
+                        <input
+                          type="text"
+                          value={pickerSearch}
+                          onChange={(e) => setPickerSearch(e.target.value)}
+                          placeholder="Cari kode atau nama activity..."
+                          className="w-full bg-transparent text-xs font-medium text-slate-900 outline-none placeholder:text-slate-400"
                         />
                       </div>
-                      <div className="col-span-2">
-                        <Input
-                          placeholder="e.g. HD-785-01"
-                          value={item.unitNumber}
-                          onChange={(e) => updateItemRow(idx, 'unitNumber', e.target.value)}
-                          className="h-8 text-xs border-slate-200 font-mono"
-                        />
+
+                      {/* Status Count Bar */}
+                      <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-200">
+                        <span>27 library tampil</span>
+                        <span>{(createForm.items || []).filter(i => i?.label?.trim()).length} dipilih</span>
                       </div>
-                      <div className="col-span-1">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] shadow-2xs"
-                          value={item.duration}
-                          onChange={(e) => updateItemRow(idx, 'duration', e.target.value)}
-                        >
-                          <option value="30m">30m</option>
-                          <option value="60m">60m</option>
-                          <option value="90m">90m</option>
-                          <option value="120m">120m</option>
-                          <option value="180m">180m</option>
-                          <option value="240m">240m</option>
-                        </select>
+
+                      {/* Group Accordions List */}
+                      <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+                        {[
+                          {
+                            groupName: 'Group: Support Customer',
+                            subtitle: 'GRP-Support Customer • ALL',
+                            items: [
+                              { code: 'SVC.STB-001', name: 'Support Operator', points: 10, badges: ['FOTO WAJIB', '10 PTS'] },
+                              { code: 'SVC.STB-002', name: 'Support Technical Liaison', points: 10, badges: ['EQUIPMENT WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Running Tire Inspection & Pressure Check',
+                            subtitle: 'GRP-Tire Inspection • ALL',
+                            items: [
+                              { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                              { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Rotasi Tire EM',
+                            subtitle: 'GRP-Rotasi Tire EM • Earthmover',
+                            items: [
+                              { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                              { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Replace Tire TB',
+                            subtitle: 'GRP-Replace Tire TB • Truck & Bus',
+                            items: [
+                              { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                              { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Rotasi Tire TB',
+                            subtitle: 'GRP-Rotasi Tire TB • Truck & Bus',
+                            items: [
+                              { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Replace Tire',
+                            subtitle: 'GRP-Replace Tire • General',
+                            items: [
+                              { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
+                            ]
+                          },
+                          {
+                            groupName: 'Group: Rotasi Tire',
+                            subtitle: 'GRP-General Safety & Housekeeping',
+                            items: [
+                              { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
+                              { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
+                            ]
+                          },
+                        ].map((group, gIdx) => {
+                          const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
+                          return (
+                            <div key={gIdx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedPickerGroups((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(group.groupName)) next.delete(group.groupName)
+                                    else next.add(group.groupName)
+                                    return next
+                                  })
+                                }}
+                                className="w-full flex items-center justify-between bg-slate-50 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs hover:bg-slate-100 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
+                                  <span>{group.groupName}</span>
+                                </div>
+                                <span className="text-xs font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                  {group.items.length} Activity
+                                </span>
+                              </button>
+
+                              {isExpanded && (
+                                <div className="p-2 space-y-1.5 bg-white">
+                                  {group.items.map((sub, sIdx) => {
+                                    const isSelected = (createForm.items || []).some(
+                                      (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                    )
+                                    return (
+                                      <div
+                                        key={sIdx}
+                                        onClick={() => {
+                                          if (isSelected) {
+                                            const idxToRemove = (createForm.items || []).findIndex(
+                                              (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                            )
+                                            if (idxToRemove >= 0) removeItemRow(idxToRemove)
+                                          } else {
+                                            addPresetActivity(`${sub.code} - ${sub.name}`, sub.points)
+                                          }
+                                        }}
+                                        className={`flex items-start justify-between rounded-lg p-2.5 cursor-pointer transition-all border ${
+                                          isSelected
+                                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                            : 'bg-slate-50/50 text-slate-800 border-slate-200 hover:bg-slate-100/60'
+                                        }`}
+                                      >
+                                        <div className="space-y-0.5">
+                                          <p className="text-xs font-bold font-mono">{sub.code}</p>
+                                          <p className="text-xs font-semibold">{sub.name}</p>
+                                          <p className={`text-xs ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                                            {sub.points} pts • max 12 pts / hari
+                                          </p>
+                                          <div className="flex flex-wrap gap-1 mt-1">
+                                            {sub.badges.map((b, bIdx) => (
+                                              <span
+                                                key={bIdx}
+                                                className={`rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wider uppercase ${
+                                                  isSelected
+                                                    ? 'bg-white/15 text-white'
+                                                    : 'bg-slate-200/80 text-slate-700'
+                                                }`}
+                                              >
+                                                {b}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        <div className={`size-5 flex items-center justify-center rounded text-xs font-bold ${
+                                          isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-600'
+                                        }`}>
+                                          {isSelected ? <Check className="size-3.5 stroke-[3]" /> : '+'}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div className="col-span-1">
-                        <Input
-                          type="number"
-                          value={item.points}
-                          onChange={(e) => updateItemRow(idx, 'points', Number(e.target.value))}
-                          className="h-8 text-xs text-center border-slate-200 font-bold"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          placeholder="Catatan hasil..."
-                          value={item.remark}
-                          onChange={(e) => updateItemRow(idx, 'remark', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
-                        />
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                          onClick={() => removeItemRow(idx)}
-                          disabled={createForm.items.length <= 1}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+
+                      {/* Bottom Submit Button */}
+                      <Button
+                        type="button"
+                        onClick={() => setIsPickerModalOpen(false)}
+                        className="h-10 w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs mt-2"
+                      >
+                        PAKAI {(createForm.items || []).filter(i => i?.label?.trim()).length} ACTIVITY
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* SELECTED LIBRARY CHECKLIST CARDS */}
+                {(createForm.items || []).filter(i => i?.label?.trim()).length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">SELECTED LIBRARY CHECKLIST</span>
+                        <h5 className="text-xs font-bold text-slate-800">
+                          {(createForm.items || []).filter(i => i?.label?.trim()).length} activity siap diisi
+                        </h5>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              <div className="flex justify-between items-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addItemRow}
-                  className="h-8 text-xs font-semibold gap-1.5 border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-white"
-                >
-                  <Plus className="size-3.5 text-slate-500" /> Tambah Baris Aktivitas
-                </Button>
-                <p className="text-[11px] text-slate-400">
-                  Item aktivitas akan masuk ke daftar review & dokumen PDF Daily Activity.
-                </p>
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                      {createForm.items.filter(i => i?.label?.trim()).map((item, idx) => (
+                        <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5 relative">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="text-xs font-bold font-mono text-slate-500">#{idx + 1} • {item.label.split(' - ')[0] || 'SVC'}</p>
+                              <h6 className="text-xs font-bold text-slate-800">{item.label.split(' - ')[1] || item.label}</h6>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeItemRow(idx)}
+                              className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                              title="Hapus activity"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                              <Input
+                                placeholder="Unit / equipment number"
+                                value={item.unitNumber || ''}
+                                onChange={(e) => updateItemRow(idx, 'unitNumber', e.target.value)}
+                                className="h-8 text-xs bg-white border-slate-200 font-mono"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
+                                <Input
+                                  type="time"
+                                  value={(item as any).startTime || '08:00'}
+                                  onChange={(e) => updateItemRow(idx, 'startTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
+                                <Input
+                                  type="time"
+                                  value={(item as any).endTime || '08:30'}
+                                  onChange={(e) => updateItemRow(idx, 'endTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
+                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                              <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
+                                <Camera className="size-3.5 text-slate-600" /> Kamera
+                                <input type="file" accept="image/*" capture="environment" className="hidden" />
+                              </label>
+                              <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
+                                <ImagePlus className="size-3.5 text-slate-600" /> Galeri
+                                <input type="file" accept="image/*" className="hidden" />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
+                            <Input
+                              placeholder="Hasil kerja, temuan, atau catatan singkat."
+                              value={item.remark || ''}
+                              onChange={(e) => updateItemRow(idx, 'remark', e.target.value)}
+                              className="h-8 text-xs bg-white border-slate-200"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* 3. Signatories & Verification Matrix (Approval) */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                  <span className="size-2 rounded-full bg-amber-600"></span>
+                  <span className="size-2 rounded-full bg-slate-700"></span>
                   B. Signatories & Verification Matrix (Penandatangan Approval)
                 </span>
                 <span className="text-[11px] font-mono text-slate-400">2-Tier Verification (Leader & Section Head)</span>

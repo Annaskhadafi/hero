@@ -266,54 +266,29 @@ async function ensureHeroEmployeeProfileColumns() {
   }
 }
 
+let siteLocationColumnsChecked = false
+
 async function ensureHeroSiteLocationColumns() {
-  await db.execute(sql`
-    alter table hero_sites add column if not exists province_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists province_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists regency_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists regency_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists district_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists district_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists village_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists village_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists address_detail text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists geo_latitude text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists geo_longitude text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists geo_radius_meters integer not null default 500;
-  `)
+  if (siteLocationColumnsChecked) return
+  try {
+    await db.execute(sql`
+      alter table hero_sites add column if not exists province_id text not null default '';
+      alter table hero_sites add column if not exists province_name text not null default '';
+      alter table hero_sites add column if not exists regency_id text not null default '';
+      alter table hero_sites add column if not exists regency_name text not null default '';
+      alter table hero_sites add column if not exists district_id text not null default '';
+      alter table hero_sites add column if not exists district_name text not null default '';
+      alter table hero_sites add column if not exists village_id text not null default '';
+      alter table hero_sites add column if not exists village_name text not null default '';
+      alter table hero_sites add column if not exists address_detail text not null default '';
+      alter table hero_sites add column if not exists geo_latitude text not null default '';
+      alter table hero_sites add column if not exists geo_longitude text not null default '';
+      alter table hero_sites add column if not exists geo_radius_meters integer not null default 500;
+    `)
+    siteLocationColumnsChecked = true
+  } catch (err) {
+    console.warn('[ensureHeroSiteLocationColumns] Non-critical DDL check skipped:', err)
+  }
 }
 
 async function ensureEmergencyIncidentColumns() {
@@ -6522,7 +6497,13 @@ export async function getSchedulingTimesheetOptions() {
     serializedV2Plans,
     (plan) => {
       const config = schedulingConfigs.find((item) => item.siteId === plan.siteId)
-      const schedule = plan.activeSchedule.map((row) => ({
+      const scheduleSource =
+        plan.status === 'active' && plan.activeSchedule && plan.activeSchedule.length > 0
+          ? plan.activeSchedule
+          : plan.draftSchedule && plan.draftSchedule.length > 0
+            ? plan.draftSchedule
+            : plan.activeSchedule || []
+      const schedule = scheduleSource.map((row) => ({
         employeeId: row.employeeId,
         schedule: [...row.schedule],
       }))

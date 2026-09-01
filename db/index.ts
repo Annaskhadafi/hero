@@ -56,12 +56,22 @@ function getPool() {
     }
   }
 
+  const parsedMax = process.env.DB_MAX_CONNECTIONS
+    ? parseInt(process.env.DB_MAX_CONNECTIONS, 10)
+    : NaN;
+  const maxConnections =
+    !isNaN(parsedMax) && parsedMax > 0
+      ? parsedMax
+      : process.env.NODE_ENV === "production"
+      ? 15
+      : 10;
+
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
+    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 15000 : 5000,
     connectionTimeoutMillis: 30000,
-    max: 35,
+    max: maxConnections,
     keepAlive: true,
     keepAliveInitialDelayMillis: 5000,
   });

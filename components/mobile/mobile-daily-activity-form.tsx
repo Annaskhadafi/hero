@@ -6,17 +6,24 @@ import {
   Camera,
   Check,
   ChevronDown,
+  FileSignature,
   ImagePlus,
   ListFilter,
   Navigation,
+  Plus,
   Save,
   Search,
   SendHorizontal,
+  Trash2,
+  UserRound,
   X,
 } from 'lucide-react'
 
+import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Dialog,
   DialogContent,
@@ -107,10 +114,25 @@ type ChecklistRenderGroup = {
 
 type MobileDailyActivityFormProps = {
   employeeId: number
-  assignments: AssignmentOption[]
-  availableLibrary: LibraryOption[]
-  defaultStartTime: string
-  defaultEndTime: string
+  employee?: {
+    id: number
+    name: string
+    employeeSn?: string | null
+    jobTitle?: string | null
+    department?: string | null
+    section?: string | null
+  }
+  hierarchy?: {
+    requester: any
+    leader: any
+    superior: any
+    department: string
+    section: string
+  }
+  assignments?: AssignmentOption[]
+  availableLibrary?: LibraryOption[]
+  defaultStartTime?: string
+  defaultEndTime?: string
   availableRouteFolders?: RouteFolder[]
   routeChecklist: {
     id: number
@@ -197,6 +219,7 @@ type MobileDailyActivityFormProps = {
   } | null
   site: {
     name?: string | null
+    customerName?: string | null
     geoLatitude?: string | null
     geoLongitude?: string | null
     geoRadiusMeters?: number | null
@@ -208,6 +231,13 @@ type MobileDailyActivityFormProps = {
     department: string
     siteId?: number | null
     sectionId?: number | null
+    section?: string | null
+  }>
+  allEmployees?: Array<{
+    id: number
+    name: string
+    position?: string | null
+    department?: string | null
     section?: string | null
   }>
 }
@@ -388,20 +418,25 @@ function normalizeSearch(value: string) {
 
 export function MobileDailyActivityForm({
   employeeId,
-  assignments,
-  availableLibrary,
-  defaultStartTime,
-  defaultEndTime,
-  availableRouteFolders,
+  employee,
+  hierarchy,
+  assignments = [],
+  availableLibrary = [],
+  defaultStartTime = '',
+  defaultEndTime = '',
+  availableRouteFolders = [],
   routeChecklist,
   standaloneOvertimeChecklist,
   site,
   teamMembers = [],
+  allEmployees = [],
 }: MobileDailyActivityFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queuedDraftKey = searchParams.get('draft')?.trim() || ''
 
+  const [workDate, setWorkDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
+  const [shiftCode, setShiftCode] = useState<string>(routeChecklist?.shiftCode || 'ALL')
   const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>('self_input')
   const [assignmentId, setAssignmentId] = useState('')
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([])
@@ -416,6 +451,11 @@ export function MobileDailyActivityForm({
   const [materialUsed, setMaterialUsed] = useState('')
   const [notes, setNotes] = useState('')
   const [manualLocation, setManualLocation] = useState('')
+  const initialCustomerName =
+    site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : ''
+  const [customerName, setCustomerName] = useState(initialCustomerName)
+  const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(hierarchy?.leader?.id ? String(hierarchy.leader.id) : '')
+  const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(hierarchy?.superior?.id ? String(hierarchy.superior.id) : '')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoName, setPhotoName] = useState('')
@@ -441,9 +481,11 @@ export function MobileDailyActivityForm({
     return teamMembers.filter((m) => m.name.toLowerCase().includes(q))
   }, [teamMembers, memberSearch])
 
+  const safeAvailableLibrary = useMemo(() => availableLibrary || [], [availableLibrary])
+
   const availableLibraryMap = useMemo(
-    () => new Map(availableLibrary.map((item) => [`${item.id}`, item])),
-    [availableLibrary]
+    () => new Map(safeAvailableLibrary.map((item) => [`${item.id}`, item])),
+    [safeAvailableLibrary]
   )
   const selectedLibraries = useMemo(
     () =>
@@ -455,20 +497,62 @@ export function MobileDailyActivityForm({
   const filteredLibraries = useMemo(() => {
     const normalizedSearch = normalizeSearch(librarySearch)
     if (!normalizedSearch) {
-      return availableLibrary
+      return safeAvailableLibrary
     }
 
-    return availableLibrary.filter((item) =>
+    return safeAvailableLibrary.filter((item) =>
       normalizeSearch(`${item.activityCode} ${item.activityName} ${item.basePoints}`).includes(
         normalizedSearch
       )
     )
-  }, [availableLibrary, librarySearch])
+  }, [safeAvailableLibrary, librarySearch])
   const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto)
   const selectedAssignment = useMemo(
     () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
     [assignmentId, assignments]
   )
+
+  const leaderOptions = useMemo(() => {
+    const list = (allEmployees.length > 0 ? allEmployees : teamMembers) || []
+    const opts: { value: string; label: string }[] = []
+
+    if (hierarchy?.leader && !list.some((o: any) => String(o.id) === String(hierarchy.leader.id))) {
+      opts.push({
+        value: String(hierarchy.leader.id),
+        label: `${hierarchy.leader.name.toUpperCase()} — (ATASAN LANGSUNG)`,
+      })
+    }
+
+    list.forEach((m: any) => {
+      opts.push({
+        value: String(m.id),
+        label: `${m.name.toUpperCase()} — ${(m.position || m.role || 'STAFF').toUpperCase()}`,
+      })
+    })
+
+    return opts
+  }, [allEmployees, teamMembers, hierarchy])
+
+  const superiorOptions = useMemo(() => {
+    const list = (allEmployees.length > 0 ? allEmployees : teamMembers) || []
+    const opts: { value: string; label: string }[] = []
+
+    if (hierarchy?.superior && !list.some((o: any) => String(o.id) === String(hierarchy.superior.id))) {
+      opts.push({
+        value: String(hierarchy.superior.id),
+        label: `${hierarchy.superior.name.toUpperCase()} — (SECTION HEAD / MANAGER)`,
+      })
+    }
+
+    list.forEach((m: any) => {
+      opts.push({
+        value: String(m.id),
+        label: `${m.name.toUpperCase()} — ${(m.position || m.role || 'STAFF').toUpperCase()}`,
+      })
+    })
+
+    return opts
+  }, [allEmployees, teamMembers, hierarchy])
   const checklistContext = useMemo(() => {
     if (routeChecklist) {
       return {
@@ -1026,6 +1110,9 @@ export function MobileDailyActivityForm({
 
     if (
       checklistContext &&
+      sourceMode !== 'self_input' &&
+      !assignmentId &&
+      !customActivityName.trim() &&
       routeSessionItems.length > 0 &&
       routeSessionItems.every((item) => !item.isChecked)
     ) {
@@ -1118,7 +1205,7 @@ export function MobileDailyActivityForm({
     if (missingLibraryPhoto)
       return 'Foto wajib diupload karena activity yang dipilih butuh image evidence.'
 
-    if (checklistContext) {
+    if (checklistContext && hasCheckedChecklist) {
       let missingChecklistPhoto = false
       let missingChecklistTire = false
       let missingChecklistMaterial = false
@@ -1216,10 +1303,12 @@ export function MobileDailyActivityForm({
       body: JSON.stringify(submitPayload),
     })
 
-    const result = (await response.json()) as {
-      success: boolean
-      message?: string
-      conflict?: boolean
+    const text = await response.text()
+    let result: { success?: boolean; message?: string; conflict?: boolean } = {}
+    try {
+      result = JSON.parse(text)
+    } catch {
+      throw new Error(`Server status ${response.status}: ${text.slice(0, 120)}`)
     }
 
     if (!response.ok || !result.success) {
@@ -1522,6 +1611,99 @@ export function MobileDailyActivityForm({
           </div>
         ) : null}
 
+        {/* Details & Employee Profile */}
+        <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div>
+              <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                Formulir Aktivitas
+              </p>
+              <h2 className="text-base font-extrabold text-[#003461]">
+                Details & Employee Profile
+              </h2>
+            </div>
+            <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] text-[10px] font-bold">
+              Draft Laporan
+            </Badge>
+          </div>
+
+          {/* Tanggal & Shift Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <Label className="block space-y-1.5">
+              <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                Tanggal Kerja
+              </span>
+              <Input
+                type="date"
+                value={workDate}
+                onChange={(e) => setWorkDate(e.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-bold text-[#082033]"
+              />
+            </Label>
+            <Label className="block space-y-1.5">
+              <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                Shift
+              </span>
+              <select
+                value={shiftCode}
+                onChange={(e) => setShiftCode(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-bold text-[#082033]"
+              >
+                <option value="ALL">ALL (Semua Shift)</option>
+                <option value="Day">Day Shift</option>
+                <option value="Night">Night Shift</option>
+                <option value="Shift 1">Shift 1</option>
+                <option value="Shift 2">Shift 2</option>
+              </select>
+            </Label>
+          </div>
+
+          {/* Profil Karyawan Box */}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex size-7 items-center justify-center rounded-lg bg-[#eaf4fb] text-[#003f78]">
+                  <UserRound className="size-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold text-[#082033]">{employee?.name || 'Karyawan'}</p>
+                  <p className="text-[10px] font-mono font-semibold text-slate-500">SN: {employee?.employeeSn || employeeId}</p>
+                </div>
+              </div>
+              <span className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                {employee?.jobTitle || 'Staff'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/60 text-xs">
+              <div>
+                <p className="text-[9px] font-bold uppercase text-slate-400">Dept / Section</p>
+                <p className="font-semibold text-slate-800 text-[11px] truncate">
+                  {employee?.department || '-'} / {employee?.section || '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase text-slate-400">Site</p>
+                <p className="font-semibold text-slate-800 text-[11px] truncate">
+                  {site?.name || 'Site'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60">
+              <Label className="block space-y-1">
+                <span className="text-[9px] font-bold uppercase text-slate-400">Customer / Partner</span>
+                <Input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nama Customer / Partner (Opsional)"
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-[#082033]"
+                />
+              </Label>
+            </div>
+          </div>
+        </section>
+
         {teamMembers && teamMembers.length > 0 ? (
           <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div className="flex items-center justify-between">
@@ -1704,7 +1886,6 @@ export function MobileDailyActivityForm({
                     <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                       Library activity
                     </span>
-                    <p className="mt-1 text-xs leading-5 font-semibold text-[#486275]"></p>
                   </div>
                   <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase">
                     {selectedLibraryIds.length} dipilih
@@ -2287,6 +2468,56 @@ export function MobileDailyActivityForm({
             </section>
           </>
         ) : null}
+
+        {/* C. Penandatangan Approval (Signatories) */}
+        <section className="rounded-xl bg-white p-4 border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-amber-600"></span>
+              <h2 className="text-xs font-bold text-slate-800">
+                C. Penandatangan Approval (Signatories)
+              </h2>
+            </div>
+            <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
+              2-TIER VERIFICATION
+            </span>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            {/* Leader / Supervisor (Tahap 1) */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                Leader / Supervisor (Tahap 1)
+              </label>
+              <SearchableSelect
+                label="Leader / Supervisor"
+                value={leaderEmployeeId}
+                onValueChange={(val) => setLeaderEmployeeId(val)}
+                options={leaderOptions}
+                placeholder="-- PILIH LEADER / SUPERVISOR --"
+                widthClassName="w-full"
+              />
+            </div>
+
+            {/* Superior / Section Head (Tahap 2) */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                Superior / Section Head (Tahap 2)
+              </label>
+              <SearchableSelect
+                label="Superior / Section Head"
+                value={superiorEmployeeId}
+                onValueChange={(val) => setSuperiorEmployeeId(val)}
+                options={superiorOptions}
+                placeholder="-- PILIH SUPERIOR / SECTION HEAD --"
+                widthClassName="w-full"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Tanda Tangan Digital Karyawan */}
+        <MobileSignatureSection />
 
         <GpsLocationPreviewCard
           needsGps={needsGps}

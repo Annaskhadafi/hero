@@ -1,46 +1,91 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, FileSignature,
-  FileText, HeartPulse, ListChecks, Plus, Sparkles, Stethoscope, Target,
-} from "lucide-react";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, asc } from "drizzle-orm";
 
-import { Badge } from "@/components/ui/badge";
-import { MobileActivityLog } from "@/components/mobile/mobile-activity-log";
-import { getServerSession } from "@/lib/auth-session";
+import { MobileDailyActivityClient } from "@/components/mobile/mobile-daily-activity-client";
 import { db } from "@/db";
-import { employeeMcu } from "@/db/schema/hero";
-
-import { getActivityPagePurpose } from "@/lib/activity-navigation";
+import { employeeMcu, employees, masterSections, masterDepartments, sites } from "@/db/schema/hero";
+import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
-import { cn } from "@/lib/utils";
+import { resolveEmployeeApproverHierarchy } from "@/lib/overtime-hierarchy";
 
-function formatTime(value?: Date | null) {
-  if (!value) return "--:--";
-  return value.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const errStr = String(err?.message || err?.cause?.message || err || '').toLowerCase();
+      const isNetworkError =
+        err?.code === 'ECONNRESET' ||
+        err?.code === '53300' ||
+        errStr.includes('econnreset') ||
+        errStr.includes('connection terminated') ||
+        errStr.includes('timeout exceeded') ||
+        errStr.includes('trying to connect') ||
+        errStr.includes('too many clients') ||
+        errStr.includes('sorry, too many clients') ||
+        errStr.includes('connection reset') ||
+        errStr.includes('remaining connection slots are reserved');
+      if (attempt <= retries && isNetworkError) {
+        await new Promise((res) => setTimeout(res, delayMs * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
-function statusBadgeClass(status: string) {
-  const n = status.toLowerCase();
-  if (n.includes("approved")) return "bg-emerald-50 text-emerald-700";
-  if (n.includes("pending")) return "bg-amber-50 text-amber-700";
-  if (n.includes("reject")) return "bg-rose-50 text-rose-700";
-  return "bg-blue-50 text-blue-700";
+async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): Promise<T> {
+  try {
+    return await withDbRetry(fn);
+  } catch (err) {
+    console.error(`[MobileActivityPage] Warning in ${label}:`, (err as any)?.message || err);
+    return fallback;
+  }
 }
 
 export default async function MobileActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ submitted?: string; spl?: string }>;
+  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string }>;
 }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
   const query = await searchParams;
   const submitted = query.submitted === "1";
   const submittedSpl = submitted && query.spl === "1";
+  const tabQuery = query.tab;
 
-  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
+  const [data, rawEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+    safeQuery(() => getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }), null, "getDailyActivityEmployeeData"),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            employeeId: employees.employeeSn,
+            position: employees.jobTitle,
+            department: employees.department,
+            section: employees.section,
+            directManagerId: employees.directManagerId,
+            sectionId: employees.sectionId,
+            departmentId: employees.departmentId,
+            siteId: employees.siteId,
+          })
+          .from(employees)
+          .where(eq(employees.isActive, true))
+          .orderBy(asc(employees.name)),
+      [],
+      "rawEmployees"
+    ),
+    safeQuery(() => db.select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId }).from(masterSections), [], "rawSections"),
+    safeQuery(() => db.select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId }).from(masterDepartments), [], "rawDepartments"),
+    safeQuery(() => db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites), [], "rawSites"),
+  ]);
+
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-100 bg-white p-5 text-sm text-gray-500">
@@ -65,301 +110,63 @@ export default async function MobileActivityPage({
     .orderBy(desc(employeeMcu.mcuDate), desc(employeeMcu.createdAt))
     .limit(1);
 
+  const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]));
+  const deptHeadById = new Map(rawDepartments.map((d) => [d.id, d.headEmployeeId]));
+  const siteHeadById = new Map(rawSites.map((s) => [s.id, s.headEmployeeId]));
+
+  const hierarchyEmployees = rawEmployees.map((e) => ({
+    ...e,
+    sectionHeadId: e.sectionId ? (sectionHeadById.get(e.sectionId) ?? null) : null,
+    deptHeadId: e.departmentId ? (deptHeadById.get(e.departmentId) ?? null) : null,
+    siteHeadId: e.siteId ? (siteHeadById.get(e.siteId) ?? null) : null,
+  }));
+
+  const hierarchy = resolveEmployeeApproverHierarchy(data.employee.id, hierarchyEmployees);
+
+  const teamMembers = await safeQuery(
+    () =>
+      db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          role: employees.role,
+          department: employees.department,
+          siteId: employees.siteId,
+          sectionId: employees.sectionId,
+          employeeId: employees.employeeSn,
+          jobTitle: employees.jobTitle,
+        })
+        .from(employees)
+        .where(
+          data.employee.siteId && data.employee.sectionId
+            ? eq(employees.siteId, data.employee.siteId)
+            : eq(employees.isActive, true)
+        ),
+    [],
+    "teamMembers"
+  );
+
   const productivityPercent =
     data.summary.jobsAssigned > 0
       ? Math.round((data.summary.jobsCompleted / data.summary.jobsAssigned) * 100)
       : data.activities.length > 0 ? 100 : 0;
-  const pagePurpose = getActivityPagePurpose("input");
   const splToUpdate = data.routeChecklist?.activeSpl ?? data.standaloneOvertimeChecklist;
 
   return (
-    <div className="space-y-4 pb-6">
-      {submitted ? (
-        <section className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
-          <CheckCircle2 className="mt-0.5 size-5 shrink-0" />
-          <div>
-            <p className="text-sm font-bold">
-              {submittedSpl ? "Submitted, waiting approval" : "Daily Activity berhasil disubmit"}
-            </p>
-            <p className="mt-1 text-xs text-emerald-700">
-              {submittedSpl
-                ? "SPL dan Activity sudah disubmit. Menunggu keputusan approver."
-                : "Data pekerjaan dan evidence sudah tersimpan."}
-            </p>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Header */}
-      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Aktivitas Harian</p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight">{pagePurpose.title}</h1>
-          </div>
-          <Link
-            prefetch={false}
-            href="/mobile/activity/input"
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10"
-            aria-label="Add activity"
-          >
-            <Plus className="size-5 text-blue-200" />
-          </Link>
-        </div>
-
-        {/* Productivity Card with Combined Stats */}
-        <div className="mt-4 rounded-xl bg-white/10 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-medium text-blue-100">
-                <Sparkles className="size-3" /> Productivity
-              </span>
-              <p className="mt-3 text-3xl font-bold leading-none">{productivityPercent}%</p>
-              <p className="mt-2 text-sm text-blue-200">
-                {data.summary.jobsCompleted}/{data.summary.jobsAssigned} job selesai hari ini
-              </p>
-            </div>
-            <Link
-              prefetch={false}
-              href="/mobile/activity/input"
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-xs font-semibold text-blue-700"
-            >
-              Input <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-              <p className="text-[10px] font-medium text-blue-200">Points</p>
-              <p className="mt-0.5 text-base font-bold">{data.summary.pointsToday}</p>
-            </div>
-            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-              <p className="text-[10px] font-medium text-blue-200">Streak</p>
-              <p className="mt-0.5 text-base font-bold">{data.summary.streakDays}d</p>
-            </div>
-            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-              <p className="text-[10px] font-medium text-blue-200">Queue</p>
-              <p className="mt-0.5 text-base font-bold">{data.summary.jobsAssigned}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* MCU Wellness & Health Shortcut Card */}
-      {latestMcu && (
-        <section className="rounded-xl border border-sky-100 bg-gradient-to-r from-sky-50 to-blue-50/60 p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-sky-700 shadow-sm ring-1 ring-sky-200">
-                <Stethoscope className="size-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-sky-800">
-                    Medical Check Up
-                  </p>
-                  <Badge
-                    className={cn(
-                      "text-[10px] px-1.5 py-0 border-0",
-                      latestMcu.status === "fit"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : latestMcu.status === "unfit"
-                        ? "bg-rose-100 text-rose-800"
-                        : "bg-amber-100 text-amber-800"
-                    )}
-                  >
-                    {latestMcu.aiKategori || latestMcu.status?.toUpperCase() || "SELESAI"}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs font-bold text-slate-800">
-                  {latestMcu.mcuDate ? `Hasil MCU: ${new Date(latestMcu.mcuDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}` : "Pemeriksaan MCU"}
-                </p>
-                {latestMcu.aiKesimpulan && (
-                  <p className="mt-1 text-xs text-slate-600 line-clamp-1">
-                    {latestMcu.aiKesimpulan}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 flex items-center justify-between border-t border-sky-200/60 pt-2.5">
-            <span className="text-[11px] text-sky-800 font-medium flex items-center gap-1">
-              <HeartPulse className="size-3.5 text-rose-500" /> Fit to Work
-            </span>
-            <Link
-              href="/mobile/wellness"
-              prefetch={false}
-              className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-900"
-            >
-              Lihat History MCU & PDF <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-        </section>
-      )}
-
-      {splToUpdate ? (
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
-              <AlertTriangle className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                Aktivitas lembur perlu diupdate
-              </p>
-              <p className="mt-1 text-sm font-bold text-amber-950">{splToUpdate.splNumber} · {splToUpdate.title}</p>
-              <p className="mt-1 text-xs leading-5 text-amber-800">
-                {splToUpdate.status === "submitted"
-                  ? "SPL masih menunggu approval, tetapi pekerjaan urgent dan evidence sudah boleh diisi."
-                  : "SPL sudah approved. Lengkapi aktivitas dan foto evidence sebelum closing."}
-              </p>
-              <Link
-                prefetch={false}
-                href="/mobile/activity/input"
-                className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-700 px-4 text-xs font-bold text-white"
-              >
-                <FileSignature className="size-4" /> Update Aktivitas Lembur
-              </Link>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Job List */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Job List Aktual</h2>
-          <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{data.assignments.length} item</span>
-        </div>
-
-        {data.assignments.length > 0 ? (
-          <div className="space-y-2">
-            {data.assignments.map((assignment) => (
-              <article key={assignment.id} className="rounded-xl border border-gray-100 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{assignment.activityCode ?? "Custom Job"}</p>
-                    <h2 className="mt-1 text-sm font-semibold leading-tight text-gray-900">{assignment.customJobName || assignment.activityName || "Pekerjaan Aktual"}</h2>
-                    <p className="mt-1 text-xs text-gray-500">{assignment.assignedByName} &bull; {assignment.durationLabel}</p>
-                  </div>
-                  <span className={cn("rounded-md px-2 py-0.5 text-[10px] font-medium shrink-0", statusBadgeClass(assignment.statusLabel))}>{assignment.statusLabel}</span>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-gray-50 px-3 py-2">
-                    <p className="text-[10px] font-medium text-gray-500">Deadline</p>
-                    <p className="mt-0.5 text-sm font-semibold text-gray-900">{formatTime(assignment.deadline)}</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 px-3 py-2">
-                    <p className="text-[10px] font-medium text-gray-500">Priority</p>
-                    <p className="mt-0.5 text-sm font-semibold text-gray-900">{assignment.priority}</p>
-                  </div>
-                </div>
-
-                {assignment.notes ? <p className="mt-2 text-xs leading-relaxed text-gray-600">{assignment.notes}</p> : null}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-500">Belum ada assignment hari ini.</div>
-        )}
-      </section>
-
-      {/* Daily Route */}
-      {data.routeChecklist ? (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Daily Route</h2>
-            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{data.routeChecklist.itemCount} item</span>
-          </div>
-
-          <article className="rounded-xl border border-gray-100 bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{data.routeChecklist.routeCode}</p>
-                <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold leading-tight text-gray-900">
-                  <ListChecks className="size-4 text-blue-600" /> {data.routeChecklist.routeName}
-                </h2>
-                <p className="mt-1 text-xs text-gray-500">{data.routeChecklist.sectionName ?? "Semua section"}</p>
-              </div>
-              <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.routeChecklist.shiftCode}</span>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {data.routeChecklist.activeSpl ? (
-                <div className="rounded-lg bg-amber-50 px-4 py-3">
-                  <p className="text-[10px] font-medium text-amber-700">{data.routeChecklist.activeSpl.splNumber}</p>
-                  <p className="mt-1 text-sm font-semibold text-amber-900">{data.routeChecklist.activeSpl.title}</p>
-                </div>
-              ) : null}
-              {data.routeChecklist.sessionId ? (
-                <Link prefetch={false} href={`/mobile/activity/document/${data.routeChecklist.sessionId}`}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white w-full justify-center">
-                  <FileSignature className="size-4" /> Lihat Dokumen & Signoff
-                </Link>
-              ) : null}
-            </div>
-          </article>
-        </section>
-      ) : null}
-
-      {/* SPL Aktif */}
-      {data.standaloneOvertimeChecklist ? (
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500">SPL Aktif</h2>
-            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.standaloneOvertimeChecklist.lineCount} line</span>
-          </div>
-
-          <article className="rounded-xl border border-gray-100 bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{data.standaloneOvertimeChecklist.splNumber}</p>
-                <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold leading-tight text-gray-900">
-                  <ListChecks className="size-4 text-blue-600" /> {data.standaloneOvertimeChecklist.title}
-                </h2>
-                <p className="mt-1 text-xs text-gray-500">{data.standaloneOvertimeChecklist.checkedCount}/{data.standaloneOvertimeChecklist.lineCount} line selesai</p>
-              </div>
-              <span className="shrink-0 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{data.standaloneOvertimeChecklist.progressPercent}%</span>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div className="flex gap-2">
-                <Link prefetch={false} href="/mobile/activity/input"
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white flex-1 justify-center">
-                  <FileSignature className="size-4" /> Isi Evidence SPL
-                </Link>
-                {data.standaloneOvertimeChecklist.sessionId ? (
-                  <Link prefetch={false} href={`/mobile/activity/document/${data.standaloneOvertimeChecklist.sessionId}`}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-xs font-medium text-blue-700 flex-1 justify-center">
-                    <FileSignature className="size-4" /> Dokumen User
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </article>
-        </section>
-      ) : null}
-
-      {/* Activity Log */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Activity Log</h2>
-          <Link prefetch={false} href="/mobile/activity/input"
-            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600">
-            Add Activity <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
-
-        <MobileActivityLog
-          activities={data.activities.map((activity) => ({
-            ...activity,
-            startTime: activity.startTime.toISOString(),
-            endTime: activity.endTime.toISOString(),
-            submissionTime: activity.submissionTime?.toISOString() ?? null,
-          }))}
-        />
-      </section>
-    </div>
+    <MobileDailyActivityClient
+      data={data}
+      rawEmployees={rawEmployees}
+      rawSections={rawSections}
+      rawDepartments={rawDepartments}
+      rawSites={rawSites}
+      hierarchy={hierarchy}
+      teamMembers={teamMembers}
+      latestMcu={latestMcu}
+      productivityPercent={productivityPercent}
+      splToUpdate={splToUpdate}
+      submitted={submitted}
+      submittedSpl={submittedSpl}
+      tabQuery={tabQuery}
+    />
   );
 }

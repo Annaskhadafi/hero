@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 
-async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
     let attempt = 0;
     while (true) {
         try {
@@ -14,12 +14,15 @@ async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350):
                 err?.code === 'ECONNRESET' ||
                 err?.code === 'ETIMEDOUT' ||
                 err?.code === 'ECONNREFUSED' ||
+                err?.code === '53300' ||
                 errStr.includes('econnreset') ||
                 errStr.includes('connection terminated') ||
                 errStr.includes('timeout exceeded') ||
                 errStr.includes('trying to connect') ||
                 errStr.includes('too many clients') ||
+                errStr.includes('sorry, too many clients') ||
                 errStr.includes('remaining connection slots') ||
+                errStr.includes('remaining connection slots are reserved') ||
                 errStr.includes('connection reset');
             if (attempt <= retries && isNetworkError) {
                 await new Promise((res) => setTimeout(res, delayMs * attempt));

@@ -50,6 +50,13 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   applyAttendanceImportPreviewAction,
   applyMealsConfigToAllSitesAction,
   clearAttendanceRealOverridesAction,
@@ -389,7 +396,9 @@ type PdfConfigSigner = {
 type PdfConfig = {
   preparedBy: string
   pjoLeader: string
+  pjoLeaderCk?: string
   approvedBy: string
+  hrName: string
   customSigners: PdfConfigSigner[]
   logoUrl: string
 }
@@ -495,7 +504,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   employeeBenefitConfig: DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   quotationBillingConfig: DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
   overtimeConfig: normalizeSiteOvertimeConfig(null),
-  pdfConfig: { preparedBy: '', pjoLeader: '', approvedBy: '', customSigners: [], logoUrl: '' },
+  pdfConfig: { preparedBy: '', pjoLeader: '', pjoLeaderCk: '', approvedBy: '', hrName: '', customSigners: [], logoUrl: '' },
 }
 
 function serializeSiteConfig(config: SiteSchedulingConfig) {
@@ -586,7 +595,9 @@ function normalizePdfConfig(
   return {
     preparedBy: (cfg.preparedBy as string) || currentEmployeeName,
     pjoLeader: (cfg.pjoLeader as string) || headEmp,
+    pjoLeaderCk: (cfg.pjoLeaderCk as string) || '',
     approvedBy: (cfg.approvedBy as string) || defaultApprovedBy,
+    hrName: (cfg.hrName as string) || '',
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
   }
@@ -1356,6 +1367,9 @@ export function SchedulingTimesheetWorkspace({
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
   const [includeTotalOvertime, setIncludeTotalOvertime] = useState<boolean>(true)
+  const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
+  const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
+  const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
@@ -1516,19 +1530,80 @@ export function SchedulingTimesheetWorkspace({
   }, [approvalSections])
   const pdfSignatures = useMemo(() => {
     const cfg = siteConfig.pdfConfig
+
+    // Find employees at the current site
+    const siteEmployees = employees.filter((e) =>
+      site?.id ? String(e.siteId) === String(site.id) : true
+    )
+
+    // Group employees by department to find the most common one
+    const deptCounts = new Map<string, number>()
+    for (const emp of siteEmployees) {
+      const dept = (emp.department || '').trim()
+      if (dept) {
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1)
+      }
+    }
+    // Find the most common department
+    let mostCommonDept = ''
+    let maxCount = 0
+    for (const [dept, count] of deptCounts) {
+      if (count > maxCount) {
+        maxCount = count
+        mostCommonDept = dept
+      }
+    }
+
+    // Match the most common department to an approval section
+    const matchedSection = siteApprovalSections.find((s) => {
+      const sDept = (s.departmentName || '').trim()
+      const empDept = mostCommonDept.toLowerCase()
+      return sDept && empDept && (
+        sDept.toLowerCase() === empDept ||
+        empDept.includes(sDept.toLowerCase()) ||
+        sDept.toLowerCase().includes(empDept)
+      )
+    }) || siteApprovalSections[0]
+
+    // Koordinator: section head dari matched section
+    const defaultCoordinator = matchedSection?.sectionHeadName || ''
     const pjoLeaderName =
       cfg.pjoLeader ||
+      defaultCoordinator ||
       employees.find((employee) => employee.id === site?.headEmployeeId)?.name ||
-      'Belum diset di Master Data Site'
-    const approvedByName = cfg.approvedBy || `Plant. SPV Department (${site?.name || 'Site'})`
+      ''
+
+    // Manager: department head dari matched section, fallback ke site head
+    const defaultManager = matchedSection?.departmentHeadName || ''
+    const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
+    const approvedByName =
+      cfg.approvedBy ||
+      defaultManager ||
+      siteHeadName ||
+      ''
+
+    // HR: cari employee dengan role/department HR di site yang sama
+    const hrKeywords = ['hr', 'hrd', 'human resource', 'human capital']
+    const defaultHr =
+      siteEmployees.find((e) => {
+        const role = (e.role || '').toLowerCase()
+        const dept = (e.department || '').toLowerCase()
+        return hrKeywords.some((kw) => role.includes(kw) || dept.includes(kw))
+      })?.name ||
+      siteEmployees.find((e) => {
+        const role = (e.role || '').toLowerCase()
+        return role.includes('admin') || role.includes('gm') || role.includes('general manager')
+      })?.name || ''
+
     return {
       preparedBy: cfg.preparedBy || currentEmployeeName,
       pjoLeader: pjoLeaderName,
       approvedBy: approvedByName,
+      hrName: cfg.hrName || defaultHr,
       customSigners: cfg.customSigners,
       logoUrl: cfg.logoUrl,
     }
-  }, [currentEmployeeName, employees, site, siteConfig.pdfConfig])
+  }, [currentEmployeeName, employees, site, siteConfig.pdfConfig, siteApprovalSections])
   const isThirteenOneRoster = siteConfig.rosterType === '13:1'
   const fieldBreakWorkCycleDays = isThirteenOneRoster ? siteConfig.fieldBreakWorkMonths * 7 : 90
   const fieldBreakRestDays = isThirteenOneRoster
@@ -2069,9 +2144,10 @@ export function SchedulingTimesheetWorkspace({
     const filtered = employees.filter((employee) => {
       // First priority: included in this site's saved/scheduled plan roster
       if (scheduledEmployeeIds.has(employee.id)) return true
-      // Second priority: exact siteId match
+      // If this site already has a configured roster plan with employees, strictly show only rostered employees
+      if (scheduledEmployeeIds.size > 0) return false
+      // Otherwise fallback to matching site employees
       if (String(employee.siteId) === siteId) return true
-      // Third priority: employee locationName (already extracted) matches extracted site name
       if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
@@ -2116,23 +2192,63 @@ export function SchedulingTimesheetWorkspace({
     () =>
       visibleEmployees.map((employee, employeeIndex) => {
         const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
-        const persistedSchedule = savedPlan
+        // Find saved plan for this employee: prioritize current site savedPlan, then search any active savedPlan matching employee.siteId or employee.id
+        const employeeSavedPlan =
+          savedPlan?.fixedSchedule?.some((item) => item.employeeId === employee.id) ||
+          savedPlan?.draftSchedule?.some((item) => item.employeeId === employee.id)
+            ? savedPlan
+            : savedPlans.find(
+                (plan) =>
+                  !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+                  plan.period === period &&
+                  (plan.siteId === employee.siteId ||
+                    plan.fixedSchedule?.some((item) => item.employeeId === employee.id) ||
+                    plan.draftSchedule?.some((item) => item.employeeId === employee.id))
+              )
+
+        const persistedSchedule = employeeSavedPlan
           ? (mode === 'schedule'
-              ? savedPlan.draftSchedule
-              : savedPlan.fixedSchedule.length
-                ? savedPlan.fixedSchedule
-                : savedPlan.draftSchedule
-            ).find((item) => item.employeeId === employee.id)?.schedule
+              ? employeeSavedPlan.draftSchedule
+              : employeeSavedPlan.fixedSchedule?.length
+                ? employeeSavedPlan.fixedSchedule
+                : employeeSavedPlan.draftSchedule
+            )?.find((item) => item.employeeId === employee.id)?.schedule
           : undefined
         const forceDayShift =
           (employeeRosterSection === 'Service Operation' ||
             employeeRosterSection === 'Repair Retread') &&
           (rosterSectionCounts[employeeRosterSection] ?? 0) < 3
         const schedule = days.map((day) => {
-          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
+          // Priority 1: Exact schedule from configured Schedule V2 / Roster Plan
+          if (persistedSchedule && persistedSchedule[day - 1]) {
+            return (persistedSchedule[day - 1] as ScheduleCode)
+          }
+
+          // Priority 2: Manual cell override
+          if (overrides[`${employee.id}-${day}`]) {
+            return overrides[`${employee.id}-${day}`]
+          }
+
           const date = dateKey(period, day)
+          const isFieldBreak = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
+            (plan) =>
+              isDateInRange(
+                date,
+                plan.fieldBreakDate,
+                plan.fieldBreakEndDate || plan.fieldBreakDate
+              )
+          )
+          if (isFieldBreak) return 'FB' as ScheduleCode
+
+          // In attendance and timesheet modes, do NOT invent unconfigured shifts ("jangan nambah nambah sendiri")
+          if (mode === 'attendance' || mode === 'payroll') {
+            return '' as ScheduleCode
+          }
+
+          // In schedule builder draft mode, only generate template if explicitly on schedule page
+          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
           const generatedCode = (
-            savedPlan
+            employeeSavedPlan
               ? forceDayShift
                 ? 'DS'
                 : buildSchedule(
@@ -2148,28 +2264,12 @@ export function SchedulingTimesheetWorkspace({
                   )
               : ''
           ) as ScheduleCode
-          const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
+
+          return applyHolidayPolicy(generatedCode, {
             scheduleType,
             rosterType: siteConfig.rosterType,
             isHoliday: isHoliday(period, day, holidays),
           })
-          const fieldBreakAdjustedCode = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
-            (plan) =>
-              isDateInRange(
-                date,
-                plan.fieldBreakDate,
-                plan.fieldBreakEndDate || plan.fieldBreakDate
-              )
-          )
-            ? 'FB'
-            : holidayAdjustedCode
-
-          // ponytail: attendance/benefit views read the fixed Schedule V2 roster; edit view reads draft.
-          return mode === 'schedule'
-            ? (overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode)
-            : ((persistedSchedule?.[day - 1] as ScheduleCode | undefined) ??
-                overrides[`${employee.id}-${day}`] ??
-                fieldBreakAdjustedCode)
         })
         const workDays = schedule.filter(
           (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
@@ -3440,6 +3540,85 @@ export function SchedulingTimesheetWorkspace({
       updatePdfConfig('logoUrl', reader.result as string)
     }
     reader.readAsDataURL(file)
+  }
+
+  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical') {
+    if (siteId === 'all') return
+
+    const siteName = (site?.name || '').trim().toUpperCase()
+    const isCkSite =
+      siteName.startsWith('CK') || (site?.location || '').trim().toUpperCase().startsWith('CK')
+
+    // Find known employees from employees list
+    const arjun =
+      employees.find((e) => e.name.toLowerCase().includes('arjun zahiri'))?.name ??
+      'Arjun Zahiri Nursith'
+    const ary =
+      employees.find((e) => e.name.toLowerCase().includes('ary maulana'))?.name ?? 'Ary Maulana'
+    const romy =
+      employees.find((e) => e.name.toLowerCase().includes('romy hidayat'))?.name ?? 'Romy Hidayat'
+    const kesuma =
+      employees.find((e) => e.name.toLowerCase().includes('kesuma bagaskara'))?.name ??
+      'Kesuma Bagaskara'
+    const fauzan =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes("as'ar fauzan") ||
+          e.name.toLowerCase().includes('asar fauzan')
+      )?.name ?? "Muhammad As'Ar Fauzan"
+    const apriyanto =
+      employees.find((e) => e.name.toLowerCase().includes('apriyanto'))?.name ?? 'Apriyanto'
+    const junaidi =
+      employees.find((e) => e.name.toLowerCase().includes('junaidi'))?.name ?? 'Junaidi'
+    const abian =
+      employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
+      'Muhammad Abian Husain'
+
+    setSiteConfigs((current) => {
+      const currentConfig = current[siteId] ?? defaultSiteConfig
+      let newPdfConfig = { ...currentConfig.pdfConfig }
+
+      if (presetKey === 'repair') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: arjun,
+          pjoLeader: ary,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      } else if (presetKey === 'services') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: fauzan,
+          pjoLeader: isCkSite ? apriyanto : junaidi,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      } else if (presetKey === 'technical') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
+          pjoLeader: abian,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      }
+
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: newPdfConfig,
+        },
+      }
+    })
+
+    const presetLabels: Record<string, string> = {
+      repair: 'Repair TTD',
+      services: 'Services TTD',
+      technical: 'Technical TTD',
+    }
+    toast.success(`Preset ${presetLabels[presetKey]} berhasil diterapkan!`)
   }
 
   function saveAllowanceVariables() {
@@ -4768,6 +4947,130 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function getEmployeeSectionCategory(employee?: {
+    section?: string | null
+    role?: string | null
+  }): 'Repair' | 'Services' | 'Technical' | 'Lainnya' {
+    const s = (employee?.section || employee?.role || '').toLowerCase()
+    if (s.includes('repair') || s.includes('retread')) return 'Repair'
+    if (s.includes('service') || s.includes('servis')) return 'Services'
+    if (s.includes('tech') || s.includes('teknis')) return 'Technical'
+    return 'Lainnya'
+  }
+
+  const availableSiteSectionCategories = useMemo(() => {
+    const cats = new Set<'Repair' | 'Services' | 'Technical'>()
+    for (const row of rows) {
+      const cat = getEmployeeSectionCategory(row.employee)
+      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical') {
+        cats.add(cat)
+      }
+    }
+    return cats
+  }, [rows])
+
+  function getSectionSignatures(
+    sectionName?: string | null,
+    employee?: EmployeeOption,
+    customSignatures?: typeof pdfSignatures
+  ): typeof pdfSignatures {
+    const baseSignatures = customSignatures ?? pdfSignatures
+    const normSection = (sectionName || employee?.section || employee?.role || '').toLowerCase()
+    const siteName = (site?.name || '').trim().toUpperCase()
+    const isCkSite =
+      siteName.startsWith('CK') || (site?.location || '').trim().toUpperCase().startsWith('CK')
+
+    const arjun =
+      employees.find((e) => e.name.toLowerCase().includes('arjun zahiri'))?.name ??
+      'Arjun Zahiri Nursith'
+    const ary =
+      employees.find((e) => e.name.toLowerCase().includes('ary maulana'))?.name ?? 'Ary Maulana'
+    const romy =
+      employees.find((e) => e.name.toLowerCase().includes('romy hidayat'))?.name ?? 'Romy Hidayat'
+    const kesuma =
+      employees.find((e) => e.name.toLowerCase().includes('kesuma bagaskara'))?.name ??
+      'Kesuma Bagaskara'
+    const fauzan =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes("as'ar fauzan") ||
+          e.name.toLowerCase().includes('asar fauzan')
+      )?.name ?? "Muhammad As'Ar Fauzan"
+    const apriyanto =
+      employees.find((e) => e.name.toLowerCase().includes('apriyanto'))?.name ?? 'Apriyanto'
+    const junaidi =
+      employees.find((e) => e.name.toLowerCase().includes('junaidi'))?.name ?? 'Junaidi'
+    const abian =
+      employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
+      'Muhammad Abian Husain'
+
+    const cfg = siteConfig.pdfConfig
+
+    if (normSection.includes('repair') || normSection.includes('retread')) {
+      return {
+        ...baseSignatures,
+        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || arjun,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || ary,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    if (normSection.includes('service') || normSection.includes('servis')) {
+      const defaultPjo = isCkSite ? apriyanto : junaidi
+      return {
+        ...baseSignatures,
+        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || fauzan,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || defaultPjo,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    if (normSection.includes('tech') || normSection.includes('teknis')) {
+      return {
+        ...baseSignatures,
+        preparedBy: employee?.name || cfg.preparedBy || baseSignatures.preparedBy,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || abian,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    return {
+      ...baseSignatures,
+      preparedBy: cfg.preparedBy || baseSignatures.preparedBy,
+      pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader,
+      approvedBy: cfg.approvedBy || baseSignatures.approvedBy,
+      hrName: cfg.hrName || baseSignatures.hrName,
+    }
+  }
+
+  function getMajoritySectionSignatures(
+    employeesList: Array<{ section?: string | null; role?: string | null; id?: number; name?: string }>,
+    customSignatures?: typeof pdfSignatures
+  ): typeof pdfSignatures {
+    const counts = { Repair: 0, Services: 0, Technical: 0 }
+    for (const emp of employeesList) {
+      const cat = getEmployeeSectionCategory(emp)
+      if (cat === 'Repair') counts.Repair++
+      else if (cat === 'Services') counts.Services++
+      else if (cat === 'Technical') counts.Technical++
+    }
+
+    let majorityCategory: 'Repair' | 'Services' | 'Technical' = 'Services'
+    let maxCount = -1
+    for (const [cat, count] of Object.entries(counts) as Array<['Repair' | 'Services' | 'Technical', number]>) {
+      if (count > maxCount) {
+        maxCount = count
+        majorityCategory = cat
+      }
+    }
+
+    const firstEmpOfMajority = employeesList.find((e) => getEmployeeSectionCategory(e) === majorityCategory)
+    return getSectionSignatures(majorityCategory, firstEmpOfMajority as EmployeeOption, customSignatures)
+  }
+
   async function buildEmployeeOvertimePdf(employee: EmployeeOption, showTotalOvertime = true) {
     const { generateOvertimeRecordPdf, buildAttendanceDayData } =
       await import('@/lib/timesheet/generate-attendance-pdf')
@@ -4804,7 +5107,6 @@ export function SchedulingTimesheetWorkspace({
       const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
       return {
         ...day,
-        // ponytail: keep one shared builder for single and bulk downloads.
         workingTimeFrom: day.isHoliday
           ? ''
           : useDay7WorkingTime
@@ -4834,6 +5136,7 @@ export function SchedulingTimesheetWorkspace({
         configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
       }
     })
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
       period,
       employeeName: employee.name,
@@ -4841,7 +5144,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
@@ -4855,6 +5158,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateEmployeeAllowanceRecordPdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee)
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateEmployeeAllowanceRecordPdf({
       view,
       period,
@@ -4863,7 +5167,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
     })
   }
@@ -4914,8 +5218,19 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
-    const idSet = employeeIds ? new Set(employeeIds) : null
-    const sourceRows = idSet ? rows.filter((row) => idSet.has(row.employee.id)) : rows
+    let sourceRows = rows
+    if (employeeIds) {
+      const idSet = new Set(employeeIds)
+      sourceRows = rows.filter((row) => idSet.has(row.employee.id))
+    } else if (availableSiteSectionCategories.size > 1) {
+      sourceRows = rows.filter((row) => {
+        const cat = getEmployeeSectionCategory(row.employee)
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        return true
+      })
+    }
     const grouped = new Map<string, Map<string, typeof rows>>()
     for (const row of sourceRows) {
       const dept = row.employee.department || 'Tanpa Departemen'
@@ -5057,7 +5372,11 @@ export function SchedulingTimesheetWorkspace({
     return result
   }
 
-  async function buildSummaryPdf(view: SummaryView, employeeIds?: number[]) {
+  async function buildSummaryPdf(
+    view: SummaryView,
+    employeeIds?: number[],
+    customSignatures?: typeof pdfSignatures
+  ) {
     const { generateSummaryTablePdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     return generateSummaryTablePdf({
@@ -5067,14 +5386,38 @@ export function SchedulingTimesheetWorkspace({
       project: rate.project,
       dayCount,
       rows: buildSummaryRows(view, employeeIds),
-      signatures: pdfSignatures,
+      signatures: customSignatures ?? pdfSignatures,
       holidays,
     })
   }
 
   async function downloadSummaryPdf(view: SummaryView) {
     try {
-      const pdf = await buildSummaryPdf(view)
+      if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+        toast.error('Pilih minimal satu section yang tersedia.')
+        return
+      }
+
+      const allEmps = rows.map((r) => r.employee)
+      const selectedEmps = allEmps.filter((emp) => {
+        const cat = getEmployeeSectionCategory(emp)
+        if (availableSiteSectionCategories.size > 1) {
+          if (cat === 'Repair' && !pdfIncludeRepair) return false
+          if (cat === 'Services' && !pdfIncludeServices) return false
+          if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        }
+        return true
+      })
+
+      if (selectedEmps.length === 0) {
+        toast.error('Tidak ada baris karyawan di site ini yang cocok dengan section yang dipilih.')
+        return
+      }
+
+      const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
+      const empIds = selectedEmps.map((e) => e.id)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -5088,7 +5431,14 @@ export function SchedulingTimesheetWorkspace({
             : view === 'meals'
               ? 'MLS'
               : 'TU'
-      a.download = `${label}_Summary_${sitePart}_${period}.pdf`
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join('_')
+      a.download = `${label}_Summary_${sitePart}_${period}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -5122,21 +5472,41 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk bulk download OT PDF.')
       return
     }
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+      toast.error('Pilih minimal satu section yang tersedia.')
+      return
+    }
+
+    const filteredSelected = selected.filter((emp) => {
+      const cat = getEmployeeSectionCategory(emp)
+      if (availableSiteSectionCategories.size > 1) {
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+      }
+      return true
+    })
+
+    if (filteredSelected.length === 0) {
+      toast.error('Tidak ada karyawan yang cocok dengan section yang dipilih.')
+      return
+    }
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
       const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
         'ovt',
         'msa',
         'meals',
         'lokasi',
       ]
+
+      const majoritySignatures = getMajoritySectionSignatures(filteredSelected)
+      const empIds = filteredSelected.map((e) => e.id)
+
       for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(
-          summaryView,
-          selected.map((employee) => employee.id)
-        )
+        const summaryPdf = await buildSummaryPdf(summaryView, empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const summaryPages = await merged.copyPages(
           summarySource,
@@ -5144,7 +5514,8 @@ export function SchedulingTimesheetWorkspace({
         )
         summaryPages.forEach((page) => merged.addPage(page))
       }
-      for (const employee of selected) {
+
+      for (const employee of filteredSelected) {
         for (const pdf of [
           await buildEmployeeOvertimePdf(employee, showTotalOvertime),
           await buildEmployeeAllowancePdf(employee),
@@ -5154,17 +5525,26 @@ export function SchedulingTimesheetWorkspace({
           pages.forEach((page) => merged.addPage(page))
         }
       }
+
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join('_')
+
       const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `OT_Benefit_Bulk_${period}_${showTotalOvertime ? 'dengan-total' : 'tanpa-total'}.pdf`
+      a.download = `OT_Benefit_Bulk_${period}_${showTotalOvertime ? 'dengan-total' : 'tanpa-total'}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success(
-        `${selected.length} karyawan: 4 summary (OT/MSA/MLS/TU) di awal, lalu OT dan Benefit digabung.`
+        `PDF berhasil di-download untuk ${filteredSelected.length} karyawan.`
       )
     } catch (error) {
       console.error('[Bulk PDF OT Error]', error)
@@ -5203,6 +5583,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateSiteAllowancePdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee)
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateSiteAllowancePdf({
       period,
       employeeName: employee.name,
@@ -5210,7 +5591,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
     })
   }
@@ -5311,21 +5692,41 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+      toast.error('Pilih minimal satu section yang tersedia.')
+      return
+    }
+
+    const filteredEmployees = allEmployees.filter((emp) => {
+      const cat = getEmployeeSectionCategory(emp)
+      if (availableSiteSectionCategories.size > 1) {
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+      }
+      return true
+    })
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
       const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
         'ovt',
         'msa',
         'meals',
         'lokasi',
       ]
+
+      const majoritySignatures = getMajoritySectionSignatures(filteredEmployees)
+      const empIds = filteredEmployees.map((e) => e.id)
+
       for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(
-          summaryView,
-          allEmployees.map((employee) => employee.id)
-        )
+        const summaryPdf = await buildSummaryPdf(summaryView, empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const summaryPages = await merged.copyPages(
           summarySource,
@@ -5333,7 +5734,8 @@ export function SchedulingTimesheetWorkspace({
         )
         summaryPages.forEach((page) => merged.addPage(page))
       }
-      for (const employee of allEmployees) {
+
+      for (const employee of filteredEmployees) {
         for (const pdf of [
           await buildEmployeeOvertimePdf(employee, includeTotalOvertime),
           await buildEmployeeAllowancePdf(employee),
@@ -5343,9 +5745,18 @@ export function SchedulingTimesheetWorkspace({
           pages.forEach((page) => merged.addPage(page))
         }
       }
+
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join(', ')
+
       openPdfPreview(
         await merged.save(),
-        `Priview 4 Summary + OT/Benefit • ${site?.name ?? 'Site'} • ${period} (${allEmployees.length} karyawan)`
+        `Preview 4 Summary + OT/Benefit • ${site?.name ?? 'Site'} • ${period} (${activeSections || 'Semua'})`
       )
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
@@ -6657,8 +7068,8 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                   {siteApprovalSections.length > 0 ? (
                     <div className="border-border/40 overflow-x-auto rounded-xl border">
-                      <div className="min-w-[920px]">
-                        <div className="bg-surface-container-low text-muted-foreground grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] gap-3 px-4 py-2 text-[11px] font-semibold tracking-wide uppercase">
+                      <div className="min-w-[1000px]">
+                        <div className="bg-surface-container-low text-muted-foreground grid grid-cols-[minmax(340px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)] gap-3 px-4 py-2 text-[11px] font-semibold tracking-wide uppercase">
                           <span>Section</span>
                           <span>PJO Leader</span>
                           <span>Section Head</span>
@@ -6668,15 +7079,15 @@ export function SchedulingTimesheetWorkspace({
                           {siteApprovalSections.map((row) => (
                             <div
                               key={row.id}
-                              className="grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] items-center gap-3 px-4 py-3"
+                              className="grid grid-cols-[minmax(340px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)] items-start gap-3 px-4 py-3"
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold">{row.sectionName}</p>
-                                <p className="text-muted-foreground truncate text-xs">
-                                  {row.departmentName}
+                                <p className="break-words text-sm font-semibold leading-tight">
+                                  {row.sectionName}
+                                  <span className="text-muted-foreground text-xs font-normal"> ({row.departmentName})</span>
                                 </p>
                                 <Badge
-                                  className="mt-1"
+                                  className="mt-1 !whitespace-normal !overflow-visible"
                                   variant={row.matrixId ? 'secondary' : 'outline'}
                                 >
                                   {row.matrixName || 'Belum sync'}
@@ -7355,55 +7766,111 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
-                  <div className="mb-3">
-                    <p className="font-display text-foreground text-sm font-semibold">
-                      Konfigurasi PDF &amp; Tanda Tangan
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
-                      Site Allowance.
-                    </p>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-display text-foreground text-sm font-semibold">
+                        Konfigurasi PDF &amp; Tanda Tangan
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
+                        Site Allowance.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap">
+                        Preset TTD:
+                      </Label>
+                      <Select
+                        onValueChange={(val) => {
+                          if (val === 'repair' || val === 'services' || val === 'technical') {
+                            applySignaturePreset(val)
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8.5 min-w-[190px] border border-border/70 bg-white px-3 text-xs font-medium shadow-none">
+                          <SelectValue placeholder="Pilih Preset TTD..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-50 bg-white shadow-md">
+                          <SelectItem value="repair" className="text-xs font-medium cursor-pointer">
+                            Repair TTD
+                          </SelectItem>
+                          <SelectItem value="services" className="text-xs font-medium cursor-pointer">
+                            Services TTD
+                          </SelectItem>
+                          <SelectItem value="technical" className="text-xs font-medium cursor-pointer">
+                            Technical TTD
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-4">
                     <div className="space-y-1.5">
                       <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                         Dibuat oleh
                       </Label>
-                      <Input
-                        value={siteConfig.pdfConfig.preparedBy}
-                        onChange={(e) => updatePdfConfig('preparedBy', e.target.value)}
-                        placeholder={currentEmployeeName}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        PJO / Leader
-                      </Label>
                       <SearchableSelect
-                        label="PJO Leader"
-                        value={
-                          employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)?.id
-                            ? String(
-                                employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)!.id
-                              )
-                            : ''
-                        }
-                        onValueChange={(v) => {
-                          const e = employees.find((x) => String(x.id) === v)
-                          updatePdfConfig('pjoLeader', e?.name ?? '')
-                        }}
-                        options={employees.map((e) => ({ value: String(e.id), label: e.name }))}
-                        placeholder="Cari PJO/Leader..."
+                        label="Dibuat oleh"
+                        value={siteConfig.pdfConfig.preparedBy}
+                        onValueChange={(v) => updatePdfConfig('preparedBy', v)}
+                        options={employees.map((e) => ({
+                          value: e.name,
+                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                        }))}
+                        placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
+                        allowCustom={true}
+                        widthClassName="w-full"
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                         Approved by
                       </Label>
-                      <Input
+                      <SearchableSelect
+                        label="Approved by"
+                        value={siteConfig.pdfConfig.pjoLeader}
+                        onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
+                        options={employees.map((e) => ({
+                          value: e.name,
+                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                        }))}
+                        placeholder="Pilih atau cari Approved by..."
+                        allowCustom={true}
+                        widthClassName="w-full"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Approved by
+                      </Label>
+                      <SearchableSelect
+                        label="Approved by"
                         value={siteConfig.pdfConfig.approvedBy}
-                        onChange={(e) => updatePdfConfig('approvedBy', e.target.value)}
+                        onValueChange={(v) => updatePdfConfig('approvedBy', v)}
+                        options={employees.map((e) => ({
+                          value: e.name,
+                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                        }))}
                         placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
+                        allowCustom={true}
+                        widthClassName="w-full"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Diketahui oleh
+                      </Label>
+                      <SearchableSelect
+                        label="Diketahui oleh"
+                        value={siteConfig.pdfConfig.hrName}
+                        onValueChange={(v) => updatePdfConfig('hrName', v)}
+                        options={employees.map((e) => ({
+                          value: e.name,
+                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                        }))}
+                        placeholder="Pilih atau ketik nama HR..."
+                        allowCustom={true}
+                        widthClassName="w-full"
                       />
                     </div>
                   </div>
@@ -7440,10 +7907,17 @@ export function SchedulingTimesheetWorkspace({
                                   />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <Input
+                                  <SearchableSelect
+                                    label="Penandatangan"
                                     value={s.name}
-                                    onChange={(e) => updateCustomSigner(i, 'name', e.target.value)}
-                                    placeholder="Ketik nama penandatangan"
+                                    onValueChange={(v) => updateCustomSigner(i, 'name', v)}
+                                    options={employees.map((e) => ({
+                                      value: e.name,
+                                      label: e.role ? `${e.name} (${e.role})` : e.name,
+                                    }))}
+                                    placeholder="Pilih atau ketik nama..."
+                                    allowCustom={true}
+                                    widthClassName="w-full"
                                   />
                                 </td>
                                 <td className="px-3 py-2">
@@ -7494,6 +7968,15 @@ export function SchedulingTimesheetWorkspace({
                         </div>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="mt-5 flex items-center justify-end gap-3 border-t border-border/40 pt-3">
+                    <Button
+                      size="sm"
+                      onClick={() => void saveSiteConfig()}
+                      className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                    >
+                      <Save className="size-4" /> Simpan Konfigurasi TTD
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -8221,6 +8704,58 @@ export function SchedulingTimesheetWorkspace({
                             Sertakan Kolom Total Overtime
                           </label>
                         </div>
+                        {availableSiteSectionCategories.size > 1 && (
+                          <>
+                            {availableSiteSectionCategories.has('Repair') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-repair-pdf"
+                                  checked={pdfIncludeRepair}
+                                  onCheckedChange={setPdfIncludeRepair}
+                                />
+                                <label
+                                  htmlFor="toggle-repair-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Repair / Retread"
+                                >
+                                  Repair
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('Services') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-services-pdf"
+                                  checked={pdfIncludeServices}
+                                  onCheckedChange={setPdfIncludeServices}
+                                />
+                                <label
+                                  htmlFor="toggle-services-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Services"
+                                >
+                                  Services
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('Technical') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-technical-pdf"
+                                  checked={pdfIncludeTechnical}
+                                  onCheckedChange={setPdfIncludeTechnical}
+                                />
+                                <label
+                                  htmlFor="toggle-technical-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Technical"
+                                >
+                                  Technical
+                                </label>
+                              </div>
+                            )}
+                          </>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"

@@ -16,6 +16,43 @@ import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
 
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
+  let attempt = 0
+  while (true) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      attempt++
+      const errStr = String(err?.message || err?.cause?.message || err || '').toLowerCase()
+      const isNetworkError =
+        err?.code === 'ECONNRESET' ||
+        err?.code === '53300' ||
+        errStr.includes('econnreset') ||
+        errStr.includes('connection terminated') ||
+        errStr.includes('timeout exceeded') ||
+        errStr.includes('trying to connect') ||
+        errStr.includes('too many clients') ||
+        errStr.includes('sorry, too many clients') ||
+        errStr.includes('connection reset') ||
+        errStr.includes('remaining connection slots are reserved')
+      if (attempt <= retries && isNetworkError) {
+        await new Promise((res) => setTimeout(res, delayMs * attempt))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): Promise<T> {
+  try {
+    return await withDbRetry(fn)
+  } catch (err) {
+    console.error(`[DailyActivityApprovalListPage] Warning in ${label}:`, (err as any)?.message || err)
+    return fallback
+  }
+}
+
 export const metadata = {
   title: 'Approval Workflow - Daily Activity Hub',
 }
@@ -26,20 +63,25 @@ export default async function DailyActivityApprovalListPage() {
 
   try {
     const normalizedEmail = session.user.email.trim().toLowerCase()
-    const [currentEmployee] = await db
-      .select({
-        id: employees.id,
-        name: employees.name,
-        email: employees.email,
-        accessRole: employees.accessRole,
-        jobTitle: employees.jobTitle,
-        department: employees.department,
-        section: employees.section,
-        siteId: employees.siteId,
-      })
-      .from(employees)
-      .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
-      .limit(1)
+    const [currentEmployee] = await safeQuery(
+      () =>
+        db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            accessRole: employees.accessRole,
+            jobTitle: employees.jobTitle,
+            department: employees.department,
+            section: employees.section,
+            siteId: employees.siteId,
+          })
+          .from(employees)
+          .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
+          .limit(1),
+      [],
+      'fetchCurrentEmployee'
+    )
 
     const userRole = ((session?.user as any)?.role || '').toLowerCase()
     const accessRole = (currentEmployee?.accessRole || '').toLowerCase()
@@ -58,46 +100,56 @@ export default async function DailyActivityApprovalListPage() {
     const isSiteAdmin = accessRole === 'site admin'
 
     // Get all sessions with their approval status
-    const rawSessions = await db
-      .select({
-        sessionId: dailyActivitySessions.id,
-        sessionCode: dailyActivitySessions.sessionCode,
-        workDate: dailyActivitySessions.workDate,
-        shiftCode: dailyActivitySessions.shiftCode,
-        sessionStatus: dailyActivitySessions.status,
-        employeeId: dailyActivitySessions.employeeId,
-        employeeName: employees.name,
-        employeeSn: employees.employeeSn,
-        department: employees.department,
-        section: employees.section,
-        siteName: sites.name,
-        siteId: dailyActivitySessions.siteId,
-      })
-      .from(dailyActivitySessions)
-      .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-      .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
-      .orderBy(desc(dailyActivitySessions.id))
+    const rawSessions = await safeQuery(
+      () =>
+        db
+          .select({
+            sessionId: dailyActivitySessions.id,
+            sessionCode: dailyActivitySessions.sessionCode,
+            workDate: dailyActivitySessions.workDate,
+            shiftCode: dailyActivitySessions.shiftCode,
+            sessionStatus: dailyActivitySessions.status,
+            employeeId: dailyActivitySessions.employeeId,
+            employeeName: employees.name,
+            employeeSn: employees.employeeSn,
+            department: employees.department,
+            section: employees.section,
+            siteName: sites.name,
+            siteId: dailyActivitySessions.siteId,
+          })
+          .from(dailyActivitySessions)
+          .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+          .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+          .orderBy(desc(dailyActivitySessions.id)),
+      [],
+      'fetchRawSessions'
+    )
 
     // Get all approvals for these sessions
     const rawSessionIds = rawSessions.map((s) => s.sessionId).filter(Boolean)
     const allApprovals =
       rawSessionIds.length > 0
-        ? await db
-            .select({
-              sessionId: dailyActivityApprovals.sessionId,
-              stepOrder: dailyActivityApprovals.stepOrder,
-              stepLabel: dailyActivityApprovals.stepLabel,
-              status: dailyActivityApprovals.status,
-              approverName: dailyActivityApprovals.approverName,
-              approverEmail: dailyActivityApprovals.approverEmail,
-              approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
-              signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
-              remarks: dailyActivityApprovals.remarks,
-              signedAt: dailyActivityApprovals.signedAt,
-            })
-            .from(dailyActivityApprovals)
-            .where(inArray(dailyActivityApprovals.sessionId, rawSessionIds))
-            .orderBy(asc(dailyActivityApprovals.stepOrder))
+        ? await safeQuery(
+            () =>
+              db
+                .select({
+                  sessionId: dailyActivityApprovals.sessionId,
+                  stepOrder: dailyActivityApprovals.stepOrder,
+                  stepLabel: dailyActivityApprovals.stepLabel,
+                  status: dailyActivityApprovals.status,
+                  approverName: dailyActivityApprovals.approverName,
+                  approverEmail: dailyActivityApprovals.approverEmail,
+                  approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
+                  signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
+                  remarks: dailyActivityApprovals.remarks,
+                  signedAt: dailyActivityApprovals.signedAt,
+                })
+                .from(dailyActivityApprovals)
+                .where(inArray(dailyActivityApprovals.sessionId, rawSessionIds))
+                .orderBy(asc(dailyActivityApprovals.stepOrder)),
+            [],
+            'fetchAllApprovals'
+          )
         : []
 
     const approvalsBySessionMap = new Map<number, typeof allApprovals>()
@@ -139,26 +191,48 @@ export default async function DailyActivityApprovalListPage() {
 
     const sessionIds = sessions.map((s) => s.sessionId).filter(Boolean)
 
-    // Get all session items
-    const allItems =
+    // Get all session items and item counts safely
+    const [allItems, itemCounts] = await Promise.all([
       sessionIds.length > 0
-        ? await db
-            .select({
-              id: dailyActivitySessionItems.id,
-              sessionId: dailyActivitySessionItems.sessionId,
-              snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-              activityName: activityLibraries.activityName,
-              unitNumber: dailyActivitySessionItems.unitNumber,
-              remark: dailyActivitySessionItems.remark,
-              actualPoints: dailyActivitySessionItems.actualPoints,
-              startedAt: dailyActivitySessionItems.startedAt,
-              endedAt: dailyActivitySessionItems.endedAt,
-            })
-            .from(dailyActivitySessionItems)
-            .leftJoin(activityLibraries, eq(dailyActivitySessionItems.libraryActivityId, activityLibraries.id))
-            .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
-            .orderBy(asc(dailyActivitySessionItems.id))
-        : []
+        ? safeQuery(
+            () =>
+              db
+                .select({
+                  id: dailyActivitySessionItems.id,
+                  sessionId: dailyActivitySessionItems.sessionId,
+                  snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+                  activityName: activityLibraries.activityName,
+                  unitNumber: dailyActivitySessionItems.unitNumber,
+                  remark: dailyActivitySessionItems.remark,
+                  actualPoints: dailyActivitySessionItems.actualPoints,
+                  startedAt: dailyActivitySessionItems.startedAt,
+                  endedAt: dailyActivitySessionItems.endedAt,
+                })
+                .from(dailyActivitySessionItems)
+                .leftJoin(activityLibraries, eq(dailyActivitySessionItems.libraryActivityId, activityLibraries.id))
+                .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+                .orderBy(asc(dailyActivitySessionItems.id)),
+            [],
+            'fetchAllItems'
+          )
+        : Promise.resolve([]),
+      sessionIds.length > 0
+        ? safeQuery(
+            () =>
+              db
+                .select({
+                  sessionId: dailyActivitySessionItems.sessionId,
+                  count: sql<number>`count(*)`,
+                  totalPoints: sql<number>`coalesce(sum(${dailyActivitySessionItems.actualPoints}), 0)`,
+                })
+                .from(dailyActivitySessionItems)
+                .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+                .groupBy(dailyActivitySessionItems.sessionId),
+            [],
+            'fetchItemCounts'
+          )
+        : Promise.resolve([]),
+    ])
 
     const itemsBySession = new Map<number, any[]>()
     for (const item of allItems || []) {
@@ -181,20 +255,6 @@ export default async function DailyActivityApprovalListPage() {
         itemsBySession.set(item.sessionId, list)
       }
     }
-
-    // Get item counts per session
-    const itemCounts =
-      sessionIds.length > 0
-        ? await db
-            .select({
-              sessionId: dailyActivitySessionItems.sessionId,
-              count: sql<number>`count(*)`,
-              totalPoints: sql<number>`coalesce(sum(${dailyActivitySessionItems.actualPoints}), 0)`,
-            })
-            .from(dailyActivitySessionItems)
-            .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
-            .groupBy(dailyActivitySessionItems.sessionId)
-        : []
 
     const itemCountMap = new Map<number, { count: number; totalPoints: number }>()
     for (const i of itemCounts || []) {
@@ -223,43 +283,63 @@ export default async function DailyActivityApprovalListPage() {
       }
     }
 
-    const [employeeList, siteList, libraryList, sectionList, departmentList] = await Promise.all([
-      db
-        .select({
-          id: employees.id,
-          name: employees.name,
-          employeeId: employees.employeeSn,
-          email: employees.email,
-          jobTitle: employees.jobTitle,
-          department: employees.department,
-          section: employees.section,
-          siteId: employees.siteId,
-          directManagerId: employees.directManagerId,
-          sectionId: employees.sectionId,
-          departmentId: employees.departmentId,
-        })
-        .from(employees)
-        .where(eq(employees.isActive, true)),
-      db
-        .select({
-          id: sites.id,
-          name: sites.name,
-          location: sites.location,
-        })
-        .from(sites)
-        .where(eq(sites.isActive, true)),
-      db
-        .select({
-          id: activityLibraries.id,
-          code: activityLibraries.activityCode,
-          name: activityLibraries.activityName,
-          basePoints: activityLibraries.basePoints,
-        })
-        .from(activityLibraries)
-        .where(eq(activityLibraries.isActive, true))
-        .limit(60),
-      db.select().from(masterSections),
-      db.select().from(masterDepartments),
+    // Batch 1: Primary master data
+    const [employeeList, siteList, libraryList] = await Promise.all([
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              employeeId: employees.employeeSn,
+              email: employees.email,
+              jobTitle: employees.jobTitle,
+              department: employees.department,
+              section: employees.section,
+              siteId: employees.siteId,
+              directManagerId: employees.directManagerId,
+              sectionId: employees.sectionId,
+              departmentId: employees.departmentId,
+            })
+            .from(employees)
+            .where(eq(employees.isActive, true)),
+        [],
+        'fetchEmployeeList'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: sites.id,
+              name: sites.name,
+              location: sites.location,
+            })
+            .from(sites)
+            .where(eq(sites.isActive, true)),
+        [],
+        'fetchSiteList'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityLibraries.id,
+              code: activityLibraries.activityCode,
+              name: activityLibraries.activityName,
+              basePoints: activityLibraries.basePoints,
+            })
+            .from(activityLibraries)
+            .where(eq(activityLibraries.isActive, true))
+            .limit(60),
+        [],
+        'fetchLibraryList'
+      ),
+    ])
+
+    // Batch 2: Structural lookup tables
+    const [sectionList, departmentList] = await Promise.all([
+      safeQuery(() => db.select().from(masterSections), [], 'fetchMasterSections'),
+      safeQuery(() => db.select().from(masterDepartments), [], 'fetchMasterDepartments'),
     ])
 
     const sectionHeadMap: Record<string, number | null> = {}

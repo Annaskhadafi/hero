@@ -18,8 +18,14 @@ import {
   PenTool,
   RotateCcw,
   AlertTriangle,
+  Camera,
+  Check,
+  ChevronRight,
   Download,
+  ImagePlus,
+  Search,
   SendHorizontal,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
@@ -75,6 +81,9 @@ type SessionItem = {
   duration: string
   points: number
   sortOrder: number
+  startTime?: string
+  endTime?: string
+  photoUrl?: string | null
 }
 
 type ApprovalData = {
@@ -122,6 +131,16 @@ function fmtDt(v: Date | string | null | undefined) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+function formatDateInput(value: Date | string | null | undefined) {
+  if (!value) return ''
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function fmtDate(v: Date | string | null | undefined) {
   if (!v) return '—'
   const d = v instanceof Date ? v : new Date(v)
@@ -148,15 +167,23 @@ function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
 
 export function DailyActivityApprovalForm({ data, employees: employeesProp = [], orgNodes = [], masterHeadMap }: { data: ApprovalData; employees?: any[]; orgNodes?: any[]; masterHeadMap?: any }) {
   const router = useRouter()
-  const { setOpen } = useSidebar()
+  let sidebarSetOpen: ((open: boolean) => void) | undefined
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const sidebar = useSidebar()
+    sidebarSetOpen = sidebar.setOpen
+  } catch (e) {
+    sidebarSetOpen = undefined
+  }
+
   const hasAutoClosed = useRef(false)
 
   useEffect(() => {
-    if (!hasAutoClosed.current) {
-      setOpen(false)
+    if (!hasAutoClosed.current && sidebarSetOpen) {
+      sidebarSetOpen(false)
       hasAutoClosed.current = true
     }
-  }, [setOpen])
+  }, [sidebarSetOpen])
 
   const [isPending, startTransition] = useTransition()
   const sigRef = useRef<SignatureCanvas | null>(null)
@@ -217,14 +244,16 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     jobTitle: data.employee.jobTitle || '',
     department: data.employee.department || '',
     section: data.employee.section || '',
-    workDate: data.workDate
-      ? new Date(data.workDate).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10),
+    workDate: formatDateInput(data.workDate) || formatDateInput(new Date()),
     shiftCode: data.shiftCode || 'ALL',
     siteName: data.site.name || '',
     customerName: data.site.customerName || '',
   })
   const [itemsList, setItemsList] = useState<SessionItem[]>(data.sessionItems);
+  const [sourceMode, setSourceMode] = useState<'self_input' | 'assigned' | 'custom'>('self_input');
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set());
   
   const initialLeader = data.approvals.find((a) => a.approverRole === 'leader')
   const initialSuperior = data.approvals.find((a) => a.approverRole === 'section_head')
@@ -958,6 +987,236 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           </CardContent>
         </Card>
 
+          {/* SOURCE MODE SELECTION */}
+          <Card className="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-2xs space-y-2">
+            <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
+            <select
+              value={sourceMode}
+              onChange={(e) => setSourceMode(e.target.value as any)}
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="self_input">Self-input activity</option>
+              <option value="assigned">Assigned activity</option>
+              <option value="custom">Custom activity</option>
+            </select>
+          </Card>
+
+          {/* KAMUS AKTIVITAS & LIBRARY INTEGRATION DI DESKTOP (DROPDOWN RAPI) */}
+          {sourceMode === 'self_input' && (
+            <Card className="rounded-[1.2rem] border border-indigo-100 bg-indigo-50/30 p-4 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Kamus Aktivitas & Library Integration</span>
+                  <h4 className="text-xs font-semibold text-slate-800">Pilih dari Library Aktivitas Standar</h4>
+                </div>
+                <Badge variant="secondary" className="rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-semibold border-0">
+                  {itemsList.length} Aktivitas Dipilih
+                </Badge>
+              </div>
+
+              {/* Modal Trigger Button */}
+              <Button
+                type="button"
+                onClick={() => setIsPickerModalOpen(true)}
+                className="w-full h-11 rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-2"
+              >
+                <Search className="size-4" /> PILIH ACTIVITY LIBRARY
+              </Button>
+
+              {/* Library Selection Modal */}
+              <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl">
+                  <DialogHeader className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50">
+                    <DialogTitle className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      <Search className="size-4 text-indigo-600" /> Kamus Activity Library Standar
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-slate-500">
+                      Pilih aktivitas standar untuk ditambahkan ke formulir Laporan Aktivitas Harian.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                      <Input
+                        placeholder="Cari berdasarkan kode, nama aktivitas, atau keyword..."
+                        value={pickerSearch}
+                        onChange={(e) => setPickerSearch(e.target.value)}
+                        className="pl-9 h-10 rounded-xl border-slate-200 text-xs bg-slate-50/60"
+                      />
+                      {pickerSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setPickerSearch('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      {[
+                        {
+                          groupName: 'Group: Running Tire Inspection & Pressure Check',
+                          subtitle: 'GRP-Tire Inspection • ALL',
+                          items: [
+                            { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                            { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
+                          ]
+                        },
+                        {
+                          groupName: 'Group: Rotasi Tire EM',
+                          subtitle: 'GRP-Rotasi Tire EM • Earthmover',
+                          items: [
+                            { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                            { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                          ]
+                        },
+                        {
+                          groupName: 'Group: Replace Tire TB',
+                          subtitle: 'GRP-Replace Tire TB • Truck & Bus',
+                          items: [
+                            { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+                            { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                          ]
+                        },
+                        {
+                          groupName: 'Group: Rotasi Tire TB',
+                          subtitle: 'GRP-Rotasi Tire TB • Truck & Bus',
+                          items: [
+                            { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
+                          ]
+                        },
+                        {
+                          groupName: 'Group: Replace Tire',
+                          subtitle: 'GRP-Replace Tire • General',
+                          items: [
+                            { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
+                          ]
+                        },
+                        {
+                          groupName: 'Group: Safety & Housekeeping',
+                          subtitle: 'GRP-General Safety & Housekeeping',
+                          items: [
+                            { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
+                            { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
+                          ]
+                        },
+                      ].map((group, gIdx) => {
+                        const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
+                        const filteredGroupItems = group.items.filter(item =>
+                          !pickerSearch ||
+                          `${item.code} ${item.name}`.toLowerCase().includes(pickerSearch.toLowerCase())
+                        )
+                        if (pickerSearch && filteredGroupItems.length === 0) return null
+
+                        return (
+                          <div key={gIdx} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedPickerGroups((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(group.groupName)) next.delete(group.groupName)
+                                  else next.add(group.groupName)
+                                  return next
+                                })
+                              }}
+                              className="w-full flex items-center justify-between bg-slate-50/80 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs hover:bg-slate-100 transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
+                                <span>{group.groupName}</span>
+                              </div>
+                              <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                                {filteredGroupItems.length} Activity
+                              </span>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="p-2 space-y-1.5 bg-white border-t border-slate-100">
+                                {filteredGroupItems.map((sub, sIdx) => {
+                                  const isSelected = itemsList.some(
+                                    (i) => i.label.includes(sub.code) || i.label.includes(sub.name)
+                                  )
+                                  return (
+                                    <div
+                                      key={sIdx}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setItemsList((prev) =>
+                                            prev.filter((i) => !i.label.includes(sub.code) && !i.label.includes(sub.name))
+                                          )
+                                        } else {
+                                          const newItem: SessionItem = {
+                                            id: -Date.now() - Math.floor(Math.random() * 1000),
+                                            label: `${sub.code} - ${sub.name}`,
+                                            group: 'Technical',
+                                            unitNumber: '',
+                                            remark: '',
+                                            duration: '30m',
+                                            points: sub.points,
+                                            sortOrder: itemsList.length + 1,
+                                          }
+                                          setItemsList((prev) => [...prev, newItem])
+                                        }
+                                      }}
+                                      className={`flex items-start justify-between rounded-xl p-2.5 cursor-pointer transition-all border ${
+                                        isSelected
+                                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                          : 'bg-slate-50/50 text-slate-800 border-slate-200 hover:bg-slate-100/60'
+                                      }`}
+                                    >
+                                      <div className="space-y-0.5">
+                                        <p className="text-xs font-bold font-mono">{sub.code}</p>
+                                        <p className="text-xs font-semibold">{sub.name}</p>
+                                        <p className={`text-[11px] ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                                          {sub.points} pts
+                                        </p>
+                                      </div>
+                                      <div className={`size-6 flex items-center justify-center rounded-lg text-xs font-bold ${
+                                        isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-600'
+                                      }`}>
+                                        {isSelected ? <Check className="size-3.5 stroke-[3]" /> : '+'}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+                    <Button
+                      type="button"
+                      onClick={() => setIsPickerModalOpen(false)}
+                      className="h-10 w-full rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs"
+                    >
+                      PAKAI {itemsList.length} ACTIVITY
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Active Selected Checklist Box */}
+              {itemsList.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-indigo-100">
+                  {itemsList.map((item, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-1 bg-white border border-indigo-200 rounded-md px-2 py-1 text-[11px] text-indigo-900 font-medium shadow-2xs">
+                      <b>{item.label}</b> ({item.points} pts)
+                      <button type="button" onClick={() => handleRemoveItem(idx)} className="text-rose-500 hover:text-rose-700 font-bold ml-1">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* A. Daily Activity Items — Inline Editable Table (PDF Matched) */}
           <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
             <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
@@ -983,96 +1242,146 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   </Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-100/70 text-slate-700 font-bold">
-                      <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 min-w-[200px]">Aktivitas</th>
-                      <th className="py-2.5 px-2.5 w-24 text-center">Unit</th>
-                      <th className="py-2.5 px-2.5 w-24 text-center">Durasi</th>
-                      <th className="py-2.5 px-2.5 w-20 text-center">Poin</th>
-                      <th className="py-2.5 px-3 min-w-[180px]">Remark</th>
-                      <th className="py-2.5 px-2 w-10 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {itemsList.length > 0 ? (
-                      itemsList.map((item, idx) => (
-                        <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
-                          <td className="py-2 px-3">
-                            <Input
-                              value={item.label}
-                              onChange={(e) => handleUpdateItem(idx, 'label', e.target.value)}
-                              placeholder="Nama aktivitas..."
-                              className="h-8 text-xs bg-white border-slate-200 font-medium"
-                            />
-                          </td>
-                          <td className="py-2 px-2.5">
-                            <Input
-                              value={item.unitNumber || ''}
-                              onChange={(e) => handleUpdateItem(idx, 'unitNumber', e.target.value)}
-                              placeholder="WS-01 / -"
-                              className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
-                            />
-                          </td>
-                          <td className="py-2 px-2.5">
-                            <Input
-                              value={item.duration || ''}
-                              onChange={(e) => handleUpdateItem(idx, 'duration', e.target.value)}
-                              placeholder="1j 0m"
-                              className="h-8 text-xs bg-white border-slate-200 text-center font-medium"
-                            />
-                          </td>
-                          <td className="py-2 px-2.5">
-                            <Input
-                              type="number"
-                              value={item.points}
-                              onChange={(e) => handleUpdateItem(idx, 'points', Number(e.target.value) || 0)}
-                              className="h-8 text-xs bg-white border-slate-200 text-center font-bold text-slate-800"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <Input
-                              value={itemRemarks[item.id] !== undefined ? itemRemarks[item.id] : (item.remark || '')}
-                              onChange={(e) => {
-                                const val = e.target.value
-                                handleUpdateItem(idx, 'remark', val)
-                                if (item.id) {
-                                  setItemRemarks((prev) => ({ ...prev, [item.id]: val }))
-                                }
-                              }}
-                              placeholder="Catatan / remark..."
-                              className="h-8 text-xs bg-white border-slate-200"
-                            />
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="size-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                              title="Hapus baris"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="py-6 text-center text-xs text-slate-400">
-                          Belum ada item aktivitas. Klik <span className="font-semibold text-slate-700">"Tambah Baris"</span> untuk menambahkan item.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+
+              {/* Quick Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-2.5 mt-2 border-t border-slate-100">
+                <span className="text-[11px] text-slate-500 font-semibold mr-1">Preset Cepat:</span>
+                {[
+                  { name: 'P5M & Safety Briefing Awal Shift', pts: 5 },
+                  { name: 'P2H & Pemeriksaan Alat Kerja', pts: 5 },
+                  { name: 'Inspeksi Tekanan & Kondisi Tyre Unit HD', pts: 10 },
+                  { name: 'Pemasangan & Dismounting Tyre OTR', pts: 15 },
+                  { name: 'Housekeeping & 5R Area Workshop', pts: 5 },
+                ].map((preset, pIdx) => (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={() => {
+                      const newItem: SessionItem = {
+                        id: -Date.now(),
+                        label: preset.name,
+                        group: 'Technical',
+                        unitNumber: '',
+                        remark: '',
+                        duration: '30m',
+                        points: preset.pts,
+                        sortOrder: itemsList.length + 1,
+                      }
+                      setItemsList((prev) => [...prev, newItem])
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-900 transition-colors shadow-2xs"
+                  >
+                    <Plus className="size-3 text-teal-600" /> {preset.name}
+                  </button>
+                ))}
               </div>
+            </CardHeader>
+            <CardContent className="p-3.5 space-y-3">
+              {itemsList.length > 0 ? (
+                <div className="space-y-3">
+                  {itemsList.map((item, idx) => (
+                    <div key={item.id || idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 space-y-3 relative shadow-2xs">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-xs font-bold font-mono text-slate-500">
+                            #{idx + 1} • {item.label.includes(' - ') ? item.label.split(' - ')[0] : 'SVC'}
+                          </p>
+                          <h6 className="text-xs font-extrabold text-slate-900 mt-0.5">
+                            {item.label.includes(' - ') ? item.label.split(' - ').slice(1).join(' - ') : item.label}
+                          </h6>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(idx)}
+                          className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                          title="Hapus activity"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                          <Input
+                            placeholder="Unit / equipment number"
+                            value={item.unitNumber || ''}
+                            onChange={(e) => handleUpdateItem(idx, 'unitNumber', e.target.value)}
+                            className="h-8.5 text-xs bg-white border-slate-200 font-mono"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
+                            <Input
+                              type="time"
+                              value={(item as any).startTime || '08:00'}
+                              onChange={(e) => handleUpdateItem(idx, 'startTime', e.target.value)}
+                              className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
+                            <Input
+                              type="time"
+                              value={(item as any).endTime || '08:30'}
+                              onChange={(e) => handleUpdateItem(idx, 'endTime', e.target.value)}
+                              className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1.5">
+                        <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                          <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {(item as any).photoUrl ? (
+                            <div className="flex items-center gap-2">
+                              <a href={(item as any).photoUrl} target="_blank" rel="noreferrer" className="inline-block">
+                                <img src={(item as any).photoUrl} alt="Evidence" className="size-10 object-cover rounded-lg border border-slate-200" />
+                              </a>
+                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">Ter-upload</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors">
+                                <Camera className="size-3.5 text-slate-600" /> Kamera
+                                <input type="file" accept="image/*" capture="environment" className="hidden" />
+                              </label>
+                              <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors">
+                                <ImagePlus className="size-3.5 text-slate-600" /> Galeri
+                                <input type="file" accept="image/*" className="hidden" />
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
+                        <Input
+                          placeholder="Hasil kerja, temuan, atau catatan singkat."
+                          value={itemRemarks[item.id] !== undefined ? itemRemarks[item.id] : (item.remark || '')}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            handleUpdateItem(idx, 'remark', val)
+                            if (item.id) {
+                              setItemRemarks((prev) => ({ ...prev, [item.id]: val }))
+                            }
+                          }}
+                          className="h-8.5 text-xs bg-white border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Belum ada item aktivitas. Klik <span className="font-semibold text-slate-700">"Tambah Baris"</span> atau gunakan <span className="font-semibold text-indigo-700">"Pilih Activity Library"</span>.
+                </div>
+              )}
             </CardContent>
           </Card>
 

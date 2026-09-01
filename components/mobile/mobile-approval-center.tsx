@@ -59,6 +59,7 @@ import {
   singleRevertPtwPermitAction,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked } from '@/lib/ptw-helpers'
+import { MobileSignaturePadDialog } from '@/components/mobile/mobile-signature-pad-dialog'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { Badge } from '@/components/ui/badge'
@@ -105,7 +106,15 @@ function formatPtwTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':')
 }
 
-export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
+export function MobileApprovalCenter({
+  data,
+  categoryFilter = 'ALL',
+  hideHeader = false,
+}: {
+  data: ApprovalCenterData
+  categoryFilter?: 'ALL' | 'OVERTIME' | 'DAILY_ACTIVITY' | 'PTW'
+  hideHeader?: boolean
+}) {
   const router = useRouter()
   const [activeMainTab, setActiveMainTab] = useState<'inbox' | 'history'>('inbox')
   const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('ALL')
@@ -182,6 +191,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
   // Signature state
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
+  const [isSigPadOpen, setIsSigPadOpen] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasDrawn, setHasDrawn] = useState(false)
@@ -248,12 +258,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
     setSignatureDataUrl(null)
   }
 
-  // Unified items list
-  const dailyActivityItems = data.dailyActivityInboxItems || []
-  const overtimeItems = data.overtimeInboxItems || []
-  const ptwItems = data.ptwInboxItems || []
-  const contractReviewItems = data.contractReviewInboxItems || []
-  const activityGroups = data.inboxGroups || []
+  // Unified items list (Pending items only - rejected items move to history)
+  const dailyActivityItems = (categoryFilter === 'ALL' || categoryFilter === 'DAILY_ACTIVITY') ? ((data.dailyActivityInboxItems || []).filter((i: any) => !i.isRejected && i.status !== 'rejected')) : []
+  const overtimeItems = (categoryFilter === 'ALL' || categoryFilter === 'OVERTIME') ? ((data.overtimeInboxItems || []).filter((i: any) => !i.isRejected && i.status !== 'rejected')) : []
+  const ptwItems = (categoryFilter === 'ALL' || categoryFilter === 'PTW') ? ((data.ptwInboxItems || []).filter((i: any) => !i.isRejected && i.status !== 'rejected')) : []
+  const contractReviewItems = categoryFilter === 'ALL' ? ((data.contractReviewInboxItems || []).filter((i: any) => !i.isRejected && i.status !== 'rejected')) : []
+  const activityGroups = categoryFilter === 'ALL' ? ((data.inboxGroups || []).filter((g: any) => !g.isRejected && g.status !== 'rejected')) : []
 
   // Count calculations
   const countDaily = dailyActivityItems.length
@@ -264,19 +274,35 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
   const totalPending = countDaily + countOvertime + countPtw + countContractReview + countGeneral
 
   const historyItems = useMemo(() => {
-    return (data.historyGroups || []).flatMap((g) => g.items)
-  }, [data.historyGroups])
+    const rawHistory = (data.historyGroups || []).flatMap((g) => g.items)
+    const rejectedDaily = (data.dailyActivityInboxItems || []).filter((i: any) => i.isRejected || i.status === 'rejected')
+    const rejectedOvertime = (data.overtimeInboxItems || []).filter((i: any) => i.isRejected || i.status === 'rejected')
+    const rejectedPtw = (data.ptwInboxItems || []).filter((i: any) => i.isRejected || i.status === 'rejected')
+    const rejectedContract = (data.contractReviewInboxItems || []).filter((i: any) => i.isRejected || i.status === 'rejected')
+
+    const raw = [...rawHistory, ...rejectedDaily, ...rejectedOvertime, ...rejectedPtw, ...rejectedContract]
+    if (categoryFilter === 'OVERTIME') {
+      return raw.filter((i: any) => i.category === 'OVERTIME' || i.splId || i.splNumber || i.sourceType === 'overtime')
+    }
+    if (categoryFilter === 'DAILY_ACTIVITY') {
+      return raw.filter((i: any) => i.category === 'DAILY_ACTIVITY' || i.sessionId || i.sourceType === 'daily_activity')
+    }
+    if (categoryFilter === 'PTW') {
+      return raw.filter((i: any) => i.category === 'PTW' || i.ptwId || i.sourceType === 'ptw')
+    }
+    return raw
+  }, [data.historyGroups, data.dailyActivityInboxItems, data.overtimeInboxItems, data.ptwInboxItems, data.contractReviewInboxItems, categoryFilter])
 
   const totalApproved = useMemo(() => {
-    return historyItems.filter((i) => i.status === 'approved' || i.status === 'validated').length
+    return historyItems.filter((i: any) => i.status === 'approved' || i.status === 'validated').length
   }, [historyItems])
 
   const totalReverted = useMemo(() => {
-    return historyItems.filter((i) => i.status === 'needs_revision' || i.status === 'reverted').length
+    return historyItems.filter((i: any) => i.status === 'needs_revision' || i.status === 'reverted').length
   }, [historyItems])
 
   const totalRejected = useMemo(() => {
-    return historyItems.filter((i) => i.status === 'rejected').length
+    return historyItems.filter((i: any) => i.status === 'rejected').length
   }, [historyItems])
 
   const totalAllCount = totalPending + historyItems.length
@@ -430,6 +456,8 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
     }
 
     for (const p of filteredPtw) {
+      const isPtwReverted = Boolean((p as any).isReverted || (p as any).status === 'reverted')
+      const isPtwRejected = Boolean((p as any).isRejected || (p as any).status?.toLowerCase() === 'rejected')
       list.push({
         id: p.id,
         category: 'PTW',
@@ -445,6 +473,9 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         dueAt: p.dueAt,
         submittedAt: p.submittedAt,
         url: p.url,
+        isReverted: isPtwReverted,
+        isRejected: isPtwRejected,
+        actionLabel: (p as any).actionLabel || (isPtwRejected ? 'Buat Baru' : isPtwReverted ? 'Revisi Form PTW' : 'Buka Tinjau & TTD PTW'),
         rawPtw: p,
       })
     }
@@ -487,7 +518,11 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
       })
     }
 
-    return list
+    return list.sort((a, b) => {
+      const dateA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0
+      const dateB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0
+      return dateB - dateA
+    })
   }, [filteredDaily, filteredOvertime, filteredPtw, filteredContractReview, filteredGeneralGroups])
 
   const searchParams = useSearchParams()
@@ -513,9 +548,9 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         const docNumNorm = (it.documentNumber || '').toLowerCase()
         const reqNumNorm = (((it as any).requestNumber || '') as string).toLowerCase()
         const itemIdNorm = (it.id || '').toLowerCase()
-        const rawDailyId = String(it.rawDaily?.id || '')
-        const rawOvertimeId = String(it.rawOvertime?.id || '')
-        const rawPtwId = String(it.rawPtw?.id || '')
+        const rawDailyId = String(it.rawDaily?.id || it.rawDaily?.sessionId || '')
+        const rawOvertimeId = String(it.rawOvertime?.id || it.rawOvertime?.splId || '')
+        const rawPtwId = String(it.rawPtw?.ptwId || it.rawPtw?.id || (it as any).ptwId || '')
 
         return (
           docNumNorm === paramNorm ||
@@ -586,11 +621,21 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         } else if (action === 'revert') {
           const res = await singleRevertDailyActivityAction(sessId, currentRemark || 'Dokumen dikembalikan.')
           if (!res.success) throw new Error(res.error || 'Gagal mengembalikan Daily Activity')
-          toast.info(`Daily Activity #${currentBatchDoc.documentNumber} dikembalikan.`)
+          toast.info(`Daily Activity #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`, {
+            action: {
+              label: 'Buka Dokumen Revisi',
+              onClick: () => router.push(`/mobile/activity/document/${sessId}/approval`),
+            },
+          })
         } else if (action === 'reject') {
           const res = await singleRejectDailyActivityAction(sessId, currentRemark || 'Dokumen ditolak.')
           if (!res.success) throw new Error(res.error || 'Gagal menolak Daily Activity')
-          toast.error(`Daily Activity #${currentBatchDoc.documentNumber} ditolak.`)
+          toast.error(`Daily Activity #${currentBatchDoc.documentNumber} ditolak.`, {
+            action: {
+              label: 'Buka Aktivitas',
+              onClick: () => router.push('/mobile/activity'),
+            },
+          })
         }
       } else if (currentBatchDoc.category === 'OVERTIME' && currentBatchDoc.rawOvertime) {
         const splId = currentBatchDoc.rawOvertime.splId
@@ -601,11 +646,21 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         } else if (action === 'revert') {
           const res = await singleRevertOvertimeRequestAction(splId, currentRemark || 'SPL dikembalikan.')
           if (!res.success) throw new Error(res.error || 'Gagal mengembalikan SPL')
-          toast.info(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} dikembalikan.`)
+          toast.info(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`, {
+            action: {
+              label: 'Buka Form SPL',
+              onClick: () => router.push(`/mobile/overtime?tab=apply&extend=${splId}`),
+            },
+          })
         } else if (action === 'reject') {
           const res = await singleRejectOvertimeRequestAction(splId, currentRemark || 'SPL ditolak.')
           if (!res.success) throw new Error(res.error || 'Gagal menolak SPL')
-          toast.error(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} ditolak.`)
+          toast.error(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} ditolak.`, {
+            action: {
+              label: 'Buka SPL',
+              onClick: () => router.push('/mobile/overtime?tab=history'),
+            },
+          })
         }
       } else if (currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw) {
         const ptwId = currentBatchDoc.rawPtw.ptwId
@@ -616,7 +671,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         } else if (action === 'revert') {
           const res = await singleRevertPtwPermitAction(ptwId, currentRemark || 'PTW dikembalikan.')
           if (!res.success) throw new Error(res.error || 'Gagal mengembalikan PTW')
-          toast.info(`Izin Kerja (PTW) #${currentBatchDoc.documentNumber} dikembalikan.`)
+          toast.info(`Izin Kerja (PTW) #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`, {
+            action: {
+              label: 'Buka PTW',
+              onClick: () => router.push('/mobile/hse/ptw'),
+            },
+          })
         } else if (action === 'reject') {
           const res = await singleRejectPtwPermitAction(ptwId, currentRemark || 'PTW ditolak.')
           if (!res.success) throw new Error(res.error || 'Gagal menolak PTW')
@@ -654,6 +714,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
     if (!currentBatchDoc) return
     const currentRemark = (approvalRemarks[currentBatchDoc.id] || '').trim()
 
+    if (action === 'approve' && !signatureDataUrl) {
+      toast.warning('Anda belum mendaftarkan tanda tangan digital. Silakan buat TTD terlebih dahulu.')
+      setIsSigPadOpen(true)
+      return
+    }
+
     if ((action === 'revert' || action === 'reject') && !currentRemark) {
       setRemarkFieldError(true)
       toast.warning(
@@ -670,6 +736,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
   const executeDirectBatchAllAction = (action: 'approve' | 'revert' | 'reject') => {
     const currentRemark = currentBatchDoc ? (approvalRemarks[currentBatchDoc.id] || '').trim() : ''
+
+    if (action === 'approve' && !signatureDataUrl) {
+      toast.warning('Anda belum mendaftarkan tanda tangan digital. Silakan buat TTD terlebih dahulu.')
+      setIsSigPadOpen(true)
+      return
+    }
 
     if ((action === 'revert' || action === 'reject') && !currentRemark) {
       setRemarkFieldError(true)
@@ -767,33 +839,43 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
   return (
     <div className="space-y-4 pb-24">
-      {/* ── Page Header ── */}
-      <div className="space-y-1">
-        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#003461]">
-          APPROVAL INBOX
-        </p>
-        <h1 className="text-2xl font-black text-slate-900">Approval</h1>
-        <p className="text-xs text-slate-600">
-          Inbox per requester dan riwayat hasil approval pengajuan Anda.
-        </p>
-      </div>
+      {/* ── Page Header (Hidden if embedded inside another page) ── */}
+      {!hideHeader && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#003461]">
+            {categoryFilter === 'OVERTIME' ? 'APPROVAL SPL' : 'APPROVAL INBOX'}
+          </p>
+          <h1 className="text-2xl font-black text-slate-900">
+            {categoryFilter === 'OVERTIME' ? 'Approval SPL' : 'Approval'}
+          </h1>
+          <p className="text-xs text-slate-600">
+            {categoryFilter === 'OVERTIME'
+              ? 'Inbox persetujuan Surat Perintah Lembur (SPL) dan riwayat approval SPL.'
+              : 'Inbox per requester dan riwayat hasil approval pengajuan Anda.'}
+          </p>
+        </div>
+      )}
 
       {/* ── Metrics Cards ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            INBOX GROUP
+            {categoryFilter === 'OVERTIME' ? 'PENDING SPL' : 'INBOX GROUP'}
           </p>
           <p className="mt-1 text-2xl font-bold text-slate-900">
-            {data.inboxMetrics?.pendingGroups ?? data.inboxGroups.length}
+            {categoryFilter === 'OVERTIME'
+              ? countOvertime
+              : (data.inboxMetrics?.pendingGroups ?? data.inboxGroups.length)}
           </p>
         </div>
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            PENDING ITEM
+            {categoryFilter === 'OVERTIME' ? 'RIWAYAT SPL' : 'PENDING ITEM'}
           </p>
           <p className="mt-1 text-2xl font-bold text-slate-900">
-            {data.inboxMetrics?.pendingActivities ?? totalPending}
+            {categoryFilter === 'OVERTIME'
+              ? historyItems.length
+              : (data.inboxMetrics?.pendingActivities ?? totalPending)}
           </p>
         </div>
       </div>
@@ -912,8 +994,10 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
           {/* Empty State */}
           {!hasAnyItems && (
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 text-xs text-slate-500 shadow-sm leading-relaxed">
-              Tidak ada pengajuan yang menunggu approval Anda.
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 text-center text-xs font-semibold text-slate-500 shadow-sm leading-relaxed">
+              {categoryFilter === 'OVERTIME'
+                ? 'Tidak ada pengajuan SPL yang menunggu approval Anda.'
+                : 'Tidak ada pengajuan yang menunggu approval Anda.'}
             </div>
           )}
 
@@ -974,7 +1058,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
                     >
-                      <Link href="/dashboard/activity-hub/my-day">
+                      <Link href={`/mobile/activity/document/${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}/approval`}>
                         Buat Baru (Duplicate)
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -982,10 +1066,10 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                   ) : item.isReverted ? (
                     <Button
                       asChild
-                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-xs font-bold text-white shadow-xs transition hover:bg-amber-700 active:scale-98"
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      <Link href={item.url || '/dashboard/activity-hub'}>
-                        {item.actionLabel || 'Revisi Form Aktivitas'}
+                      <Link href={`/mobile/activity/document/${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}/approval`}>
+                        REVISI DOKUMEN ↗
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
@@ -993,9 +1077,9 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                     <Button
                       type="button"
                       onClick={() => handleOpenBatchReview(item.id)}
-                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700 active:scale-98"
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[#003461] hover:bg-[#00274a] text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      {item.actionLabel || 'Buka Tinjau & TTD'}
+                      BUKA TTD ↗
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -1061,7 +1145,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
                     >
-                      <Link href="/mobile/overtime">
+                      <Link href={`/mobile/overtime?tab=apply&extend=${item.id}`}>
                         Buat Baru (Duplicate)
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -1069,10 +1153,10 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                   ) : item.isReverted ? (
                     <Button
                       asChild
-                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-xs font-bold text-white shadow-xs transition hover:bg-amber-700 active:scale-98"
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      <Link href={item.url || '/dashboard/overtime-requests'}>
-                        {item.actionLabel || 'Revisi Form SPL'}
+                      <Link href={`/mobile/overtime?tab=apply&extend=${item.id}`}>
+                        REVISI DOKUMEN ↗
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
                     </Button>
@@ -1080,9 +1164,9 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                     <Button
                       type="button"
                       onClick={() => handleOpenBatchReview(item.id)}
-                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-xs font-bold text-white shadow-xs transition hover:bg-amber-700 active:scale-98"
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[#003461] hover:bg-[#00274a] text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      {item.actionLabel || 'Buka Tinjau & TTD SPL'}
+                      BUKA TTD ↗
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -1121,7 +1205,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                         </p>
                       </div>
                     </div>
-                    <AdminStatusBadge value={item.dueState} />
+                    <AdminStatusBadge value={(item as any).isRejected ? 'rejected' : item.isReverted ? 'reverted' : item.dueState} />
                   </div>
 
                   <div className="space-y-1">
@@ -1143,14 +1227,36 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                     </div>
                   </div>
 
-                  <Button
-                    type="button"
-                    onClick={() => handleOpenBatchReview(item.id)}
-                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 active:scale-98"
-                  >
-                    Buka Tinjau & TTD PTW
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
+                  {(item as any).isRejected ? (
+                    <Button
+                      asChild
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
+                    >
+                      <Link href={`/mobile/hse/ptw?extend=${(item as any).ptwId || item.id}`}>
+                        Buat Baru (Duplicate)
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </Button>
+                  ) : item.isReverted ? (
+                    <Button
+                      asChild
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white shadow-xs transition active:scale-98"
+                    >
+                      <Link href={`/mobile/hse/ptw?extend=${(item as any).ptwId || item.id}`}>
+                        REVISI DOKUMEN ↗
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={() => handleOpenBatchReview(item.id)}
+                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[#003461] hover:bg-[#00274a] text-xs font-bold text-white shadow-xs transition active:scale-98"
+                    >
+                      BUKA TTD ↗
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               </article>
             )
@@ -1331,18 +1437,18 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
               Belum ada riwayat pengajuan yang tercatat.
             </div>
           ) : (
-            historyItems.map((item) => (
+            historyItems.map((item: any) => (
               <article
-                key={item.activityId}
+                key={item.activityId || item.id}
                 className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm space-y-2.5"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900">{item.title}</span>
-                  <AdminStatusBadge value={item.status} />
+                  <span className="font-bold text-xs text-slate-900">{item.title || item.name}</span>
+                  <AdminStatusBadge value={item.status || item.approvalStatus} />
                 </div>
                 <div className="text-xs text-slate-600 space-y-1">
-                  <p>{item.activityType} • {item.unitNumber} • {item.siteName}</p>
-                  <p className="text-[11px] text-slate-400">Diputuskan: {item.lastDecision}</p>
+                  <p>{item.activityType || item.category} • {item.unitNumber || '-'} • {item.siteName || '-'}</p>
+                  <p className="text-[11px] text-slate-400">Diputuskan: {item.lastDecision || '-'}</p>
                 </div>
               </article>
             ))
@@ -2458,6 +2564,35 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                 <p><span className="text-slate-400">Shift:</span> <span className="font-semibold text-slate-800">{currentBatchDoc?.shiftCode || 'ALL'}</span></p>
               </div>
 
+              {/* TTD Approver Status & Quick Register / Edit */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <PenTool className="size-3.5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-800">Tanda Tangan Approver</p>
+                    <p className="text-[10px] text-slate-400">
+                      {signatureDataUrl ? 'TTD Digital Aktif' : 'Belum Terdaftar'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsSigPadOpen(true)}
+                  className={cn(
+                    "h-7 text-[10px] font-bold rounded-lg px-2 gap-1 active:scale-95",
+                    signatureDataUrl
+                      ? "border-slate-200 text-slate-700 hover:bg-slate-50"
+                      : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  )}
+                >
+                  {signatureDataUrl ? 'Ubah TTD' : '+ Buat TTD'}
+                </Button>
+              </div>
+
               {/* Catatan Approval Input */}
               <div className={cn(
                 "rounded-xl border p-3.5 bg-white space-y-1.5 transition-all duration-200",
@@ -2488,7 +2623,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                 />
               </div>
 
-              {/* Decision Buttons or Rejected Lockdown Banner */}
+              {/* Decision Buttons or Rejected/Reverted Lockdown Banner */}
               {currentBatchDoc?.isRejected ? (
                 <div className="space-y-3 pt-2 border-t border-slate-100">
                   <div className="rounded-xl border-2 border-rose-500 bg-rose-50 p-4 text-rose-900 shadow-xs space-y-2">
@@ -2503,8 +2638,36 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
                       asChild
                       className="w-full h-10 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl mt-1 shadow-xs"
                     >
-                      <Link href={currentBatchDoc.category === 'OVERTIME' ? '/mobile/overtime' : '/dashboard/activity-hub/my-day'}>
-                        Buat Baru (Duplicate) ↗
+                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&extend=${currentBatchDoc.id}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity/document/${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}/approval`}>
+                        Buat Pengajuan Baru ↗
+                      </Link>
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={() => setIsBatchReviewOpen(false)}
+                    className="w-full h-10 bg-[#e5f0ec] text-[#003461] hover:bg-[#d6e7e1] font-bold text-xs rounded-xl"
+                  >
+                    TUTUP REVIEWER
+                  </Button>
+                </div>
+              ) : currentBatchDoc?.isReverted ? (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div className="rounded-xl border-2 border-amber-500 bg-amber-50 p-4 text-amber-900 shadow-xs space-y-2">
+                    <p className="font-black text-xs flex items-center gap-1.5 text-amber-900">
+                      <RotateCcw className="size-4 text-amber-600 shrink-0" />
+                      🔄 Dokumen Dikembalikan untuk Revisi
+                    </p>
+                    <p className="text-[11px] text-amber-700 leading-relaxed font-medium">
+                      Dokumen ini dikembalikan oleh approver. Silakan periksa catatan revisi di atas dan perbarui form pengajuan Anda.
+                    </p>
+                    <Button
+                      asChild
+                      className="w-full h-10 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl mt-1 shadow-xs"
+                    >
+                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&extend=${currentBatchDoc.id}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity/document/${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}/approval`}>
+                        Buka Form Revisi Pengajuan ↗
                       </Link>
                     </Button>
                   </div>
@@ -2609,6 +2772,17 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
             </div>
           </DialogContent>
         </Dialog>
+
+        <MobileSignaturePadDialog
+          isOpen={isSigPadOpen}
+          onClose={() => setIsSigPadOpen(false)}
+          onSignatureSaved={(sig) => {
+            setSignatureDataUrl(sig)
+          }}
+          onSignatureDeleted={() => {
+            setSignatureDataUrl(null)
+          }}
+        />
       </div>
   )
 }

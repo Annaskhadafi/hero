@@ -26,6 +26,34 @@ function safeRevalidatePath(path: string) {
     // Ignore when executed outside Next.js request context (e.g. tests)
   }
 }
+
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 300): Promise<T> {
+  let attempt = 0
+  while (true) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      attempt++
+      const errStr = String(err?.message || err?.cause?.message || err || '').toLowerCase()
+      const isNetworkError =
+        err?.code === 'ECONNRESET' ||
+        err?.code === '53300' ||
+        errStr.includes('econnreset') ||
+        errStr.includes('connection terminated') ||
+        errStr.includes('timeout exceeded') ||
+        errStr.includes('trying to connect') ||
+        errStr.includes('too many clients') ||
+        errStr.includes('sorry, too many clients') ||
+        errStr.includes('connection reset') ||
+        errStr.includes('remaining connection slots are reserved')
+      if (attempt <= retries && isNetworkError) {
+        await new Promise((res) => setTimeout(res, delayMs * attempt))
+        continue
+      }
+      throw err
+    }
+  }
+}
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getServerSession } from '@/lib/auth-session'
 import {
@@ -3834,12 +3862,18 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
   }
 
   // Fallback to database masterSections headEmployeeId if not matched in workflow settings
-  if (!sectionHeadName && sessionEmployee?.sectionId) {
-    const [sectionRow] = await db
-      .select({ headEmployeeId: masterSections.headEmployeeId })
-      .from(masterSections)
-      .where(eq(masterSections.id, sessionEmployee.sectionId))
-      .limit(1)
+  if (!sectionHeadName && (sessionEmployee?.sectionId || sessionEmployee?.section)) {
+    const [sectionRow] = sessionEmployee.sectionId
+      ? await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(eq(masterSections.id, sessionEmployee.sectionId))
+          .limit(1)
+      : await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(sql`LOWER(TRIM(${masterSections.name})) = ${(sessionEmployee.section || '').trim().toLowerCase()}`)
+          .limit(1)
 
     if (sectionRow?.headEmployeeId) {
       const [secEmp] = await db
@@ -3855,15 +3889,74 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
     }
   }
 
+  // Fallback to masterDepartments headEmployeeId if still empty
+  if (!sectionHeadName && (sessionEmployee?.departmentId || sessionEmployee?.department)) {
+    const [deptRow] = sessionEmployee.departmentId
+      ? await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(eq(masterDepartments.id, sessionEmployee.departmentId))
+          .limit(1)
+      : await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(sql`LOWER(TRIM(${masterDepartments.name})) = ${(sessionEmployee.department || '').trim().toLowerCase()}`)
+          .limit(1)
+
+    if (deptRow?.headEmployeeId) {
+      const [deptEmp] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, deptRow.headEmployeeId))
+        .limit(1)
+      if (deptEmp) {
+        sectionHeadEmployeeId = deptEmp.id
+        sectionHeadName = deptEmp.name
+        sectionHeadEmail = deptEmp.email || ''
+      }
+    }
+  }
+
+  // Fallback to Site Head / PJO if still empty
+  if (!sectionHeadName && session.siteId) {
+    const [siteRow] = await db
+      .select({ headEmployeeId: sites.headEmployeeId })
+      .from(sites)
+      .where(eq(sites.id, session.siteId))
+      .limit(1)
+
+    if (siteRow?.headEmployeeId) {
+      const [siteEmp] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, siteRow.headEmployeeId))
+        .limit(1)
+      if (siteEmp) {
+        sectionHeadEmployeeId = siteEmp.id
+        sectionHeadName = siteEmp.name
+        sectionHeadEmail = siteEmp.email || ''
+      }
+    }
+  }
+
   // Resolve leader approver
   let leaderEmployeeId = directManager?.id ?? null
-  let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? 'Leader Lapangan'
+  let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
   let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
+
+  if (!leaderEmployeeId && sectionHeadEmployeeId) {
+    leaderEmployeeId = sectionHeadEmployeeId
+    leaderName = sectionHeadName
+    leaderEmail = sectionHeadEmail
+  }
 
   // If section head still empty, fallback to settings.approvalMatrix.managerName or Section Head default
   if (!sectionHeadName) {
     sectionHeadName = settings.approvalMatrix?.managerName || 'Section Head'
     sectionHeadEmail = settings.approvalMatrix?.managerEmail || ''
+  }
+  if (!leaderName) {
+    leaderName = 'Leader Lapangan'
   }
 
   const approvers: Array<{
@@ -4278,7 +4371,9 @@ export async function submitDailyActivityApprovalStepAction(
   }
 }
 
-export async function getDailyActivityApprovalData(sessionId: number) {
+export async function getDailyActivityApprovalData(sessionIdInput: number | string) {
+  const numId = typeof sessionIdInput === 'number' ? sessionIdInput : Number(sessionIdInput)
+  const isNumeric = !isNaN(numId) && numId > 0
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.email) return null
 
@@ -4319,30 +4414,36 @@ export async function getDailyActivityApprovalData(sessionId: number) {
     accessRole: (session.user as any)?.role || 'Super Admin',
   }
 
-  const [header] = await db
-    .select({
-      sessionId: dailyActivitySessions.id,
-      sessionCode: dailyActivitySessions.sessionCode,
-      workDate: dailyActivitySessions.workDate,
-      shiftCode: dailyActivitySessions.shiftCode,
-      status: dailyActivitySessions.status,
-      submittedAt: dailyActivitySessions.submittedAt,
-      approvedAt: dailyActivitySessions.approvedAt,
-      employeeId: employees.id,
-      employeeName: employees.name,
-      employeeSn: employees.employeeSn,
-      department: employees.department,
-      section: employees.section,
-      jobTitle: employees.jobTitle,
-      siteId: sites.id,
-      siteName: sites.name,
-      customerName: sites.customerName,
-    })
-    .from(dailyActivitySessions)
-    .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-    .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
-    .where(eq(dailyActivitySessions.id, sessionId))
-    .limit(1)
+  const [header] = await withDbRetry(() =>
+    db
+      .select({
+        sessionId: dailyActivitySessions.id,
+        sessionCode: dailyActivitySessions.sessionCode,
+        workDate: dailyActivitySessions.workDate,
+        shiftCode: dailyActivitySessions.shiftCode,
+        status: dailyActivitySessions.status,
+        submittedAt: dailyActivitySessions.submittedAt,
+        approvedAt: dailyActivitySessions.approvedAt,
+        employeeId: employees.id,
+        employeeName: employees.name,
+        employeeSn: employees.employeeSn,
+        department: employees.department,
+        section: employees.section,
+        jobTitle: employees.jobTitle,
+        siteId: sites.id,
+        siteName: sites.name,
+        customerName: sites.customerName,
+      })
+      .from(dailyActivitySessions)
+      .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+      .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+      .where(
+        isNumeric
+          ? or(eq(dailyActivitySessions.id, numId), eq(dailyActivitySessions.sessionCode, String(sessionIdInput)))
+          : eq(dailyActivitySessions.sessionCode, String(sessionIdInput))
+      )
+      .limit(1)
+  )
 
   if (!header) return null
 
@@ -4350,33 +4451,38 @@ export async function getDailyActivityApprovalData(sessionId: number) {
     currentEmployee.accessRole || ''
   )
 
-  const approvals = await db
-    .select()
-    .from(dailyActivityApprovals)
-    .where(eq(dailyActivityApprovals.sessionId, sessionId))
-    .orderBy(asc(dailyActivityApprovals.stepOrder))
+  const approvals = await withDbRetry(() =>
+    db
+      .select()
+      .from(dailyActivityApprovals)
+      .where(eq(dailyActivityApprovals.sessionId, header.sessionId))
+      .orderBy(asc(dailyActivityApprovals.stepOrder))
+  )
 
-  const itemRows = await db
-    .select({
-      id: dailyActivitySessionItems.id,
-      snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-      snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
-      unitNumber: dailyActivitySessionItems.unitNumber,
-      remark: dailyActivitySessionItems.remark,
-      startedAt: dailyActivitySessionItems.startedAt,
-      endedAt: dailyActivitySessionItems.endedAt,
-      actualPoints: dailyActivitySessionItems.actualPoints,
-      isChecked: dailyActivitySessionItems.isChecked,
-      sortOrder: dailyActivitySessionItems.sortOrder,
-    })
-    .from(dailyActivitySessionItems)
-    .where(
-      and(
-        eq(dailyActivitySessionItems.sessionId, sessionId),
-        eq(dailyActivitySessionItems.isChecked, true)
+  const itemRows = await withDbRetry(() =>
+    db
+      .select({
+        id: dailyActivitySessionItems.id,
+        snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+        snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+        snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+        unitNumber: dailyActivitySessionItems.unitNumber,
+        remark: dailyActivitySessionItems.remark,
+        startedAt: dailyActivitySessionItems.startedAt,
+        endedAt: dailyActivitySessionItems.endedAt,
+        actualPoints: dailyActivitySessionItems.actualPoints,
+        isChecked: dailyActivitySessionItems.isChecked,
+        sortOrder: dailyActivitySessionItems.sortOrder,
+      })
+      .from(dailyActivitySessionItems)
+      .where(
+        and(
+          eq(dailyActivitySessionItems.sessionId, header.sessionId),
+          eq(dailyActivitySessionItems.isChecked, true)
+        )
       )
-    )
-    .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
+      .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
+  )
 
   const sessionItems = itemRows.map((item) => {
     const durationMinutes =
@@ -4385,15 +4491,23 @@ export async function getDailyActivityApprovalData(sessionId: number) {
         : 0
     const hours = Math.floor(durationMinutes / 60)
     const mins = durationMinutes % 60
+    let parsedPayload: any = {}
+    try {
+      parsedPayload = JSON.parse(item.snapshotPayload || '{}')
+    } catch (e) {}
+
     return {
       id: item.id,
       label: item.snapshotLabel,
       group: item.snapshotGroupName || '',
-      unitNumber: item.unitNumber || '',
-      remark: item.remark || '',
+      unitNumber: item.unitNumber || parsedPayload?.unitNumber || parsedPayload?.equipmentNo || parsedPayload?.unitNo || '',
+      remark: item.remark || parsedPayload?.remark || parsedPayload?.notes || parsedPayload?.description || '',
       duration: durationMinutes > 0 ? (hours > 0 ? `${hours}j ${mins}m` : `${mins}m`) : '-',
       points: item.actualPoints || 0,
-      sortOrder: item.sortOrder,
+      sortOrder: item.sortOrder || 0,
+      photoUrl: parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null,
+      startedAt: item.startedAt,
+      endedAt: item.endedAt,
     }
   })
 
@@ -5524,6 +5638,19 @@ export async function saveDailyActivityApprovalForm(payload: {
       ? await db.select({ name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, session.employeeId)).limit(1)
       : []
 
+    // If stepRemarks provided alone, save remarks to step approvals
+    if (payload.stepRemarks && typeof payload.stepRemarks === 'object') {
+      for (const [stepIdStr, remark] of Object.entries(payload.stepRemarks)) {
+        const stepId = Number(stepIdStr)
+        if (stepId && remark !== undefined) {
+          await db
+            .update(dailyActivityApprovals)
+            .set({ remarks: remark })
+            .where(eq(dailyActivityApprovals.id, stepId))
+        }
+      }
+    }
+
     if (payload.signatures && typeof payload.signatures === 'object') {
       for (const [stepIdStr, sigUrl] of Object.entries(payload.signatures || {})) {
         const stepId = Number(stepIdStr)
@@ -5601,9 +5728,13 @@ export async function saveDailyActivityApprovalForm(payload: {
       }
     }
 
+    safeRevalidatePath(`/dashboard/activity-hub`)
     safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
     safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
     safeRevalidatePath(`/dashboard/activity-hub/approval`)
+    safeRevalidatePath(`/mobile/activity`)
+    safeRevalidatePath(`/mobile/activity/document/${payload.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/approval`)
 
     return { success: true as const }
   } catch (error: any) {

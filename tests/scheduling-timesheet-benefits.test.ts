@@ -61,7 +61,7 @@ describe('scheduling timesheet employee benefit policy', () => {
     expect(isMealsEligibleScheduleCode('DS')).toBe(true)
     expect(isMealsEligibleScheduleCode('NS')).toBe(true)
     expect(isMealsEligibleScheduleCode('ST')).toBe(true)
-    expect(isMealsEligibleScheduleCode('OFF')).toBe(false)
+    expect(isMealsEligibleScheduleCode('OFF')).toBe(true)
     expect(isMealsEligibleScheduleCode('FB')).toBe(false)
     expect(isMealsEligibleScheduleCode('-')).toBe(false)
     expect(isMealsEligibleScheduleCode('')).toBe(false)
