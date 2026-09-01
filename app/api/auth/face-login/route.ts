@@ -38,6 +38,12 @@ export async function POST(request: NextRequest) {
     }
 
     const [, mimeType, base64Data] = matches;
+    if (base64Data.length > 7 * 1024 * 1024) {
+      return NextResponse.json(
+        { success: false, error: "Ukuran gambar wajah terlalu besar. Ambil ulang foto dengan kamera." },
+        { status: 413 }
+      );
+    }
     const imageBuffer = Buffer.from(base64Data, "base64");
 
     let matchedEmployee: typeof employees.$inferSelect | null = null;
@@ -58,6 +64,14 @@ export async function POST(request: NextRequest) {
       imageBuffer,
       mimeType,
     });
+
+    if (antiSpoof.status === "error") {
+      console.error("[face-login] Anti-spoof service unavailable:", antiSpoof.message);
+      return NextResponse.json(
+        { success: false, error: "Layanan verifikasi wajah sedang tidak tersedia. Coba lagi beberapa saat atau gunakan password." },
+        { status: 503 }
+      );
+    }
 
     if (antiSpoof.status === "spoof_detected" || (antiSpoof.status === "success" && !antiSpoof.is_real)) {
       console.warn("[face-login] Spoof attack detected:", antiSpoof.verdict, antiSpoof.confidence);

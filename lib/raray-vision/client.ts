@@ -559,9 +559,9 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
 }): Promise<RarayAntiSpoofResult> {
   const { imageBuffer, mimeType = 'image/jpeg' } = params
   const baseUrl = getBaseUrl()
-  const authHeader = await getAuthHeader()
 
   try {
+    const authHeader = await getAuthHeader()
     const formData = new FormData()
     formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), 'face.jpg')
 
@@ -570,6 +570,7 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
       headers: { Authorization: authHeader },
       body: formData,
       cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
     })
 
     if (!res.ok) {

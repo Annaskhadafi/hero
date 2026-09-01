@@ -21,6 +21,10 @@ function normalizeOrigin(value?: string | null) {
 
     return trimmedValue.replace(/\/+$/, "").replace(/\/api\/auth$/i, "");
 }
+function isProductionAuthOrigin(value: string) {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1";
+}
 
 function getRequestOrigin(request?: Request) {
     if (!request) {
@@ -53,7 +57,9 @@ function getConfiguredAuthOrigins() {
         "https://hero.chitraparatama.com",
     ]
         .map(normalizeOrigin)
-        .filter((value, index, list): value is string => Boolean(value) && list.indexOf(value) === index);
+        .filter((value): value is string => Boolean(value))
+        .filter((value) => process.env.NODE_ENV !== "production" || isProductionAuthOrigin(value))
+        .filter((value, index, list): value is string => list.indexOf(value) === index);
 }
 
 export function getServerAuthBaseUrl() {
