@@ -136,12 +136,12 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
 
-        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.45) {
+        if (verifyRes.status === "success" && verifyRes.verified) {
           matchedEmployee = emp;
           confidenceScore = verifyRes.confidence || 0.85;
           console.log("[face-login] 1:1 verification succeeded for:", emp.name, "Confidence:", confidenceScore);
         } else {
-          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.45:", verifyRes.confidence);
+          console.log("[face-login] Raray 1:1 verification failed:", verifyRes.confidence);
         }
       } catch (err) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);

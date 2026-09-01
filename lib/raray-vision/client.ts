@@ -326,7 +326,9 @@ export async function rarayRecognizeFace(params: {
       employeeId = String(faceId).slice(4)
     }
 
-    const recognized = Boolean((isMatch && normalizedSim >= 0.45) || normalizedSim >= 0.48) && !!employeeId && employeeId !== 'Unknown'
+    // The Vision service owns the configured threshold. Never infer a match
+    // from similarity alone, because that can authenticate a different face.
+    const recognized = isMatch && !!employeeId && employeeId !== 'Unknown'
 
     return {
       status: 'success',
@@ -469,8 +471,9 @@ export async function rarayVerifyFace(params: {
       }
 
       const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
-      // Balanced verification rule for ArcFace:
-      const verified = (isMatch && similarity >= 0.45) || similarity >= 0.48
+      // The Vision service applies its configured similarity threshold to match.
+      // Similarity by itself is not an identity assertion.
+      const verified = isMatch
 
       return {
         status: 'success',
