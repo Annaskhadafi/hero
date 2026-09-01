@@ -86,8 +86,11 @@ import { mergeActiveSchedulePlans, type ScheduleV2Row } from '@/lib/timesheet/sc
 import { ensureDepartmentSectionSeedData } from '@/lib/org-seed-data'
 import { EMAIL_TEMPLATE_PRESETS } from '@/lib/email-template-presets'
 
-let seedPromise: Promise<void> | null = null
-let governanceSeedPromise: Promise<void> | null = null
+declare global {
+  var heroSeedDataPromise: Promise<void> | undefined
+  var heroGovernanceSeedDataPromise: Promise<void> | undefined
+  var heroGovernanceSeeded: boolean | undefined
+}
 
 export type SecurityUserRecord = {
   id: number
@@ -388,6 +391,16 @@ const GOVERNANCE_ROLE_SEEDS = [
     scope: 'all_sites',
   },
   {
+    name: 'Quality & CPI Manager',
+    description: 'Kontrol penuh modul Quality & CPI, audit 5R, Continuous Improvement, dan master area.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Quality Auditor',
+    description: 'Pelaksanaan audit 5R lapangan, input temuan, dan monitoring perbaikan.',
+    scope: 'site',
+  },
+  {
     name: 'Khusus Mas Rendi',
     description: 'Role spesial untuk Mas Rendi dengan akses ke inventory asset dan fitur kustom.',
     scope: 'all_sites',
@@ -415,17 +428,6 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'sparkles',
     resource: 'hero-genius',
     sortOrder: 1,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Genius AI',
-    title: 'SOP/WIN',
-    url: '/dashboard/sop-win',
-    iconName: 'files',
-    resource: 'sop-win',
-    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1244,6 +1246,55 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'alert-triangle',
     resource: 'hse_incident_report',
     sortOrder: 12,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  // Quality & CPI
+  {
+    menuArea: 'main',
+    section: 'Quality & CPI',
+    groupLabel: 'Quality & Continuous Improvement',
+    title: 'SOP/WIN',
+    url: '/dashboard/sop-win',
+    iconName: 'files',
+    resource: 'sop-win',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Quality & CPI',
+    groupLabel: 'Quality & Continuous Improvement',
+    title: 'Audit 5R',
+    url: '/dashboard/quality/5r',
+    iconName: 'sparkles',
+    resource: 'five_r_report',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Quality & CPI',
+    groupLabel: 'Quality & Continuous Improvement',
+    title: 'Input Audit 5R',
+    url: '/dashboard/quality/5r/create',
+    iconName: 'file-text',
+    resource: 'five_r_create',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Quality & CPI',
+    groupLabel: 'Quality & Continuous Improvement',
+    title: 'Master Area 5R',
+    url: '/dashboard/quality/5r/master-area',
+    iconName: 'database',
+    resource: 'five_r_master_area',
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4146,6 +4197,13 @@ const OWN_SCOPE_RESOURCES = new Set([
   ...WELLNESS_MANAGED_RESOURCES,
 ])
 
+const QUALITY_CPI_RESOURCES = new Set([
+  'sop-win',
+  'five_r_report',
+  'five_r_create',
+  'five_r_master_area',
+])
+
 function getDefaultMenuPermission(roleName: string, resource: string) {
   if (roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi') {
     return {
@@ -4154,6 +4212,28 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canDelete: true,
       canSelectAll: true,
       dataScope: 'global',
+    }
+  }
+
+  if (roleName === 'Quality & CPI Manager' || roleName === 'CPI & Quality Management') {
+    const isQuality = QUALITY_CPI_RESOURCES.has(resource)
+    return {
+      canView: true,
+      canEdit: true,
+      canDelete: isQuality,
+      canSelectAll: isQuality,
+      dataScope: 'global',
+    }
+  }
+
+  if (roleName === 'Quality Auditor') {
+    const isQuality = QUALITY_CPI_RESOURCES.has(resource)
+    return {
+      canView: true,
+      canEdit: isQuality,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: isQuality ? 'global' : 'own',
     }
   }
 
@@ -4460,39 +4540,16 @@ async function ensureHeroGovernanceTables() {
   `)
 
   await db.execute(sql`
-    alter table hero_sites add column if not exists province_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists province_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists regency_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists regency_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists district_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists district_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists village_id text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists village_name text not null default '';
-  `)
-
-  await db.execute(sql`
-    alter table hero_sites add column if not exists address_detail text not null default '';
+    alter table hero_sites
+      add column if not exists province_id text not null default '',
+      add column if not exists province_name text not null default '',
+      add column if not exists regency_id text not null default '',
+      add column if not exists regency_name text not null default '',
+      add column if not exists district_id text not null default '',
+      add column if not exists district_name text not null default '',
+      add column if not exists village_id text not null default '',
+      add column if not exists village_name text not null default '',
+      add column if not exists address_detail text not null default '';
   `)
 
   await db.execute(sql`
@@ -4835,11 +4892,14 @@ async function ensureHeroGovernanceTables() {
 }
 
 export async function ensureHeroSeedData() {
-  if (seedPromise) {
-    return seedPromise
+  if (globalThis.heroGovernanceSeeded) {
+    return
+  }
+  if (globalThis.heroSeedDataPromise) {
+    return globalThis.heroSeedDataPromise
   }
 
-  seedPromise = (async () => {
+  globalThis.heroSeedDataPromise = (async () => {
     await ensureHeroEmployeeProfileColumns()
     await ensureHeroSiteLocationColumns()
     await ensureEmergencyIncidentColumns()
@@ -4847,42 +4907,44 @@ export async function ensureHeroSeedData() {
     await ensureApprovalBlueprintSeedData()
     await ensureDepartmentSectionSeedData()
   })().catch((error) => {
-    seedPromise = null
+    globalThis.heroSeedDataPromise = undefined
     throw error
   })
 
-  return seedPromise
+  return globalThis.heroSeedDataPromise
 }
 
 export async function ensureHeroGovernanceSeedData() {
-  await ensureHeroSeedData()
-
-  if (governanceSeedPromise) {
-    return governanceSeedPromise
+  if (globalThis.heroGovernanceSeeded) {
+    return
+  }
+  if (globalThis.heroGovernanceSeedDataPromise) {
+    return globalThis.heroGovernanceSeedDataPromise
   }
 
-  governanceSeedPromise = (async () => {
+  globalThis.heroGovernanceSeedDataPromise = (async () => {
+    await ensureHeroSeedData()
     await ensureHeroGovernanceTables()
 
-    const [
-      permissionCount,
-      rolePermissionCount,
-      themeCount,
-      attendanceShiftCount,
-      emailSmtpSettingCount,
-      notificationChannelSettingCount,
-      notificationPreferenceCount,
-      notificationSubscriptionCount,
-    ] = await Promise.all([
-      db.select({ count: sql<number>`count(*)::int` }).from(securityPermissions),
-      db.select({ count: sql<number>`count(*)::int` }).from(securityRolePermissions),
-      db.select({ count: sql<number>`count(*)::int` }).from(navbarThemes),
-      db.select({ count: sql<number>`count(*)::int` }).from(masterAttendanceShifts),
-      db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
-      db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
-      db.select({ count: sql<number>`count(*)::int` }).from(notificationUserPreferences),
-      db.select({ count: sql<number>`count(*)::int` }).from(notificationPushSubscriptions),
-    ])
+    const countsResult = await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM hero_security_permissions) as permission_count,
+        (SELECT count(*)::int FROM hero_security_role_permissions) as role_permission_count,
+        (SELECT count(*)::int FROM hero_navbar_themes) as theme_count,
+        (SELECT count(*)::int FROM hero_master_attendance_shifts) as attendance_shift_count,
+        (SELECT count(*)::int FROM hero_email_smtp_settings) as email_smtp_setting_count,
+        (SELECT count(*)::int FROM hero_notification_channel_settings) as notification_channel_setting_count,
+        (SELECT count(*)::int FROM hero_notification_user_preferences) as notification_preference_count,
+        (SELECT count(*)::int FROM hero_notification_push_subscriptions) as notification_subscription_count
+    `)
+
+    const countsRow = ((countsResult as any)?.rows?.[0] ?? (countsResult as any)?.[0] ?? {}) as Record<string, number>
+    const permissionCount = Number(countsRow.permission_count ?? 0)
+    const rolePermissionCount = Number(countsRow.role_permission_count ?? 0)
+    const themeCount = Number(countsRow.theme_count ?? 0)
+    const attendanceShiftCount = Number(countsRow.attendance_shift_count ?? 0)
+    const emailSmtpSettingCount = Number(countsRow.email_smtp_setting_count ?? 0)
+    const notificationChannelSettingCount = Number(countsRow.notification_channel_setting_count ?? 0)
 
     const currentRoles = await db.select().from(securityRoles)
     const existingRoleNames = new Set(currentRoles.map((role) => role.name))
@@ -4893,7 +4955,7 @@ export async function ensureHeroGovernanceSeedData() {
       await db.insert(securityRoles).values(missingRoles)
     }
 
-    if ((permissionCount[0]?.count ?? 0) === 0) {
+    if (permissionCount === 0) {
       await db.insert(securityPermissions).values([
         {
           code: 'security.overview.read',
@@ -4955,10 +5017,28 @@ export async function ensureHeroGovernanceSeedData() {
           resource: 'warehouse_repair_laporan_stok',
           action: 'read',
         },
+        {
+          code: 'quality_cpi.manage',
+          label: 'Manage Quality & CPI',
+          resource: 'five_r_report',
+          action: 'manage',
+        },
+        {
+          code: 'quality_cpi.audit.manage',
+          label: 'Manage 5R Audits and Findings',
+          resource: 'five_r_create',
+          action: 'manage',
+        },
+        {
+          code: 'quality_cpi.master_area.manage',
+          label: 'Manage 5R Master Areas',
+          resource: 'five_r_master_area',
+          action: 'manage',
+        },
       ])
     }
 
-    if ((rolePermissionCount[0]?.count ?? 0) === 0) {
+    if (rolePermissionCount === 0) {
       const [roles, permissions] = await Promise.all([
         db.select().from(securityRoles),
         db.select().from(securityPermissions),
@@ -5156,7 +5236,7 @@ export async function ensureHeroGovernanceSeedData() {
       )
     }
 
-    if ((themeCount[0]?.count ?? 0) === 0) {
+    if (themeCount === 0) {
       await db.insert(navbarThemes).values({
         themeName: 'HERO Surface',
         backgroundStyle: 'Slate gradient',
@@ -5168,11 +5248,11 @@ export async function ensureHeroGovernanceSeedData() {
       })
     }
 
-    if ((attendanceShiftCount[0]?.count ?? 0) === 0) {
+    if (attendanceShiftCount === 0) {
       await db.insert(masterAttendanceShifts).values(ATTENDANCE_SHIFT_SEEDS)
     }
 
-    if ((emailSmtpSettingCount[0]?.count ?? 0) === 0) {
+    if (emailSmtpSettingCount === 0) {
       await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED)
     }
 
@@ -5190,12 +5270,9 @@ export async function ensureHeroGovernanceSeedData() {
       await db.insert(emailTemplates).values(missingEmailTemplates)
     }
 
-    if ((notificationChannelSettingCount[0]?.count ?? 0) === 0) {
+    if (notificationChannelSettingCount === 0) {
       await db.insert(notificationChannelSettings).values(NOTIFICATION_CHANNEL_SETTING_SEEDS)
     }
-
-    void notificationPreferenceCount
-    void notificationSubscriptionCount
 
     const [rolesForMenu, menuItemsForRole, existingRoleMenuPermissions] = await Promise.all([
       db.select().from(securityRoles),
@@ -5222,12 +5299,14 @@ export async function ensureHeroGovernanceSeedData() {
     if (missingRoleMenuPermissions.length > 0) {
       await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
     }
+
+    globalThis.heroGovernanceSeeded = true
   })().catch((error) => {
-    governanceSeedPromise = null
+    globalThis.heroGovernanceSeedDataPromise = undefined
     throw error
   })
 
-  return governanceSeedPromise
+  return globalThis.heroGovernanceSeedDataPromise
 }
 
 export async function getDashboardOverview() {

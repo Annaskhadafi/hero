@@ -74,9 +74,15 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/central-service/forecast/report', mobile: '/mobile/central-service/forecast/report' },
   { desktop: '/dashboard/central-service/forecast', mobile: '/mobile/central-service/forecast' },
   { desktop: '/dashboard/hc/leader-performance', mobile: '/mobile/leader-performance' },
+  { desktop: '/dashboard/summary', mobile: '/mobile/summary' },
+  { desktop: '/dashboard/apd/inventory', mobile: '/mobile/hse/inventaris' },
+  { desktop: '/dashboard/quality/5r', mobile: '/mobile/quality/5r' },
+  { desktop: '/dashboard/quality/5r/create', mobile: '/mobile/quality/5r/create' },
+  { desktop: '/dashboard/quality/5r/master-area', mobile: '/dashboard/quality/5r/master-area' },
 ]
 
 const fallbackMobileSegments = new Set([
+  '5r',
   'activity',
   'approval',
   'assets',
@@ -88,6 +94,7 @@ const fallbackMobileSegments = new Set([
   'forecast',
   'gamification',
   'hr-counseling',
+  'quality',
   'hse',
   'hiradc',
   'incident-report',
@@ -102,6 +109,7 @@ const fallbackMobileSegments = new Set([
   'reports',
   'road-condition',
   'site-condition',
+  'summary',
   'timesheet',
   'training',
   'wellness',

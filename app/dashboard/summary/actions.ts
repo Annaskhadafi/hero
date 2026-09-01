@@ -4,13 +4,14 @@ import { generateSummary, submitSummary, approveSummaryStep, getSummaryDetails }
 import { sendSummaryApprovedEmail, sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
 import { revalidatePath } from 'next/cache';
 
-export async function generateSummaryAction(sectionId: number, employeeId: number) {
+export async function generateSummaryAction(sectionId: number, employeeId: number, targetSite: string) {
   try {
-    const result = await generateSummary(sectionId, employeeId);
+    const result = await generateSummary(sectionId, employeeId, targetSite);
     if ('error' in result) {
       return { success: false, error: result.error };
     }
     revalidatePath('/dashboard/summary');
+    revalidatePath('/mobile/summary');
     return { success: true, ...result };
   } catch (error) {
     console.error('Generate summary error:', error);
@@ -35,6 +36,7 @@ export async function submitSummaryAction(summaryId: number, signatureUrl: strin
     }
 
     revalidatePath('/dashboard/summary');
+    revalidatePath('/mobile/summary');
     return { success: true };
   } catch (error) {
     console.error('Submit summary error:', error);
@@ -71,6 +73,7 @@ export async function approveSummaryAction(
     }
 
     revalidatePath('/dashboard/summary');
+    revalidatePath('/mobile/summary');
     revalidatePath('/dashboard/approval');
     return { success: true, allApproved: result.allApproved };
   } catch (error) {

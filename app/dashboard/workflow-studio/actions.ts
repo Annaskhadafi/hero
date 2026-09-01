@@ -44,7 +44,8 @@ const approvalStepSchema = z.object({
 })
 
 const siteApprovalEntrySchema = z.object({
-  siteId: z.coerce.number().int().positive(),
+  siteId: z.preprocess((val) => val === 'all' || val === '0' || val === 0 ? 0 : Number(val), z.number().int().nonnegative()),
+  departmentId: z.preprocess((val) => (!val || val === '' || val === '0' || val === 0) ? 0 : Number(val), z.number().int().nonnegative()),
   // Nilai kolom yang belum diisi dikirim sebagai string kosong ("") dari form —
   // ubah jadi undefined supaya baris site dengan kolom kosong tetap valid,
   // dan kolom yang terisi tetap ter-coerce ke number.
@@ -178,6 +179,7 @@ export async function saveWorkflowStudioApprovalAction(
     const employeeLookup = await db
       .select({ id: employees.id, name: employees.name })
       .from(employees)
+    const validEmployeeIds = new Set(employeeLookup.map((employee) => employee.id))
     const employeeNameById = new Map(employeeLookup.map((employee) => [employee.id, employee.name]))
 
     if (payload.isActive === 'true') {
@@ -188,6 +190,8 @@ export async function saveWorkflowStudioApprovalAction(
       // When creating new, check for duplicates per site
       if (!payload.matrixId) {
         for (const entry of parsedSiteEntries) {
+          // Department-based check for RFR
+          const isDeptBased = entry.departmentId > 0
           const duplicates = await db
             .select({ id: approvalMatrices.id, name: approvalMatrices.name })
             .from(approvalMatrices)
@@ -195,12 +199,16 @@ export async function saveWorkflowStudioApprovalAction(
               and(
                 eq(approvalMatrices.isActive, true),
                 eq(approvalMatrices.transactionType, payload.transactionType),
-                eq(approvalMatrices.siteId, entry.siteId),
+                isDeptBased
+                  ? eq(approvalMatrices.departmentId, entry.departmentId)
+                  : (entry.siteId === 0 ? isNull(approvalMatrices.siteId) : eq(approvalMatrices.siteId, entry.siteId)),
                 eq(approvalMatrices.activityType, '')
               )
             )
           if (duplicates.length > 0) {
-            const siteName = siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`
+            const siteName = isDeptBased
+              ? `Dept ${entry.departmentId}`
+              : (siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`)
             return {
               status: 'error',
               message: `Workflow aktif sudah ada untuk site ${siteName}: ${duplicates[0].name}. Edit existing, jangan buat duplikat.`,
@@ -325,7 +333,7 @@ export async function saveWorkflowStudioApprovalAction(
         const allApprovers = parsedSteps
           .filter((step) => !sectionStepIds.has(step.id))
           .map((step) => ({ role: step.label, employeeId: entry.values[step.id] }))
-          .filter((a): a is { role: string; employeeId: number } => a.employeeId != null && a.employeeId > 0)
+          .filter((a): a is { role: string; employeeId: number } => a.employeeId != null && validEmployeeIds.has(a.employeeId))
 
         if (allApprovers.length === 0) continue
 
@@ -338,7 +346,8 @@ export async function saveWorkflowStudioApprovalAction(
             name: payload.activityName,
             structureId: structure.id,
             transactionType: payload.transactionType,
-            siteId: entry.siteId,
+            siteId: entry.departmentId ? null : (entry.siteId === 0 ? null : entry.siteId),
+            departmentId: entry.departmentId ? entry.departmentId : null,
             sectionId: sectionId,
             activityType: '',
             priority: 'any',

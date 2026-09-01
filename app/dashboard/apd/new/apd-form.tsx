@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { uploadFile } from "@/app/actions/upload";
 import { submitApdRequest } from "../actions";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Image as ImageIcon, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/signature-pad";
 import type { ApdRequestCategory } from "@/lib/apd-status";
@@ -43,7 +43,8 @@ type ApdItemInput = {
   requestType: "baru" | "pergantian";
   quantity: number;
   notes: string;
-  photoFile: File | null;
+  photoFiles: File[];
+  photoPreviews: string[];
   photoUrl?: string;
 };
 
@@ -71,7 +72,7 @@ export function ApdRequestForm({
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ApdItemInput[]>([
-    { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFile: null },
+    { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
   ]);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
 
@@ -85,7 +86,7 @@ export function ApdRequestForm({
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), itemType: requestMode === "apd" ? APD_ITEMS[0] : "", requestType: "baru", quantity: 1, notes: "", photoFile: null },
+      { id: crypto.randomUUID(), itemType: requestMode === "apd" ? APD_ITEMS[0] : "", requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
     ]);
   };
 
@@ -95,6 +96,38 @@ export function ApdRequestForm({
 
   const updateItem = (id: string, field: keyof ApdItemInput, value: any) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+  };
+
+  const handleAddPhotos = (id: string, newFiles: FileList | null) => {
+    if (!newFiles || newFiles.length === 0) return;
+    const addedFiles = Array.from(newFiles);
+    const addedPreviews = addedFiles.map((file) => URL.createObjectURL(file));
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          photoFiles: [...item.photoFiles, ...addedFiles],
+          photoPreviews: [...(item.photoPreviews || []), ...addedPreviews],
+        };
+      })
+    );
+  };
+
+  const handleRemovePhoto = (id: string, photoIdx: number) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const newFiles = item.photoFiles.filter((_, idx) => idx !== photoIdx);
+        const newPreviews = (item.photoPreviews || []).filter((_, idx) => idx !== photoIdx);
+        return {
+          ...item,
+          photoFiles: newFiles,
+          photoPreviews: newPreviews,
+        };
+      })
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,8 +143,11 @@ export function ApdRequestForm({
         if (!item.itemType || item.itemType.trim() === "") {
           throw new Error("Terdapat item yang jenis/namanya belum diisi");
         }
-        if (item.requestType === "pergantian" && !item.photoFile) {
-          throw new Error(`Foto bukti pergantian wajib diupload untuk item: ${item.itemType}`);
+        if (item.requestType === "pergantian") {
+          const validPhotos = (item.photoFiles || []).filter(Boolean);
+          if (validPhotos.length < 3) {
+            throw new Error(`Item "${item.itemType}" membutuhkan minimal 3 foto bukti barang rusak/lama. Saat ini baru ${validPhotos.length} foto terlampir.`);
+          }
         }
       }
 
@@ -124,19 +160,23 @@ export function ApdRequestForm({
         });
       }
 
-      // Upload photos for replacements
+      // Upload photos for replacements (supporting min 3 photos per item)
       const processedItems = await Promise.all(
         items.map(async (item) => {
           let photoUrl = "";
-          if (item.requestType === "pergantian" && item.photoFile) {
-            const fd = new FormData();
-            fd.append("file", item.photoFile);
-            const uploadRes = await uploadFile(fd);
-            if (uploadRes.success) {
-              photoUrl = uploadRes.url as string;
-            } else {
-              throw new Error("Gagal mengupload foto bukti pergantian");
-            }
+          if (item.requestType === "pergantian" && item.photoFiles && item.photoFiles.length > 0) {
+            const uploadedUrls = await Promise.all(
+              item.photoFiles.map(async (file) => {
+                const fd = new FormData();
+                fd.append("file", file);
+                const uploadRes = await uploadFile(fd);
+                if (uploadRes.success && uploadRes.url) {
+                  return uploadRes.url as string;
+                }
+                throw new Error(`Gagal mengupload salah satu foto untuk ${item.itemType}`);
+              })
+            );
+            photoUrl = JSON.stringify(uploadedUrls);
           }
           return {
             itemType: item.itemType,
@@ -299,13 +339,80 @@ export function ApdRequestForm({
                 </div>
 
                 {item.requestType === "pergantian" && (
-                  <div className="mt-4 space-y-2 border-t pt-4">
-                    <Label className="text-destructive font-medium">Foto Barang Rusak/Lama (Wajib untuk Pergantian)</Label>
-                    <Input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={(e) => updateItem(item.id, "photoFile", e.target.files?.[0] || null)} 
-                    />
+                  <div className="mt-4 space-y-3 rounded-lg border border-dashed border-rose-300 bg-rose-50/40 p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <Label className="text-rose-700 font-bold flex items-center gap-1.5 text-xs sm:text-sm">
+                          <Camera className="size-4 text-rose-600" />
+                          Foto Bukti Barang Rusak/Lama (Wajib Minimal 3 Foto)
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Lampirkan minimal 3 foto jelas (tampak depan, area rusak/aus, dan detail/label).
+                        </p>
+                      </div>
+                      <div className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                        (item.photoFiles || []).length >= 3 
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300" 
+                          : "bg-amber-100 text-amber-900 border border-amber-300"
+                      }`}>
+                        {(item.photoFiles || []).length >= 3 ? (
+                          <>
+                            <CheckCircle2 className="size-3.5 text-emerald-700" />
+                            <span>{(item.photoFiles || []).length}/3 Foto (Lengkap)</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="size-3.5 text-amber-700" />
+                            <span>{(item.photoFiles || []).length}/3 Foto (Kurang {3 - (item.photoFiles || []).length})</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Previews grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-1">
+                      {(item.photoPreviews || []).map((previewUrl, pIdx) => (
+                        <div key={pIdx} className="relative group rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs aspect-square flex items-center justify-center">
+                          <img
+                            src={previewUrl}
+                            alt={`Foto ${pIdx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-1 left-1 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                            Foto #{pIdx + 1}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(item.id, pIdx)}
+                            className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full shadow-md transition-colors cursor-pointer"
+                            title="Hapus Foto"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Add photo trigger button */}
+                      <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white/80 hover:bg-white rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs">
+                        <Camera className="size-5 text-slate-500" />
+                        <span className="text-[10px] font-semibold text-slate-700">
+                          {(item.photoFiles || []).length === 0 ? "Pilih 3+ Foto" : "+ Tambah Foto"}
+                        </span>
+                        <span className="text-[8.5pt] text-slate-400">
+                          {(item.photoFiles || []).length < 3 ? `(Wajib ${3 - (item.photoFiles || []).length} lagi)` : "(Bisa tambah)"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            handleAddPhotos(item.id, e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 )}
               </div>

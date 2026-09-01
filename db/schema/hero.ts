@@ -558,6 +558,7 @@ export const approvals = pgTable('hero_approvals', {
   }),
   repairFormWoId: integer('repair_form_wo_id'),
   apdSummaryId: integer('apd_summary_id'),
+  fiveRReportId: integer('five_r_report_id'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),
@@ -4040,5 +4041,9 @@ export const sopWinRagQueue = pgTable('hero_sop_win_rag_queue', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+// Quality & CPI (5R Module)
+export * from './five-r'
+
 
 

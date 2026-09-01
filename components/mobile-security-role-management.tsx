@@ -99,6 +99,7 @@ const DESKTOP_MENU_ORDER = [
   'Human Capital',
   'Attendance',
   'HSE',
+  'Quality & CPI',
   'Central Service',
   'Laporan',
   'Pengaturan',
@@ -111,6 +112,8 @@ const sectionLabelMap: Record<string, string> = {
   'Master Data': 'Data Induk',
   HR: 'Human Capital',
   HSE: 'HSE',
+  Quality: 'Quality & CPI',
+  'Quality & CPI': 'Quality & CPI',
   Report: 'Laporan',
   Setting: 'Pengaturan',
 }
@@ -128,6 +131,7 @@ function hasMobileCounterpart(url: string) {
   if (cleanUrl === '/dashboard/hse' || cleanUrl.startsWith('/dashboard/hse/')) return true
   if (cleanUrl === '/dashboard/safety' || cleanUrl.startsWith('/dashboard/safety/')) return true
   if (cleanUrl === '/dashboard/safety-induction') return true
+  if (cleanUrl === '/dashboard/quality/5r' || cleanUrl.startsWith('/dashboard/quality/')) return true
   if (cleanUrl === '/dashboard/wellness' || cleanUrl === '/dashboard/hc/mcu-wellness') return true
   return [
     '/dashboard/activity-hub/my-day',

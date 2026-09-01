@@ -11,6 +11,7 @@ import {
   approvalMatrixSteps,
   approvals,
   employees,
+  fiveRReports,
   formSubmissions,
   formTemplates,
   hcContractReviewApprovals,
@@ -87,6 +88,7 @@ type ApprovalRecordRow = {
   }>
   repairFormWo?: typeof repairFormWo.$inferSelect | null
   signatureUrl?: string | null
+  fiveRReport?: typeof fiveRReports.$inferSelect | null
 }
 
 type RawApprovalRecordRow = {
@@ -131,7 +133,9 @@ type RawApprovalRecordRow = {
   apdRequestId?: number | null
   repairFormWoId?: number | null
   apdSummaryId?: number | null
+  fiveRReportId?: number | null
   photoUrl?: string | null
+  signatureUrl?: string | null
 }
 
 type ApprovalQueueItem = ApprovalRecordRow & {
@@ -436,7 +440,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
 
   const repairWoMap = new Map(
     repairWoRows.map((row) => {
-      const submitterEmp = row.createdBy ? approverEmpMap.get(row.createdBy) : null
+      const createdById = row.createdBy ? Number(row.createdBy) : null
+      const submitterEmp = createdById && Number.isInteger(createdById) ? approverEmpMap.get(createdById) : null
       return [
         row.id,
         {
@@ -489,6 +494,21 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           .from(apdRequests)
           .where(inArray(apdRequests.id, apdIds))
   const apdMap = new Map(apdRows.map((row) => [row.id, row]))
+
+  const fiveRIds = Array.from(
+    new Set(
+      rawRows.map((row) => row.fiveRReportId).filter((value): value is number => value != null)
+    )
+  )
+  const fiveRRows =
+    fiveRIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(fiveRReports)
+          .where(inArray(fiveRReports.id, fiveRIds))
+  const fiveRMap = new Map(fiveRRows.map((row) => [row.id, row]))
+
   const requesterIds = Array.from(
     new Set(
       rawRows
@@ -496,7 +516,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           (row) =>
             row.activityEmployeeId ??
             row.requesterEmployeeId ??
-            (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.employeeId)
+            (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.employeeId) ??
+            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId)
         )
         .filter((value): value is number => value != null)
     )
@@ -508,7 +529,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           (row) =>
             row.activitySiteId ??
             row.submissionSiteId ??
-            (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.siteId)
+            (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.siteId) ??
+            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.siteId)
         )
         .filter((value): value is number => value != null)
     )
@@ -737,9 +759,16 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           ? payload.siteName
           : null
 
-    const requestStatus = row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending'
+    const fiveR = row.fiveRReportId == null ? null : (fiveRMap.get(row.fiveRReportId) ?? null)
+    const requestStatus =
+      fiveR != null
+        ? fiveR.status
+        : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
+
     const effectiveActivityType =
-      row.approvalActivityId != null
+      row.fiveRReportId != null
+        ? '5R Audit Report'
+        : row.approvalActivityId != null
         ? (row.activityType ?? 'Daily Activity')
         : row.submissionId != null
           ? (row.templateName ?? 'Workflow')
@@ -750,29 +779,105 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
               : row.apdRequestId != null
                 ? `Request ${apd?.requestCategory ?? 'APD'}`
                 : 'Unknown'
+
     const currentRepairWo = row.repairFormWoId ? (repairWoMap.get(row.repairFormWoId) ?? null) : null
-    const title =
-      spl?.title ??
-      (row.repairFormWoId != null ? (currentRepairWo ? `WO ${currentRepairWo.jenisPengajuan ?? 'Unknown'} - ${currentRepairWo.noPengajuan ?? 'Draft'}` : 'WO - Data Hilang') : null) ??
-      titleFromSnapshot ??
-      (row.apdSummaryId != null
-        ? `Summary Permintaan Barang - ${summary?.summaryNumber ?? ''}`
-        : row.apdRequestId != null
-          ? `Request ${apd?.requestCategory ?? 'APD'} - ${apd?.requestNumber ?? row.requestNumber ?? ''}`
-          : row.approvalActivityId != null
-            ? `Daily Activity - ${row.activityCode ?? ''}`
-            : `Workflow - ${row.templateName ?? ''}`)
+
+    let title = 'Workflow'
+    if (fiveR != null) {
+      title = `Laporan 5R: ${fiveR.reportNumber} – ${fiveR.picAreaName}`
+    } else if (spl?.title) {
+      title = spl.title
+    } else if (row.repairFormWoId != null) {
+      title = currentRepairWo
+        ? `WO ${currentRepairWo.jenisPengajuan || 'Unknown'} - ${currentRepairWo.noPengajuan || 'Draft'}`
+        : 'WO - Data Hilang'
+    } else if (titleFromSnapshot) {
+      title = titleFromSnapshot
+    } else if (row.apdSummaryId != null) {
+      title = `Summary Permintaan Barang - ${summary?.summaryNumber || ''}`
+    } else if (row.apdRequestId != null) {
+      title = `Request ${apd?.requestCategory || 'APD'} - ${apd?.requestNumber || row.requestNumber || ''}`
+    } else if (row.approvalActivityId != null) {
+      title = `Daily Activity - ${row.activityCode || ''}`
+    } else if (row.templateName) {
+      title = `Workflow - ${row.templateName}`
+    }
+
+    let resolvedRemarks = ''
+    if (fiveR != null) {
+      resolvedRemarks = `Audit 5R (${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}/100`
+    } else if (spl?.requestNotes) {
+      resolvedRemarks = spl.requestNotes
+    } else if (row.remarks) {
+      resolvedRemarks = row.remarks
+    } else if (summaryFromSnapshot) {
+      resolvedRemarks = summaryFromSnapshot
+    }
+
+    let resolvedDescription = '-'
+    if (fiveR != null) {
+      resolvedDescription = `Laporan 5R ${fiveR.picAreaName} (Periode ${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}`
+    } else if (spl?.requestNotes) {
+      resolvedDescription = spl.requestNotes
+    } else if (summaryFromSnapshot) {
+      resolvedDescription = summaryFromSnapshot
+    } else if (row.remarks) {
+      resolvedDescription = row.remarks
+    }
+
+    let resolvedRequesterName = 'Unknown Requester'
+    if (fiveR?.auditorName) {
+      resolvedRequesterName = fiveR.auditorName
+    } else if (currentRepairWo?.pemohon) {
+      resolvedRequesterName = currentRepairWo.pemohon
+    } else if (requester?.name) {
+      resolvedRequesterName = requester.name
+    }
+
+    const resolvedRequesterEmail = fiveR?.auditorEmail || requester?.email || ''
+    const resolvedDepartment = requester?.department || (fiveR ? 'Quality Management' : '')
+    const resolvedSection = requester?.section || (fiveR ? 'CPI' : '')
+    const resolvedJobTitle = requester?.jobTitle || (currentRepairWo ? 'Pemohon WO' : fiveR ? 'Auditor 5R' : '')
+    const resolvedSiteName = currentRepairWo?.site || site?.name || siteNameFromSnapshot || (fiveR ? 'Balikpapan' : '-')
+
+    let resolvedUnitNumber = '-'
+    if (row.repairFormWoId != null) {
+      resolvedUnitNumber = currentRepairWo?.tireSn || currentRepairWo?.idWo || '-'
+    } else if (row.unitNumber) {
+      resolvedUnitNumber = row.unitNumber
+    } else if (unitNumberFromSnapshot) {
+      resolvedUnitNumber = unitNumberFromSnapshot
+    } else {
+      const distinctUnits = Array.from(
+        new Set(workItems.map((item) => item.unitNumber).filter((val) => val !== '-'))
+      )
+      if (distinctUnits.length > 0) {
+        resolvedUnitNumber = distinctUnits.join(', ')
+      }
+    }
 
     return {
       approvalId: row.approvalId,
       activityId: requestId,
       submissionId: row.submissionId,
-      requestNumber: spl?.splNumber ?? row.requestNumber,
+      requestNumber: fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
       formName:
-        row.templateName ?? (row.approvalActivityId ? 'Daily Activity' : 'Workflow Request'),
+        fiveR ? '5R Audit Report' : (row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Workflow Request')),
       approvalStepId: row.approvalStepId,
       level: row.level,
-      status: row.status,
+      status: fiveR
+        ? (fiveR.status === 'rejected'
+            ? 'rejected'
+            : fiveR.status === 'needs_revision'
+            ? 'needs_revision'
+            : fiveR.status === 'approved'
+            ? 'approved'
+            : row.level === fiveR.currentApprovalLevel
+            ? row.status
+            : row.level < fiveR.currentApprovalLevel
+            ? 'approved'
+            : 'waiting')
+        : row.status,
       approverName: row.approverName,
       approverEmployeeId: row.approverEmployeeId,
       submittedAt: row.submittedAt,
@@ -787,37 +892,31 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       routeSnapshot: row.routeSnapshot,
       decisionNote: row.decisionNote,
       activityCode:
-        spl?.splNumber ??
-        row.activityCode ??
-        row.requestNumber ??
+        fiveR?.reportNumber ||
+        spl?.splNumber ||
+        row.activityCode ||
+        row.requestNumber ||
         `REQ-${String(requestId).padStart(5, '0')}`,
       activityType: effectiveActivityType,
       activityTitle: title,
-      unitNumber:
-        ((row.repairFormWoId != null ? (currentRepairWo?.tireSn || currentRepairWo?.idWo || '-') : null) ??
-        (row.unitNumber ??
-          unitNumberFromSnapshot ??
-          Array.from(
-            new Set(workItems.map((item) => item.unitNumber).filter((value) => value !== '-'))
-          ).join(', '))) ||
-        '-',
-      tireCount: (row as any).tireCount ?? (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
-      activityStatus: requestStatus,
-      priority: row.priority ?? priorityFromSnapshot ?? 'Normal',
-      remarks: spl?.requestNotes || row.remarks || summaryFromSnapshot || '',
+      unitNumber: resolvedUnitNumber,
+      tireCount: (row as any).tireCount || (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
+      activityStatus: fiveR ? fiveR.status : requestStatus,
+      priority: row.priority || priorityFromSnapshot || 'Normal',
+      remarks: resolvedRemarks,
       startTime: effectiveStartTime,
       endTime: effectiveEndTime,
       createdAt: effectiveCreatedAt,
-      requesterName: (currentRepairWo?.pemohon || requester?.name) ?? 'Unknown Requester',
-      requesterEmail: requester?.email ?? '',
-      requesterDepartment: requester?.department ?? '',
-      requesterSection: requester?.section ?? '',
-      requesterJobTitle: requester?.jobTitle ?? (currentRepairWo ? 'Pemohon WO' : ''),
-      siteName: (currentRepairWo?.site || site?.name) ?? siteNameFromSnapshot ?? '-',
-      photoUrl: photoUrls[0] ?? null,
+      requesterName: resolvedRequesterName,
+      requesterEmail: resolvedRequesterEmail,
+      requesterDepartment: resolvedDepartment,
+      requesterSection: resolvedSection,
+      requesterJobTitle: resolvedJobTitle,
+      siteName: resolvedSiteName,
+      photoUrl: photoUrls[0] || null,
       requestKindLabel:
-        spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
-      description: spl?.requestNotes || summaryFromSnapshot || row.remarks || '-',
+        fiveR ? '5R Audit' : spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
+      description: resolvedDescription,
       dailyActivityStatus:
         sessions.length === 0
           ? 'Belum diupdate'
@@ -835,7 +934,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       evidencePhotoUrls: photoUrls,
       workItems,
       repairFormWo: currentRepairWo,
-      signatureUrl: row.signatureUrl ?? null,
+      signatureUrl: row.signatureUrl || null,
+      fiveRReport: fiveR,
     } satisfies ApprovalRecordRow
   })
 }
@@ -1106,6 +1206,7 @@ async function fetchApprovalRows() {
       repairFormWoId: approvals.repairFormWoId,
       signatureUrl: approvals.signatureUrl,
       apdSummaryId: approvals.apdSummaryId,
+      fiveRReportId: approvals.fiveRReportId,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -1456,7 +1557,8 @@ async function getRfrInboxItems(
     .where(
       and(
         eq(hcRfrApprovals.status, 'pending'),
-        eq(hcRfrRequests.status, 'in_progress')
+        eq(hcRfrRequests.status, 'in_progress'),
+        eq(hcRfrApprovals.stepOrder, hcRfrRequests.currentStepOrder)
       )
     )
     .orderBy(desc(hcRfrApprovals.createdAt))
@@ -1570,6 +1672,8 @@ export async function getApprovalCenterData(email: string) {
         workItems: ApprovalRecordRow['workItems']
         repairFormWo?: typeof repairFormWo.$inferSelect | null
         signatureUrl?: string | null
+        fiveRReport?: typeof fiveRReports.$inferSelect | null
+        fiveRReportId?: number | null
       }>
     }
   >()
@@ -1635,6 +1739,8 @@ export async function getApprovalCenterData(email: string) {
       workItems: item.workItems,
       repairFormWo: item.repairFormWo ?? null,
       signatureUrl: item.signatureUrl ?? null,
+      fiveRReport: item.fiveRReport ?? null,
+      fiveRReportId: (item as any).fiveRReportId ?? item.fiveRReport?.id ?? null,
     })
     inboxGroupsMap.set(groupKey, group)
   }

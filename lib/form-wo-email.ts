@@ -3,7 +3,7 @@ import { getFormWoNotificationConfigData } from "@/lib/hero-admin"
 import { generateFormWoPdf, type FormWoPdfData } from "@/lib/form-wo-pdf"
 
 // Testing safeguard email
-const TESTING_EMAIL_OVERRIDE = "andirivlni@gmail.com"
+const TESTING_EMAIL_OVERRIDE = null
 
 export async function sendFormWoApprovalRequestEmail(params: {
   approverEmail?: string
@@ -36,7 +36,7 @@ export async function sendFormWoApprovalRequestEmail(params: {
         ? cfg?.tier2ApproverEmails
         : cfg?.tier3ApproverEmails
 
-  const finalApproverName = params.approverName || "Mochamad Annas Khadafi"
+  const finalApproverName = params.approverName || "Approver"
   const targetApprovalLink =
     params.approvalLink ||
     "https://hero.chitraparatama.co.id/dashboard/approval"
@@ -46,13 +46,16 @@ export async function sendFormWoApprovalRequestEmail(params: {
       [
         params.approverEmail,
         tierConfigEmails && tierConfigEmails.length > 0 ? tierConfigEmails[0] : null,
-        TESTING_EMAIL_OVERRIDE,
       ].filter(Boolean) as string[]
     )
   )
 
+  if (recipients.length === 0) {
+    return { success: false, message: 'No valid recipient email configured for Form WO approval.' }
+  }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_approval_request",
     variables: {
       approverName: finalApproverName,
@@ -137,11 +140,13 @@ export async function sendFormWoStatusApprovedEmail(params: {
   ccEmails?: string[]
 }) {
   const recipients = Array.from(
-    new Set([params.requesterEmail, TESTING_EMAIL_OVERRIDE].filter(Boolean) as string[])
+    new Set([params.requesterEmail].filter(Boolean) as string[])
   )
 
+  if (recipients.length === 0) return { success: false, message: 'No recipient email' }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_status_approved",
     variables: {
       pemohon: params.pemohon,
@@ -165,11 +170,13 @@ export async function sendFormWoStatusRejectedEmail(params: {
   catatanPengajuan?: string
 }) {
   const recipients = Array.from(
-    new Set([params.requesterEmail, TESTING_EMAIL_OVERRIDE].filter(Boolean) as string[])
+    new Set([params.requesterEmail].filter(Boolean) as string[])
   )
 
+  if (recipients.length === 0) return { success: false, message: 'No recipient email' }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_status_rejected",
     variables: {
       pemohon: params.pemohon,
@@ -190,11 +197,13 @@ export async function sendFormWoStatusRevertedEmail(params: {
   revisiLink?: string
 }) {
   const recipients = Array.from(
-    new Set([params.requesterEmail, TESTING_EMAIL_OVERRIDE].filter(Boolean) as string[])
+    new Set([params.requesterEmail].filter(Boolean) as string[])
   )
 
+  if (recipients.length === 0) return { success: false, message: 'No recipient email' }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_status_reverted",
     variables: {
       pemohon: params.pemohon,
@@ -220,11 +229,13 @@ export async function sendFormWoBillingApprovedEmail(params: {
   totalAmount?: string
 }) {
   const recipients = Array.from(
-    new Set([params.requesterEmail, TESTING_EMAIL_OVERRIDE].filter(Boolean) as string[])
+    new Set([params.requesterEmail].filter(Boolean) as string[])
   )
 
+  if (recipients.length === 0) return { success: false, message: 'No recipient email' }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_billing_approved",
     variables: {
       pemohon: params.pemohon,
@@ -287,11 +298,13 @@ export async function sendFormWoReadyForWoNumberEmail(params: {
     "https://hero.chitraparatama.co.id/dashboard/repair-retread/form-wo"
 
   const recipients = Array.from(
-    new Set([params.billingEmail, TESTING_EMAIL_OVERRIDE].filter(Boolean) as string[])
+    new Set([params.billingEmail].filter(Boolean) as string[])
   )
 
+  if (recipients.length === 0) return { success: false, message: 'No recipient email' }
+
   return sendWorkflowEmail({
-    to: recipients.length > 0 ? recipients : TESTING_EMAIL_OVERRIDE,
+    to: recipients,
     templateCode: "form_wo_ready_for_wo_number",
     variables: {
       noPengajuan: params.noPengajuan,
@@ -354,6 +367,7 @@ export async function sendFormWoReadyForWoNumberEmail(params: {
 }
 
 export async function sendFormWoCompletedWithPdfEmail(params: {
+  recipients?: Array<{ email: string; roleName: string }>
   adminCpSiteEmail?: string
   qcLeaderEmail?: string
   pemohon: string
@@ -453,15 +467,26 @@ export async function sendFormWoCompletedWithPdfEmail(params: {
     })
   }
 
-  // Send 2 distinct emails: 1 to Admin CP Site and 1 to QC / Leader
-  const adminTarget = params.adminCpSiteEmail || TESTING_EMAIL_OVERRIDE
-  const qcTarget = params.qcLeaderEmail || TESTING_EMAIL_OVERRIDE
+  const targetRecipients: Array<{ email: string; roleName: string }> = []
+  if (params.recipients && params.recipients.length > 0) {
+    targetRecipients.push(...params.recipients)
+  }
+  if (params.adminCpSiteEmail && params.adminCpSiteEmail.trim()) {
+    targetRecipients.push({ email: params.adminCpSiteEmail.trim(), roleName: 'Pemohon' })
+  }
+  if (params.qcLeaderEmail && params.qcLeaderEmail.trim()) {
+    targetRecipients.push({ email: params.qcLeaderEmail.trim(), roleName: 'QC / Leader' })
+  }
 
-  const results = await Promise.all([
-    sendForRecipient(adminTarget, 'Admin CP Site'),
-    sendForRecipient(qcTarget, 'QC / Leader'),
-  ])
+  const seenEmails = new Set<string>()
+  const uniqueRecipients = targetRecipients.filter((r) => {
+    if (!r.email || seenEmails.has(r.email.toLowerCase())) return false
+    seenEmails.add(r.email.toLowerCase())
+    return true
+  })
 
-  return results[0]
+  const promises = uniqueRecipients.map((r) => sendForRecipient(r.email, r.roleName))
+  const results = await Promise.all(promises)
+  return results[0] ?? { success: true }
 }
 

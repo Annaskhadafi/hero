@@ -1060,6 +1060,11 @@ function CreateOrEditWoDialog({
         }
       }
 
+      if (!editItem && !sigUrl && !submitterSignatureUrl) {
+        toast.error("Tanda tangan digital pemohon wajib diisi sebelum mengajukan Form WO.")
+        return
+      }
+
       const payload = {
         jenisPengajuan,
         tanggal: tanggal || undefined,

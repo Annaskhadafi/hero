@@ -168,6 +168,7 @@ const hseAdminFeatures = [
   { title: "JSA", href: "/mobile/hse/jsa", icon: FileCheck2, meta: "Job safety analysis" },
   { title: "Izin Kerja PTW", href: "/mobile/hse/ptw", icon: HardHat, meta: "Permit to work" },
   { title: "Inventaris HSE", href: "/mobile/hse/inventaris", icon: Boxes, meta: "APD & equipment" },
+  { title: "Summary APD", href: "/mobile/summary", icon: FileText, meta: "Rekap batch approval & PO APD" },
   { title: "Checklist", href: "/mobile/hse/checklist", icon: ListChecks, meta: "Template & daily check" },
   { title: "Safety Data", href: "/mobile/hse/safety-data", icon: NotebookTabs, meta: "Performance dashboard" },
   { title: "SIA/SIO Tools", href: "/mobile/hse/sia-sio-tools", icon: ClipboardList, meta: "Sertifikasi tools" },

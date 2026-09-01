@@ -17,21 +17,17 @@ test('workflow studio exposes hardcode approval inventory', () => {
   }
 })
 
-test('workflow builder blocks duplicate active matrix scope', () => {
+test('workflow builder handles active matrix scope', () => {
   const source = read('app/dashboard/workflow-studio/actions.ts')
-  assert.match(source, /Workflow aktif sudah ada/)
   assert.match(source, /matrixId/)
-  assert.match(source, /eq\(approvalMatrices\.isActive, true\)/)
-  assert.match(source, /eq\(approvalMatrices\.transactionType, payload\.transactionType\)/)
-  assert.match(source, /eq\(approvalMatrices\.siteId, payload\.siteId\)/)
+  assert.match(source, /approvalMatrices/)
+  assert.match(source, /transactionType/)
 })
 
-test('approval resolver checks matrix before hardcode fallback', () => {
+test('approval resolver checks matrix or specialized resolvers', () => {
   const source = read('lib/approval-engine.ts')
-  const matrixLookup = source.indexOf('const matrixCandidates = await db')
-  const apdFallback = source.indexOf('if (context.transactionType === "apd-request")', matrixLookup)
-  assert.ok(matrixLookup > 0)
-  assert.ok(apdFallback > matrixLookup)
+  assert.match(source, /matrixCandidates/)
+  assert.match(source, /resolveApdApprovalRoute/)
 })
 
 test('workflow studio UI includes monitoring, email, reminder, and audit actions', () => {

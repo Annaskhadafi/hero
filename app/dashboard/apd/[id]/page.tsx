@@ -8,6 +8,24 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import Image from "next/image";
 import { parseApprovalNoteEntries } from "@/lib/approval-notes";
+import { getS3ObjectReadUrl } from "@/lib/s3-client";
+
+function parsePhotoUrls(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
+      }
+    } catch {}
+  }
+  if (trimmed.includes(',')) {
+    return trimmed.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [trimmed];
+}
 
 export default async function ApdRequestDetailPage({ params }: { params: { id: string } }) {
   const id = parseInt(params.id, 10);
@@ -15,6 +33,19 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
 
   const request = await fetchApdRequestById(id);
   if (!request) return notFound();
+
+  const itemsWithPhotos = await Promise.all(
+    request.items.map(async (item) => {
+      const rawUrls = parsePhotoUrls(item.photoUrl);
+      const photoUrls = (
+        await Promise.all(rawUrls.map((u) => getS3ObjectReadUrl(u)))
+      ).filter(Boolean) as string[];
+      return {
+        ...item,
+        photoUrls,
+      };
+    })
+  );
 
   return (
     <AdminPageShell
@@ -75,8 +106,8 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {request.items.map((item, index) => (
-                <div key={item.id} className="rounded-lg border p-4 shadow-sm flex flex-col md:flex-row gap-4">
+              {itemsWithPhotos.map((item, index) => (
+                <div key={item.id} className="rounded-lg border p-4 shadow-sm flex flex-col md:flex-row gap-4 justify-between">
                   <div className="flex-1 space-y-2">
                     <p className="font-semibold">{item.itemType}</p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
@@ -91,14 +122,23 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
                     </div>
                   </div>
                   
-                  {item.photoUrl && (
-                    <div className="w-full md:w-32 h-32 relative rounded-md overflow-hidden border">
-                      <Image 
-                        src={item.photoUrl} 
-                        alt={`Foto ${item.itemType}`}
-                        fill
-                        className="object-cover"
-                      />
+                  {item.photoUrls && item.photoUrls.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        Foto Bukti Fisik ({item.photoUrls.length} Foto):
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {item.photoUrls.map((url, pIdx) => (
+                          <div key={pIdx} className="w-24 h-24 relative rounded-md overflow-hidden border shadow-xs">
+                            <Image 
+                              src={url} 
+                              alt={`Foto ${item.itemType} ${pIdx + 1}`}
+                              fill
+                              className="object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

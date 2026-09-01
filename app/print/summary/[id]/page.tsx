@@ -45,15 +45,33 @@ export default async function PrintSummaryPage({ params }: { params: Promise<{ i
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '8pt', padding: '8mm 10mm', overflow: 'hidden' }}>
-      <style>{`@page { size: A4 landscape; margin: 8mm 10mm; }`}</style>
+    <div style={{ 
+      fontFamily: 'Arial, sans-serif', 
+      fontSize: '8pt', 
+      padding: '8mm 10mm', 
+      overflow: 'hidden',
+      backgroundImage: 'url(/chitra-letterhead-bg.png)',
+      backgroundSize: '297mm 210mm',
+      backgroundPosition: 'right bottom',
+      backgroundRepeat: 'no-repeat',
+      minHeight: '210mm',
+      boxSizing: 'border-box'
+    }}>
+      <style>{`
+        @page { size: A4 landscape; margin: 8mm 10mm; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      `}</style>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: '40px', width: 'auto' }} />
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase' }}>Summary Permintaan Barang Safety</div>
+            <div style={{ fontSize: '11pt', fontWeight: 'bold', textTransform: 'uppercase' }}>
+              Summary Permintaan Barang Safety
+              {data.targetSite === 'VALE' && <span style={{ color: '#ea580c' }}> (Khusus VALE)</span>}
+              {data.targetSite === 'GABUNGAN' && <span style={{ color: '#2563eb' }}> (Gabungan Site)</span>}
+            </div>
             <div style={{ fontSize: '9pt', fontWeight: 'bold', marginTop: '2px' }}>{data.sectionName}</div>
           </div>
         </div>

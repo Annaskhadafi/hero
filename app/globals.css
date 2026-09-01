@@ -442,6 +442,15 @@ body:has([data-admin-dashboard-shell]) {
     box-shadow: none !important;
     border: none !important;
   }
+  .approval-document-letterhead,
+  .pdf-letterhead-bg {
+    background-image: url('/chitra-letterhead-bg.png') !important;
+    background-size: 210mm 297mm !important;
+    background-position: right bottom !important;
+    background-repeat: no-repeat !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   [role="dialog"],
   [data-radix-popper-content-wrapper],
   .fixed,
@@ -454,6 +463,14 @@ body:has([data-admin-dashboard-shell]) {
     max-height: none !important;
     overflow: visible !important;
   }
+}
+
+.approval-document-letterhead,
+.pdf-letterhead-bg {
+  background-image: url('/chitra-letterhead-bg.png') !important;
+  background-size: 210mm 297mm !important;
+  background-position: right bottom !important;
+  background-repeat: no-repeat !important;
 }
 
 @layer components {

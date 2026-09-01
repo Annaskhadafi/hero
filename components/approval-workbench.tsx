@@ -3,7 +3,9 @@
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
+import { FiveRApprovalDialog } from '@/components/admin/five-r-approval-dialog'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
+import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
@@ -86,8 +88,95 @@ function ApprovalFilterBar({
   )
 }
 
-function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
-  if (groups.length === 0) {
+function RfrInboxTab({ items }: { items: ApprovalCenterData['rfrInboxItems'] }) {
+  if (items.length === 0) {
+    return (
+      <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+        <CardHeader>
+          <CardTitle>RFR Approval</CardTitle>
+          <CardDescription>Belum ada Request for Recruitment yang menunggu persetujuan Anda.</CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+      <CardContent className="pt-6">
+        <MinimalTableShell
+          title="RFR yang harus saya approve"
+          description="Request for Recruitment (RFR) yang memerlukan persetujuan Anda pada tahap ini."
+          label="rfr items"
+          fileName="rfr-inbox"
+          searchPlaceholder="Cari nomor RFR, posisi, section/department, atau approver..."
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nomor RFR</TableHead>
+                <TableHead>Pemohon</TableHead>
+                <TableHead>Posisi</TableHead>
+                <TableHead>Section / Dept</TableHead>
+                <TableHead>Tahap</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="align-top">
+                    <p className="text-foreground font-semibold text-sm">{item.rfrNumber}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {item.submittedAt.toLocaleDateString('id-ID')}
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm">{item.requestorName}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm font-medium">{item.positionTitle}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {item.numberOfPersons} orang
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm">{item.sectionDepartment}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm font-medium">
+                      {item.roleLabel}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Step {item.stepOrder}/{item.totalSteps}
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <AdminStatusBadge value={item.dueState} />
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Due {item.dueAt.toLocaleString('id-ID')}
+                    </p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Link href={item.url} target="_blank">
+                      <Button type="button" variant="outline" size="dense">
+                        Review & Tanda Tangan
+                      </Button>
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
+      </CardContent>
+    </Card>
+  )
+}
+
+function InboxTab({ groups, rfrItems }: { groups: ApprovalCenterData['inboxGroups']; rfrItems: ApprovalCenterData['rfrInboxItems'] }) {
+  const hasItems = groups.length > 0 || (rfrItems?.length ?? 0) > 0
+  if (!hasItems) {
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
@@ -207,6 +296,10 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                         item.repairFormWo ||
                         item.title?.toLowerCase().includes('wo') ? (
                         <FormWoApprovalDialog item={item} group={group} />
+                      ) : item.activityType === '5R Audit Report' ||
+                        item.fiveRReport ||
+                        item.title?.toLowerCase().includes('5r') ? (
+                        <FiveRApprovalDialog item={item} group={group} />
                       ) : (
                         <AdminDetailDrawer
                           title={`Review ${item.title}`}
@@ -243,6 +336,33 @@ function InboxTab({ groups }: { groups: ApprovalCenterData['inboxGroups'] }) {
                   </TableRow>
                 ))
               )}
+              {/* RFR items inline */}
+              {(rfrItems ?? []).map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="align-top">
+                    <p className="text-foreground font-semibold text-sm">RFR</p>
+                    <p className="text-muted-foreground text-xs">{item.requestorName}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm">-</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm font-medium">{item.positionTitle}</p>
+                    <p className="text-muted-foreground text-xs">{item.numberOfPersons} orang</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <p className="text-foreground text-sm font-medium">{item.roleLabel}</p>
+                    <p className="text-muted-foreground text-xs">Step {item.stepOrder}/{item.totalSteps}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <AdminStatusBadge value={item.dueState} />
+                    <p className="text-muted-foreground mt-1 text-xs">Due {item.dueAt.toLocaleString('id-ID')}</p>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <RfrApprovalDialog item={item} />
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </MinimalTableShell>
@@ -471,12 +591,12 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
 
       <Tabs defaultValue="inbox" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="inbox">Approval Inbox</TabsTrigger>
+          <TabsTrigger value="inbox">Approval Inbox {(data.rfrInboxItems?.length ?? 0) > 0 ? `(${(data.inboxGroups?.length ?? 0) + (data.rfrInboxItems?.length ?? 0)})` : ''}</TabsTrigger>
           <TabsTrigger value="history">Riwayat pengajuan</TabsTrigger>
         </TabsList>
 
         <TabsContent value="inbox">
-          <InboxTab groups={data.inboxGroups} />
+          <InboxTab groups={data.inboxGroups} rfrItems={data.rfrInboxItems ?? []} />
         </TabsContent>
 
         <TabsContent value="history">

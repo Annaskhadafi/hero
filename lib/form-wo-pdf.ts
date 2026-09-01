@@ -45,6 +45,19 @@ function formatIndoDate(val?: string | Date | null): string {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
 }
 
+function formatIndoDateTime(val?: string | Date | null): string {
+  if (!val) return '-'
+  const d = typeof val === 'string' ? new Date(val) : val
+  if (isNaN(d.getTime())) return String(val)
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+  ]
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${hours}:${minutes}`
+}
+
 function formatIndoDay(val?: string | Date | null): string {
   if (!val) return '-'
   const d = typeof val === 'string' ? new Date(val) : val
@@ -116,7 +129,7 @@ async function loadSignatureImageBytes(sigUrl: string | null | undefined): Promi
 
 export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create()
-  const page = pdfDoc.addPage([595.28, 841.89]) // A4 Portrait
+  const page = pdfDoc.addPage([841.89, 595.28]) // A4 Landscape (Width: 841.89, Height: 595.28)
   const { width, height } = page.getSize()
 
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -495,57 +508,133 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   // 5 Signature Boxes Table
   const steps = data.steps || []
-  const step1 = steps.find((s) => s.level === 1)
-  const step2 = steps.find((s) => s.level === 2)
-  const step3 = steps.find((s) => s.level === 3)
-  const step4 = steps.find((s) => s.level === 4)
-  const step5 = steps.find((s) => s.level === 5)
+  let sigCols: Array<{
+    header: string
+    name: string
+    jobTitle: string
+    sigUrl: string | null
+    date: string
+    note: string | null
+  }> = []
 
-  const sigCols = [
-    {
-      header: 'DIAJUKAN OLEH',
-      name: data.pemohon || step1?.approverName || 'Admin CP Site',
-      jobTitle: step1?.jobTitle || data.pemohonJobTitle || 'Admin CP Site',
-      sigUrl: data.submitterSignatureUrl || step1?.signatureUrl || null,
-      date: formatIndoDate(data.tanggalPengajuan || data.tanggal),
-      note: data.catatanPengajuan || step1?.decisionNote || null,
-    },
-    {
-      header: 'DISETUJUI OLEH',
-      name: step2?.approverName || 'QC / Leader',
-      jobTitle: step2?.jobTitle || 'QC / Leader',
-      sigUrl: step2?.signatureUrl || null,
-      date: step2?.reviewedAt ? formatIndoDate(step2.reviewedAt) : '-',
-      note: step2?.decisionNote || null,
-    },
-    {
-      header: 'DISETUJUI OLEH',
-      name: step3?.approverName || 'Repair / Retread Operation SPV',
-      jobTitle: step3?.jobTitle || 'Repair / Retread Operation SPV',
-      sigUrl: step3?.signatureUrl || null,
-      date: step3?.reviewedAt ? formatIndoDate(step3.reviewedAt) : '-',
-      note: step3?.decisionNote || null,
-    },
-    {
-      header: 'DIPERIKSA OLEH',
-      name: step4?.approverName || 'Team Billing',
-      jobTitle: step4?.jobTitle || 'Team Billing',
-      sigUrl: step4?.signatureUrl || null,
-      date: step4?.reviewedAt ? formatIndoDate(step4.reviewedAt) : '-',
-      note: step4?.decisionNote || null,
-    },
-    {
-      header: 'MENGETAHUI',
-      name: step5?.approverName || 'Inventory & Warehouse Management SPV',
-      jobTitle: step5?.jobTitle || 'Inventory & Warehouse Management SPV',
-      sigUrl: step5?.signatureUrl || null,
-      date: step5?.reviewedAt ? formatIndoDate(step5.reviewedAt) : '-',
-      note: step5?.decisionNote || null,
-    },
-  ]
+  const isService = data.jenisPengajuan === 'service'
+  const submitterCol = {
+    header: 'DIAJUKAN OLEH',
+    name: data.pemohon || 'Pemohon',
+    jobTitle: data.pemohonJobTitle || 'Pemohon',
+    sigUrl: data.submitterSignatureUrl || null,
+    date: formatIndoDateTime(data.tanggalPengajuan || data.tanggal),
+    note: data.catatanPengajuan || null,
+  }
+
+  let approverCols: Array<{
+    header: string
+    name: string
+    jobTitle: string
+    sigUrl: string | null
+    date: string
+    note: string | null
+  }> = []
+
+  if (steps.length > 0) {
+    approverCols = steps.map((s, idx) => {
+      let header = 'DISETUJUI OLEH'
+      if (isService) {
+        if (s.level === 1) header = 'DISETUJUI OLEH'
+        else if (s.level === 2) header = 'DIPERIKSA OLEH'
+        else if (s.level === 3) header = 'DISETUJUI OLEH'
+      } else {
+        if (s.level === 1) header = 'DIKETAHUI OLEH'
+        else if (s.level === 2) header = 'DISETUJUI OLEH'
+        else if (s.level === 3) header = 'DIPERIKSA OLEH'
+        else if (s.level === 4) header = 'DISETUJUI OLEH'
+      }
+
+      const name = s.approverName || s.jobTitle || 'Approver'
+      const jobTitle = s.jobTitle || 'Approver'
+      const sigUrl = s.signatureUrl || null
+      const date = s.reviewedAt ? formatIndoDateTime(s.reviewedAt) : '-'
+      const note = s.decisionNote || null
+
+      return {
+        header,
+        name,
+        jobTitle,
+        sigUrl,
+        date,
+        note,
+      }
+    })
+  } else {
+    if (isService) {
+      approverCols = [
+        {
+          header: 'DISETUJUI OLEH',
+          name: 'Service Operation Others Coord. SPV',
+          jobTitle: 'Service Operation Others Coord. SPV',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+        {
+          header: 'DIPERIKSA OLEH',
+          name: 'Team Billing',
+          jobTitle: 'Team Billing',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+        {
+          header: 'DISETUJUI OLEH',
+          name: 'Inventory & Warehouse Management SPV',
+          jobTitle: 'Inventory & Warehouse Management SPV',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+      ]
+    } else {
+      approverCols = [
+        {
+          header: 'DIKETAHUI OLEH',
+          name: 'QC / Leader',
+          jobTitle: 'QC / Leader',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+        {
+          header: 'DISETUJUI OLEH',
+          name: 'Repair / Retread Operation SPV',
+          jobTitle: 'Repair / Retread Operation SPV',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+        {
+          header: 'DIPERIKSA OLEH',
+          name: 'Team Billing',
+          jobTitle: 'Team Billing',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+        {
+          header: 'DISETUJUI OLEH',
+          name: 'Inventory & Warehouse Management SPV',
+          jobTitle: 'Inventory & Warehouse Management SPV',
+          sigUrl: null,
+          date: '-',
+          note: null,
+        },
+      ]
+    }
+  }
+
+  sigCols = [submitterCol, ...approverCols]
 
   const sigTableW = width - 72
-  const sigBoxW = sigTableW / 5
+  const sigBoxW = sigTableW / (sigCols.length || 1)
   const sigHeaderH = 18
   const sigCanvasH = 65
   const sigInfoH = 45

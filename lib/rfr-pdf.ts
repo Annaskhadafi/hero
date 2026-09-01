@@ -47,6 +47,19 @@ export type RfrPdfData = {
   approvals: RfrPdfApprovalStep[]
 }
 
+function formatIndoDateTime(val?: string | Date | null): string {
+  if (!val) return ''
+  const d = typeof val === 'string' ? new Date(val) : val
+  if (isNaN(d.getTime())) return String(val)
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+  ]
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${hours}:${minutes}`
+}
+
 function drawCheckbox(page: any, x: number, y: number, checked: boolean, label: string, font: any, size = 8) {
   const boxSize = 7.5
   page.drawRectangle({
@@ -480,7 +493,7 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
 
   const gridY = currentY
   const gridHeight = 88
-  const colCount = 6
+  const colCount = data.approvals && data.approvals.length > 0 ? data.approvals.length : 5
   const colWidth = contentWidth / colCount
 
   // Draw Grid Box Outer
@@ -514,12 +527,11 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
   }
 
   const defaultRoleTitles = [
-    { label: 'Proposed', name: data.requestorName || 'Junaidi', title: 'Service Operation Coord' },
-    { label: 'HC Verification', name: 'Adilla Tri Arizona', title: 'HR Recruitment & GA Staff' },
-    { label: 'Acknowledge', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
-    { label: 'Acknowledge', name: 'Muhammad Iqbal', title: 'Human Capital Spv' },
-    { label: 'Acknowledge', name: 'Romy Hidayat', title: 'Central Service Manager' },
-    { label: 'Approval', name: 'Person Sihaloho', title: 'General Manager' },
+    { label: 'Diajukan Oleh', name: data.requestorName || '-', title: 'Requestor' },
+    { label: 'HC Verification', name: 'Adila Tri Arizona', title: 'HR Recruitment & GA' },
+    { label: 'Leader HR-GA', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
+    { label: 'Manager Departemen', name: 'Romy Hidayat', title: 'Central Services Manager' },
+    { label: 'General Manager', name: 'Person Sihaloho', title: 'General Manager' },
   ]
 
   for (let c = 0; c < colCount; c++) {
@@ -631,6 +643,20 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
         color: rgb(0.35, 0.35, 0.35),
       })
       textY -= 7
+    }
+
+    const sigDateTime = isApproved && appData?.signedAt
+      ? formatIndoDateTime(appData.signedAt)
+      : (c === 0 && data.requestDate ? formatIndoDateTime(data.requestDate) : '')
+    if (sigDateTime) {
+      const dtW = fontRegular.widthOfTextAtSize(sigDateTime, 5)
+      page.drawText(sigDateTime, {
+        x: colX + (colWidth - dtW) / 2,
+        y: textY,
+        size: 5,
+        font: fontRegular,
+        color: rgb(0.45, 0.45, 0.45),
+      })
     }
   }
 

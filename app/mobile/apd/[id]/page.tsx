@@ -6,6 +6,24 @@ import Image from "next/image";
 import { getServerSession } from "@/lib/auth-session";
 import { fetchApdRequestById } from "@/lib/apd-data";
 import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
+import { getS3ObjectReadUrl } from "@/lib/s3-client";
+
+function parsePhotoUrls(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
+      }
+    } catch {}
+  }
+  if (trimmed.includes(',')) {
+    return trimmed.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [trimmed];
+}
 
 function StatusBadge({ status }: { status: string }) {
   const n = normalizeApdRequestStatus(status);
@@ -30,6 +48,19 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
 
   const request = await fetchApdRequestById(id);
   if (!request) return notFound();
+
+  const itemsWithPhotos = await Promise.all(
+    request.items.map(async (item) => {
+      const rawUrls = parsePhotoUrls(item.photoUrl);
+      const photoUrls = (
+        await Promise.all(rawUrls.map((u) => getS3ObjectReadUrl(u)))
+      ).filter(Boolean) as string[];
+      return {
+        ...item,
+        photoUrls,
+      };
+    })
+  );
 
   return (
     <div className="space-y-4 pb-6">
@@ -94,7 +125,7 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
       <section>
         <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Detail Item {request.requestCategory || "APD"}</h2>
         <div className="space-y-3">
-          {request.items.map((item) => (
+          {itemsWithPhotos.map((item) => (
             <article key={item.id} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="flex justify-between items-start mb-3">
                 <p className="font-bold text-gray-900">{item.itemType}</p>
@@ -112,9 +143,18 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
                   <p className="font-semibold text-gray-900 mt-0.5">{item.notes || "-"}</p>
                 </div>
               </div>
-              {item.photoUrl && (
-                <div className="mt-2 w-full h-32 relative rounded-lg overflow-hidden border border-gray-200">
-                  <Image src={item.photoUrl} alt={`Foto ${item.itemType}`} fill className="object-cover" />
+              {item.photoUrls && item.photoUrls.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+                    Foto Bukti Fisik ({item.photoUrls.length} Foto)
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {item.photoUrls.map((url, pIdx) => (
+                      <div key={pIdx} className="w-full aspect-square relative rounded-lg overflow-hidden border border-gray-200">
+                        <Image src={url} alt={`Foto ${item.itemType} ${pIdx + 1}`} fill className="object-cover" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </article>

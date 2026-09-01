@@ -15,6 +15,136 @@ export type EmailTemplatePreset = {
 
 const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
+    name: '5R Audit Approval Request',
+    templateCode: 'five_r_approval_request',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO 5R] Permohonan Verifikasi Laporan 5R: {{reportNumber}} - {{picAreaName}} (Periode {{auditPeriod}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#064e3b,#047857);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#a7f3d0;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – 5R Audit</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan audit 5R (Ringkas, Rapi, Resik, Rawat, Rajin) berikut memerlukan verifikasi/persetujuan Anda pada <strong>Tahap {{approvalLevel}}</strong>:
+  </p>
+  <div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #059669">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#64748b">No. Laporan:</td><td style="font-weight:600;color:#0f172a">{{reportNumber}}</td></tr>
+      <tr><td style="color:#64748b">PIC – Area 5R:</td><td style="font-weight:600;color:#0f172a">{{picAreaName}}</td></tr>
+      <tr><td style="color:#64748b">Auditor:</td><td>{{auditorName}}</td></tr>
+      <tr><td style="color:#64748b">Periode / Tgl:</td><td>{{auditPeriod}} ({{auditDate}})</td></tr>
+      <tr><td style="color:#64748b">Tipe Laporan:</td><td>{{reportType}}</td></tr>
+      <tr><td style="color:#64748b">Nilai Audit Total:</td><td><strong style="color:#059669;font-size:15px">{{totalScore}}</strong> / 100</td></tr>
+    </table>
+  </div>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{approvalLink}}" style="background:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau Laporan & Verifikasi</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO Continuous Process Improvement (CPI) PT Chitra Paratama.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{approverName}},
+
+Laporan audit 5R berikut memerlukan verifikasi/persetujuan Anda pada Tahap {{approvalLevel}}:
+
+No. Laporan: {{reportNumber}}
+PIC – Area 5R: {{picAreaName}}
+Auditor: {{auditorName}}
+Periode / Tgl: {{auditPeriod}} ({{auditDate}})
+Tipe Laporan: {{reportType}}
+Nilai Audit Total: {{totalScore}} / 100
+
+Silakan tinjau dan lakukan verifikasi via link:
+{{approvalLink}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Notifikasi email permohonan persetujuan / verifikasi Laporan 5R kepada approver berjenjang.',
+    variables: [
+      'approverName',
+      'approvalLevel',
+      'reportNumber',
+      'picAreaName',
+      'auditorName',
+      'auditPeriod',
+      'auditDate',
+      'reportType',
+      'totalScore',
+      'approvalLink',
+    ],
+    sampleValues: {
+      approverName: 'Ria Annisa Putri',
+      approvalLevel: 'Level 1: Quality Management Verifier',
+      reportNumber: '5R-202608-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      auditorName: 'Mochamad Annas Khadafi',
+      auditPeriod: 'August',
+      auditDate: '2026-08-30',
+      reportType: 'Ada Temuan',
+      totalScore: '84.00',
+      approvalLink: 'https://hero.chitraparatama.co.id/dashboard/approval',
+    },
+  },
+  {
+    name: '5R Audit Status Notification',
+    templateCode: 'five_r_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[HERO 5R] Update Status Laporan 5R {{reportNumber}}: {{status}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – Status Update</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{auditorName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) telah diperbarui dengan status: <strong style="color:#059669">{{status}}</strong>.
+  </p>
+  <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:24px;border:1px solid #e2e8f0">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#64748b">No. Laporan:</td><td style="font-weight:600">{{reportNumber}}</td></tr>
+      <tr><td style="color:#64748b">Area:</td><td>{{picAreaName}}</td></tr>
+      <tr><td style="color:#64748b">Ditinjau Oleh:</td><td>{{approvedBy}}</td></tr>
+      <tr><td style="color:#64748b">Catatan:</td><td>{{notes}}</td></tr>
+    </table>
+  </div>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{viewLink}}" style="background:#0f172a;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Laporan 5R</a>
+  </div>
+</div>
+</div>`,
+    textContent: `Yth. {{auditorName}},
+
+Laporan 5R {{reportNumber}} (Area: {{picAreaName}}) telah diperbarui dengan status: {{status}}.
+
+Ditinjau Oleh: {{approvedBy}}
+Catatan: {{notes}}
+
+Lihat detail: {{viewLink}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Notifikasi status approval / revisi laporan 5R kepada auditor dan PIC area.',
+    variables: ['auditorName', 'reportNumber', 'picAreaName', 'status', 'approvedBy', 'notes', 'viewLink'],
+    sampleValues: {
+      auditorName: 'Mochamad Annas Khadafi',
+      reportNumber: '5R-202608-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      status: 'Approved (Disetujui Final)',
+      approvedBy: 'Bardinia Susi Ekawaty (Head of CPI)',
+      notes: 'Laporan telah lengkap dan sesuai standar 5R.',
+      viewLink: 'https://hero.chitraparatama.co.id/dashboard/quality/5r',
+    },
+  },
+  {
     name: 'RFR Approval Assignment',
     templateCode: 'rfr_approver_notification',
     templateType: 'Notification',
@@ -106,6 +236,13 @@ HR Department - PT Chitra Paratama`,
   <p style="color:#475569;font-size:13px;line-height:1.6">
     Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.
   </p>
+  <div style="background:#ecfdf5;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #10b981">
+    <p style="margin:0;font-size:13px;color:#065f46"><strong>Posisi:</strong> {{positionTitle}} ({{numberOfPersons}} Person(s))</p>
+    <p style="margin:4px 0 0;font-size:13px;color:#065f46"><strong>Sistem telah membuat Lowongan Pekerjaan otomatis untuk proses Sourcing Recruitment.</strong></p>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.6">
+    Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.
+  </p>
 </div>
 </div>`,
     textContent: `Request For Recruitment (RFR) {{rfrNumber}} untuk posisi {{positionTitle}} ({{numberOfPersons}} orang) telah selesai disetujui sepenuhnya. Lowongan pekerjaan baru telah berhasil dibuat secara otomatis di modul Recruitment.`,
@@ -115,6 +252,86 @@ HR Department - PT Chitra Paratama`,
       rfrNumber: 'RFR-2026-001',
       positionTitle: 'Serviceman',
       numberOfPersons: '4',
+    },
+  },
+  {
+    name: 'RFR Approval Reverted',
+    templateCode: 'rfr_reverted_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[RFR Dikembalikan] {{rfrNumber}} - {{positionTitle}} oleh {{revertedByName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fef3c7;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">RFR Reverted / Dikembalikan</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Permohonan Rekrutmen (RFR) <strong>{{rfrNumber}}</strong> ({{positionTitle}}) telah <strong>dikembalikan (reverted)</strong> ke tahap persetujuan Anda oleh <strong>{{revertedByName}}</strong>.
+  </p>
+  <div style="background:#fffbeb;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #d97706">
+    <p style="margin:0;font-size:13px;color:#92400e"><strong>Alasan / Catatan Pengembalian:</strong></p>
+    <p style="margin:4px 0 0;font-size:14px;color:#78350f;font-style:italic">"{{remarks}}"</p>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.6;margin:0 0 20px">
+    Silakan lakukan tinjauan ulang dan perbaikan yang diperlukan melalui tombol di bawah ini:
+  </p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{approvalLink}}" style="background:#d97706;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau Ulang RFR</a>
+  </div>
+</div>
+</div>`,
+    textContent: `Yth. {{approverName}}, RFR {{rfrNumber}} ({{positionTitle}}) dikembalikan ke Anda oleh {{revertedByName}}. Alasan: "{{remarks}}". Link: {{approvalLink}}`,
+    description: 'Notifikasi RFR dikembalikan ke approver sebelumnya.',
+    variables: ['approverName', 'rfrNumber', 'positionTitle', 'revertedByName', 'remarks', 'approvalLink'],
+    sampleValues: {
+      approverName: 'Adilla Tri Arizona',
+      rfrNumber: 'RFR-2026-001',
+      positionTitle: 'Serviceman',
+      revertedByName: 'Romy Hidayat',
+      remarks: 'Harap periksa kembali detail kompetensi section D.',
+      approvalLink: 'https://hero.chitraparatama.co.id/review/rfr/token123',
+    },
+  },
+  {
+    name: 'RFR Approval Rejected',
+    templateCode: 'rfr_rejected_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[RFR Ditolak] {{rfrNumber}} - {{positionTitle}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#dc2626,#b91c1c);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fee2e2;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">RFR Rejected / Ditolak</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. Karyawan Pemohon,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Permohonan Rekrutmen (RFR) dengan nomor <strong>{{rfrNumber}}</strong> untuk posisi <strong>{{positionTitle}}</strong> telah <strong>ditolak</strong> pada tahap <strong>{{approvalStep}}</strong> oleh <strong>{{rejectedByName}}</strong>.
+  </p>
+  <div style="background:#fef2f2;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #b91c1c">
+    <p style="margin:0;font-size:13px;color:#991b1b"><strong>Alasan Penolakan:</strong></p>
+    <p style="margin:4px 0 0;font-size:14px;color:#7f1d1d;font-style:italic">"{{remarks}}"</p>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.6">
+    Detail permohonan dapat dilihat pada dashboard RFR Anda.
+  </p>
+</div>
+</div>`,
+    textContent: `RFR {{rfrNumber}} ({{positionTitle}}) ditolak pada tahap {{approvalStep}} oleh {{rejectedByName}}. Alasan: "{{remarks}}".`,
+    description: 'Notifikasi RFR ditolak kepada pemohon.',
+    variables: ['rfrNumber', 'positionTitle', 'approvalStep', 'rejectedByName', 'remarks'],
+    sampleValues: {
+      rfrNumber: 'RFR-2026-001',
+      positionTitle: 'Serviceman',
+      approvalStep: 'Manager Departemen',
+      rejectedByName: 'Romy Hidayat',
+      remarks: 'Mpp status tidak budgeted, anggaran penuh.',
     },
   },
   {
@@ -2860,6 +3077,26 @@ Tim Human Capital`,
     }
   },
   {
+    name: 'APD Request Reverted / Need Revision',
+    templateCode: 'apd_request_reverted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[Perlu Revisi] Permohonan {{requestType}}: {{requestNumber}}',
+    htmlContent: 'Silakan merujuk pada format email standar APD.',
+    textContent: 'Silakan merujuk pada format email standar APD.',
+    description: 'Notifikasi saat permohonan APD dikembalikan oleh approver untuk diperbaiki/revisi',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType'],
+    sampleValues: {
+      employeeName: 'Budi Santoso',
+      requestNumber: 'APD-2026-0001',
+      approverName: 'Agus Subiyanto',
+      reason: 'Ukuran sepatu belum sesuai spesifikasi',
+      requestType: 'APD'
+    }
+  },
+  {
     name: 'APD Replacement Reminder',
     templateCode: 'apd_reminder_replacement',
     templateType: 'Notification',
@@ -2877,6 +3114,28 @@ Tim Human Capital`,
     }
   },
   {
+    name: 'Summary Permintaan Barang Pending Approval',
+    templateCode: 'apd_summary_pending_approval',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO] Review {{summaryNumber}} - {{sectionName}}',
+    htmlContent: '<div style="font-family:\'Segoe UI\',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:24px;border-radius:12px;border:1px solid #e2e8f0;"><div style="background:#2563eb;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="color:#ffffff;margin:0;font-size:18px;font-weight:700;">HERO &bull; Summary Permintaan Barang</h2><p style="color:#bfdbfe;margin:4px 0 0;font-size:12px;">Persetujuan Dokumen Rekapitulasi</p></div><div style="background:#ffffff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;"><p style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 16px;">Yth. <b>{{approverName}}</b>,<br>Dokumen Summary Permintaan Barang berikut membutuhkan peninjauan dan persetujuan Anda ({{approvalLevel}}):</p><table style="width:100%;border-collapse:collapse;font-size:13px;color:#334155;margin-bottom:20px;"><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;width:130px;color:#64748b;">No. Summary</td><td style="padding:8px 0;font-weight:700;color:#0f172a;">{{summaryNumber}}</td></tr><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;color:#64748b;">Section</td><td style="padding:8px 0;">{{sectionName}}</td></tr><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;color:#64748b;">Departemen</td><td style="padding:8px 0;">{{departmentName}}</td></tr><tr><td style="padding:8px 0;font-weight:600;color:#64748b;">Dibuat Oleh</td><td style="padding:8px 0;">{{generatedByName}}</td></tr></table><div style="text-align:center;margin:28px 0 16px 0;"><a href="{{approvalUrl}}" style="background-color:#2563eb;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;box-shadow:0 2px 4px rgba(37,99,235,0.25);">Buka Inbox Approval &amp; Review &rarr;</a></div></div></div>',
+    textContent: 'Yth. {{approverName}},\n\nDokumen Summary Permintaan Barang {{summaryNumber}} untuk section {{sectionName}} ({{departmentName}}) memerlukan persetujuan Anda ({{approvalLevel}}).\n\nSilakan login ke HERO untuk review:\n{{approvalUrl}}',
+    description: 'Notifikasi ke Section Head / Dept Head saat summary permintaan barang butuh approval.',
+    variables: ['approverName', 'summaryNumber', 'sectionName', 'departmentName', 'generatedByName', 'approvalLevel', 'approvalUrl'],
+    sampleValues: {
+      approverName: 'Renaldo',
+      summaryNumber: 'SUM-001',
+      sectionName: 'Central Services Workshop',
+      departmentName: 'Central Services',
+      generatedByName: 'Admin Central Point',
+      approvalLevel: 'Section Head (Diperiksa Oleh)',
+      approvalUrl: 'https://hero.chitraparatama.co.id/dashboard/approval',
+    }
+  },
+  {
     name: 'Summary Permintaan Barang Approved',
     templateCode: 'apd_summary_approved',
     templateType: 'Notification',
@@ -2884,15 +3143,16 @@ Tim Human Capital`,
     recipientScope: 'approver',
     ccEmail: '',
     subject: '[HERO] Summary {{summaryNumber}} - {{sectionName}} Sudah Disetujui',
-    htmlContent: 'Summary Permintaan Barang Safety ({{summaryNumber}}) untuk section {{sectionName}} ({{departmentName}}) sudah disetujui. Silakan login HERO untuk melihat detail dan melakukan pemesanan barang ke vendor.',
-    textContent: 'Summary Permintaan Barang Safety ({{summaryNumber}}) untuk section {{sectionName}} ({{departmentName}}) sudah disetujui. Silakan login HERO untuk melihat detail dan melakukan pemesanan barang ke vendor.',
+    htmlContent: '<div style="font-family:\'Segoe UI\',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:24px;border-radius:12px;border:1px solid #e2e8f0;"><div style="background:#059669;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="color:#ffffff;margin:0;font-size:18px;font-weight:700;">HERO &bull; Summary Disetujui</h2><p style="color:#a7f3d0;margin:4px 0 0;font-size:12px;">Persetujuan Pengadaan Barang</p></div><div style="background:#ffffff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;"><p style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 16px;">Summary Permintaan Barang (<b>{{summaryNumber}}</b>) untuk section <b>{{sectionName}}</b> ({{departmentName}}) telah <b>SELESAI DISETUJUI</b> oleh Department Head.</p><table style="width:100%;border-collapse:collapse;font-size:13px;color:#334155;margin-bottom:20px;"><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;width:130px;color:#64748b;">No. Summary</td><td style="padding:8px 0;font-weight:700;color:#0f172a;">{{summaryNumber}}</td></tr><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;color:#64748b;">Section</td><td style="padding:8px 0;">{{sectionName}}</td></tr><tr><td style="padding:8px 0;font-weight:600;color:#64748b;">Departemen</td><td style="padding:8px 0;">{{departmentName}}</td></tr></table><div style="text-align:center;margin:28px 0 16px 0;"><a href="{{printUrl}}" style="background-color:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;box-shadow:0 2px 4px rgba(5,150,105,0.25);">Cetak / Lihat Dokumen Summary &rarr;</a></div></div></div>',
+    textContent: 'Summary Permintaan Barang Safety ({{summaryNumber}}) untuk section {{sectionName}} ({{departmentName}}) sudah disetujui.\n\nSilakan login ke HERO untuk melihat detail dan proses pemesanan barang:\n{{printUrl}}',
     description: 'Notifikasi ke HSE saat summary permintaan barang sudah disetujui oleh Dept Head',
-    variables: ['summaryNumber', 'sectionName', 'departmentName', 'generatedByName'],
+    variables: ['summaryNumber', 'sectionName', 'departmentName', 'generatedByName', 'printUrl'],
     sampleValues: {
       summaryNumber: 'SUM-001',
       sectionName: 'Repair / Retread Operation',
       departmentName: 'Operation',
       generatedByName: 'Admin Repair Retread',
+      printUrl: 'https://hero.chitraparatama.co.id/print/summary/1',
     }
   },
   {
@@ -3174,9 +3434,18 @@ function buildUnifiedEmailText(preset: EmailTemplatePreset) {
   return `PT Chitra Paratama — HERO Notification\n${preset.subject}\n\n${preset.textContent.trim()}\n\nEmail ini dikirim otomatis oleh sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.`
 }
 
+function ensurePwaPushDeliveryChannel(channelStr: string): string {
+  const parts = (channelStr || 'email').split(',').map((c) => c.trim()).filter(Boolean)
+  if (!parts.includes('pwa_push')) {
+    parts.push('pwa_push')
+  }
+  return parts.join(',')
+}
+
 function applyUnifiedEmailDesign(preset: EmailTemplatePreset): EmailTemplatePreset {
   return {
     ...preset,
+    deliveryChannel: ensurePwaPushDeliveryChannel(preset.deliveryChannel),
     htmlContent: buildUnifiedEmailHtml(preset),
     textContent: buildUnifiedEmailText(preset),
   }

@@ -126,6 +126,30 @@ export async function sendApdRequestRejectedEmail(params: {
   })
 }
 
+export async function sendApdRequestRevertedEmail(params: {
+  requesterEmail: string
+  requesterName: string
+  requestNumber: string
+  approverName: string
+  reason: string
+  requestType: string
+}) {
+  return sendWorkflowEmail({
+    to: params.requesterEmail,
+    templateCode: "apd_request_reverted",
+    variables: {
+      employeeName: params.requesterName,
+      requestNumber: params.requestNumber,
+      approverName: params.approverName,
+      reason: params.reason,
+      requestType: params.requestType,
+    },
+    fallbackSubject: `[Perlu Revisi] Permohonan ${params.requestType}: ${params.requestNumber}`,
+    fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DIKEMBALIKAN UNTUK REVISI (Reverted)</b> oleh ${params.approverName} dengan catatan:<br><i>${params.reason}</i><br><br>Silakan perbaiki data permohonan melalui sistem HERO.<br><br>Terima kasih.`,
+    fallbackText: `Halo ${params.requesterName},\n\nPermohonan ${params.requestType} Anda dengan nomor tiket ${params.requestNumber} telah DIKEMBALIKAN UNTUK REVISI (Reverted) oleh ${params.approverName} dengan catatan:\n${params.reason}\n\nSilakan perbaiki data permohonan melalui sistem HERO.\n\nTerima kasih.`,
+  })
+}
+
 export async function sendApdReplacementReminderEmail(params: {
   adminEmail: string
   employeeName: string

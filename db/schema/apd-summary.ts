@@ -8,6 +8,7 @@ export const apdSummaries = pgTable('hero_apd_summaries', {
   id: serial('id').primaryKey(),
   summaryNumber: text('summary_number').notNull().unique(),
   sectionId: integer('section_id').notNull().references(() => masterSections.id, { onDelete: 'cascade' }),
+  targetSite: text('target_site').notNull().default('GABUNGAN'), // 'VALE' atau 'GABUNGAN'
   status: text('status').notNull().default('draft'), // draft, pending, approved
   generatedByEmployeeId: integer('generated_by_employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   submitterSignatureUrl: text('submitter_signature_url'),

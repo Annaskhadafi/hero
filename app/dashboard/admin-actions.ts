@@ -4554,54 +4554,58 @@ async function applyApprovalDecision(params: {
       // Ketika Step 5 (Inventory & Warehouse SPV / Final Step) approve -> Notifikasi ke Billing Team untuk isi Nomor WO
       if (decisionStatus === 'approved' && !hasNextStep) {
         if (reqInfo) {
-          // Find Level 4 (Team Billing) approver email
-          const level4Approval = await tx
-            .select({ approverEmployeeId: approvals.approverEmployeeId })
+          // Find Team Billing approver email (Dinamis untuk Service & Repair WO)
+          const allFormApprovals = await tx
+            .select({ approverEmployeeId: approvals.approverEmployeeId, approverName: approvals.approverName, level: approvals.level })
             .from(approvals)
-            .where(
-              and(
-                eq(approvals.repairFormWoId, approval.repairFormWoId!),
-                eq(approvals.level, 4)
-              )
-            )
-            .limit(1)
-            .then((r) => r[0])
+            .where(eq(approvals.repairFormWoId, approval.repairFormWoId!))
 
-          let billingEmail = 'mochamad.khadafi@chitraparatama.co.id'
-          if (level4Approval?.approverEmployeeId) {
+          const billingApproval =
+            allFormApprovals.find(
+              (a) =>
+                (a.approverName && (a.approverName.toLowerCase().includes('billing') || a.approverName.toLowerCase().includes('andika'))) ||
+                a.approverEmployeeId === 1102
+            ) ??
+            allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
+
+          let billingEmail: string | undefined
+          const billingEmpId = billingApproval?.approverEmployeeId ?? 1102
+          if (billingEmpId) {
             const [billingEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, level4Approval.approverEmployeeId))
+              .where(eq(employees.id, billingEmpId))
               .limit(1)
             if (billingEmp?.email) {
               billingEmail = billingEmp.email
             }
           }
 
-          const { sendFormWoReadyForWoNumberEmail } = await import('@/lib/form-wo-email')
-          sendFormWoReadyForWoNumberEmail({
-            billingEmail,
-            noPengajuan: reqInfo.noPengajuan,
-            pemohon: reqInfo.pemohon || 'Pemohon',
-            customer: reqInfo.customer || '-',
-            site: reqInfo.site || '-',
-            jobType: reqInfo.jobType || '-',
-            totalAmount: reqInfo.totalAmount || '-',
-          }).catch(console.error)
+          if (billingEmail) {
+            const { sendFormWoReadyForWoNumberEmail } = await import('@/lib/form-wo-email')
+            sendFormWoReadyForWoNumberEmail({
+              billingEmail,
+              noPengajuan: reqInfo.noPengajuan,
+              pemohon: reqInfo.pemohon || 'Pemohon',
+              customer: reqInfo.customer || '-',
+              site: reqInfo.site || '-',
+              jobType: reqInfo.jobType || '-',
+              totalAmount: reqInfo.totalAmount || '-',
+            }).catch(console.error)
 
-          const { notifyWorkflowBellRecipients } = await import(
-            '@/lib/workflow-notification-center'
-          )
-          notifyWorkflowBellRecipients({
-            recipientEmails: [billingEmail],
-            eventType: 'form_wo_ready_for_wo_number',
-            category: 'approval',
-            title: 'Form WO Siap Terbit (Isi No. WO)',
-            body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Silakan isi Nomor WO.`,
-            url: `/dashboard/repair-retread/form-wo`,
-            tagPrefix: 'form-wo',
-          }).catch(console.error)
+            const { notifyWorkflowBellRecipients } = await import(
+              '@/lib/workflow-notification-center'
+            )
+            notifyWorkflowBellRecipients({
+              recipientEmails: [billingEmail],
+              eventType: 'form_wo_ready_for_wo_number',
+              category: 'approval',
+              title: 'Form WO Siap Terbit (Isi No. WO)',
+              body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Silakan isi Nomor WO.`,
+              url: `/dashboard/repair-retread/form-wo`,
+              tagPrefix: 'form-wo',
+            }).catch(console.error)
+          }
 
           // ALSO NOTIFY ADMIN CP SITE (Creator) THAT IT HAS BEEN APPROVED BY INVENTORY (STEP 5)
           let creatorEmail: string | undefined
@@ -4651,15 +4655,15 @@ async function applyApprovalDecision(params: {
             creatorEmail = creatorEmp?.email
           }
 
-          const { sendFormWoStatusRevertedEmail } = await import('@/lib/form-wo-email')
-          sendFormWoStatusRevertedEmail({
-            requesterEmail: creatorEmail || 'mochamad.khadafi@chitraparatama.co.id',
-            pemohon: reqInfo.pemohon || 'Pemohon',
-            noPengajuan: reqInfo.noPengajuan,
-            catatanRevisi: trimmedNote || 'Pengajuan dikembalikan untuk revisi.',
-          }).catch(console.error)
-
           if (creatorEmail) {
+            const { sendFormWoStatusRevertedEmail } = await import('@/lib/form-wo-email')
+            sendFormWoStatusRevertedEmail({
+              requesterEmail: creatorEmail,
+              pemohon: reqInfo.pemohon || 'Pemohon',
+              noPengajuan: reqInfo.noPengajuan,
+              catatanRevisi: trimmedNote || 'Pengajuan dikembalikan untuk revisi.',
+            }).catch(console.error)
+
             const { notifyWorkflowBellRecipients } = await import(
               '@/lib/workflow-notification-center'
             )
@@ -4688,15 +4692,15 @@ async function applyApprovalDecision(params: {
             creatorEmail = creatorEmp?.email
           }
 
-          const { sendFormWoStatusRejectedEmail } = await import('@/lib/form-wo-email')
-          sendFormWoStatusRejectedEmail({
-            requesterEmail: creatorEmail || 'mochamad.khadafi@chitraparatama.co.id',
-            pemohon: reqInfo.pemohon || 'Pemohon',
-            noPengajuan: reqInfo.noPengajuan,
-            catatanPengajuan: trimmedNote || 'Pengajuan tidak disetujui oleh approver.',
-          }).catch(console.error)
-
           if (creatorEmail) {
+            const { sendFormWoStatusRejectedEmail } = await import('@/lib/form-wo-email')
+            sendFormWoStatusRejectedEmail({
+              requesterEmail: creatorEmail,
+              pemohon: reqInfo.pemohon || 'Pemohon',
+              noPengajuan: reqInfo.noPengajuan,
+              catatanPengajuan: trimmedNote || 'Pengajuan tidak disetujui oleh approver.',
+            }).catch(console.error)
+
             const { notifyWorkflowBellRecipients } = await import(
               '@/lib/workflow-notification-center'
             )
@@ -5001,8 +5005,8 @@ async function applyApprovalDecision(params: {
           .then(res => res[0]);
 
         if (reqInfo?.requesterEmail) {
-          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
-          sendApdRequestRejectedEmail({
+          const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email');
+          sendApdRequestRevertedEmail({
             requesterEmail: reqInfo.requesterEmail,
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,

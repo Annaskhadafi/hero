@@ -129,6 +129,8 @@ const sectionLabelMap: Record<string, string> = {
   "Master Data": "Data Induk",
   HR: "HC",
   HSE: "HSE",
+  Quality: "Quality & CPI",
+  "Quality & CPI": "Quality & CPI",
   Report: "Laporan",
   Setting: "Pengaturan",
 };

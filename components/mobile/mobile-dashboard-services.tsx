@@ -174,6 +174,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-emerald-500/10 text-emerald-600",
     },
     {
+      title: "Summary APD",
+      href: "/mobile/summary",
+      resource: "hse_summary_apd",
+      icon: FileText,
+      bg: "bg-teal-500/10 text-teal-600",
+    },
+    {
       title: "Izin & Terlambat",
       href: "/mobile/attendance/permission",
       resource: "hc_attendance_permission",
@@ -200,6 +207,13 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "central-service-assets",
       icon: Package,
       bg: "bg-indigo-500/10 text-indigo-600",
+    },
+    {
+      title: "Audit 5R",
+      href: "/mobile/quality/5r",
+      resource: "five_r_report",
+      icon: Sparkles,
+      bg: "bg-teal-500/10 text-teal-600",
     },
     {
       title: "Pengaduan HR",

@@ -6,6 +6,7 @@ declare global {
   // Reuse the same pool during hot reloads in development.
   var heroDbPool: Pool | undefined;
   var heroDbConnectionString: string | undefined;
+  var heroDrizzleDb: ReturnType<typeof drizzle> | undefined;
 }
 
 let drizzleDb: ReturnType<typeof drizzle> | undefined;
@@ -36,53 +37,65 @@ function getSslConfig(connectionString: string) {
   return false;
 }
 
-function getPool() {
+function getPool(): Pool {
   const connectionString =
     process.env.DATABASE_URL?.trim() || serverEnv.databaseUrl;
 
-  const existingPool = globalThis.heroDbPool;
-  const existingConnString = globalThis.heroDbConnectionString;
-
-  if (existingPool && existingConnString === connectionString) {
-    return existingPool;
+  if (
+    globalThis.heroDbPool &&
+    globalThis.heroDbConnectionString === connectionString
+  ) {
+    return globalThis.heroDbPool;
   }
 
-  if (existingPool) {
+  if (globalThis.heroDbPool) {
     try {
-      existingPool.end();
+      globalThis.heroDbPool.end();
     } catch {
       // ignore cleanup
     }
   }
 
+  const maxConnections = process.env.DATABASE_MAX_CONNECTIONS
+    ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
+    : process.env.NODE_ENV === "production"
+    ? 10
+    : 4;
+
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
-    connectionTimeoutMillis: 30000,
-    max: 20,
+    idleTimeoutMillis: 2000,
+    connectionTimeoutMillis: 10000,
+    max: maxConnections,
+    allowExitOnIdle: true,
     keepAlive: true,
-    keepAliveInitialDelayMillis: 10000,
+    keepAliveInitialDelayMillis: 5000,
   });
 
   pool.on("error", (error) => {
     console.error("[db] idle client error", error);
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalThis.heroDbPool = pool;
-    globalThis.heroDbConnectionString = connectionString;
-  }
+  globalThis.heroDbPool = pool;
+  globalThis.heroDbConnectionString = connectionString;
+  globalThis.heroDrizzleDb = drizzle({ client: pool });
 
   return pool;
 }
 
-function getDb() {
-  const currentPool = getPool();
-  if (!drizzleDb) {
-    drizzleDb = drizzle({ client: currentPool });
+function getDb(): ReturnType<typeof drizzle> {
+  if (
+    globalThis.heroDrizzleDb &&
+    globalThis.heroDbPool &&
+    globalThis.heroDbConnectionString ===
+      (process.env.DATABASE_URL?.trim() || serverEnv.databaseUrl)
+  ) {
+    return globalThis.heroDrizzleDb;
   }
-  return drizzleDb;
+
+  getPool();
+  return globalThis.heroDrizzleDb!;
 }
 
 export const db = new Proxy({} as ReturnType<typeof drizzle>, {

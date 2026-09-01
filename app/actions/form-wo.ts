@@ -338,11 +338,26 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     }
     if (!employee) throw new Error('Unauthorized')
 
+    // Wajib tanda tangan digital pemohon sebelum submit
+    if (!parsed.submitterSignatureUrl || !parsed.submitterSignatureUrl.trim()) {
+      return {
+        success: false,
+        error: 'Tanda tangan digital pemohon wajib dibubuhkan sebelum mengajukan Form WO.',
+      }
+    }
+
     const targetDate = parsed.tanggal ? new Date(parsed.tanggal) : new Date()
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
     const autoDay = isNaN(targetDate.getTime()) ? '-' : days[targetDate.getDay()]
     const finalHari = parsed.hari && parsed.hari !== '-' ? parsed.hari : autoDay
-    const finalPemohon = parsed.pemohon && parsed.pemohon.trim() ? parsed.pemohon.trim() : employee.name
+    const isService = parsed.jenisPengajuan === 'service'
+    const finalPemohon =
+      parsed.pemohon &&
+      parsed.pemohon.trim() &&
+      parsed.pemohon !== 'Nama Pengguna' &&
+      parsed.pemohon !== 'User Logged In'
+        ? parsed.pemohon.trim()
+        : employee.name
 
     const [newFormWo] = await db
       .insert(repairFormWo)
@@ -359,7 +374,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       })
       .returning({ id: repairFormWo.id })
 
-    const transactionType = 'form_wo_repair_retread'
+    const transactionType = isService ? 'form_wo_service' : 'form_wo_repair_retread'
 
     const route = await resolveApprovalRouteForActivity({
       employeeId: employee.id,
@@ -374,19 +389,10 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     if (route.steps.length > 0) {
       for (const step of route.steps) {
         const isStep1 = step.stepOrder === 1
-        const isStep2 = step.stepOrder === 2
 
-        let stepStatus: 'pending' | 'waiting' | 'approved' = 'waiting'
-        let reviewedAt: Date | null = null
-        let signatureUrl: string | null = null
-
-        if (isStep1) {
-          stepStatus = 'approved'
-          reviewedAt = new Date()
-          signatureUrl = parsed.submitterSignatureUrl || null
-        } else if (isStep2) {
-          stepStatus = 'pending'
-        }
+        const stepStatus: 'pending' | 'waiting' | 'approved' = isStep1 ? 'pending' : 'waiting'
+        const reviewedAt: Date | null = null
+        const signatureUrl: string | null = null
 
         const [appr] = await db
           .insert(approvals)
@@ -415,11 +421,9 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       }
 
       if (approvalIds.length > 0) {
-        // Step 2 is the active pending step for QC / Leader
+        // Step 1 is the active pending step for Approver Tahap 1
         const activePendingStep =
-          route.steps.length > 1
-            ? route.steps.find((s) => s.stepOrder === 2) || route.steps[0]
-            : route.steps[0]
+          route.steps.find((s) => s.stepOrder === 1) || route.steps[0]
 
         if (activePendingStep && activePendingStep.approverEmployeeId) {
           const [approverEmp] = await db
@@ -442,6 +446,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
 
         try {
           await sendFormWoApprovalRequestEmail({
+            approverEmail: approverEmp?.email,
             approverName: activePendingStep?.approverName || 'Approver',
             pemohon: finalPemohon,
             noPengajuan,
@@ -453,7 +458,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
             size: parsed.size,
             totalAmount: parsed.totalAmount,
             catatanPengajuan: parsed.catatanPengajuan,
-            tier: 2,
+            tier: 1,
           })
         } catch (error) {
           console.error('Gagal mengirim email approval Form WO', error)
@@ -654,20 +659,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       .where(eq(approvals.repairFormWoId, formWoId))
       .orderBy(asc(approvals.level))
 
-    // Step 2 is QC / Leader
-    const step2 = stepRows.find((s) => s.level === 2)
-    let qcLeaderEmail: string | undefined
-    if (step2?.approverEmployeeId) {
-      const emp = await db
-        .select({ email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, step2.approverEmployeeId))
-        .limit(1)
-        .then((r) => r[0])
-      qcLeaderEmail = emp?.email
-    }
-
-    let adminCpSiteEmail: string | undefined
+    let creatorEmail: string | undefined
     if (existing.createdBy) {
       const creator = await db
         .select({ email: employees.email })
@@ -675,7 +667,34 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
         .where(eq(employees.id, existing.createdBy))
         .limit(1)
         .then((r) => r[0])
-      adminCpSiteEmail = creator?.email
+      creatorEmail = creator?.email
+    }
+
+    const isService = existing.jenisPengajuan === 'service'
+    const dynamicRecipients: Array<{ email: string; roleName: string }> = []
+    if (creatorEmail) {
+      dynamicRecipients.push({ email: creatorEmail, roleName: 'Pemohon' })
+    }
+
+    for (const s of stepRows) {
+      if (s.approverEmployeeId) {
+        const emp = await db
+          .select({ email: employees.email, name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, s.approverEmployeeId))
+          .limit(1)
+          .then((r) => r[0])
+        if (emp?.email) {
+          let roleName = 'Approver'
+          if (s.routeSnapshot) {
+            try {
+              const snap = JSON.parse(s.routeSnapshot)
+              roleName = snap.label || snap.nodeLabel || roleName
+            } catch {}
+          }
+          dynamicRecipients.push({ email: emp.email, roleName })
+        }
+      }
     }
 
     const pdfSteps = stepRows.map((s) => {
@@ -718,9 +737,8 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
     }
 
     await sendFormWoCompletedWithPdfEmail({
-      adminCpSiteEmail,
-      qcLeaderEmail,
-      pemohon: existing.pemohon || 'Admin CP Site',
+      recipients: dynamicRecipients,
+      pemohon: existing.pemohon || 'Pemohon',
       noPengajuan: existing.noPengajuan,
       noWoTerbit,
       noPo: existing.noPo || undefined,
@@ -730,6 +748,20 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       totalAmount: existing.totalAmount || undefined,
       pdfData,
     })
+
+    const { notifyWorkflowBellRecipients } = await import('@/lib/workflow-notification-center')
+    const finalRecipients = dynamicRecipients.map((r) => r.email).filter(Boolean)
+    if (finalRecipients.length > 0) {
+      notifyWorkflowBellRecipients({
+        recipientEmails: finalRecipients,
+        eventType: 'form_wo_approved',
+        category: 'approval',
+        title: 'Form WO Resmi Terbit (PDF Dilampirkan)',
+        body: `Nomor WO resmi (${noWoTerbit}) telah diterbitkan untuk ${existing.noPengajuan}. File PDF Form WO dapat diunduh melalui sistem atau email Anda.`,
+        url: `/dashboard/repair-retread/form-wo`,
+        tagPrefix: 'form-wo',
+      }).catch(console.error)
+    }
   } catch (err) {
     console.error('triggerFormWoCompletedPdfNotification error:', err)
   }
@@ -765,25 +797,36 @@ export async function updateFormWoStatus(
     if (record) {
       void (async () => {
         try {
-          const requesterEmail = record.createdBy || 'requester@chitraparatama.com'
-          if (status === 'approved' || status === 'diproses') {
-            await sendFormWoStatusApprovedEmail({
-              requesterEmail,
-              pemohon: record.pemohon || 'Pemohon',
-              noPengajuan: record.noPengajuan || '-',
-              noWoTerbit: noWoTerbit || record.noWoTerbit || '-',
-              customer: record.customer || '-',
-              site: record.site || '-',
-              jobType: record.jobType || '-',
-              totalAmount: record.totalAmount || '-',
-            })
-          } else if (status === 'rejected') {
-            await sendFormWoStatusRejectedEmail({
-              requesterEmail,
-              pemohon: record.pemohon || 'Pemohon',
-              noPengajuan: record.noPengajuan || '-',
-              catatanPengajuan: record.catatanPengajuan || 'Pengajuan tidak memenuhi syarat.',
-            })
+          let requesterEmail: string | undefined
+          if (record.createdBy) {
+            const emp = await db
+              .select({ email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, record.createdBy))
+              .limit(1)
+              .then((r) => r[0])
+            requesterEmail = emp?.email
+          }
+          if (requesterEmail) {
+            if (status === 'approved' || status === 'diproses') {
+              await sendFormWoStatusApprovedEmail({
+                requesterEmail,
+                pemohon: record.pemohon || 'Pemohon',
+                noPengajuan: record.noPengajuan || '-',
+                noWoTerbit: noWoTerbit || record.noWoTerbit || '-',
+                customer: record.customer || '-',
+                site: record.site || '-',
+                jobType: record.jobType || '-',
+                totalAmount: record.totalAmount || '-',
+              })
+            } else if (status === 'rejected') {
+              await sendFormWoStatusRejectedEmail({
+                requesterEmail,
+                pemohon: record.pemohon || 'Pemohon',
+                noPengajuan: record.noPengajuan || '-',
+                catatanPengajuan: record.catatanPengajuan || 'Pengajuan tidak memenuhi syarat.',
+              })
+            }
           }
         } catch (e) {
           console.error('Form WO Status Email notification error:', e)
@@ -837,30 +880,6 @@ export async function updateWoCpNumber(id: number, noWoCp: string) {
     if (noWoCp && noWoCp.trim()) {
       triggerFormWoCompletedPdfNotification(id, noWoCp.trim()).catch(console.error)
     }
-
-    // Send notification to requester that WO Number is officially issued
-    if (updated.createdBy) {
-      notifyWorkflowBellRecipients({
-        recipientEmails: [updated.createdBy],
-        eventType: 'form_wo_approved',
-        category: 'approval',
-        title: 'Nomor WO Resmi Telah Terbit',
-        body: `Nomor WO resmi (${noWoCp}) telah diterbitkan oleh Billing Team untuk pengajuan ${updated.noPengajuan}.`,
-        url: `/dashboard/repair-retread/form-wo`,
-        tagPrefix: 'form-wo',
-      }).catch(console.error)
-    }
-
-    sendFormWoStatusApprovedEmail({
-      requesterEmail: updated.createdBy || 'requester@chitraparatama.com',
-      pemohon: updated.pemohon || 'Pemohon',
-      noPengajuan: updated.noPengajuan || '-',
-      noWoTerbit: noWoCp,
-      customer: updated.customer || '-',
-      site: updated.site || '-',
-      jobType: updated.jobType || '-',
-      totalAmount: updated.totalAmount || '-',
-    }).catch(console.error)
 
     safeRevalidatePath('/dashboard/repair-retread/form-wo')
     safeRevalidatePath('/dashboard/approval')

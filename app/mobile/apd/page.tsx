@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { HardHat, Plus, ArrowRight, ShieldCheck } from "lucide-react";
+import { HardHat, Plus, ArrowRight, ShieldCheck, FileText, Boxes } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { fetchApdRequests } from "@/lib/apd-data";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
 
 function statusBadgeClass(status: string) {
@@ -32,6 +33,12 @@ export default async function MobileApdPage() {
   const pendingCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "pending_approval").length;
   const orderCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "proses_order").length;
   const completeCount = requests.filter(r => normalizeApdRequestStatus(r.status) === "complete").length;
+
+  const isAdmin = currentEmployee.role === "admin" || currentEmployee.role === "superadmin";
+  const summaryPerm = await getCurrentMenuPermission("hse_summary_apd");
+  const inventoryPerm = await getCurrentMenuPermission("hse_inventaris");
+  const canViewSummary = isAdmin || summaryPerm.canView;
+  const canViewInventory = isAdmin || inventoryPerm.canView;
 
   return (
     <div className="space-y-4 pb-6">
@@ -88,6 +95,41 @@ export default async function MobileApdPage() {
           </div>
         </div>
       </section>
+
+      {/* Admin / Management Quick Shortcuts */}
+      {(canViewSummary || canViewInventory) && (
+        <section className="grid grid-cols-2 gap-2.5">
+          {canViewSummary && (
+            <Link
+              href="/mobile/summary"
+              className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-white p-3 shadow-xs active:scale-95 transition-transform"
+            >
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-teal-500/10 text-teal-600">
+                <FileText className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 leading-tight">Summary APD</p>
+                <p className="text-[10px] text-slate-400 truncate mt-0.5">Rekap per section</p>
+              </div>
+            </Link>
+          )}
+
+          {canViewInventory && (
+            <Link
+              href="/mobile/hse/inventaris"
+              className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-white p-3 shadow-xs active:scale-95 transition-transform"
+            >
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
+                <Boxes className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 leading-tight">Inventaris HSE</p>
+                <p className="text-[10px] text-slate-400 truncate mt-0.5">Stok APD &amp; Aset</p>
+              </div>
+            </Link>
+          )}
+        </section>
+      )}
 
       {/* List */}
       <section>

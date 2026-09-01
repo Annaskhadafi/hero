@@ -98,6 +98,11 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Laporan Barang Keluar", url: "/dashboard/warehouse-repair/laporan-barang-keluar", section: "Central Service", groupLabel: "Warehouse Repair", iconName: "report", resource: "warehouse_repair_laporan_barang_keluar", sortOrder: 13 },
     { title: "Cargo Manifest", url: "/dashboard/cargo-manifest", section: "Central Service", groupLabel: "Logistics", iconName: "folder", resource: "cargo_manifest", sortOrder: 14 },
   ],
+  "Quality & CPI": [
+    { title: "Formulir 5R", url: "/dashboard/quality/5r/create", section: "Quality & CPI", iconName: "checklist", resource: "five_r_create", sortOrder: 1 },
+    { title: "Daftar Laporan 5R", url: "/dashboard/quality/5r", section: "Quality & CPI", iconName: "report", resource: "five_r_reports", sortOrder: 2 },
+    { title: "Master Area 5R", url: "/dashboard/quality/5r/master-area", section: "Quality & CPI", iconName: "database", resource: "five_r_master_area", sortOrder: 3 },
+  ],
   "Laporan": [
     { title: "Analytics", url: "/dashboard/analytics", section: "Laporan", iconName: "chart-bar", resource: "dashboard_repair", sortOrder: 1 },
     { title: "Reports", url: "/dashboard/reports", section: "Laporan", iconName: "report", resource: "repair_productivity", sortOrder: 2 },

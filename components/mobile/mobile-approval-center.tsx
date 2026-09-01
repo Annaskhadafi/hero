@@ -3,6 +3,7 @@
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
+import { FiveRApprovalDialog } from '@/components/admin/five-r-approval-dialog'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -18,9 +19,11 @@ type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>
 function MobileInbox({
   groups,
   contractReviewItems,
+  rfrItems,
 }: {
   groups: ApprovalCenterData['inboxGroups']
   contractReviewItems: ApprovalCenterData['contractReviewInboxItems']
+  rfrItems: ApprovalCenterData['rfrInboxItems']
 }) {
   const router = useRouter()
   const [submittingKey, setSubmittingKey] = useState('')
@@ -39,7 +42,7 @@ function MobileInbox({
     }
   }
 
-  if (groups.length === 0 && contractReviewItems.length === 0) {
+  if (groups.length === 0 && contractReviewItems.length === 0 && rfrItems.length === 0) {
     return (
       <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Tidak ada pengajuan yang menunggu approval Anda.
@@ -145,7 +148,9 @@ function MobileInbox({
           <div className="divide-y divide-[#e6f0f7]">
             {group.items.map((item) => (
               <article key={item.approvalId} className="space-y-4 px-4 py-5">
-                {(item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (
+                {item.activityType === '5R Audit Report' || item.fiveRReport || item.title?.toLowerCase().includes('5r') ? (
+                  <FiveRApprovalDialog item={item} group={group} />
+                ) : (item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (
                   <ApdApprovalDialog item={item} group={group} />
                 ) : (
                   <>
@@ -300,6 +305,63 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData['historyGroups']
   )
 }
 
+function MobileRfrInbox({ items }: { items: ApprovalCenterData['rfrInboxItems'] }) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Tidak ada RFR yang menunggu persetujuan Anda.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]"
+        >
+          <div className="px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black tracking-[0.18em] text-[#486275] uppercase">
+                  Request for Recruitment
+                </p>
+                <p className="mt-1 text-base font-black tracking-tight text-[#082033]">
+                  {item.rfrNumber}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#486275]">
+                  {item.roleLabel} • Step {item.stepOrder}/{item.totalSteps}
+                </p>
+              </div>
+              <AdminStatusBadge value={item.dueState} />
+            </div>
+            <div className="mt-3 rounded-[1.05rem] bg-[#f6fbff] px-4 py-3">
+              <p className="text-xs font-black tracking-[0.16em] text-[#486275] uppercase">
+                Ringkasan
+              </p>
+              <p className="mt-2 text-sm font-semibold text-[#082033]">{item.positionTitle}</p>
+              <p className="mt-1 text-xs text-[#486275]">
+                Pemohon: {item.requestorName} • {item.sectionDepartment}
+              </p>
+              <p className="mt-1 text-xs text-[#486275]">
+                {item.numberOfPersons} orang • Due {item.dueAt.toLocaleDateString('id-ID')}
+              </p>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Link href={item.url} target="_blank" className="flex-1">
+                <Button type="button" variant="outline" size="dense" className="w-full">
+                  Review & Tanda Tangan
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
   return (
     <div className="space-y-5">
@@ -332,10 +394,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         </div>
       </section>
 
-      <Tabs defaultValue="inbox" className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-2 rounded-[1rem] bg-[#dcebf6] p-1">
+      <Tabs defaultValue="inbox" className="space-y-4">          <TabsList className="grid h-auto w-full grid-cols-3 rounded-[1rem] bg-[#dcebf6] p-1">
           <TabsTrigger value="inbox" className="rounded-[0.8rem]">
             Inbox
+          </TabsTrigger>
+          <TabsTrigger value="rfr" className="rounded-[0.8rem]">
+            RFR {(data.rfrInboxItems?.length ?? 0) > 0 ? `(${data.rfrInboxItems.length})` : ''}
           </TabsTrigger>
           <TabsTrigger value="history" className="rounded-[0.8rem]">
             Riwayat
@@ -346,7 +410,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
           <MobileInbox
             groups={data.inboxGroups}
             contractReviewItems={data.contractReviewInboxItems}
+            rfrItems={data.rfrInboxItems ?? []}
           />
+        </TabsContent>
+
+        <TabsContent value="rfr" className="space-y-3">
+          <MobileRfrInbox items={data.rfrInboxItems ?? []} />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-3">

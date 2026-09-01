@@ -10,9 +10,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { createRfrRequest, resolveRfrMatrixAction } from '@/app/actions/rfr'
+import { createRfrRequest, resolveRfrMatrixAction, resubmitRfrRequest } from '@/app/actions/rfr'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { SignaturePad } from '@/components/signature-pad'
 
 type CompetencyRow = {
   skillName: string
@@ -31,24 +32,32 @@ const DEFAULT_COMPETENCIES: CompetencyRow[] = [
 type RfrClientFormProps = {
   defaultRequestorName?: string
   defaultSectionDepartment?: string
+  initialData?: any
+  initialApprovals?: any[]
 }
 
 export function RfrClientForm({
   defaultRequestorName = '',
   defaultSectionDepartment = '',
+  initialData,
+  initialApprovals,
 }: RfrClientFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
 
   // Section A
-  const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10))
-  const [joinDateEstimation, setJoinDateEstimation] = useState('')
-  const [requestorName, setRequestorName] = useState(defaultRequestorName)
-  const [sectionDepartment, setSectionDepartment] = useState(
-    defaultSectionDepartment || 'Service Operation Others / Central Services'
+  const [requestDate, setRequestDate] = useState(
+    initialData?.requestDate ? new Date(initialData.requestDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
   )
-  const [receivedByHr, setReceivedByHr] = useState('')
+  const [joinDateEstimation, setJoinDateEstimation] = useState(
+    initialData?.joinDateEstimation ? new Date(initialData.joinDateEstimation).toISOString().slice(0, 10) : ''
+  )
+  const [requestorName, setRequestorName] = useState(initialData?.requestorName || defaultRequestorName)
+  const [sectionDepartment, setSectionDepartment] = useState(
+    initialData?.sectionDepartment || defaultSectionDepartment || 'Service Operation Others / Central Services'
+  )
+  const [receivedByHr, setReceivedByHr] = useState(initialData?.receivedByHr || '')
 
   // Sync session user defaults if loaded asynchronously
   useEffect(() => {
@@ -58,24 +67,27 @@ export function RfrClientForm({
   }, [defaultRequestorName])
 
   const [resolvedApprovers, setResolvedApprovers] = useState([
-    { label: 'Purposed,', name: requestorName || 'Junaidi', title: 'Service operation Others Coord' },
-    { label: 'HC Verification', name: 'Adilla Tri Arizona', title: 'HR Recruitment & GA Staff' },
-    { label: 'Acknowledge', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
-    { label: 'Acknowledge', name: 'Muhammad Iqbal', title: 'Human Capital Spv' },
-    { label: 'Acknowledge', name: 'Romy Hidayat', title: 'Central Service Manager' },
-    { label: 'Approval', name: 'Person Sihaloho', title: 'General Manager' },
+    { label: 'Submitted', name: requestorName || '-', title: 'Requestor' },
+    { label: 'HC Verification (HR Recruitment Staff)', name: 'Adila Tri Arizona', title: 'HR Recruitment & GA' },
+    { label: 'Leader HR-GA', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
+    { label: 'Human Capital Spv', name: 'Muhammad Iqbal', title: 'Human Capital Spv' },
+    { label: 'Manager Departemen', name: 'Romy Hidayat', title: 'Central Services Manager' },
+    { label: 'General Manager', name: 'Person Sihaloho', title: 'General Manager' },
   ])
 
   useEffect(() => {
     if (sectionDepartment) {
       resolveRfrMatrixAction(sectionDepartment).then((matrix) => {
-        if (matrix && matrix.length === 6) {
+        if (matrix && matrix.length >= 2) {
           setResolvedApprovers(
-            matrix.map((m) => ({
-              label: m.roleLabel + (m.stepOrder === 1 ? ',' : ''),
-              name: m.stepOrder === 1 ? (requestorName || m.approverName) : m.approverName,
-              title: m.approverTitle,
-            }))
+            matrix.map((m) => {
+              const isReq = m.stepKey === 'requestor_initiated' || m.stepOrder === 1
+              return {
+                label: m.roleLabel,
+                name: isReq ? (requestorName || '-') : (m.approverName || m.approverTitle || '-'),
+                title: isReq ? 'Requestor' : m.approverTitle,
+              }
+            })
           )
         }
       })
@@ -83,30 +95,39 @@ export function RfrClientForm({
   }, [sectionDepartment, requestorName])
 
   // Section B
-  const [positionTitle, setPositionTitle] = useState('')
-  const [numberOfPersons, setNumberOfPersons] = useState(1)
-  const [briefJobDescription, setBriefJobDescription] = useState('')
-  const [level, setLevel] = useState('non_staff')
-  const [reasonForRequest, setReasonForRequest] = useState('new_headcount')
-  const [mppStatus, setMppStatus] = useState('budgeted')
-  const [reasonsIfNonBudgeted, setReasonsIfNonBudgeted] = useState('')
-  const [employmentStatus, setEmploymentStatus] = useState('contract')
-  const [contractDurationMonths, setContractDurationMonths] = useState(6)
-  const [attachmentMpp, setAttachmentMpp] = useState(false)
-  const [attachmentJd, setAttachmentJd] = useState(true)
-  const [uploadedUrls, setUploadedUrls] = useState<string[]>([])
+  const [positionTitle, setPositionTitle] = useState(initialData?.positionTitle || '')
+  const [numberOfPersons, setNumberOfPersons] = useState(initialData?.numberOfPersons ?? 1)
+  const [briefJobDescription, setBriefJobDescription] = useState(initialData?.briefJobDescription || '')
+  const [level, setLevel] = useState(initialData?.level || 'non_staff')
+  const [reasonForRequest, setReasonForRequest] = useState(initialData?.reasonForRequest || 'new_headcount')
+  const [mppStatus, setMppStatus] = useState(initialData?.mppStatus || 'budgeted')
+  const [reasonsIfNonBudgeted, setReasonsIfNonBudgeted] = useState(initialData?.reasonsIfNonBudgeted || '')
+  const [employmentStatus, setEmploymentStatus] = useState(initialData?.employmentStatus || 'contract')
+  const [contractDurationMonths, setContractDurationMonths] = useState(initialData?.contractDurationMonths ?? 6)
+  const [attachmentMpp, setAttachmentMpp] = useState(initialData?.attachmentMpp ?? false)
+  const [attachmentJd, setAttachmentJd] = useState(initialData?.attachmentJd ?? true)
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>(initialData?.uploadedAttachmentUrls || [])
   const [isUploading, setIsUploading] = useState(false)
 
   // Section C
-  const [sexPreference, setSexPreference] = useState('male')
-  const [agePreference, setAgePreference] = useState('18-25')
-  const [educationDegree, setEducationDegree] = useState('smk_smu')
-  const [educationBackground, setEducationBackground] = useState<string[]>([])
-  const [yearsOfExperience, setYearsOfExperience] = useState('fresh_graduate')
-  const [fieldOfJobExperience, setFieldOfJobExperience] = useState('')
+  const [sexPreference, setSexPreference] = useState(initialData?.sexPreference || 'male')
+  const [agePreference, setAgePreference] = useState(initialData?.agePreference || '18-25')
+  const [educationDegree, setEducationDegree] = useState(initialData?.educationDegree || 'smk_smu')
+  const [educationBackground, setEducationBackground] = useState<string[]>(initialData?.educationBackground || [])
+  const [yearsOfExperience, setYearsOfExperience] = useState(initialData?.yearsOfExperience || 'fresh_graduate')
+  const [fieldOfJobExperience, setFieldOfJobExperience] = useState(initialData?.fieldOfJobExperience || '')
 
   // Section D
-  const [competencies, setCompetencies] = useState<CompetencyRow[]>(DEFAULT_COMPETENCIES)
+  const [competencies, setCompetencies] = useState<CompetencyRow[]>(
+    initialData?.functionalCompetencies || DEFAULT_COMPETENCIES
+  )
+
+  // Requestor Signature
+  const [signatureFile, setSignatureFile] = useState<File | null>(null)
+  const requestorSignature = initialApprovals?.find((a) => a.stepOrder === 1)
+  const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(
+    requestorSignature?.signatureDataUrl || null
+  )
 
   function toggleEduBg(val: string) {
     setEducationBackground((prev) =>
@@ -163,9 +184,13 @@ export function RfrClientForm({
       setError('Estimasi Tanggal Masuk (Join Date Estimation) wajib diisi.')
       return
     }
+    if (!liveSignatureUrl) {
+      setError('Tanda tangan digital Pemohon (Requestor) wajib diisi.')
+      return
+    }
 
     startTransition(async () => {
-      const res = await createRfrRequest({
+      const payload = {
         requestDate,
         joinDateEstimation,
         requestorName,
@@ -190,7 +215,12 @@ export function RfrClientForm({
         yearsOfExperience,
         fieldOfJobExperience,
         functionalCompetencies: competencies.filter((c) => c.skillName.trim().length > 0),
-      })
+        requestorSignatureDataUrl: liveSignatureUrl,
+      }
+
+      const res = initialData?.id
+        ? await resubmitRfrRequest(initialData.id, payload)
+        : await createRfrRequest(payload)
 
       if (res.success) {
         router.push('/dashboard/hc/rfr')
@@ -211,7 +241,9 @@ export function RfrClientForm({
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">Formulir Permohonan Rekrutmen (RFR)</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
+              {initialData?.id ? 'Revisi Formulir Permohonan Rekrutmen (RFR)' : 'Formulir Permohonan Rekrutmen (RFR)'}
+            </h1>
             <p className="text-xs text-muted-foreground">Request For Recruitment Form Standard PT Chitra Paratama</p>
           </div>
         </div>
@@ -222,7 +254,7 @@ export function RfrClientForm({
             </Button>
           </Link>
           <Button type="submit" disabled={isPending} className="gap-2 bg-[#003461] text-white hover:bg-[#002548]">
-            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : 'Submit & Kirim Approval'}
+            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : initialData?.id ? 'Simpan Perubahan & Resubmit' : 'Submit & Kirim Approval'}
           </Button>
         </div>
       </div>
@@ -577,6 +609,24 @@ export function RfrClientForm({
               ))}
             </div>
           </div>
+
+          {/* Tanda Tangan Requestor */}
+          <div className="p-6 rounded-xl border bg-card shadow-sm space-y-4">
+            <div className="border-b pb-2">
+              <h2 className="text-base font-bold text-foreground">Tanda Tangan Pemohon (Requestor)</h2>
+            </div>
+            <div className="space-y-1.5 bg-slate-50/60 p-3 rounded-lg border border-slate-200">
+              <p className="text-xs text-slate-500">
+                Wajib membubuhkan tanda tangan digital sebelum mengirim form RFR.
+              </p>
+              <div className="bg-white rounded-lg overflow-hidden border border-slate-200">
+                <SignaturePad
+                  onSignatureChange={setSignatureFile}
+                  onDataUrlChange={setLiveSignatureUrl}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* KANAN: LIVE DOCUMENT / PDF PREVIEW (6 Columns Sticky) */}
@@ -685,12 +735,16 @@ export function RfrClientForm({
               {/* E. Approval Grid matching official document layout */}
               <div className="space-y-0.5 pt-0.5">
                 <div className="font-bold text-slate-900 border-b border-slate-300 pb-0.5 text-[9px]">E. Approval</div>
-                <div className="grid grid-cols-6 border border-slate-400 divide-x divide-slate-400 text-center bg-white/95 rounded-sm">
+                <div className="grid border border-slate-400 divide-x divide-slate-400 text-center bg-white/95 rounded-sm" style={{ gridTemplateColumns: `repeat(${resolvedApprovers.length}, minmax(0, 1fr))` }}>
                   {resolvedApprovers.map((step, idx) => (
                     <div key={idx} className="p-0.5 flex flex-col justify-between min-h-[72px]">
                       <div className="font-bold text-[7.5px] text-slate-900 border-b border-slate-300 pb-0.5">{step.label}</div>
                       <div className="flex-1 my-0.5 flex items-center justify-center min-h-[22px]">
-                        <span className="text-[6.5px] italic text-slate-400">Pending TTD</span>
+                        {idx === 0 && liveSignatureUrl ? (
+                          <img src={liveSignatureUrl} alt="Live TTD" className="max-h-5 max-w-full object-contain" />
+                        ) : (
+                          <span className="text-[6.5px] italic text-slate-400">Pending TTD</span>
+                        )}
                       </div>
                       <div>
                         <div className="font-bold text-[7px] underline text-slate-900 truncate leading-tight">{step.name}</div>

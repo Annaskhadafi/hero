@@ -58,31 +58,66 @@ export async function getSectionsWithApprovedRequests() {
 
   const results = [];
   for (const section of sections) {
-    const [countResult] = await db.select({
+    const counts = await db.select({
+      isVale: sql<boolean>`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`,
       count: sql<number>`count(*)::int`,
     }).from(apdRequests)
       .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
-      .where(and(eq(employees.sectionId, section.id), inArray(apdRequests.status, ['approved', 'proses_order'])));
+      .innerJoin(sites, eq(apdRequests.siteId, sites.id))
+      .where(and(eq(employees.sectionId, section.id), inArray(apdRequests.status, ['approved', 'proses_order'])))
+      .groupBy(sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`);
 
-    const [existingSummary] = await db.select({
+    let valeCount = 0;
+    let gabunganCount = 0;
+    for (const c of counts) {
+      if (c.isVale) valeCount += c.count;
+      else gabunganCount += c.count;
+    }
+
+    const [existingValeSummary] = await db.select({
       id: apdSummaries.id,
       status: apdSummaries.status,
     }).from(apdSummaries)
-      .where(eq(apdSummaries.sectionId, section.id))
+      .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'VALE')))
       .orderBy(desc(apdSummaries.createdAt))
       .limit(1);
 
-    results.push({
-      ...section,
-      approvedCount: countResult?.count || 0,
-      summaryStatus: existingSummary?.status || null,
-      summaryId: existingSummary?.id || null,
-    });
+    const [existingGabunganSummary] = await db.select({
+      id: apdSummaries.id,
+      status: apdSummaries.status,
+    }).from(apdSummaries)
+      .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'GABUNGAN')))
+      .orderBy(desc(apdSummaries.createdAt))
+      .limit(1);
+
+    if (valeCount > 0 || existingValeSummary) {
+      results.push({
+        ...section,
+        targetSite: 'VALE',
+        approvedCount: valeCount,
+        summaryStatus: existingValeSummary?.status || null,
+        summaryId: existingValeSummary?.id || null,
+      });
+    }
+    
+    if (gabunganCount > 0 || existingGabunganSummary) {
+      results.push({
+        ...section,
+        targetSite: 'GABUNGAN',
+        approvedCount: gabunganCount,
+        summaryStatus: existingGabunganSummary?.status || null,
+        summaryId: existingGabunganSummary?.id || null,
+      });
+    }
   }
   return results;
 }
 
-export async function generateSummary(sectionId: number, generatedByEmployeeId: number) {
+export async function generateSummary(sectionId: number, generatedByEmployeeId: number, targetSite: string) {
+  const isValeQuery = targetSite === 'VALE' 
+    ? sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`
+    : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
+
   const approvedRequests = await db.select({
     requestId: apdRequests.id,
     requestNumber: apdRequests.requestNumber,
@@ -95,7 +130,11 @@ export async function generateSummary(sectionId: number, generatedByEmployeeId: 
   }).from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(eq(employees.sectionId, sectionId), inArray(apdRequests.status, ['approved', 'proses_order'])))
+    .where(and(
+      eq(employees.sectionId, sectionId), 
+      inArray(apdRequests.status, ['approved', 'proses_order']),
+      isValeQuery
+    ))
     .orderBy(asc(employees.name));
 
   if (approvedRequests.length === 0) {
@@ -128,7 +167,7 @@ export async function generateSummary(sectionId: number, generatedByEmployeeId: 
   const summaryNumber = `SUM-${String(nextNumber).padStart(3, '0')}`;
 
   const [summary] = await db.insert(apdSummaries).values({
-    summaryNumber, sectionId, status: 'draft', generatedByEmployeeId,
+    summaryNumber, sectionId, targetSite, status: 'draft', generatedByEmployeeId,
   }).returning();
 
   for (const item of summaryItems) {
@@ -225,6 +264,7 @@ export async function getSummaryDetails(summaryId: number) {
     id: apdSummaries.id,
     summaryNumber: apdSummaries.summaryNumber,
     sectionId: apdSummaries.sectionId,
+    targetSite: apdSummaries.targetSite,
     status: apdSummaries.status,
     generatedAt: apdSummaries.generatedAt,
     approvedAt: apdSummaries.approvedAt,

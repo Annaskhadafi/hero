@@ -41,6 +41,10 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
   )
 
   const handleDecision = (decision: 'approved' | 'needs_correction' | 'rejected') => {
+    if (decision !== 'approved' && note.trim().length < 3) {
+      toast.error('Catatan approval minimal 3 karakter wajib diisi untuk Reject atau Revert.')
+      return
+    }
     startTransition(async () => {
       try {
         const formData = new FormData()

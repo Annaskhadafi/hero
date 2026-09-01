@@ -58,3 +58,56 @@ test("form-wo email helper supports dynamic multi-tier approval routing", () => 
   assert.match(source, /tier2ApproverEmails/)
   assert.match(source, /tier3ApproverEmails/)
 })
+
+test("approval-engine.ts resolves Service WO with company check (TRAKINDO/CK/CKB -> Apriyanto, else -> Junaidi)", () => {
+  const source = read("lib/approval-engine.ts")
+
+  assert.match(source, /resolveFormWoServiceApprovalRoute/)
+  assert.match(source, /TRAKINDO/)
+  assert.match(source, /CK/)
+  assert.match(source, /CKB/)
+  assert.match(source, /Apriyanto/)
+  assert.match(source, /Junaidi/)
+  assert.match(source, /Andika Ferdiansyah/)
+  assert.match(source, /Ali Rahman/)
+})
+
+test("approval-engine.ts resolves Repair/Retread WO with 4-stage approver matrix", () => {
+  const source = read("lib/approval-engine.ts")
+
+  assert.match(source, /resolveFormWoRepairRetreadApprovalRoute/)
+  assert.match(source, /QC \/ Leader/)
+  assert.match(source, /Ary Maulana/)
+  assert.match(source, /Andika Ferdiansyah/)
+  assert.match(source, /Ali Rahman/)
+})
+
+test("form-wo.ts enforces submitter digital signature upon creation", () => {
+  const source = read("app/actions/form-wo.ts")
+
+  assert.match(source, /!parsed\.submitterSignatureUrl/)
+  assert.match(source, /Tanda tangan digital pemohon wajib dibubuhkan/)
+})
+
+test("form-wo.ts distinguishes transactionType for service vs repair_retread", () => {
+  const source = read("app/actions/form-wo.ts")
+
+  assert.match(source, /const transactionType = isService \? 'form_wo_service' : 'form_wo_repair_retread'/)
+})
+
+test("form-wo PDF generator and preview dialog use matching 4-stage and 5-stage headers", () => {
+  const pdfSource = read("lib/form-wo-pdf.ts")
+  assert.match(pdfSource, /isService/)
+  assert.match(pdfSource, /DIAJUKAN OLEH/)
+  assert.match(pdfSource, /DIKETAHUI OLEH/)
+  assert.match(pdfSource, /DISETUJUI OLEH/)
+  assert.match(pdfSource, /DIPERIKSA OLEH/)
+
+  const previewSource = read("components/form-wo-document-preview-dialog.tsx")
+  assert.match(previewSource, /isService/)
+  assert.match(previewSource, /DIAJUKAN OLEH/)
+  assert.match(previewSource, /DIKETAHUI OLEH/)
+  assert.match(previewSource, /DISETUJUI OLEH/)
+  assert.match(previewSource, /DIPERIKSA OLEH/)
+})
+

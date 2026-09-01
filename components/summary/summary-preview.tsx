@@ -2,6 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, CheckCircle2, FilePenLine, Loader2, Printer } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
 import { submitSummaryAction } from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
 
@@ -14,6 +18,7 @@ type SummaryData = {
   sectionName: string;
   departmentName: string;
   generatedByName: string;
+  targetSite?: string;
   submitterSignatureUrl: string | null;
   items: Array<{
     employeeName: string;
@@ -50,6 +55,39 @@ const APD_COLUMNS = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
 export function SummaryPreview({ data }: { data: SummaryData }) {
   const router = useRouter();
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [printing, setPrinting] = useState(false);
+
+  const handlePrintInPlace = () => {
+    setPrinting(true);
+    const existing = document.getElementById('summary-print-iframe');
+    if (existing) existing.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'summary-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    iframe.src = `/print/summary/${data.id}`;
+
+    iframe.onload = () => {
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (err) {
+          console.error('Failed to print iframe:', err);
+        } finally {
+          setPrinting(false);
+        }
+      }, 500);
+    };
+
+    document.body.appendChild(iframe);
+  };
 
   // Group items by employee
   const groupedByEmployee = data.items.reduce((acc, item) => {
@@ -79,44 +117,62 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const totalQty = Object.values(totals).reduce((sum, v) => sum + v, 0);
 
   const handleSubmit = async (signatureUrl: string) => {
-    const result = await submitSummaryAction(data.id, signatureUrl);
-    if (result.success) {
-      alert('Summary berhasil disubmit ke approval flow!');
-      router.push('/dashboard/summary');
-    } else {
-      alert(result.error || 'Gagal submit summary');
+    try {
+      const result = await submitSummaryAction(data.id, signatureUrl);
+      if (result.success) {
+        toast.success('Summary berhasil disubmit ke approval flow!');
+        router.push('/dashboard/summary');
+      } else {
+        toast.error(result.error || 'Gagal submit summary');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal submit summary');
     }
   };
 
   const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div>
-      {/* Action buttons */}
-      <div className="flex justify-between items-center mb-4">
-        <button
+    <div className="space-y-4">
+      {/* Top bar with back and actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-border/70 shadow-sm">
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => router.push('/dashboard/summary')}
-          className="px-4 py-2 text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+          className="h-8 gap-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
         >
-          ← Kembali
-        </button>
-        <div className="flex gap-2">
+          <ArrowLeft className="size-4" />
+          Kembali ke Daftar Summary
+        </Button>
+
+        <div className="flex items-center gap-2">
           {data.status === 'draft' && (
-            <button
+            <Button
+              size="sm"
               onClick={() => setShowApprovalDialog(true)}
-              className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700 font-medium"
+              className="h-8 gap-1.5 text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 shadow-sm cursor-pointer"
             >
-              ✍️ Tanda Tangan & Submit
-            </button>
+              <FilePenLine className="size-4" />
+              Tanda Tangan &amp; Submit Approval
+            </Button>
           )}
+
           {data.status === 'approved' && (
-            <a
-              href={`/print/summary/${data.id}`}
-              target="_blank"
-              className="px-4 py-2 text-white bg-green-600 rounded hover:bg-green-700 font-medium"
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrintInPlace}
+              disabled={printing}
+              className="h-8 gap-1.5 text-xs font-semibold border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 shadow-xs cursor-pointer"
             >
-              🖨️ Print Summary
-            </a>
+              {printing ? (
+                <Loader2 className="size-4 animate-spin text-emerald-700" />
+              ) : (
+                <Printer className="size-4 text-emerald-700" />
+              )}
+              Cetak PDF Summary
+            </Button>
           )}
         </div>
       </div>
@@ -130,7 +186,11 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-14 w-auto" />
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold text-gray-900 uppercase">Summary Permintaan Barang Safety</div>
+              <div className="text-lg font-bold text-gray-900 uppercase">
+                Summary Permintaan Barang Safety
+                {data.targetSite === 'VALE' && <span className="text-orange-600"> (Khusus VALE)</span>}
+                {data.targetSite === 'GABUNGAN' && <span className="text-blue-600"> (Gabungan Site)</span>}
+              </div>
               <div className="text-sm font-semibold text-gray-700 mt-1">{data.sectionName}</div>
             </div>
           </div>

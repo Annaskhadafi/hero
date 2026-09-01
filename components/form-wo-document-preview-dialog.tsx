@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Printer } from 'lucide-react'
+import { Printer, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface ServiceItemRow {
@@ -225,95 +225,163 @@ export function FormWoDocumentView({
   }
 
   const steps = doc.steps || []
-  const step1 = steps.find((s) => s.level === 1)
-  const step2 = steps.find((s) => s.level === 2)
-  const step3 = steps.find((s) => s.level === 3)
-  const step4 = steps.find((s) => s.level === 4)
-  const step5 = steps.find((s) => s.level === 5)
+  let signatureColumns: Array<{
+    key: string
+    header: string
+    signerName: string
+    jobTitle: string
+    signatureUrl: string | null
+    isApproved: boolean
+    dateTime: { date: string; time: string } | null
+    note: string | null
+  }> = []
 
-  const signatureColumns = [
-    {
-      key: 'col-1',
-      header: 'DIAJUKAN OLEH',
-      signerName: doc.pemohon || step1?.approverName || 'Admin CP Site',
-      jobTitle: step1?.jobTitle || doc.pemohonJobTitle || 'Admin CP Site',
-      signatureUrl:
-        currentLevel === 1 && liveSignatureUrl
+  const submitterCol = {
+    key: 'col-submitter',
+    header: 'DIAJUKAN OLEH',
+    signerName: doc.pemohon || 'Pemohon',
+    jobTitle: doc.pemohonJobTitle || 'Pemohon',
+    signatureUrl: doc.submitterSignatureUrl || null,
+    isApproved: true,
+    dateTime: formatIndoDateTime(doc.tanggalPengajuan || doc.tanggal),
+    note: doc.catatanPengajuan || null,
+  }
+
+  let approverCols: Array<{
+    key: string
+    header: string
+    signerName: string
+    jobTitle: string
+    signatureUrl: string | null
+    isApproved: boolean
+    dateTime: { date: string; time: string } | null
+    note: string | null
+  }> = []
+
+  if (steps.length > 0) {
+    approverCols = steps.map((s, idx) => {
+      let header = 'DISETUJUI OLEH'
+      if (isService) {
+        if (s.level === 1) header = 'DISETUJUI OLEH'
+        else if (s.level === 2) header = 'DIPERIKSA OLEH'
+        else if (s.level === 3) header = 'DISETUJUI OLEH'
+      } else {
+        if (s.level === 1) header = 'DIKETAHUI OLEH'
+        else if (s.level === 2) header = 'DISETUJUI OLEH'
+        else if (s.level === 3) header = 'DIPERIKSA OLEH'
+        else if (s.level === 4) header = 'DISETUJUI OLEH'
+      }
+
+      const signerName = s.approverName || s.jobTitle || 'Approver'
+      const jobTitle = s.jobTitle || s.label || 'Approver'
+      const sigUrl =
+        currentLevel === s.level && liveSignatureUrl
           ? liveSignatureUrl
-          : doc.submitterSignatureUrl || step1?.signatureUrl || null,
-      isApproved: true,
-      dateTime: formatIndoDateTime(doc.tanggalPengajuan || doc.tanggal),
-      note: doc.catatanPengajuan || step1?.decisionNote || null,
-    },
-    {
-      key: 'col-2',
-      header: 'DISETUJUI OLEH',
-      signerName: step2?.approverName || 'QC / Leader',
-      jobTitle: step2?.jobTitle || 'QC / Leader',
-      signatureUrl:
-        currentLevel === 2 && liveSignatureUrl
-          ? liveSignatureUrl
-          : step2?.signatureUrl || null,
-      isApproved: step2?.status === 'approved' || (currentLevel === 2 && Boolean(liveSignatureUrl)),
-      dateTime: step2?.reviewedAt
-        ? formatIndoDateTime(step2.reviewedAt)
-        : currentLevel === 2 && liveSignatureUrl
+          : s.signatureUrl || null
+
+      const isApproved =
+        s.status === 'approved' || (currentLevel === s.level && Boolean(liveSignatureUrl))
+
+      const dateTime = s.reviewedAt
+        ? formatIndoDateTime(s.reviewedAt)
+        : currentLevel === s.level && liveSignatureUrl
           ? formatIndoDateTime(new Date())
-          : null,
-      note: step2?.decisionNote || null,
-    },
-    {
-      key: 'col-3',
-      header: 'DISETUJUI OLEH',
-      signerName: step3?.approverName || 'Repair / Retread Operation SPV',
-      jobTitle: step3?.jobTitle || 'Repair / Retread Operation SPV',
-      signatureUrl:
-        currentLevel === 3 && liveSignatureUrl
-          ? liveSignatureUrl
-          : step3?.signatureUrl || null,
-      isApproved: step3?.status === 'approved' || (currentLevel === 3 && Boolean(liveSignatureUrl)),
-      dateTime: step3?.reviewedAt
-        ? formatIndoDateTime(step3.reviewedAt)
-        : currentLevel === 3 && liveSignatureUrl
-          ? formatIndoDateTime(new Date())
-          : null,
-      note: step3?.decisionNote || null,
-    },
-    {
-      key: 'col-4',
-      header: 'DIPERIKSA OLEH',
-      signerName: step4?.approverName || 'Team Billing',
-      jobTitle: step4?.jobTitle || 'Team Billing',
-      signatureUrl:
-        currentLevel === 4 && liveSignatureUrl
-          ? liveSignatureUrl
-          : step4?.signatureUrl || null,
-      isApproved: step4?.status === 'approved' || (currentLevel === 4 && Boolean(liveSignatureUrl)),
-      dateTime: step4?.reviewedAt
-        ? formatIndoDateTime(step4.reviewedAt)
-        : currentLevel === 4 && liveSignatureUrl
-          ? formatIndoDateTime(new Date())
-          : null,
-      note: step4?.decisionNote || null,
-    },
-    {
-      key: 'col-5',
-      header: 'MENGETAHUI',
-      signerName: step5?.approverName || 'Inventory & Warehouse Management SPV',
-      jobTitle: step5?.jobTitle || 'Inventory & Warehouse Management SPV',
-      signatureUrl:
-        currentLevel === 5 && liveSignatureUrl
-          ? liveSignatureUrl
-          : step5?.signatureUrl || null,
-      isApproved: step5?.status === 'approved' || (currentLevel === 5 && Boolean(liveSignatureUrl)),
-      dateTime: step5?.reviewedAt
-        ? formatIndoDateTime(step5.reviewedAt)
-        : currentLevel === 5 && liveSignatureUrl
-          ? formatIndoDateTime(new Date())
-          : null,
-      note: step5?.decisionNote || null,
-    },
-  ]
+          : null
+
+      const note = s.decisionNote || null
+
+      return {
+        key: `step-${s.level || idx + 1}`,
+        header,
+        signerName,
+        jobTitle,
+        signatureUrl: sigUrl,
+        isApproved,
+        dateTime,
+        note,
+      }
+    })
+  } else {
+    if (isService) {
+      approverCols = [
+        {
+          key: 'col-2',
+          header: 'DISETUJUI OLEH',
+          signerName: 'Service Operation Others Coord. SPV',
+          jobTitle: 'Service Operation Others Coord. SPV',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+        {
+          key: 'col-3',
+          header: 'DIPERIKSA OLEH',
+          signerName: 'Team Billing',
+          jobTitle: 'Team Billing',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+        {
+          key: 'col-4',
+          header: 'DISETUJUI OLEH',
+          signerName: 'Inventory & Warehouse Management SPV',
+          jobTitle: 'Inventory & Warehouse Management SPV',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+      ]
+    } else {
+      approverCols = [
+        {
+          key: 'col-2',
+          header: 'DIKETAHUI OLEH',
+          signerName: 'QC / Leader',
+          jobTitle: 'QC / Leader',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+        {
+          key: 'col-3',
+          header: 'DISETUJUI OLEH',
+          signerName: 'Repair / Retread Operation SPV',
+          jobTitle: 'Repair / Retread Operation SPV',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+        {
+          key: 'col-4',
+          header: 'DIPERIKSA OLEH',
+          signerName: 'Team Billing',
+          jobTitle: 'Team Billing',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+        {
+          key: 'col-5',
+          header: 'DISETUJUI OLEH',
+          signerName: 'Inventory & Warehouse Management SPV',
+          jobTitle: 'Inventory & Warehouse Management SPV',
+          signatureUrl: null,
+          isApproved: false,
+          dateTime: null,
+          note: null,
+        },
+      ]
+    }
+  }
+
+  signatureColumns = [submitterCol, ...approverCols]
 
   const rawDateVal = doc.tanggal || doc.tanggalPengajuan
   const displayDay = doc.hari && doc.hari !== '-' ? doc.hari : formatIndoDay(rawDateVal)
@@ -322,156 +390,152 @@ export function FormWoDocumentView({
   return (
     <div
       ref={containerRef}
-      className="print-area bg-white p-6 sm:p-8 space-y-6 text-slate-900 font-sans border border-slate-200 rounded-xl shadow-sm"
+      className="print-area relative mx-auto bg-white w-[297mm] min-h-[210mm] max-w-full p-8 space-y-3.5 text-slate-900 font-sans border border-slate-300 rounded-sm shadow-2xl overflow-hidden flex flex-col justify-between"
     >
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-5 gap-4">
-        <div className="flex items-center gap-3">
-          <img
-            src="/cp_logo-removebg-preview.png"
-            alt="PT Chitra Paratama"
-            className="h-12 w-auto object-contain shrink-0"
-          />
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight leading-tight">
-              PT. CHITRA PARATAMA
-            </h2>
-            <p className="text-xs font-semibold text-teal-700 tracking-wide">
-              Total Tire Solution
+      <div className="space-y-3.5">
+        {/* Top Header: Logo on left, Title on far right */}
+        <div className="flex items-center justify-between border-b border-slate-300/80 pb-3 gap-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/cp_logo-removebg-preview.png"
+              alt="PT Chitra Paratama"
+              className="h-10 w-auto object-contain shrink-0"
+            />
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
+                PT. CHITRA PARATAMA
+              </h2>
+              <p className="text-[11px] font-semibold text-teal-700 tracking-wide">
+                Total Tire Solution
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <h1 className="text-base sm:text-lg font-black text-slate-950 tracking-tight uppercase">
+              FORM PERMINTAAN WORK ORDER
+            </h1>
+            <p className="text-[11px] font-mono text-slate-600 mt-0.5">
+              No. Pengajuan: <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
             </p>
           </div>
         </div>
-        <div className="text-left sm:text-right">
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight uppercase">
-            Form Permintaan Work Order
-          </h1>
-          <p className="text-xs font-mono text-slate-600 mt-0.5">
-            No. Pengajuan:{' '}
-            <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
-          </p>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-        <div>
-          <span className="text-slate-500 font-medium block">Hari</span>
-          <strong className="text-slate-900 text-sm">{displayDay}</strong>
-        </div>
-        <div>
-          <span className="text-slate-500 font-medium block">Tanggal</span>
-          <strong className="text-slate-900 text-sm">
-            {displayDate}
-          </strong>
-        </div>
-        <div>
-          <span className="text-slate-500 font-medium block">Jenis Form</span>
-          <div className={`text-xs font-semibold px-2 py-0.5 mt-0.5 border rounded ${jenisMeta.cls}`}>
-            {jenisMeta.label}
+        {/* Structured Meta Info Box */}
+        <div className="border border-slate-300 bg-white/95 rounded-lg p-3 text-xs shadow-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <span className="text-slate-500 font-medium block text-[11px]">Hari / Tanggal</span>
+              <strong className="text-slate-900 text-xs">{displayDay}, {displayDate}</strong>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium block text-[11px]">Jenis Form</span>
+              <div className={`text-[11px] font-semibold px-2 py-0.5 mt-0.5 border rounded w-fit ${jenisMeta.cls}`}>
+                {jenisMeta.label}
+              </div>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium block text-[11px]">Nama Pemohon</span>
+              <strong className="text-slate-900 text-xs truncate block">{doc.pemohon || '-'}</strong>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium block text-[11px]">Customer & Site</span>
+              <strong className="text-slate-900 text-xs truncate block">
+                {doc.customer || '-'} {doc.site ? `• ${doc.site}` : ''}
+              </strong>
+            </div>
           </div>
         </div>
-        <div>
-          <span className="text-slate-500 font-medium block">Pemohon</span>
-          <strong className="text-slate-900 text-sm">{doc.pemohon || '-'}</strong>
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-slate-50 px-4 py-2.5 rounded-lg border border-slate-200">
-        <div>
-          <span className="text-slate-500">Customer: </span>
-          <strong className="text-slate-900">{doc.customer || '-'}</strong>
-        </div>
-        <div>
-          <span className="text-slate-500">Site: </span>
-          <strong className="text-slate-900">{doc.site || '-'}</strong>
-        </div>
-      </div>
+        {/* Items Table */}
+        <div className="space-y-1.5">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+            Rincian Permintaan Pekerjaan (Items)
+          </h3>
 
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-          Rincian Permintaan Pekerjaan (Items)
-        </h3>
-
-        {isService ? (
-          <div className="border border-slate-300 rounded-lg overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[11px]">
-                  <th className="py-2.5 px-3 w-10 text-center">NO</th>
-                  <th className="py-2.5 px-3">DESCRIPTION</th>
-                  <th className="py-2.5 px-3">JOB</th>
-                  <th className="py-2.5 px-3">CUSTOMER</th>
-                  <th className="py-2.5 px-3">SITE</th>
-                  <th className="py-2.5 px-3">SERIAL NO</th>
-                  <th className="py-2.5 px-3">REF NO</th>
-                  <th className="py-2.5 px-3">NO WO CP</th>
-                  <th className="py-2.5 px-3 text-right">PRICE / AMOUNT</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {serviceItemsList.map((row: any, idx: number) => (
-                  <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2 px-3 text-center font-medium text-slate-500">{idx + 1}</td>
-                    <td className="py-2 px-3 font-semibold text-slate-800">{row.description || '-'}</td>
-                    <td className="py-2 px-3">{row.job || '-'}</td>
-                    <td className="py-2 px-3">{row.customer || '-'}</td>
-                    <td className="py-2 px-3">{row.site || '-'}</td>
-                    <td className="py-2 px-3 font-mono text-slate-600">{row.serialNo || '-'}</td>
-                    <td className="py-2 px-3">{row.refNo || '-'}</td>
-                    <td className="py-2 px-3 font-mono">{row.noWoCp || '-'}</td>
-                    <td className="py-2 px-3 text-right font-medium">{formatCurrency(row.price)}</td>
+          {isService ? (
+            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 shadow-xs">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[10px]">
+                    <th className="py-2 px-2.5 w-8 text-center">NO</th>
+                    <th className="py-2 px-2.5">DESCRIPTION</th>
+                    <th className="py-2 px-2.5">JOB</th>
+                    <th className="py-2 px-2.5">CUSTOMER</th>
+                    <th className="py-2 px-2.5">SITE</th>
+                    <th className="py-2 px-2.5">SERIAL NO</th>
+                    <th className="py-2 px-2.5">REF NO</th>
+                    <th className="py-2 px-2.5">NO WO CP</th>
+                    <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="border border-slate-300 rounded-lg overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[11px]">
-                  <th className="py-2.5 px-3 w-10 text-center">NO</th>
-                  <th className="py-2.5 px-3">DESCRIPTION (TIRE SN)</th>
-                  <th className="py-2.5 px-3">NO UNIT</th>
-                  <th className="py-2.5 px-3">POS</th>
-                  <th className="py-2.5 px-3">SIZE</th>
-                  <th className="py-2.5 px-3">SITE</th>
-                  <th className="py-2.5 px-3">CUSTOMER</th>
-                  <th className="py-2.5 px-3">CATEGORY</th>
-                  <th className="py-2.5 px-3">NO WO CP</th>
-                  <th className="py-2.5 px-3 text-right">PRICE / AMOUNT</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {repairItemsList.map((row: any, idx: number) => (
-                  <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2 px-3 text-center font-medium text-slate-500">{idx + 1}</td>
-                    <td className="py-2 px-3 font-semibold text-slate-800">{row.description || '-'}</td>
-                    <td className="py-2 px-3">{row.noUnit || '-'}</td>
-                    <td className="py-2 px-3">{row.pos || '-'}</td>
-                    <td className="py-2 px-3">{row.size || '-'}</td>
-                    <td className="py-2 px-3">{row.site || '-'}</td>
-                    <td className="py-2 px-3">{row.customer || '-'}</td>
-                    <td className="py-2 px-3 font-semibold">{row.category || '-'}</td>
-                    <td className="py-2 px-3 font-mono">{row.noWoCp || '-'}</td>
-                    <td className="py-2 px-3 text-right font-medium">{formatCurrency(row.price)}</td>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {serviceItemsList.map((row: any, idx: number) => (
+                    <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-1.5 px-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
+                      <td className="py-1.5 px-2.5 font-semibold text-slate-800">{row.description || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.job || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.site || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono text-slate-600">{row.serialNo || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.refNo || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || '-'}</td>
+                      <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 shadow-xs">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[10px]">
+                    <th className="py-2 px-2.5 w-8 text-center">NO</th>
+                    <th className="py-2 px-2.5">DESCRIPTION (TIRE SN)</th>
+                    <th className="py-2 px-2.5">NO UNIT</th>
+                    <th className="py-2 px-2.5">POS</th>
+                    <th className="py-2 px-2.5">SIZE</th>
+                    <th className="py-2 px-2.5">SITE</th>
+                    <th className="py-2 px-2.5">CUSTOMER</th>
+                    <th className="py-2 px-2.5">CATEGORY</th>
+                    <th className="py-2 px-2.5">NO WO CP</th>
+                    <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {repairItemsList.map((row: any, idx: number) => (
+                    <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-1.5 px-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
+                      <td className="py-1.5 px-2.5 font-semibold text-slate-800">{row.description || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.noUnit || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.pos || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.size || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.site || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-semibold">{row.category || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || '-'}</td>
+                      <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        <div className="bg-[#ffd700] text-slate-900 font-bold px-4 py-2 flex items-center justify-between border-t border-slate-300 text-xs sm:text-sm">
-          <span className="tracking-wide uppercase">TOTAL AMOUNT</span>
-          <span className="font-mono text-sm sm:text-base">{displayTotal}</span>
+          <div className="bg-[#ffd700] text-slate-950 font-bold px-3.5 py-1.5 flex items-center justify-between border border-amber-300 rounded-md text-xs sm:text-sm shadow-xs">
+            <span className="tracking-wide uppercase text-[11px]">TOTAL AMOUNT</span>
+            <span className="font-mono text-xs sm:text-sm font-black">{displayTotal}</span>
+          </div>
         </div>
       </div>
 
-      <div className="border border-slate-300 rounded-lg overflow-x-auto bg-white text-xs">
-        <table className="w-full border-collapse table-fixed min-w-[700px]">
+      {/* Signature Grid */}
+      <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 text-xs shadow-xs mt-3">
+        <table className="w-full border-collapse table-fixed">
           <thead>
-            <tr className="bg-slate-100 border-b border-slate-300 text-slate-800 font-bold uppercase text-[11px] divide-x divide-slate-300">
+            <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-800 font-bold uppercase text-[10px] divide-x divide-slate-300">
               {signatureColumns.map((col) => (
-                <th key={col.key} className="py-2 px-2 text-center w-1/5">
+                <th key={col.key} className="py-1.5 px-2 text-center">
                   {col.header}
                 </th>
               ))}
@@ -480,17 +544,17 @@ export function FormWoDocumentView({
           <tbody>
             <tr className="divide-x divide-slate-300 bg-white border-b border-slate-300">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="h-24 sm:h-28 p-2 text-center align-middle">
+                <td key={col.key} className="h-18 sm:h-22 p-1.5 text-center align-middle">
                   {col.signatureUrl ? (
                     <img
                       src={col.signatureUrl}
                       alt={`Tanda Tangan ${col.jobTitle}`}
-                      className="h-16 sm:h-20 w-auto max-w-[95%] mx-auto object-contain"
+                      className="h-12 sm:h-16 w-auto max-w-[95%] mx-auto object-contain"
                     />
                   ) : col.isApproved ? (
                     <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>
                   ) : (
-                    <span className="text-[11px] font-medium text-slate-400 italic">
+                    <span className="text-[10px] font-medium text-slate-400 italic">
                       (Menunggu persetujuan)
                     </span>
                   )}
@@ -499,8 +563,8 @@ export function FormWoDocumentView({
             </tr>
             <tr className="divide-x divide-slate-300 bg-slate-50/60">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="pt-2 px-2 pb-0.5 text-center">
-                  <p className="text-xs font-bold text-slate-900 truncate">
+                <td key={col.key} className="pt-1.5 px-1.5 pb-0.5 text-center">
+                  <p className="text-[11px] font-bold text-slate-900 truncate">
                     ( {col.signerName} )
                   </p>
                 </td>
@@ -508,8 +572,8 @@ export function FormWoDocumentView({
             </tr>
             <tr className="divide-x divide-slate-300 bg-slate-50/60">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="px-2 py-0.5 text-center">
-                  <p className="text-[11px] text-slate-600 font-medium truncate">
+                <td key={col.key} className="px-1.5 py-0.5 text-center">
+                  <p className="text-[10px] text-slate-600 font-medium truncate">
                     {col.jobTitle}
                   </p>
                 </td>
@@ -517,8 +581,8 @@ export function FormWoDocumentView({
             </tr>
             <tr className="divide-x divide-slate-300 bg-slate-50/60">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="px-2 py-0.5 text-center">
-                  <p className="text-[10px] text-slate-500 font-mono">
+                <td key={col.key} className="px-1.5 py-0.5 text-center">
+                  <p className="text-[9px] text-slate-500 font-mono">
                     {col.dateTime ? `${col.dateTime.date} • ${col.dateTime.time}` : '-'}
                   </p>
                 </td>
@@ -526,8 +590,8 @@ export function FormWoDocumentView({
             </tr>
             <tr className="divide-x divide-slate-300 bg-slate-50/60">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="px-2 pt-0.5 pb-2 text-center align-top">
-                  <p className="text-[10px] text-slate-500 line-clamp-2 italic">
+                <td key={col.key} className="px-1.5 pt-0.5 pb-1.5 text-center align-top">
+                  <p className="text-[9px] text-slate-500 line-clamp-2 italic">
                     {col.note ? `Catatan: ${extractCleanNote(col.note)}` : '-'}
                   </p>
                 </td>
@@ -561,8 +625,48 @@ export function FormWoDocumentPreviewDialog({
     contentRef: printRef,
     documentTitle: doc?.noPengajuan || 'Form WO',
     pageStyle: `
-      @page { size: A4 portrait; margin: 10mm; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { 
+        size: landscape !important; 
+        margin: 0 !important; 
+      }
+      @page :left {
+        size: landscape !important;
+      }
+      @page :right {
+        size: landscape !important;
+      }
+      html, body { 
+        margin: 0 !important; 
+        padding: 0 !important;
+        width: 297mm !important;
+        height: 210mm !important;
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+      }
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        .print-area, .print-area * {
+          visibility: visible;
+        }
+        .print-area {
+          position: fixed !important;
+          inset: 0 !important;
+          margin: 0 !important;
+          padding: 6mm 10mm 6mm 10mm !important;
+          width: 297mm !important;
+          height: 210mm !important;
+          max-width: 297mm !important;
+          max-height: 210mm !important;
+          box-shadow: none !important;
+          border: none !important;
+          overflow: hidden !important;
+          page-break-after: avoid !important;
+          page-break-before: avoid !important;
+          page-break-inside: avoid !important;
+        }
+      }
     `
   })
 
@@ -570,22 +674,39 @@ export function FormWoDocumentPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[96vw] lg:max-w-[1280px] w-[96vw] max-h-[92vh] overflow-y-auto p-0 border border-slate-300 rounded-2xl shadow-2xl">
+      <DialogContent className="sm:max-w-[96vw] lg:max-w-[1340px] w-[96vw] max-h-[94vh] overflow-y-auto p-0 border border-slate-300 rounded-2xl shadow-2xl bg-slate-200/80">
         <DialogHeader className="sr-only">
           <DialogTitle>Preview Dokumen Form WO</DialogTitle>
         </DialogHeader>
 
-        <div className="p-4 sm:p-6 bg-slate-100">
-          <div className="flex justify-end gap-2 mb-4">
+        <div className="p-4 sm:p-6 flex flex-col items-center">
+          <div className="w-full max-w-[297mm] flex flex-wrap items-center justify-end gap-2 mb-4">
+            {doc.id ? (
+              <a
+                href={`/api/form-wo/${doc.id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs"
+                >
+                  <Download className="mr-1.5 h-4 w-4 text-sky-600" />
+                  Download PDF Lanskap
+                </Button>
+              </a>
+            ) : null}
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => handlePrint()}
-              className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50"
+              className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-xs"
             >
               <Printer className="mr-1.5 h-4 w-4" />
-              Cetak / Unduh PDF
+              Cetak Printer
             </Button>
             <Button
               type="button"
