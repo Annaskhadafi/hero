@@ -30,6 +30,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const searchParams = useSearchParams()
   const mode = searchParams.get("mode")
   const employeeSnParam = searchParams.get("employeeSn")
+  const employeeIdParam = searchParams.get("employeeId")
   const isPrintMode = mode === "print"
   
   const { setOpen } = useSidebar()
@@ -256,61 +257,75 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         }
       }
     }
-    
+
     // Fallback if Superior is empty (find someone with higher rank in department)
     if (!newSupName && emp.departmentId) {
-       const s = employees.find(e => e.departmentId === emp.departmentId && e.id !== emp.id && getRankWeight(e.rank || e.position) > Math.max(empWeight, 2))
-       if (s && s.name !== newLeaderName) {
-         newSupName = s.name
-         newSupTitle = s.rank || s.position || "Superior"
-       }
+      const s = employees.find(
+        (e) =>
+          e.departmentId === emp.departmentId &&
+          e.id !== emp.id &&
+          getRankWeight(e.rank || e.position) > Math.max(empWeight, 2),
+      )
+      if (s && s.name !== newLeaderName) {
+        newSupName = s.name
+        newSupTitle = s.rank || s.position || 'Superior'
+      }
     }
 
     // Fallback if Next Superior is empty and we still need a higher manager
     if (!newNextSupName && newSupName && emp.departmentId) {
-       const supWeight = getRankWeight(newSupTitle)
-       const m = employees.find(e => e.departmentId === emp.departmentId && e.id !== emp.id && getRankWeight(e.rank || e.position) > supWeight)
-       if (m && m.name !== newLeaderName && m.name !== newSupName) {
-         newNextSupName = m.name
-         newNextSupTitle = m.rank || m.position || "Manager"
-       }
-    }
-    
-    let newHrName = currentForm.hrName || ""
-    let newHrTitle = currentForm.hrTitle || "HR Manager"
-    if (!newHrName || newHrName === "PILIH HR...") {
-      const hrManager = employees.find(e => {
-        const isHr = e.department?.toLowerCase().includes("hr") || e.department?.toLowerCase().includes("human");
-        const isMgr = e.isManagerial || getRankWeight(e.rank || e.position) >= 3; // SPV or Manager
-        return isHr && isMgr;
-      })
-      if (hrManager) {
-          newHrName = hrManager.name
-          newHrTitle = hrManager.rank || hrManager.position || "HR Manager"
+      const supWeight = getRankWeight(newSupTitle)
+      const m = employees.find(
+        (e) =>
+          e.departmentId === emp.departmentId &&
+          e.id !== emp.id &&
+          getRankWeight(e.rank || e.position) > supWeight,
+      )
+      if (m && m.name !== newLeaderName && m.name !== newSupName) {
+        newNextSupName = m.name
+        newNextSupTitle = m.rank || m.position || 'Manager'
       }
     }
 
-    return { 
-      ...currentForm, 
-      employeeId, 
+    let newHrName = currentForm.hrName || ''
+    let newHrTitle = currentForm.hrTitle || 'HR Manager'
+    if (!newHrName || newHrName === 'PILIH HR...') {
+      const hrManager = employees.find((e) => {
+        const isHr =
+          e.department?.toLowerCase().includes('hr') ||
+          e.department?.toLowerCase().includes('human')
+        const isMgr = e.isManagerial || getRankWeight(e.rank || e.position) >= 3 // SPV or Manager
+        return isHr && isMgr
+      })
+      if (hrManager) {
+        newHrName = hrManager.name
+        newHrTitle = hrManager.rank || hrManager.position || 'HR Manager'
+      }
+    }
+
+    return {
+      ...currentForm,
+      employeeId,
       leaderName: currentForm.leaderName || newLeaderName,
       leaderTitle: currentForm.leaderTitle || newLeaderTitle,
-      superiorName: currentForm.superiorName || newSupName, 
+      superiorName: currentForm.superiorName || newSupName,
       superiorTitle: currentForm.superiorTitle || newSupTitle,
-      nextSuperiorName: currentForm.nextSuperiorName || newNextSupName, 
+      nextSuperiorName: currentForm.nextSuperiorName || newNextSupName,
       nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle,
       hrName: newHrName,
-      hrTitle: newHrTitle
+      hrTitle: newHrTitle,
     }
   }
 
   // Auto populate on initial load if fields are missing
   useEffect(() => {
-    if (form.employeeId && (!form.leaderName || !form.superiorName || !form.nextSuperiorName || !form.hrName)) {
+    if (
+      form.employeeId &&
+      (!form.leaderName || !form.superiorName || !form.nextSuperiorName || !form.hrName)
+    ) {
       const populatedForm = autoPopulateSignatories(form.employeeId, form)
-      // Only set state if something actually changed to avoid infinite loops
       if (
-        populatedForm.leaderName !== form.leaderName || 
+        populatedForm.leaderName !== form.leaderName ||
         populatedForm.nextSuperiorName !== form.nextSuperiorName ||
         populatedForm.superiorName !== form.superiorName ||
         populatedForm.hrName !== form.hrName
@@ -320,22 +335,35 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     }
   }, [form.employeeId])
 
-  // Auto-select employee from ?employeeSn= query param (e.g. from Central Service page)
+  // Auto-select employee from ?employeeId= or ?employeeSn= query param (e.g. from Monitoring Kontrak / Central Service)
   useEffect(() => {
-    if (employeeSnParam && !form.employeeId) {
-      const match = employees.find(e => e.employeeId === employeeSnParam || e.employeeId === `EMP-${employeeSnParam}` || e.employeeId?.replace(/^EMP-/i, '') === employeeSnParam)
+    if ((employeeIdParam || employeeSnParam) && !form.employeeId) {
+      let match = null
+      if (employeeIdParam) {
+        match = employees.find((e) => String(e.id) === employeeIdParam)
+      }
+      if (!match && employeeSnParam) {
+        match = employees.find(
+          (e) =>
+            e.employeeId === employeeSnParam ||
+            e.employeeId === `EMP-${employeeSnParam}` ||
+            e.employeeId?.replace(/^EMP-/i, '') === employeeSnParam,
+        )
+      }
       if (match) {
-        setForm(prev => {
+        setForm((prev) => {
           const updated = {
             ...prev,
             employeeId: String(match.id),
-            hireDate: prev.hireDate || (match.joinDate ? new Date(match.joinDate).toISOString().slice(0, 10) : ""),
+            hireDate:
+              prev.hireDate ||
+              (match.joinDate ? new Date(match.joinDate).toISOString().slice(0, 10) : ''),
           }
           return autoPopulateSignatories(String(match.id), updated)
         })
       }
     }
-  }, [employeeSnParam, employees])
+  }, [employeeIdParam, employeeSnParam, employees])
 
   const achievementScore = useMemo(() => {
     const aVals = form.performanceActivities.map((a: any) => a.achievement).filter(Boolean)
@@ -345,30 +373,44 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       (form as any).compResultAch,
       (form as any).compQualityAch,
       (form as any).compCustomerAch,
-      (form as any).compTeamworkAch
+      (form as any).compTeamworkAch,
     ].filter(Boolean)
-    
+
     const allVals = [...aVals, ...bVals]
     if (allVals.length === 0) return 0
-    
+
     const total = allVals.reduce((sum, val) => {
-      if (val === "exceed") return sum + 115
-      if (val === "meet") return sum + 100
-      if (val === "below") return sum + 80
+      if (val === 'exceed') return sum + 115
+      if (val === 'meet') return sum + 100
+      if (val === 'below') return sum + 80
       return sum
     }, 0)
-    
+
     return total / allVals.length
   }, [form])
 
-  const achCategory = achievementScore >= 106 ? "exceed" : achievementScore >= 95 ? "meet" : achievementScore > 0 ? "below" : ""
+  const achCategory =
+    achievementScore >= 106
+      ? 'exceed'
+      : achievementScore >= 95
+        ? 'meet'
+        : achievementScore > 0
+          ? 'below'
+          : ''
 
   const getApprovedSignature = (...roles: string[]) => {
-    return approvalHistory?.find((step: any) => step.status === 'approved' && step.signatureDataUrl && roles.includes(step.approverRole))?.signatureDataUrl || ''
+    return (
+      approvalHistory?.find(
+        (step: any) =>
+          step.status === 'approved' && step.signatureDataUrl && roles.includes(step.approverRole),
+      )?.signatureDataUrl || ''
+    )
   }
 
   const getApprovalMeta = (...roles: string[]) => {
-    return approvalHistory?.find((step: any) => step.status === 'approved' && roles.includes(step.approverRole))
+    return approvalHistory?.find(
+      (step: any) => step.status === 'approved' && roles.includes(step.approverRole),
+    )
   }
 
   const formatDateTime = (date: string | Date | null | undefined) => {

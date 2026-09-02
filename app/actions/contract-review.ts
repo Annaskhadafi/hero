@@ -9,11 +9,13 @@ import {
   hcContractReviewReminders,
   hcContractReviewSettings,
   hcEmployeeContractReviews,
+  hrPositions,
   masterDepartments,
   masterSections,
+  sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
@@ -487,67 +489,91 @@ async function resolveMasterSectionAndDepartmentHeads(input: {
 async function buildContractReviewApprovals(review: typeof hcEmployeeContractReviews.$inferSelect) {
   if (!review.employeeId) return []
 
-  const [hrEmployee] = await db
+  const [userEmployee] = await db
     .select({
       id: employees.id,
-      employeeId: employees.employeeSn,
-      fullName: employees.name,
+      name: employees.name,
       email: employees.email,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
+      directManagerId: employees.directManagerId,
+      workLocation: employees.workLocation,
     })
     .from(employees)
     .where(eq(employees.id, review.employeeId))
     .limit(1)
 
-  if (!hrEmployee) return []
+  if (!userEmployee) return []
 
-  const sn = normalizeSn(hrEmployee.employeeId)
-  const [centralEmployee] = await db
-    .select()
+  const sn = normalizeSn(userEmployee.employeeSn)
+  const [csEmp] = await db
+    .select({ section: centralServiceEmployees.section, siteName: centralServiceEmployees.siteName })
     .from(centralServiceEmployees)
     .where(or(eq(centralServiceEmployees.employeeSn, sn), eq(centralServiceEmployees.employeeSn, `EMP-${sn}`)))
     .limit(1)
 
-  const [userEmployee] = await db
-    .select({ id: employees.id, name: employees.name, email: employees.email, employeeSn: employees.employeeSn })
-    .from(employees)
-    .where(or(eq(employees.employeeSn, sn), eq(employees.employeeSn, `EMP-${sn}`)))
-    .limit(1)
+  const [siteRow] = userEmployee.siteId
+    ? await db
+        .select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId, siteType: sites.siteType })
+        .from(sites)
+        .where(eq(sites.id, userEmployee.siteId))
+        .limit(1)
+    : []
 
-  const siteName = centralEmployee?.siteName ?? ''
-  const section = centralEmployee?.section ?? ''
+  const siteName = siteRow?.name || csEmp?.siteName || userEmployee.workLocation || ''
+  const section = csEmp?.section || ''
   const settings = await getContractReviewSettings()
-  const isHo = isHoSite(siteName)
+  const isHo = isHoSite(siteName) || siteRow?.siteType === 'Head Office' || siteRow?.siteType === 'HO'
   const legacySectionHead = getLegacySectionHeadConfig(section, settings)
+
   const masterHeads = await resolveMasterSectionAndDepartmentHeads({
-    sectionId: hrEmployee.sectionId,
-    departmentId: hrEmployee.departmentId,
+    sectionId: userEmployee.sectionId,
+    departmentId: userEmployee.departmentId,
     sectionName: section || null,
     departmentName: 'Central Services',
   })
   const sectionHead =
     masterHeads.sectionHead ??
-    await getUserByName(legacySectionHead.name, legacySectionHead.email)
+    (await getUserByName(legacySectionHead.name, legacySectionHead.email))
   const departmentHead =
     masterHeads.departmentHead ??
-    await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail)
+    (await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail))
   const hr = await getUserByName(review.hrName || settings.approvalMatrix.hrName, settings.approvalMatrix.hrEmail)
 
   let firstApprover = sectionHead
-  if (!isHo && centralEmployee) {
-    const [pjoOrTechnical] = await db
-      .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
-      .from(employees)
-      .where(and(eq(employees.workLocation, siteName)))
-    if (pjoOrTechnical && isPjoOrTechnical(pjoOrTechnical.jobTitle)) {
-      firstApprover = pjoOrTechnical
+  if (!isHo) {
+    let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
+    // 1. Lokasi Head / PJO from Master Data Sites
+    if (siteRow?.headEmployeeId) {
+      siteHead = await getUserById(siteRow.headEmployeeId)
+    }
+    // 2. Fallback search by job title on that site
+    if (!siteHead && siteName) {
+      const pjoCandidates = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
+        .from(employees)
+        .where(
+          and(
+            or(eq(employees.siteId, userEmployee.siteId ?? 0), eq(employees.workLocation, siteName)),
+            eq(employees.isActive, true)
+          )
+        )
+      const matched = pjoCandidates.find((c) => isPjoOrTechnical(c.jobTitle))
+      if (matched) siteHead = matched
+    }
+    if (siteHead) {
+      firstApprover = siteHead
+    } else if (userEmployee.directManagerId) {
+      const directMgr = await getUserById(userEmployee.directManagerId)
+      if (directMgr?.email) firstApprover = directMgr
     }
   }
 
   const steps = [
     { approver: firstApprover, role: isHo ? 'section_head_initial' : 'pjo_or_te_initial' },
-    { approver: { id: userEmployee?.id ?? null, name: hrEmployee.fullName, email: userEmployee?.email ?? hrEmployee.email ?? '', jobTitle: '' }, role: 'employee' },
+    { approver: { id: userEmployee.id, name: userEmployee.name, email: userEmployee.email, jobTitle: '' }, role: 'employee' },
   ]
 
   if (!isHo && firstApprover.name !== sectionHead.name) {
@@ -626,6 +652,439 @@ async function getContractReviewReminderContext(review: typeof hcEmployeeContrac
   }
 }
 
+async function resolveApproverForEmployee(emp: {
+  id: number
+  sectionId?: number | null
+  departmentId?: number | null
+  siteId?: number | null
+  directManagerId?: number | null
+  sectionName?: string | null
+  departmentName?: string | null
+  siteName?: string | null
+  siteType?: string | null
+}) {
+  const settings = await getContractReviewSettings()
+  const siteName = emp.siteName ?? ''
+  const isHo = isHoSite(siteName) || emp.siteType === 'Head Office' || emp.siteType === 'HO'
+
+  // 1. Direct Manager from Struktur Organisasi (hero_employees.direct_manager_id)
+  let directManager: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
+  if (emp.directManagerId) {
+    directManager = await getUserById(emp.directManagerId)
+  }
+
+  // 2. Section Head & Department Head from Master Data (hero_master_sections & hero_master_departments)
+  const masterHeads = await resolveMasterSectionAndDepartmentHeads({
+    sectionId: emp.sectionId,
+    departmentId: emp.departmentId,
+    sectionName: emp.sectionName,
+    departmentName: emp.departmentName || 'Central Services',
+  })
+  const legacySectionHead = getLegacySectionHeadConfig(emp.sectionName || '', settings)
+  const sectionHead =
+    masterHeads.sectionHead ??
+    (await getUserByName(legacySectionHead.name, legacySectionHead.email))
+  const departmentHead =
+    masterHeads.departmentHead ??
+    (await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail))
+  const hr = await getUserByName(settings.approvalMatrix.hrName, settings.approvalMatrix.hrEmail)
+
+  // 3. PJO / Lokasi Head from Master Data Sites (hero_sites.head_employee_id)
+  let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
+  if (!isHo) {
+    let siteRow: { id: number; headEmployeeId: number | null; name: string } | null = null
+    if (emp.siteId) {
+      const [row] = await db
+        .select({ id: sites.id, headEmployeeId: sites.headEmployeeId, name: sites.name })
+        .from(sites)
+        .where(eq(sites.id, emp.siteId))
+        .limit(1)
+      siteRow = row ?? null
+    } else if (siteName) {
+      const [row] = await db
+        .select({ id: sites.id, headEmployeeId: sites.headEmployeeId, name: sites.name })
+        .from(sites)
+        .where(eq(sites.name, siteName.trim()))
+        .limit(1)
+      siteRow = row ?? null
+    }
+
+    if (siteRow?.headEmployeeId) {
+      siteHead = await getUserById(siteRow.headEmployeeId)
+    }
+
+    // Fallback: search employee with PJO/Leader title on that site
+    if (!siteHead && siteName) {
+      const pjoCandidates = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
+        .from(employees)
+        .where(
+          and(
+            or(eq(employees.siteId, siteRow?.id ?? 0), eq(employees.workLocation, siteName)),
+            eq(employees.isActive, true)
+          )
+        )
+
+      const matchedPjo = pjoCandidates.find((c) => isPjoOrTechnical(c.jobTitle))
+      if (matchedPjo) {
+        siteHead = matchedPjo
+      }
+    }
+  }
+
+  // Determine Primary Recipient:
+  // - If at site (non-HO):
+  //   1st preference: PJO / Lokasi Head (Master Data Sites)
+  //   2nd preference: Direct Manager (Struktur Organisasi)
+  //   3rd preference: Section Head (Master Data Sections)
+  // - If at HO / Office:
+  //   1st preference: Direct Manager (Struktur Organisasi)
+  //   2nd preference: Section Head (Master Data Sections)
+  let primaryApprover = isHo
+    ? (directManager?.email ? directManager : sectionHead)
+    : (siteHead?.email ? siteHead : directManager?.email ? directManager : sectionHead)
+
+  // Fallback to department head or HR if primary has no valid email
+  if (!primaryApprover?.email) {
+    primaryApprover = departmentHead?.email ? departmentHead : hr
+  }
+
+  let approverRoleTitle = 'Approver'
+  if (siteHead && primaryApprover?.id === siteHead.id) {
+    approverRoleTitle = `PJO / Lokasi Head (${siteName || 'Site'})`
+  } else if (directManager && primaryApprover?.id === directManager.id) {
+    approverRoleTitle = `Atasan Langsung (${directManager.name})`
+  } else if (sectionHead && primaryApprover?.id === sectionHead.id) {
+    approverRoleTitle = `Section Head (${emp.sectionName || 'Section'})`
+  } else if (departmentHead && primaryApprover?.id === departmentHead.id) {
+    approverRoleTitle = `Department Head (${emp.departmentName || 'Department'})`
+  } else {
+    approverRoleTitle = 'HR'
+  }
+
+  return {
+    approver: primaryApprover,
+    siteHead,
+    directManager,
+    sectionHead,
+    departmentHead,
+    hr,
+    approverRoleTitle,
+  }
+}
+
+export type ExpiringContractEmployee = {
+  id: number
+  name: string
+  employeeSn: string
+  email: string
+  jobTitle: string
+  department: string
+  departmentId: number | null
+  section: string
+  sectionId: number | null
+  siteName: string
+  siteId: number | null
+  directManagerId: number | null
+  contractDurationStart: string | null
+  contractDurationEnd: string | null
+  daysLeft: number
+  urgency: 'overdue' | 'critical' | 'warning' | 'normal'
+  reviewId: number | null
+  reviewStatus: string
+  reviewRecommendation: string | null
+  reviewType: string | null
+}
+
+export async function getExpiringContractEmployees(): Promise<ExpiringContractEmployee[]> {
+  await ensureContractReviewWorkflowTables()
+  const today = new Date()
+
+  // 1. Fetch active employees with contract duration end
+  const empList = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      directManagerId: employees.directManagerId,
+      jobTitle: employees.jobTitle,
+      employmentStatus: employees.employmentStatus,
+      employeeStatusType: employees.employeeStatusType,
+      contractDurationStart: employees.contractDurationStart,
+      contractDurationEnd: employees.contractDurationEnd,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      siteName: sites.name,
+      siteType: sites.siteType,
+      positionName: hrPositions.levelName,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .where(and(eq(employees.isActive, true), isNotNull(employees.contractDurationEnd)))
+
+  // 2. Fetch all contract reviews to match
+  const allReviews = await db
+    .select({
+      id: hcEmployeeContractReviews.id,
+      employeeId: hcEmployeeContractReviews.employeeId,
+      employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
+      reviewType: hcEmployeeContractReviews.reviewType,
+      status: hcEmployeeContractReviews.status,
+      recommendation: hcEmployeeContractReviews.recommendation,
+      updatedAt: hcEmployeeContractReviews.updatedAt,
+      createdAt: hcEmployeeContractReviews.createdAt,
+    })
+    .from(hcEmployeeContractReviews)
+    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+
+  const reviewsByEmpId = new Map<number, (typeof allReviews)[0]>()
+  for (const rev of allReviews) {
+    if (rev.employeeId && !reviewsByEmpId.has(rev.employeeId)) {
+      reviewsByEmpId.set(rev.employeeId, rev)
+    }
+  }
+
+  // 3. Filter and calculate days remaining (within 90 days or overdue)
+  const expiringEmployees: ExpiringContractEmployee[] = []
+  for (const emp of empList) {
+    const endDate = parseIsoDate(emp.contractDurationEnd ? String(emp.contractDurationEnd) : null)
+    if (!endDate) continue
+
+    const daysLeft = differenceInCalendarDays(endDate, today)
+    if (daysLeft > 90) continue
+
+    const matchingReview = reviewsByEmpId.get(emp.id)
+
+    let urgency: 'overdue' | 'critical' | 'warning' | 'normal' = 'normal'
+    if (daysLeft < 0) {
+      urgency = 'overdue'
+    } else if (daysLeft <= 30) {
+      urgency = 'critical'
+    } else if (daysLeft <= 90) {
+      urgency = 'warning'
+    }
+
+    expiringEmployees.push({
+      id: emp.id,
+      name: emp.name,
+      employeeSn: normalizeSn(emp.employeeSn),
+      email: emp.email || '',
+      jobTitle: emp.positionName || emp.jobTitle || 'Staff',
+      department: emp.departmentName || '',
+      departmentId: emp.departmentId ?? null,
+      section: emp.sectionName || '',
+      sectionId: emp.sectionId ?? null,
+      siteName: emp.siteName || '',
+      siteId: emp.siteId ?? null,
+      directManagerId: emp.directManagerId ?? null,
+      contractDurationStart: emp.contractDurationStart ? String(emp.contractDurationStart) : null,
+      contractDurationEnd: emp.contractDurationEnd ? String(emp.contractDurationEnd) : null,
+      daysLeft,
+      urgency,
+      reviewId: matchingReview?.id ?? null,
+      reviewStatus: matchingReview?.status ?? 'unreviewed',
+      reviewRecommendation: matchingReview?.recommendation ?? null,
+      reviewType: matchingReview?.reviewType ?? null,
+    })
+  }
+
+  return expiringEmployees.sort((a, b) => a.daysLeft - b.daysLeft)
+}
+
+export async function sendSingleContractReminder(employeeId: number) {
+  await ensureContractReviewWorkflowTables()
+  const today = new Date()
+  const baseUrl = await getBaseUrl()
+  const settings = await getContractReviewSettings()
+
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      directManagerId: employees.directManagerId,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      contractDurationEnd: employees.contractDurationEnd,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      siteName: sites.name,
+      siteType: sites.siteType,
+      siteHeadEmployeeId: sites.headEmployeeId,
+      sectionHeadEmployeeId: masterSections.headEmployeeId,
+      departmentHeadEmployeeId: masterDepartments.headEmployeeId,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(and(eq(employees.id, employeeId), eq(employees.isActive, true)))
+    .limit(1)
+
+  if (!emp || !emp.contractDurationEnd) {
+    return { success: false, error: 'Karyawan tidak ditemukan atau tidak memiliki tanggal berakhir kontrak.' }
+  }
+
+  const contractEndDate = parseIsoDate(String(emp.contractDurationEnd))
+  if (!contractEndDate) {
+    return { success: false, error: 'Format tanggal berakhir kontrak tidak valid.' }
+  }
+
+  const daysUntilEnd = differenceInCalendarDays(contractEndDate, today)
+  const reminderType = daysUntilEnd < 0 ? `Overdue (${Math.abs(daysUntilEnd)} hari)` : `H-${daysUntilEnd}`
+
+  const [existingReview] = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.employeeId, employeeId))
+    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+    .limit(1)
+
+  const { approver, approverRoleTitle, hr } = await resolveApproverForEmployee({
+    id: emp.id,
+    sectionId: emp.sectionId,
+    departmentId: emp.departmentId,
+    siteId: emp.siteId,
+    directManagerId: emp.directManagerId,
+    sectionName: emp.sectionName,
+    departmentName: emp.departmentName,
+    siteName: emp.siteName,
+    siteType: emp.siteType,
+  })
+
+  const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
+  const targetName = approver?.name || hr?.name || settings.approvalMatrix.hrName || 'Approver/HR'
+
+  if (!targetEmail) {
+    return { success: false, error: 'Email tujuan atasan / PJO Site / HR belum terdaftar di sistem.' }
+  }
+
+  const reviewLink = existingReview
+    ? `${baseUrl}/dashboard/hc/contract-review/form/${existingReview.id}`
+    : `${baseUrl}/dashboard/hc/contract-review/new?employeeId=${emp.id}&employeeSn=${normalizeSn(emp.employeeSn)}`
+
+  const template = settings.emailTemplates.reminder
+  const body = template.body
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{reviewerName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{employeeSection}}/g, emp.sectionName || '-')
+    .replace(/{{employeeSite}}/g, emp.siteName || '-')
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+    .replace(/{{reviewLink}}/g, reviewLink)
+    .replace(/{{approverName}}/g, targetName)
+    .replace(/{{approvalStep}}/g, approverRoleTitle)
+    .replace(/{{approvalLink}}/g, reviewLink)
+
+  const subject = template.subject
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+
+  await sendContractReviewEmail({
+    to: targetEmail,
+    subject,
+    body,
+    reviewId: existingReview?.id ?? 0,
+    templateCode: 'contract_review_reminder',
+    variables: {
+      recipientName: targetName,
+      reviewerName: targetName,
+      employeeName: emp.name,
+      employeeSn: normalizeSn(emp.employeeSn),
+      employeeSection: emp.sectionName || '-',
+      employeeSite: emp.siteName || '-',
+      contractEndDate: formatDisplayDate(contractEndDate),
+      reviewLink,
+      approverName: targetName,
+      approvalStep: approverRoleTitle,
+      approvalLink: reviewLink,
+    },
+  })
+
+  await db.insert(hcContractReviewReminders).values({
+    employeeId: emp.id,
+    employeeSn: normalizeSn(emp.employeeSn),
+    employeeName: emp.name,
+    section: emp.sectionName || '',
+    siteName: emp.siteName || '',
+    contractEndDate: contractEndDate.toISOString().slice(0, 10),
+    reminderType,
+    recipientEmail: targetEmail,
+    recipientName: targetName,
+    recipientRole: approverRoleTitle,
+    reviewId: existingReview?.id ?? null,
+    sentAt: new Date(),
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [targetEmail],
+    eventType: 'contract_review_reminder',
+    category: 'approval_requests',
+    title: `Reminder masa kontrak ${emp.name}`,
+    body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)}. Silakan tindak lanjuti contract review (${approverRoleTitle}).`,
+    url: reviewLink,
+    tagPrefix: 'contract-review-reminder',
+    metadata: {
+      employeeId: emp.id,
+      reminderType,
+      approverRole: approverRoleTitle,
+    },
+  })
+
+  revalidatePath('/dashboard/hc/contract-review')
+  return {
+    success: true,
+    message: `Reminder berhasil dikirim ke ${targetName} (${approverRoleTitle} - ${targetEmail}).`,
+  }
+}
+
+export async function sendBatchContractReminders(employeeIds: number[]) {
+  if (!employeeIds || employeeIds.length === 0) {
+    return { success: false, error: 'Tidak ada karyawan yang dipilih.', sent: 0, failed: 0 }
+  }
+
+  let sent = 0
+  let failed = 0
+  const errors: string[] = []
+
+  for (const id of employeeIds) {
+    try {
+      const res = await sendSingleContractReminder(id)
+      if (res.success) {
+        sent++
+      } else {
+        failed++
+        if (res.error) errors.push(res.error)
+      }
+    } catch (err) {
+      failed++
+      errors.push(err instanceof Error ? err.message : 'Gagal mengirim reminder')
+    }
+  }
+
+  revalidatePath('/dashboard/hc/contract-review')
+  return {
+    success: sent > 0 || failed === 0,
+    sent,
+    failed,
+    message: `Berhasil mengirim ${sent} reminder${failed > 0 ? `, ${failed} gagal` : ''}.`,
+  }
+}
+
 export async function sendDueContractReviewReminders() {
   await ensureContractReviewWorkflowTables()
 
@@ -639,6 +1098,7 @@ export async function sendDueContractReviewReminders() {
   const settings = await getContractReviewSettings()
   const reminderOffsets = new Set(settings.reminderDaysBefore)
 
+  // 1. Process existing in-progress / draft reviews
   const reviews = await db
     .select()
     .from(hcEmployeeContractReviews)
@@ -757,6 +1217,136 @@ export async function sendDueContractReviewReminders() {
       metadata: {
         reviewId: review.id,
         reminderType,
+      },
+    })
+
+    sent += 1
+  }
+
+  // 2. Also process active contract employees who need initial review
+  const expiringEmployees = await getExpiringContractEmployees()
+  for (const expEmp of expiringEmployees) {
+    if (expEmp.reviewStatus === 'completed' || expEmp.reviewStatus === 'in_progress') {
+      continue
+    }
+
+    const contractEndDate = parseIsoDate(expEmp.contractDurationEnd)
+    if (!contractEndDate) continue
+
+    const isDue = reminderOffsets.has(expEmp.daysLeft) || (expEmp.daysLeft <= 0 && Math.abs(expEmp.daysLeft) % 7 === 0)
+    if (!isDue) {
+      skipped += 1
+      continue
+    }
+
+    const reminderType = expEmp.daysLeft < 0 ? `Overdue (${Math.abs(expEmp.daysLeft)} hari)` : `H-${expEmp.daysLeft}`
+
+    const { approver, approverRoleTitle, hr } = await resolveApproverForEmployee({
+      id: expEmp.id,
+      sectionId: expEmp.sectionId,
+      departmentId: expEmp.departmentId,
+      siteId: expEmp.siteId,
+      directManagerId: expEmp.directManagerId,
+      sectionName: expEmp.section,
+      departmentName: expEmp.department,
+      siteName: expEmp.siteName,
+    })
+
+    const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
+    const targetName = approver?.name || hr?.name || settings.approvalMatrix.hrName || 'Approver/HR'
+
+    if (!targetEmail) {
+      skipped += 1
+      continue
+    }
+
+    const [existingReminder] = await db
+      .select({ id: hcContractReviewReminders.id })
+      .from(hcContractReviewReminders)
+      .where(
+        and(
+          eq(hcContractReviewReminders.employeeId, expEmp.id),
+          eq(hcContractReviewReminders.reminderType, reminderType),
+          eq(hcContractReviewReminders.recipientEmail, targetEmail),
+        ),
+      )
+      .limit(1)
+
+    if (existingReminder) {
+      skipped += 1
+      continue
+    }
+
+    const reviewLink = `${baseUrl}/dashboard/hc/contract-review/new?employeeId=${expEmp.id}&employeeSn=${expEmp.employeeSn}`
+    const template = settings.emailTemplates.reminder
+
+    const body = template.body
+      .replace(/{{recipientName}}/g, targetName)
+      .replace(/{{reviewerName}}/g, targetName)
+      .replace(/{{employeeName}}/g, expEmp.name)
+      .replace(/{{employeeSn}}/g, expEmp.employeeSn)
+      .replace(/{{employeeSection}}/g, expEmp.section)
+      .replace(/{{employeeSite}}/g, expEmp.siteName)
+      .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+      .replace(/{{reviewLink}}/g, reviewLink)
+      .replace(/{{approverName}}/g, targetName)
+      .replace(/{{approvalStep}}/g, approverRoleTitle)
+      .replace(/{{approvalLink}}/g, reviewLink)
+
+    const subject = template.subject
+      .replace(/{{recipientName}}/g, targetName)
+      .replace(/{{employeeName}}/g, expEmp.name)
+      .replace(/{{employeeSn}}/g, expEmp.employeeSn)
+      .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+
+    await sendContractReviewEmail({
+      to: targetEmail,
+      subject,
+      body,
+      reviewId: 0,
+      templateCode: 'contract_review_reminder',
+      variables: {
+        recipientName: targetName,
+        reviewerName: targetName,
+        employeeName: expEmp.name,
+        employeeSn: expEmp.employeeSn,
+        employeeSection: expEmp.section,
+        employeeSite: expEmp.siteName,
+        contractEndDate: formatDisplayDate(contractEndDate),
+        reviewLink,
+        approverName: targetName,
+        approvalStep: approverRoleTitle,
+        approvalLink: reviewLink,
+      },
+    })
+
+    await db.insert(hcContractReviewReminders).values({
+      employeeId: expEmp.id,
+      employeeSn: expEmp.employeeSn,
+      employeeName: expEmp.name,
+      section: expEmp.section,
+      siteName: expEmp.siteName,
+      contractEndDate: contractEndDate.toISOString().slice(0, 10),
+      reminderType,
+      recipientEmail: targetEmail,
+      recipientName: targetName,
+      recipientRole: approverRoleTitle,
+      reviewId: null,
+      sentAt: new Date(),
+    })
+
+    await notifyWorkflowBellRecipients({
+      recipientEmails: [targetEmail],
+      eventType: 'contract_review_reminder',
+      category: 'approval_requests',
+      title: `Reminder masa kontrak ${expEmp.name}`,
+      body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)}. Silakan tindak lanjuti contract review (${approverRoleTitle}).`,
+      url: reviewLink,
+      tagPrefix: 'contract-review-reminder',
+      metadata: {
+        employeeId: expEmp.id,
+        reminderType,
+        approverRole: approverRoleTitle,
       },
     })
 
