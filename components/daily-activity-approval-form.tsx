@@ -20,11 +20,13 @@ import {
   AlertTriangle,
   Camera,
   Check,
+  ChevronDown,
   ChevronRight,
   Download,
   ImagePlus,
   Search,
   SendHorizontal,
+  Users,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -49,6 +51,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
@@ -92,6 +99,7 @@ type ApprovalData = {
   workDate: Date | string
   shiftCode: string
   status: string
+  summaryRemark?: string | null
   submittedAt: Date | string | null
   approvedAt: Date | string | null
   employee: {
@@ -249,6 +257,49 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     siteName: data.site.name || '',
     customerName: data.site.customerName || '',
   })
+  const initialTeamMatch = (data.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+  const initialTeamNames = useMemo(
+    () => (initialTeamMatch ? initialTeamMatch[1].split(',').map((s) => s.trim()) : []),
+    [data.summaryRemark]
+  )
+  const [isTeamLog, setIsTeamLog] = useState<boolean>(() => initialTeamNames.length > 0)
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>(() => {
+    if (initialTeamNames.length > 0) {
+      const ids: number[] = []
+      initialTeamNames.forEach((name) => {
+        const found = employeesProp.find((e) => e.name.toLowerCase() === name.toLowerCase())
+        if (found) ids.push(found.id)
+      })
+      if (data.employee.id && !ids.includes(data.employee.id)) {
+        ids.unshift(data.employee.id)
+      }
+      return ids
+    }
+    return data.employee.id ? [data.employee.id] : []
+  })
+  const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
+  const [teamMemberSearchQuery, setTeamMemberSearchQuery] = useState('')
+
+  const filteredFormEmployees = useMemo(() => {
+    if (!teamMemberSearchQuery) return employeesProp
+    const q = teamMemberSearchQuery.toLowerCase()
+    return employeesProp.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        (e.employeeSn && e.employeeSn.toLowerCase().includes(q)) ||
+        (e.employeeId && e.employeeId.toLowerCase().includes(q)) ||
+        (e.jobTitle && e.jobTitle.toLowerCase().includes(q))
+    )
+  }, [employeesProp, teamMemberSearchQuery])
+
+  const currentTeamMembersSummary = useMemo(() => {
+    if (!isTeamLog || selectedTeamMemberIds.length === 0) return null
+    return employeesProp
+      .filter((e) => selectedTeamMemberIds.includes(e.id))
+      .map((e) => e.name)
+      .join(', ')
+  }, [isTeamLog, selectedTeamMemberIds, employeesProp])
+
   const [itemsList, setItemsList] = useState<SessionItem[]>(data.sessionItems);
   const [sourceMode, setSourceMode] = useState<'self_input' | 'assigned' | 'custom'>('self_input');
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
@@ -390,6 +441,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         managerTitle: managerTitle || selectedManager?.rank || selectedManager?.position || undefined,
         signatures: signaturesByStepId,
         stepRemarks,
+        teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
       })
       if (res.success) {
         toast.success('Daily Activity Report berhasil disimpan!')
@@ -432,6 +484,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         managerName: selectedManager?.name || undefined,
         managerEmail: selectedManager?.email || undefined,
         managerTitle: managerTitle || selectedManager?.rank || selectedManager?.position || undefined,
+        teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
       })
 
       const fd = new FormData()
@@ -619,6 +672,13 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             <td>Site: <strong>{profileForm.siteName || '—'}</strong></td>
             <td>Customer: <strong>{profileForm.customerName || 'Default Customer'}</strong></td>
           </tr>
+          {currentTeamMembersSummary ? (
+            <tr>
+              <td colSpan={2}>
+                Anggota Tim: <strong className="text-blue-900">{currentTeamMembersSummary}</strong>
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
 
@@ -987,7 +1047,122 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           </CardContent>
         </Card>
 
-          {/* SOURCE MODE SELECTION */}
+        {/* Team Logging Card */}
+        <Card className="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="size-4 text-primary" />
+              <div>
+                <span className="font-bold text-slate-800 text-xs">Team Logging (Input Sekaligus untuk Tim)</span>
+                <p className="text-[10px] text-slate-500">Pilih anggota tim yang bekerja bersama pada aktivitas ini</p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-slate-100 transition-colors">
+              <span>Input untuk Tim</span>
+              <input
+                type="checkbox"
+                checked={isTeamLog}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setIsTeamLog(checked)
+                  if (!checked && profileForm.employeeId) {
+                    setSelectedTeamMemberIds([Number(profileForm.employeeId)])
+                  }
+                }}
+                className="size-4 accent-primary rounded cursor-pointer"
+              />
+            </label>
+          </div>
+
+          {isTeamLog ? (
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <Popover open={teamMemberPickerOpen} onOpenChange={setTeamMemberPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between rounded-xl bg-white text-xs font-semibold text-slate-800 h-9 border-slate-200"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users className="size-3.5 text-primary" />
+                      {selectedTeamMemberIds.length > 0
+                        ? `${selectedTeamMemberIds.length} Anggota Tim Dipilih`
+                        : 'Pilih Anggota Tim...'}
+                    </span>
+                    <ChevronDown className="size-4 text-slate-400" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3 space-y-2 bg-white shadow-xl rounded-xl" align="start">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
+                    <Input
+                      placeholder="Cari nama atau NIK..."
+                      value={teamMemberSearchQuery}
+                      onChange={(e) => setTeamMemberSearchQuery(e.target.value)}
+                      className="h-8 pl-8 text-xs bg-white"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
+                    {filteredFormEmployees.map((emp) => {
+                      const isSelected = selectedTeamMemberIds.includes(emp.id)
+                      const isPrimary = String(emp.id) === profileForm.employeeId
+                      return (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            if (isPrimary) return
+                            setSelectedTeamMemberIds((prev) =>
+                              isSelected ? prev.filter((id) => id !== emp.id) : [...prev, emp.id]
+                            )
+                          }}
+                          className={cn(
+                            'flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors',
+                            isSelected ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-slate-100',
+                            isPrimary && 'opacity-80'
+                          )}
+                        >
+                          <div className="space-y-0.5">
+                            <p className="font-medium text-slate-800">
+                              {emp.name} {isPrimary ? '(Pembuat/Primary)' : ''}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {emp.employeeSn || emp.employeeId || '-'} • {emp.jobTitle || emp.department || 'Staff'}
+                            </p>
+                          </div>
+                          {isSelected ? <Check className="size-4 text-primary" /> : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {selectedTeamMemberIds.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {employeesProp
+                    .filter((e) => selectedTeamMemberIds.includes(e.id))
+                    .map((e) => (
+                      <Badge
+                        key={e.id}
+                        variant="secondary"
+                        className="text-[11px] font-medium py-1 px-2.5 flex items-center gap-1.5 bg-blue-50 text-blue-900 border border-blue-200"
+                      >
+                        <span>{e.name}</span>
+                        {String(e.id) !== profileForm.employeeId ? (
+                          <X
+                            className="size-3 cursor-pointer hover:text-red-600"
+                            onClick={() => setSelectedTeamMemberIds((prev) => prev.filter((id) => id !== e.id))}
+                          />
+                        ) : null}
+                      </Badge>
+                    ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+
+        {/* SOURCE MODE SELECTION */}
           <Card className="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-2xs space-y-2">
             <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
             <select

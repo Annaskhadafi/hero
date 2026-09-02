@@ -43,10 +43,28 @@ const nextConfig: NextConfig = {
         destination: '/dashboard/scheduling-timesheet',
         permanent: false,
       },
+      {
+        source: '/dashboard/scheduling_timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling_timesheet',
+        destination: '/dashboard/scheduling-timesheet',
+        permanent: false,
+      },
     ]
   },
   async rewrites() {
     return [
+      {
+        source: '/dashboard/scheduling/timesheet/field_break',
+        destination: '/dashboard/scheduling-timesheet/field-break',
+      },
+      {
+        source: '/dashboard/scheduling/timesheet/field-break',
+        destination: '/dashboard/scheduling-timesheet/field-break',
+      },
       {
         source: '/dashboard/scheduling/timesheet/:path*',
         destination: '/dashboard/scheduling-timesheet/:path*',

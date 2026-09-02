@@ -9,6 +9,7 @@ import {
   Calculator,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -35,6 +36,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -254,6 +260,58 @@ type EmployeeScheduleProfile = {
   kimperTh: boolean
   isLokal?: boolean
 }
+
+export type AttendancePdfDocType =
+  | 'overtime_summary'
+  | 'msa_summary'
+  | 'mls_summary'
+  | 'tu_summary'
+  | 'overtime_record'
+  | 'payable_site_allowance'
+
+export const ATTENDANCE_PDF_OPTIONS: Array<{
+  id: AttendancePdfDocType
+  number: number
+  label: string
+  description: string
+}> = [
+  {
+    id: 'overtime_summary',
+    number: 1,
+    label: 'OVERTIME SUMMARY',
+    description: 'Tabel Rekapitulasi Overtime seluruh karyawan',
+  },
+  {
+    id: 'msa_summary',
+    number: 2,
+    label: 'MSA summary',
+    description: 'Tabel Rekapitulasi Meal & Site Allowance (MSA)',
+  },
+  {
+    id: 'mls_summary',
+    number: 3,
+    label: 'MLS summary',
+    description: 'Tabel Rekapitulasi Meals Allowance (MLS)',
+  },
+  {
+    id: 'tu_summary',
+    number: 4,
+    label: 'TU summary',
+    description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
+  },
+  {
+    id: 'overtime_record',
+    number: 5,
+    label: 'overtime record',
+    description: 'Lembar catatan detail lembur per karyawan',
+  },
+  {
+    id: 'payable_site_allowance',
+    number: 6,
+    label: 'payable site allowance',
+    description: 'Lembar rincian tunjangan site per karyawan',
+  },
+]
 
 type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office' | 'hybrid'
@@ -1370,6 +1428,15 @@ export function SchedulingTimesheetWorkspace({
   const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
   const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
   const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
+  const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
+    'overtime_summary',
+    'msa_summary',
+    'mls_summary',
+    'tu_summary',
+    'overtime_record',
+    'payable_site_allowance',
+  ])
+  const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
@@ -5287,7 +5354,7 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt') {
               if (staff) return '-'
               if (cell.status !== 'present') {
-                return ['OFF', 'FB', 'Libur', 'Sakit'].includes(code) ? code : ''
+                return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
               }
               const overtime = calculateDayOvertime(
                 row.schedule,
@@ -5465,11 +5532,16 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function bulkDownloadOvertimePdf(showTotalOvertime: boolean) {
+    if (selectedPdfDocTypes.length === 0) {
+      toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
+      return
+    }
+
     const selected = rows
       .filter((row) => selectedOvertimeEmployeeIds.includes(row.employee.id))
       .map((row) => row.employee)
     if (!selected.length) {
-      toast.error('Pilih minimal satu karyawan untuk bulk download OT PDF.')
+      toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
     if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
@@ -5495,35 +5567,66 @@ export function SchedulingTimesheetWorkspace({
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
-        'ovt',
-        'msa',
-        'meals',
-        'lokasi',
-      ]
 
       const majoritySignatures = getMajoritySectionSignatures(filteredSelected)
       const empIds = filteredSelected.map((e) => e.id)
 
-      for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(summaryView, empIds, majoritySignatures)
+      // 1. OVERTIME SUMMARY
+      if (selectedPdfDocTypes.includes('overtime_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
-        const summaryPages = await merged.copyPages(
-          summarySource,
-          summarySource.getPageIndices()
-        )
-        summaryPages.forEach((page) => merged.addPage(page))
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
       }
 
-      for (const employee of filteredSelected) {
-        for (const pdf of [
-          await buildEmployeeOvertimePdf(employee, showTotalOvertime),
-          await buildEmployeeAllowancePdf(employee),
-        ]) {
-          const source = await PDFDocument.load(pdf)
-          const pages = await merged.copyPages(source, source.getPageIndices())
-          pages.forEach((page) => merged.addPage(page))
+      // 2. MSA summary
+      if (selectedPdfDocTypes.includes('msa_summary')) {
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 3. MLS summary
+      if (selectedPdfDocTypes.includes('mls_summary')) {
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 4. TU summary
+      if (selectedPdfDocTypes.includes('tu_summary')) {
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 5. Overtime Record & 6. Payable Site Allowance per employee
+      const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
+      const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
+
+      if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
+        for (const employee of filteredSelected) {
+          if (shouldIncludeOvertimeRecord) {
+            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime)
+            const otSource = await PDFDocument.load(otPdf)
+            const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
+          if (shouldIncludeSiteAllowance) {
+            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowanceSource = await PDFDocument.load(allowancePdf)
+            const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
         }
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada halaman PDF yang dihasilkan.')
+        return
       }
 
       const activeSections = [
@@ -5534,20 +5637,32 @@ export function SchedulingTimesheetWorkspace({
         .filter(Boolean)
         .join('_')
 
+      const selectedDocLabels = selectedPdfDocTypes
+        .map((t) => {
+          if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'msa_summary') return 'MSA-Summary'
+          if (t === 'mls_summary') return 'MLS-Summary'
+          if (t === 'tu_summary') return 'TU-Summary'
+          if (t === 'overtime_record') return 'OT-Record'
+          if (t === 'payable_site_allowance') return 'Site-Allowance'
+          return t
+        })
+        .join('_')
+
       const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `OT_Benefit_Bulk_${period}_${showTotalOvertime ? 'dengan-total' : 'tanpa-total'}_${activeSections || 'all'}.pdf`
+      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success(
-        `PDF berhasil di-download untuk ${filteredSelected.length} karyawan.`
+        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`
       )
     } catch (error) {
-      console.error('[Bulk PDF OT Error]', error)
+      console.error('[Bulk PDF Download Error]', error)
       toast.error('Bulk download PDF Overtime gagal', {
         description: error instanceof Error ? error.message : String(error),
       })
@@ -5687,6 +5802,11 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function previewAllSiteOvertimePdf() {
+    if (selectedPdfDocTypes.length === 0) {
+      toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
+      return
+    }
+
     const allEmployees = rows.map((row) => row.employee)
     if (allEmployees.length === 0) {
       toast.error('Tidak ada karyawan untuk site ini.')
@@ -5715,35 +5835,61 @@ export function SchedulingTimesheetWorkspace({
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
-        'ovt',
-        'msa',
-        'meals',
-        'lokasi',
-      ]
 
       const majoritySignatures = getMajoritySectionSignatures(filteredEmployees)
       const empIds = filteredEmployees.map((e) => e.id)
 
-      for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(summaryView, empIds, majoritySignatures)
+      if (selectedPdfDocTypes.includes('overtime_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
-        const summaryPages = await merged.copyPages(
-          summarySource,
-          summarySource.getPageIndices()
-        )
-        summaryPages.forEach((page) => merged.addPage(page))
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
       }
 
-      for (const employee of filteredEmployees) {
-        for (const pdf of [
-          await buildEmployeeOvertimePdf(employee, includeTotalOvertime),
-          await buildEmployeeAllowancePdf(employee),
-        ]) {
-          const source = await PDFDocument.load(pdf)
-          const pages = await merged.copyPages(source, source.getPageIndices())
-          pages.forEach((page) => merged.addPage(page))
+      if (selectedPdfDocTypes.includes('msa_summary')) {
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('mls_summary')) {
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('tu_summary')) {
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
+      const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
+
+      if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
+        for (const employee of filteredEmployees) {
+          if (shouldIncludeOvertimeRecord) {
+            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
+            const otSource = await PDFDocument.load(otPdf)
+            const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
+          if (shouldIncludeSiteAllowance) {
+            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowanceSource = await PDFDocument.load(allowancePdf)
+            const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
         }
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.')
+        return
       }
 
       const activeSections = [
@@ -5756,7 +5902,7 @@ export function SchedulingTimesheetWorkspace({
 
       openPdfPreview(
         await merged.save(),
-        `Preview 4 Summary + OT/Benefit • ${site?.name ?? 'Site'} • ${period} (${activeSections || 'Semua'})`
+        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period} (${activeSections || 'Semua'})`
       )
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
@@ -8756,26 +8902,108 @@ export function SchedulingTimesheetWorkspace({
                             )}
                           </>
                         )}
+
+                        {/* Multi-select Dropdown Pilihan Dokumen PDF */}
+                        <Popover open={pdfDocTypesPickerOpen} onOpenChange={setPdfDocTypesPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-800 border-border/70 shadow-2xs hover:bg-slate-50"
+                              title="Pilih jenis dokumen PDF yang ingin di-download"
+                            >
+                              <FileText className="mr-1.5 size-3.5 text-indigo-600" />
+                              Pilih PDF ({selectedPdfDocTypes.length}/6)
+                              <ChevronDown className="ml-1.5 size-3 text-slate-400" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 p-3 bg-white shadow-xl rounded-xl border border-slate-200" align="end">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">Pilih Dokumen PDF</p>
+                                <p className="text-[10px] text-slate-500">Pilih format lembar yang akan diunduh</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPdfDocTypes(ATTENDANCE_PDF_OPTIONS.map((o) => o.id))}
+                                  className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                                >
+                                  Pilih Semua
+                                </button>
+                                <span className="text-[10px] text-slate-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPdfDocTypes([])}
+                                  className="text-[10px] text-slate-500 hover:text-red-600 font-semibold hover:underline"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1 pt-2">
+                              {ATTENDANCE_PDF_OPTIONS.map((opt) => {
+                                const isSelected = selectedPdfDocTypes.includes(opt.id)
+                                return (
+                                  <label
+                                    key={opt.id}
+                                    className={cn(
+                                      'flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs select-none',
+                                      isSelected ? 'bg-indigo-50/70 text-slate-900' : 'hover:bg-slate-50 text-slate-700'
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedPdfDocTypes((prev) => [...prev, opt.id])
+                                        } else {
+                                          setSelectedPdfDocTypes((prev) => prev.filter((id) => id !== opt.id))
+                                        }
+                                      }}
+                                      className="mt-0.5 size-4 accent-indigo-600 rounded cursor-pointer"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 font-semibold">
+                                        <span className="text-indigo-600 font-mono text-[11px]">{opt.number}.</span>
+                                        <span>{opt.label}</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{opt.description}</p>
+                                    </div>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={rows.length === 0 || siteId === 'all'}
+                          disabled={rows.length === 0 || siteId === 'all' || selectedPdfDocTypes.length === 0}
                           onClick={() => void previewAllSiteOvertimePdf()}
                           className="h-8 rounded-lg text-xs"
-                          title={`Preview PDF OT + Benefit untuk semua karyawan site ${site?.name ?? ''}`}
+                          title={
+                            selectedPdfDocTypes.length === 0
+                              ? 'Pilih minimal satu jenis dokumen PDF'
+                              : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
+                          }
                         >
-                          <Eye className="mr-1.5 size-3.5" /> Preview Semua PDF
+                          <Eye className="mr-1.5 size-3.5" /> Preview PDF ({selectedPdfDocTypes.length})
                         </Button>
                         <Button
                           size="sm"
                           variant="default"
-                          disabled={selectedOvertimeEmployeeIds.length === 0}
+                          disabled={selectedOvertimeEmployeeIds.length === 0 || selectedPdfDocTypes.length === 0}
                           onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
                           className="h-8 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
                           title={
                             selectedOvertimeEmployeeIds.length === 0
                               ? 'Pilih minimal satu karyawan'
-                              : `Download PDF OT + Benefit (${includeTotalOvertime ? 'dengan' : 'tanpa'} Kolom Total Overtime)`
+                              : selectedPdfDocTypes.length === 0
+                                ? 'Pilih minimal satu jenis dokumen PDF'
+                                : `Download PDF (${selectedPdfDocTypes.length} jenis dokumen, ${selectedOvertimeEmployeeIds.length} karyawan)`
                           }
                         >
                           <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih {selectedOvertimeEmployeeIds.length > 0 ? `(${selectedOvertimeEmployeeIds.length})` : ''}

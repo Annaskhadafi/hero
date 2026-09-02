@@ -94,12 +94,7 @@ export async function getDailyActivitySessionDocumentData(
     return null
   }
 
-  const canReviewHr =
-    header.siteId === currentEmployee.siteId &&
-    ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)
-  if (header.employeeId !== currentEmployee.id && !canReviewHr) {
-    return null
-  }
+
 
   const [itemRows, approvalsRows, signoff] = await Promise.all([
     db
@@ -146,6 +141,35 @@ export async function getDailyActivitySessionDocumentData(
       .then((rows) => rows[0] ?? null),
   ])
 
+  const isApprover = approvalsRows.some(
+    (a) =>
+      a.approverEmployeeId === currentEmployee.id ||
+      (a.approverEmail && a.approverEmail.toLowerCase() === normalizedEmail)
+  )
+  const isAdminOrManager = [
+    'Super Admin',
+    'Site Admin',
+    'HC Manager',
+    'Manager',
+    'Director',
+    'PJO',
+  ].includes(currentEmployee.accessRole)
+
+  const canReviewHr =
+    (header.siteId === currentEmployee.siteId &&
+      ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)) ||
+    currentEmployee.accessRole === 'Super Admin'
+
+  if (header.employeeId !== currentEmployee.id && !canReviewHr && !isApprover && !isAdminOrManager) {
+    return null
+  }
+
+  let teamMembersSummary = ''
+  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+  if (teamMatch && teamMatch[1]) {
+    teamMembersSummary = teamMatch[1].trim()
+  }
+
   const checkedItems = itemRows
     .filter((item) => item.isChecked)
     .map((item) => {
@@ -185,6 +209,7 @@ export async function getDailyActivitySessionDocumentData(
     shiftCode: header.shiftCode,
     status: header.status,
     summaryRemark: header.summaryRemark,
+    teamMembersSummary,
     submittedAt: header.submittedAt,
     monthLabel: header.workDate.toLocaleDateString('id-ID', {
       month: 'long',

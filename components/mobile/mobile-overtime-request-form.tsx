@@ -1,24 +1,38 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
   CheckCircle2,
+  Download,
+  FileText,
   Plus,
   RotateCcw,
   Trash2,
   UserPlus,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { createOvertimeCommandLetterAction } from "@/app/dashboard/overtime-requests/actions";
+import {
+  createOvertimeCommandLetterAction,
+  resubmitOvertimeCommandLetterAction,
+} from "@/app/dashboard/overtime-requests/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea";
+import { downloadElementAsPdf } from "@/lib/pdf-download";
 import { resolveEmployeeApproverHierarchy, type EmployeeHierarchyInfo } from "@/lib/overtime-hierarchy";
 
 export type EmployeeOption = EmployeeHierarchyInfo;
@@ -60,35 +74,53 @@ export function MobileOvertimeRequestForm({
   employees = [],
   currentEmployee,
   parentSplId,
+  editSplId,
   initialSplData,
 }: {
   employees: EmployeeOption[];
   currentEmployee?: EmployeeOption | null;
   parentSplId?: number;
+  editSplId?: number;
   initialSplData?: any;
 }) {
   const router = useRouter();
 
-  const doc = initialSplData?.document;
+  const doc = initialSplData?.document || initialSplData;
   const initialTargetId = doc?.requestedByEmployeeId || currentEmployee?.id || employees[0]?.id;
   const initialHierarchy = initialTargetId
     ? resolveEmployeeApproverHierarchy(initialTargetId, employees)
     : { leader: null, superior: null, department: "Central Services" };
 
   const [title, setTitle] = useState(
-    doc?.title ? (parentSplId ? `Extension ${doc.title}` : doc.title) : (parentSplId ? "Extension SPL Lembur" : "")
+    doc?.title
+      ? editSplId
+        ? doc.title
+        : parentSplId
+          ? `Extension ${doc.title}`
+          : doc.title
+      : parentSplId
+        ? "Extension SPL Lembur"
+        : ""
   );
   const [workDate, setWorkDate] = useState(
     doc?.workDate ? dateInputValue(new Date(doc.workDate)) : dateInputValue()
   );
   const [plannedStartDate, setPlannedStartDate] = useState(
-    doc?.plannedStartAt ? dateInputValue(new Date(doc.plannedStartAt)) : dateInputValue()
+    doc?.plannedStartAt
+      ? dateInputValue(new Date(doc.plannedStartAt))
+      : doc?.workDate
+        ? dateInputValue(new Date(doc.workDate))
+        : dateInputValue()
   );
   const [plannedStartTime, setPlannedStartTime] = useState(
     doc?.plannedStartAt ? formatPtwTime(new Date(doc.plannedStartAt)) : "17:00"
   );
   const [plannedEndDate, setPlannedEndDate] = useState(
-    doc?.plannedEndAt ? dateInputValue(new Date(doc.plannedEndAt)) : dateInputValue()
+    doc?.plannedEndAt
+      ? dateInputValue(new Date(doc.plannedEndAt))
+      : doc?.workDate
+        ? dateInputValue(new Date(doc.workDate))
+        : dateInputValue()
   );
   const [plannedEndTime, setPlannedEndTime] = useState(
     doc?.plannedEndAt ? formatPtwTime(new Date(doc.plannedEndAt)) : "20:00"
@@ -97,18 +129,56 @@ export function MobileOvertimeRequestForm({
     doc?.requestedByEmployeeId ? String(doc.requestedByEmployeeId) : (currentEmployee?.id ? String(currentEmployee.id) : "")
   );
   const [requesterDepartment, setRequesterDepartment] = useState(
-    doc?.department || initialHierarchy.department || currentEmployee?.department || "Central Services"
+    doc?.requesterDepartment || doc?.department || initialHierarchy.department || currentEmployee?.department || "Central Services"
   );
   const [requestNotes, setRequestNotes] = useState(doc?.requestNotes || "");
 
+  const existingLeaderApproval = doc?.approvals?.find((a: any) => a.stepOrder === 1);
+  const existingSuperiorApproval = doc?.approvals?.find((a: any) => a.stepOrder === 2);
+
+  const matchedLeaderByEmployee = employees.find(
+    (e) =>
+      (existingLeaderApproval?.approverEmployeeId && e.id === existingLeaderApproval.approverEmployeeId) ||
+      (existingLeaderApproval?.approverName && e.name.toLowerCase().trim() === existingLeaderApproval.approverName.toLowerCase().trim())
+  );
+
+  const matchedSuperiorByEmployee = employees.find(
+    (e) =>
+      (existingSuperiorApproval?.approverEmployeeId && e.id === existingSuperiorApproval.approverEmployeeId) ||
+      (existingSuperiorApproval?.approverName && e.name.toLowerCase().trim() === existingSuperiorApproval.approverName.toLowerCase().trim())
+  );
+
+  // Prioritaskan hierarchy dari employee data daripada existing approval yang mungkin salah
   const [leaderEmployeeId, setLeaderEmployeeId] = useState(
-    initialHierarchy.leader?.id ? String(initialHierarchy.leader.id) : ""
+    initialHierarchy.leader?.id
+      ? String(initialHierarchy.leader.id)
+      : matchedLeaderByEmployee
+        ? String(matchedLeaderByEmployee.id)
+        : existingLeaderApproval?.approverEmployeeId
+          ? String(existingLeaderApproval.approverEmployeeId)
+          : ""
   );
-  const [leaderName, setLeaderName] = useState(initialHierarchy.leader?.name || "");
+  const [leaderName, setLeaderName] = useState(
+    initialHierarchy.leader?.name ||
+      matchedLeaderByEmployee?.name ||
+      existingLeaderApproval?.approverName ||
+      ""
+  );
   const [superiorEmployeeId, setSuperiorEmployeeId] = useState(
-    initialHierarchy.superior?.id ? String(initialHierarchy.superior.id) : ""
+    initialHierarchy.superior?.id
+      ? String(initialHierarchy.superior.id)
+      : matchedSuperiorByEmployee
+        ? String(matchedSuperiorByEmployee.id)
+        : existingSuperiorApproval?.approverEmployeeId
+          ? String(existingSuperiorApproval.approverEmployeeId)
+          : ""
   );
-  const [superiorName, setSuperiorName] = useState(initialHierarchy.superior?.name || "");
+  const [superiorName, setSuperiorName] = useState(
+    initialHierarchy.superior?.name ||
+      matchedSuperiorByEmployee?.name ||
+      existingSuperiorApproval?.approverName ||
+      ""
+  );
 
   const [workers, setWorkers] = useState<WorkerRow[]>(() => {
     if (initialSplData?.participants && initialSplData.participants.length > 0) {
@@ -156,6 +226,24 @@ export function MobileOvertimeRequestForm({
     totalMinutes: number;
     workerCount: number;
   } | null>(null);
+
+  const pdfPreviewRef = useRef<HTMLDivElement>(null);
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+
+  async function handleDownloadPdf() {
+    if (!pdfPreviewRef.current) return;
+    setIsDownloadingPdf(true);
+    try {
+      await downloadElementAsPdf(pdfPreviewRef.current, `${doc?.splNumber || 'SPL'}-Document.pdf`);
+      toast.success("PDF SPL berhasil diunduh.");
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal mengunduh PDF.");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  }
 
   function applyHierarchy(empId: string | number) {
     if (!empId) return;
@@ -284,45 +372,87 @@ export function MobileOvertimeRequestForm({
       const startDateTime = `${plannedStartDate}T${plannedStartTime}`;
       const endDateTime = `${plannedEndDate}T${plannedEndTime}`;
 
-      const res = await createOvertimeCommandLetterAction({
-        title: title.trim(),
-        workDate,
-        plannedStartAt: startDateTime,
-        plannedEndAt: endDateTime,
-        requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
-        requestNotes: requestNotes.trim(),
-        workerParticipants: validWorkers.map((w) => ({
-          employeeId: Number(w.employeeId),
-          shiftCode: w.shiftCode,
-          rosterType: w.rosterType,
-          category: w.category,
-        })),
-        lineItems: validItems.map((item) => ({
-          lineLabel: item.lineLabel.trim(),
-          targetUnit: item.targetUnit.trim(),
-          estimatedMinutes: Number(item.estimatedMinutes) || 60,
-          plannedPoints: Number(item.plannedPoints) || 0,
-        })),
-        leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
-        leaderName: leaderName || null,
-        superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : null,
-        superiorName: superiorName || null,
-      });
+      if (editSplId) {
+        const res = await resubmitOvertimeCommandLetterAction({
+          documentId: editSplId,
+          title: title.trim(),
+          workDate,
+          plannedStartAt: startDateTime,
+          plannedEndAt: endDateTime,
+          requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
+          requestNotes: requestNotes.trim(),
+          status: 'Submitted',
+          participants: validWorkers.map((w) => ({
+            employeeId: Number(w.employeeId),
+            shiftCode: w.shiftCode,
+            rosterType: w.rosterType,
+            category: w.category,
+          })),
+          lineItems: validItems.map((item) => ({
+            lineLabel: item.lineLabel.trim(),
+            targetUnit: item.targetUnit.trim(),
+            estimatedMinutes: Number(item.estimatedMinutes) || 60,
+            plannedPoints: Number(item.plannedPoints) || 0,
+          })),
+          leaderName: leaderName || undefined,
+          superiorName: superiorName || undefined,
+        });
 
-      if (!res.success) {
-        toast.error((res as any).error || "Gagal membuat SPL.");
-        return;
+        if (!res.success) {
+          toast.error(res.error || "Gagal menyimpan revisi SPL.");
+          return;
+        }
+
+        toast.success("Revisi Surat Perintah Lembur (SPL) berhasil disimpan dan diajukan ulang!");
+        setSubmittedSummary({
+          splNumber: doc?.splNumber || `SPL-${editSplId}`,
+          title: title.trim(),
+          workDate,
+          totalMinutes: totalEstimatedMinutes,
+          workerCount: validWorkers.length,
+        });
+        router.refresh();
+      } else {
+        const res = await createOvertimeCommandLetterAction({
+          title: title.trim(),
+          workDate,
+          plannedStartAt: startDateTime,
+          plannedEndAt: endDateTime,
+          requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
+          requestNotes: requestNotes.trim(),
+          workerParticipants: validWorkers.map((w) => ({
+            employeeId: Number(w.employeeId),
+            shiftCode: w.shiftCode,
+            rosterType: w.rosterType,
+            category: w.category,
+          })),
+          lineItems: validItems.map((item) => ({
+            lineLabel: item.lineLabel.trim(),
+            targetUnit: item.targetUnit.trim(),
+            estimatedMinutes: Number(item.estimatedMinutes) || 60,
+            plannedPoints: Number(item.plannedPoints) || 0,
+          })),
+          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
+          leaderName: leaderName || null,
+          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : null,
+          superiorName: superiorName || null,
+        });
+
+        if (!res.success) {
+          toast.error((res as any).error || "Gagal membuat SPL.");
+          return;
+        }
+
+        toast.success("Surat Perintah Lembur (SPL) berhasil diajukan!");
+        setSubmittedSummary({
+          splNumber: (res as any).splNumber || "SPL-Baru",
+          title: title.trim(),
+          workDate,
+          totalMinutes: totalEstimatedMinutes,
+          workerCount: validWorkers.length,
+        });
+        router.refresh();
       }
-
-      toast.success("Surat Perintah Lembur (SPL) berhasil diajukan!");
-      setSubmittedSummary({
-        splNumber: (res as any).splNumber || "SPL-Baru",
-        title: title.trim(),
-        workDate,
-        totalMinutes: totalEstimatedMinutes,
-        workerCount: validWorkers.length,
-      });
-      router.refresh();
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || "Terjadi kesalahan saat mengajukan SPL.");
@@ -382,15 +512,136 @@ export function MobileOvertimeRequestForm({
     );
   }
 
+  const revertedStep = (doc?.approvals || []).find(
+    (a: any) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision'
+  );
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {parentSplId ? (
-        <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-amber-900 text-xs shadow-xs">
-          <RotateCcw className="size-4 text-amber-700 shrink-0 mt-0.5" />
+      {editSplId ? (
+        <div className="space-y-3">
+          {/* Inline PDF Preview */}
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+            <div className="bg-slate-800 px-3 py-2 flex items-center justify-between">
+              <p className="text-[10px] font-bold text-white flex items-center gap-1.5">
+                <FileText className="size-3.5 text-amber-400" />
+                Preview Dokumen SPL
+              </p>
+              <div className="flex items-center gap-1">
+                <Button type="button" size="sm" variant="outline" onClick={() => setZoomScale((prev) => Math.max(0.5, +(prev - 0.15).toFixed(2)))} className="h-6 w-6 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"><ZoomOut className="size-3" /></Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setZoomScale(1)} className="h-6 px-1.5 text-[9px] font-bold bg-slate-700 border-slate-600 text-white hover:bg-slate-600">{Math.round(zoomScale * 100)}%</Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setZoomScale((prev) => Math.min(2, +(prev + 0.15).toFixed(2)))} className="h-6 w-6 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"><ZoomIn className="size-3" /></Button>
+                <Button type="button" size="sm" disabled={isDownloadingPdf} onClick={handleDownloadPdf} className="h-6 px-2 text-[9px] font-bold bg-amber-600 hover:bg-amber-700 text-white ml-1 flex items-center gap-1"><Download className="size-2.5" />{isDownloadingPdf ? '...' : 'PDF'}</Button>
+              </div>
+            </div>
+            <div className="overflow-auto max-h-[500px] p-4 bg-slate-50 flex justify-center">
+              <div ref={pdfPreviewRef} style={{ transform: `scale(${zoomScale})`, transformOrigin: 'top center', transition: 'transform 0.15s ease-out' }} className="w-full max-w-[580px] bg-white text-slate-900 shadow-md p-5 rounded-sm text-[10px] leading-normal border border-slate-200">
+                {/* Company Header */}
+                <div className="flex items-start justify-between border-b-2 border-slate-900 pb-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="size-8 rounded bg-[#003461] text-white flex items-center justify-center font-black text-[10px] tracking-wider">HERO</div>
+                    <div>
+                      <p className="font-black text-[11px] tracking-tight text-slate-900 uppercase">PT CHITRAPARATAMA</p>
+                      <p className="text-[8px] text-slate-500">Heavy Equipment &amp; Resource Operations</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-[10px] text-[#003461]">FORMULIR RESMI</p>
+                    <p className="font-mono text-[8px] text-slate-500">Doc No: F.HC.SPL-01</p>
+                    <Badge className="border-0 bg-amber-100 text-amber-900 font-bold text-[8px] mt-0.5">{(doc?.status || 'DRAFT').toUpperCase()}</Badge>
+                  </div>
+                </div>
+                <div className="text-center my-2">
+                  <h1 className="font-black uppercase tracking-wider text-slate-900 underline decoration-slate-900 decoration-1 underline-offset-2 text-[11px]">SURAT PERINTAH KERJA LEMBUR (SPL)</h1>
+                  <p className="font-mono text-[9px] font-bold text-slate-600 mt-0.5">Nomor: {doc?.splNumber || 'SPL-DRAFT'}</p>
+                </div>
+                <div className="my-3 space-y-1.5">
+                  <p className="font-bold text-[10px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">I. Informasi Pengajuan &amp; Jadwal</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+                    <div className="flex"><span className="w-28 text-slate-500 shrink-0 font-medium">Judul Lembur</span><span className="font-semibold text-slate-900">: {title || doc?.title || '-'}</span></div>
+                    <div className="flex"><span className="w-28 text-slate-500 shrink-0 font-medium">Tanggal Kerja</span><span className="font-semibold text-slate-900">: {workDate || '-'}</span></div>
+                    <div className="flex"><span className="w-28 text-slate-500 shrink-0 font-medium">Pemohon</span><span className="font-semibold text-slate-900">: {employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || 'Pemohon'}</span></div>
+                    <div className="flex"><span className="w-28 text-slate-500 shrink-0 font-medium">Departemen</span><span className="font-semibold text-slate-900">: {requesterDepartment || '-'}</span></div>
+                    <div className="flex col-span-2"><span className="w-28 text-slate-500 shrink-0 font-medium">Waktu Pelaksanaan</span><span className="font-semibold text-slate-900">: {plannedStartDate} {plannedStartTime} s/d {plannedEndDate} {plannedEndTime}</span></div>
+                  </div>
+                </div>
+                <div className="my-3 space-y-1.5">
+                  <p className="font-bold text-[10px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">II. Daftar Peserta Lembur ({workers.filter(w => Boolean(w.employeeId)).length} Orang)</p>
+                  <table className="w-full text-left border-collapse border border-slate-300 text-[9px]">
+                    <thead><tr className="bg-slate-100 font-bold"><th className="border border-slate-300 px-2 py-1 text-center w-6">No</th><th className="border border-slate-300 px-2 py-1">Nama Karyawan</th><th className="border border-slate-300 px-2 py-1 text-center w-12">Shift</th><th className="border border-slate-300 px-2 py-1 text-center w-12">Roster</th></tr></thead>
+                    <tbody>{workers.filter(w => Boolean(w.employeeId)).map((w, idx) => { const emp = employees.find((e) => String(e.id) === w.employeeId); return (<tr key={idx} className="odd:bg-white even:bg-slate-50/50"><td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td><td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">{emp?.name || w.employeeId}</td><td className="border border-slate-300 px-2 py-1 text-center font-mono">{w.shiftCode}</td><td className="border border-slate-300 px-2 py-1 text-center font-mono">{w.rosterType}</td></tr>);})}</tbody>
+                  </table>
+                </div>
+                <div className="my-3 space-y-1.5">
+                  <p className="font-bold text-[10px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">III. Uraian Tugas &amp; Target Pekerjaan</p>
+                  <table className="w-full text-left border-collapse border border-slate-300 text-[9px]">
+                    <thead><tr className="bg-slate-100 font-bold"><th className="border border-slate-300 px-2 py-1 text-center w-6">No</th><th className="border border-slate-300 px-2 py-1">Uraian Tugas / Pekerjaan</th><th className="border border-slate-300 px-2 py-1 text-center w-16">Unit / Alat</th><th className="border border-slate-300 px-2 py-1 text-center w-14">Durasi</th><th className="border border-slate-300 px-2 py-1 text-center w-12">Poin</th></tr></thead>
+                    <tbody>{lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (<tr key={idx} className="odd:bg-white even:bg-slate-50/50"><td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td><td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">{item.lineLabel}</td><td className="border border-slate-300 px-2 py-1 text-center font-mono">{item.targetUnit || '-'}</td><td className="border border-slate-300 px-2 py-1 text-center font-mono">{item.estimatedMinutes} mnt</td><td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{item.plannedPoints} pts</td></tr>))}</tbody>
+                    <tfoot><tr className="bg-slate-100 font-bold text-[9px]"><td colSpan={3} className="border border-slate-300 px-2 py-1 text-right">TOTAL ESTIMASI:</td><td className="border border-slate-300 px-2 py-1 text-center font-mono">{totalEstimatedMinutes} Menit</td><td className="border border-slate-300 px-2 py-1 text-center font-mono text-amber-800">{lineItems.reduce((s, it) => s + (Number(it.plannedPoints) || 0), 0)} pts</td></tr></tfoot>
+                  </table>
+                </div>
+                <div className="mt-4 space-y-1.5">
+                  <p className="font-bold text-[10px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-1">IV. Lembar Persetujuan &amp; Otorisasi</p>
+                  <div className="grid grid-cols-3 gap-2 text-center text-[9px] mt-2 border border-slate-300 rounded p-2">
+                    <div className="border-r border-slate-200 pr-2 flex flex-col justify-between min-h-[80px]">
+                      <p className="font-bold text-slate-700">Dibuat / Pemohon</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        <span className="text-[8px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">DIGITALLY SUBMITTED</span>
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">{employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || 'Pemohon'}</p>
+                        <p className="text-[8px] text-slate-500">Staff / Pemohon</p>
+                      </div>
+                    </div>
+                    <div className="border-r border-slate-200 pr-2 flex flex-col justify-between min-h-[80px]">
+                      <p className="font-bold text-slate-700">Leader / Supervisor</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        {existingLeaderApproval?.signatureDataUrl ? (
+                          <img src={existingLeaderApproval.signatureDataUrl} alt="TTD" className="h-8 max-w-[90px] object-contain" />
+                        ) : existingLeaderApproval?.status === 'approved' ? (
+                          <span className="text-[8px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                        ) : existingLeaderApproval?.status === 'reverted' ? (
+                          <span className="text-[8px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                        ) : (
+                          <span className="text-[8px] text-slate-500 font-medium italic">Pending Approval</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">{leaderName || existingLeaderApproval?.approverName || '-'}</p>
+                        <p className="text-[8px] text-slate-500">Leader (Tahap 1)</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between min-h-[80px]">
+                      <p className="font-bold text-slate-700">Section Head / Superior</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        {existingSuperiorApproval?.signatureDataUrl ? (
+                          <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD" className="h-8 max-w-[90px] object-contain" />
+                        ) : existingSuperiorApproval?.status === 'approved' ? (
+                          <span className="text-[8px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                        ) : existingSuperiorApproval?.status === 'reverted' ? (
+                          <span className="text-[8px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                        ) : (
+                          <span className="text-[8px] text-slate-500 font-medium italic">Pending Approval</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">{superiorName || existingSuperiorApproval?.approverName || '-'}</p>
+                        <p className="text-[8px] text-slate-500">Section Head (Tahap 2)</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : parentSplId ? (
+        <div className="flex items-start gap-2.5 rounded-2xl border border-blue-300 bg-blue-50 p-3.5 text-blue-900 text-xs shadow-xs">
+          <RotateCcw className="size-4 text-blue-700 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">Mode Revisi / Extension SPL #{parentSplId}</p>
-            <p className="text-[11px] text-amber-800 mt-0.5">
-              Anda sedang membuat atau memperbarui pengajuan SPL berdasarkan rujukan SPL #{parentSplId}.
+            <p className="font-bold">Mode Extension SPL #{parentSplId}</p>
+            <p className="text-[11px] text-blue-800 mt-0.5">
+              Anda sedang membuat perpanjangan pengajuan SPL berdasarkan rujukan SPL #{parentSplId}.
             </p>
           </div>
         </div>
@@ -406,8 +657,8 @@ export function MobileOvertimeRequestForm({
             <p className="text-xs font-bold text-slate-800">1. Header & Jadwal Lembur</p>
           </div>
           <Badge variant="outline" className="text-[10px] font-semibold text-teal-700 bg-teal-50 border-teal-200">
-            Official Document
-          </Badge>
+              Official Document
+            </Badge>
         </div>
 
         <div className="space-y-3 text-xs">
@@ -767,9 +1018,290 @@ export function MobileOvertimeRequestForm({
           className="w-full h-12 rounded-xl bg-[#003461] hover:bg-[#00274a] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md"
         >
           <Check className="size-4" />
-          {isSubmitting ? "Menyimpan & Mengajukan..." : "AJUKAN SURAT PERINTAH LEMBUR (SPL)"}
+          {isSubmitting
+            ? "Menyimpan & Mengajukan..."
+            : editSplId
+              ? "SIMPAN & AJUKAN ULANG REVISI SPL"
+              : parentSplId
+                ? "AJUKAN EXTENSION SPL"
+                : "AJUKAN SURAT PERINTAH LEMBUR (SPL)"}
         </Button>
       </div>
+
+      {/* ── Zoomable Formal PDF Preview Modal Dialog ── */}
+      <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
+        <DialogContent className="max-w-2xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-slate-900/95 border-slate-700 text-white shadow-2xl">
+          <DialogHeader className="p-3 bg-slate-800 border-b border-slate-700 flex flex-row items-center justify-between space-y-0">
+            <DialogTitle className="text-xs font-bold text-white flex items-center gap-1.5">
+              <FileText className="size-4 text-amber-400" />
+              Preview Dokumen Resmi SPL {doc?.splNumber ? `(#${doc.splNumber})` : ''}
+            </DialogTitle>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setZoomScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))))}
+                className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                title="Zoom Out"
+              >
+                <ZoomOut className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setZoomScale(1)}
+                className="h-7 px-2 text-[10px] font-bold bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                title="Reset Zoom"
+              >
+                {Math.round(zoomScale * 100)}%
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setZoomScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))))}
+                className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                title="Zoom In"
+              >
+                <ZoomIn className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={isDownloadingPdf}
+                onClick={handleDownloadPdf}
+                className="h-7 px-2.5 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white ml-1 flex items-center gap-1"
+              >
+                <Download className="size-3" />
+                {isDownloadingPdf ? 'Unduh...' : 'Unduh PDF'}
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto p-4 bg-slate-950 flex justify-center items-start">
+            <div
+              ref={pdfPreviewRef}
+              style={{
+                transform: `scale(${zoomScale})`,
+                transformOrigin: 'top center',
+                transition: 'transform 0.15s ease-out',
+              }}
+              className="w-full max-w-[620px] bg-white text-slate-900 shadow-2xl p-6 sm:p-8 rounded-sm text-xs leading-normal border border-slate-200"
+            >
+              {/* Company Header */}
+              <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-10 rounded-lg bg-[#003461] text-white flex items-center justify-center font-black text-base tracking-wider">
+                    HERO
+                  </div>
+                  <div>
+                    <p className="font-black text-sm tracking-tight text-slate-900 uppercase">PT CHITRAPARATAMA</p>
+                    <p className="text-[10px] text-slate-500 font-medium">Heavy Equipment &amp; Resource Operations</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono font-bold text-xs text-[#003461]">FORMULIR RESMI</p>
+                  <p className="font-mono text-[10px] text-slate-500">Doc No: F.HC.SPL-01</p>
+                  <Badge className="border-0 bg-amber-100 text-amber-900 font-bold text-[9px] mt-0.5">
+                    {(doc?.status || 'DRAFT').toUpperCase()}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div className="text-center my-3">
+                <h1 className="text-sm font-black uppercase tracking-wider text-slate-900 underline decoration-slate-900 decoration-1 underline-offset-4">
+                  SURAT PERINTAH KERJA LEMBUR (SPL)
+                </h1>
+                <p className="font-mono text-xs font-bold text-slate-600 mt-1">
+                  Nomor: {doc?.splNumber || 'SPL-DRAFT-REVISI'}
+                </p>
+              </div>
+
+              {/* Reversion Notice in PDF if any */}
+              {revertedStep?.remarks ? (
+                <div className="my-3 p-2.5 rounded bg-amber-50 border border-amber-300 text-amber-900 text-[10px]">
+                  <p className="font-bold uppercase tracking-wider text-amber-800">
+                    Catatan Revisi Approver ({revertedStep.approverName || 'Approver'}):
+                  </p>
+                  <p className="italic mt-0.5">&ldquo;{revertedStep.remarks}&rdquo;</p>
+                </div>
+              ) : null}
+
+              {/* Section 1: Overview Table */}
+              <div className="my-3 space-y-1.5">
+                <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                  I. Informasi Pengajuan &amp; Jadwal
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                  <div className="flex">
+                    <span className="w-28 text-slate-500 shrink-0 font-medium">Judul Lembur</span>
+                    <span className="font-semibold text-slate-900">: {title || doc?.title || '-'}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-28 text-slate-500 shrink-0 font-medium">Tanggal Kerja</span>
+                    <span className="font-semibold text-slate-900">: {workDate || '-'}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-28 text-slate-500 shrink-0 font-medium">Pemohon</span>
+                    <span className="font-semibold text-slate-900">: {employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || 'Pemohon'}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-28 text-slate-500 shrink-0 font-medium">Departemen</span>
+                    <span className="font-semibold text-slate-900">: {requesterDepartment || '-'}</span>
+                  </div>
+                  <div className="flex col-span-2">
+                    <span className="w-28 text-slate-500 shrink-0 font-medium">Waktu Pelaksanaan</span>
+                    <span className="font-semibold text-slate-900">: {plannedStartDate} {plannedStartTime} s/d {plannedEndDate} {plannedEndTime}</span>
+                  </div>
+                  {requestNotes ? (
+                    <div className="flex col-span-2">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Alasan / Instruksi</span>
+                      <span className="font-medium text-slate-800">: {requestNotes}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Section 2: Participants Table */}
+              <div className="my-3 space-y-1.5">
+                <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                  II. Daftar Peserta Lembur ({workers.filter(w => Boolean(w.employeeId)).length} Orang)
+                </p>
+                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold text-slate-700">
+                      <th className="border border-slate-300 px-2 py-1 text-center w-8">No</th>
+                      <th className="border border-slate-300 px-2 py-1">Nama Karyawan</th>
+                      <th className="border border-slate-300 px-2 py-1 text-center w-14">Shift</th>
+                      <th className="border border-slate-300 px-2 py-1 text-center w-16">Roster</th>
+                      <th className="border border-slate-300 px-2 py-1">Kategori</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workers.filter(w => Boolean(w.employeeId)).map((w, idx) => {
+                      const emp = employees.find((e) => String(e.id) === w.employeeId);
+                      return (
+                        <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
+                          <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
+                          <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">
+                            {emp?.name || w.employeeId} {emp?.position ? `(${emp.position})` : ''}
+                          </td>
+                          <td className="border border-slate-300 px-2 py-1 text-center font-mono">{w.shiftCode}</td>
+                          <td className="border border-slate-300 px-2 py-1 text-center font-mono">{w.rosterType}</td>
+                          <td className="border border-slate-300 px-2 py-1 text-slate-600 capitalize">
+                            {w.category.replace(/_/g, ' ')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Section 3: Tasks Table */}
+              <div className="my-3 space-y-1.5">
+                <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                  III. Uraian Tugas &amp; Target Pekerjaan
+                </p>
+                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold text-slate-700">
+                      <th className="border border-slate-300 px-2 py-1 text-center w-8">No</th>
+                      <th className="border border-slate-300 px-2 py-1">Uraian Tugas / Pekerjaan</th>
+                      <th className="border border-slate-300 px-2 py-1 text-center w-20">Unit / Alat</th>
+                      <th className="border border-slate-300 px-2 py-1 text-center w-16">Durasi</th>
+                      <th className="border border-slate-300 px-2 py-1 text-center w-14">Poin</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (
+                      <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
+                        <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
+                        <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">{item.lineLabel}</td>
+                        <td className="border border-slate-300 px-2 py-1 text-center font-mono">{item.targetUnit || '-'}</td>
+                        <td className="border border-slate-300 px-2 py-1 text-center font-mono">{item.estimatedMinutes} mnt</td>
+                        <td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{item.plannedPoints} pts</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-bold text-slate-800">
+                      <td colSpan={3} className="border border-slate-300 px-2 py-1 text-right">TOTAL ESTIMASI:</td>
+                      <td className="border border-slate-300 px-2 py-1 text-center font-mono">{totalEstimatedMinutes} Menit</td>
+                      <td className="border border-slate-300 px-2 py-1 text-center font-mono text-amber-800">{lineItems.reduce((s, it) => s + (Number(it.plannedPoints) || 0), 0)} pts</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Section 4: Signatures Table */}
+              <div className="mt-5 space-y-1.5">
+                <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                  IV. Lembar Persetujuan &amp; Otorisasi
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center text-[10px] mt-2 border border-slate-300 rounded p-2">
+                  {/* Requester */}
+                  <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
+                    <p className="font-bold text-slate-700">Dibuat / Pemohon</p>
+                    <div className="my-1 py-1 flex items-center justify-center">
+                      <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        DIGITALLY SUBMITTED
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 underline">{employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || 'Pemohon'}</p>
+                      <p className="text-[9px] text-slate-500">Staff / Pemohon</p>
+                    </div>
+                  </div>
+
+                  {/* Step 1 Leader */}
+                  <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
+                    <p className="font-bold text-slate-700">Leader / Supervisor</p>
+                    <div className="my-1 py-1 flex items-center justify-center">
+                      {existingLeaderApproval?.signatureDataUrl ? (
+                        <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="h-8 max-w-[90px] object-contain" />
+                      ) : existingLeaderApproval?.status === 'approved' ? (
+                        <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                      ) : existingLeaderApproval?.status === 'reverted' ? (
+                        <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                      ) : (
+                        <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 underline">{leaderName || existingLeaderApproval?.approverName || '-'}</p>
+                      <p className="text-[9px] text-slate-500">Leader (Tahap 1)</p>
+                    </div>
+                  </div>
+
+                  {/* Step 2 Superior */}
+                  <div className="flex flex-col justify-between min-h-[90px]">
+                    <p className="font-bold text-slate-700">Section Head / Superior</p>
+                    <div className="my-1 py-1 flex items-center justify-center">
+                      {existingSuperiorApproval?.signatureDataUrl ? (
+                        <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="h-8 max-w-[90px] object-contain" />
+                      ) : existingSuperiorApproval?.status === 'approved' ? (
+                        <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                      ) : existingSuperiorApproval?.status === 'reverted' ? (
+                        <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                      ) : (
+                        <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 underline">{superiorName || existingSuperiorApproval?.approverName || '-'}</p>
+                      <p className="text-[9px] text-slate-500">Section Head (Tahap 2)</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

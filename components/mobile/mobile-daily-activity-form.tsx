@@ -1,24 +1,35 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Camera,
   Check,
   ChevronDown,
+  Download,
   FileSignature,
+  FileText,
   ImagePlus,
   ListFilter,
   Navigation,
   Plus,
+  RotateCcw,
   Save,
   Search,
   SendHorizontal,
   Trash2,
   UserRound,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
+import {
+  createDailyActivitySessionAction,
+  resubmitDailyActivityApprovalFormAction,
+} from '@/app/dashboard/activity-hub/actions'
+import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
 
 import { Badge } from '@/components/ui/badge'
@@ -218,6 +229,7 @@ type MobileDailyActivityFormProps = {
     }>
   } | null
   site: {
+    id?: number | null
     name?: string | null
     customerName?: string | null
     geoLatitude?: string | null
@@ -240,6 +252,8 @@ type MobileDailyActivityFormProps = {
     department?: string | null
     section?: string | null
   }>
+  revisionSessionId?: number
+  initialSessionData?: any
 }
 
 type GeoState = {
@@ -430,32 +444,97 @@ export function MobileDailyActivityForm({
   site,
   teamMembers = [],
   allEmployees = [],
+  revisionSessionId,
+  initialSessionData,
 }: MobileDailyActivityFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queuedDraftKey = searchParams.get('draft')?.trim() || ''
 
-  const [workDate, setWorkDate] = useState<string>(() => new Date().toISOString().slice(0, 10))
-  const [shiftCode, setShiftCode] = useState<string>(routeChecklist?.shiftCode || 'ALL')
+  const [workDate, setWorkDate] = useState<string>(() => {
+    if (initialSessionData?.workDate) {
+      const d = new Date(initialSessionData.workDate)
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+    }
+    return new Date().toISOString().slice(0, 10)
+  })
+  const [shiftCode, setShiftCode] = useState<string>(
+    initialSessionData?.shiftCode || routeChecklist?.shiftCode || 'ALL'
+  )
   const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>('self_input')
   const [assignmentId, setAssignmentId] = useState('')
-  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([])
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
+    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+      const ids: string[] = []
+      for (const item of initialSessionData.sessionItems) {
+        const idStr = String(item.libraryActivityId || item.id || '')
+        if (idStr) {
+          ids.push(idStr)
+        }
+      }
+      return ids
+    }
+    return []
+  })
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [librarySearch, setLibrarySearch] = useState('')
-  const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>({})
-  const [customActivityName, setCustomActivityName] = useState('')
+  const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>(() => {
+    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+      const entries: Record<string, SelfInputEntryState> = {}
+      for (const item of initialSessionData.sessionItems) {
+        const idStr = String(item.libraryActivityId || item.id || '')
+        if (idStr) {
+          const startVal = item.startedAt
+            ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
+              ? item.startedAt.slice(0, 5)
+              : toDateTimeLocalValue(item.startedAt)
+            : defaultStartTime
+          const endVal = item.endedAt
+            ? typeof item.endedAt === 'string' && item.endedAt.includes(':') && !item.endedAt.includes('T')
+              ? item.endedAt.slice(0, 5)
+              : toDateTimeLocalValue(item.endedAt)
+            : defaultEndTime
+
+          entries[idStr] = {
+            equipmentNo: item.unitNumber || '',
+            startTime: startVal,
+            endTime: endVal,
+            materialUsed: item.materialUsed || '',
+            tireCount: 1,
+            notes: item.remark || '',
+            photoFiles: [],
+          }
+        }
+      }
+      return entries
+    }
+    return {}
+  })
+
+  const initialCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
+  const [customActivityName, setCustomActivityName] = useState(initialCustomItem?.label || '')
   const [customActivityDescription, setCustomActivityDescription] = useState('')
-  const [equipmentNo, setEquipmentNo] = useState('')
-  const [startTime, setStartTime] = useState(defaultStartTime)
-  const [endTime, setEndTime] = useState(defaultEndTime)
-  const [materialUsed, setMaterialUsed] = useState('')
-  const [notes, setNotes] = useState('')
+  const [equipmentNo, setEquipmentNo] = useState(initialCustomItem?.unitNumber || '')
+  const [startTime, setStartTime] = useState(initialCustomItem?.startedAt ? toDateTimeLocalValue(initialCustomItem.startedAt) : defaultStartTime)
+  const [endTime, setEndTime] = useState(initialCustomItem?.endedAt ? toDateTimeLocalValue(initialCustomItem.endedAt) : defaultEndTime)
+  const [materialUsed, setMaterialUsed] = useState(initialCustomItem?.materialUsed || '')
+  const [notes, setNotes] = useState(initialSessionData?.summaryRemark || initialSessionData?.notes || '')
   const [manualLocation, setManualLocation] = useState('')
   const initialCustomerName =
     site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : ''
   const [customerName, setCustomerName] = useState(initialCustomerName)
-  const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(hierarchy?.leader?.id ? String(hierarchy.leader.id) : '')
-  const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(hierarchy?.superior?.id ? String(hierarchy.superior.id) : '')
+
+  const existingLeaderApproval = initialSessionData?.approvals?.find((a: any) => a.stepOrder === 1)
+  const existingSuperiorApproval = initialSessionData?.approvals?.find((a: any) => a.stepOrder === 2)
+
+  const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
+    if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
+    return hierarchy?.leader?.id ? String(hierarchy.leader.id) : ''
+  })
+  const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(() => {
+    if (existingSuperiorApproval?.approverEmployeeId) return String(existingSuperiorApproval.approverEmployeeId)
+    return hierarchy?.superior?.id ? String(hierarchy.superior.id) : ''
+  })
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoName, setPhotoName] = useState('')
@@ -470,6 +549,27 @@ export function MobileDailyActivityForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({})
 
+  const pdfPreviewRef = useRef<HTMLDivElement>(null)
+  const [isPdfOpen, setIsPdfOpen] = useState(false)
+  const [zoomScale, setZoomScale] = useState(1)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+
+  async function handleDownloadPdf() {
+    if (!pdfPreviewRef.current) return
+    setIsDownloadingPdf(true)
+    try {
+      await downloadElementAsPdf(
+        pdfPreviewRef.current,
+        `${initialSessionData?.sessionCode || 'DailyActivity'}-Document.pdf`
+      )
+      toast.success('PDF Daily Activity berhasil diunduh.')
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengunduh PDF.')
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
   const [isTeamLog, setIsTeamLog] = useState(false)
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([])
   const [memberSearch, setMemberSearch] = useState('')
@@ -477,11 +577,48 @@ export function MobileDailyActivityForm({
 
   const filteredTeamMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase()
-    if (!q) return teamMembers
-    return teamMembers.filter((m) => m.name.toLowerCase().includes(q))
-  }, [teamMembers, memberSearch])
+    const pool = (teamMembers || []).filter((m) => m.id !== employeeId)
+    if (!q) return pool
+    return pool.filter((m) => m.name.toLowerCase().includes(q))
+  }, [teamMembers, memberSearch, employeeId])
 
-  const safeAvailableLibrary = useMemo(() => availableLibrary || [], [availableLibrary])
+  const safeAvailableLibrary = useMemo(() => {
+    const list = [...(availableLibrary || [])]
+    const existingIds = new Set(list.map((item) => `${item.id}`))
+
+    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+      for (const item of initialSessionData.sessionItems) {
+        const idStr = String(item.libraryActivityId || item.id || '')
+        if (idStr && !existingIds.has(idStr)) {
+          const rawLabel = String(item.label || item.snapshotLabel || 'Aktivitas')
+          const splitLabel = rawLabel.includes(' - ')
+            ? rawLabel.split(' - ')
+            : [item.group || 'ACT', rawLabel]
+          const code = splitLabel[0]?.trim() || item.group || 'ACT'
+          const name = splitLabel.slice(1).join(' - ').trim() || rawLabel
+
+          list.push({
+            id: Number(item.libraryActivityId || item.id) || (idStr as any),
+            activityCode: code,
+            activityName: name,
+            basePoints: Number(item.points || item.actualPoints) || 5,
+            requiresPhoto: Boolean(item.photos?.length || item.photoUrl),
+            requiresEquipmentNo: Boolean(item.unitNumber),
+            requiresDuration: true,
+            requiresMaterialUsed: Boolean(item.materialUsed),
+            requiresLocationGps: false,
+            requiresTireCount: false,
+            maxDailyCount: 99,
+            maxPointsPerDay: 999,
+            departmentId: null,
+            sectionId: null,
+          })
+          existingIds.add(idStr)
+        }
+      }
+    }
+    return list
+  }, [availableLibrary, initialSessionData])
 
   const availableLibraryMap = useMemo(
     () => new Map(safeAvailableLibrary.map((item) => [`${item.id}`, item])),
@@ -1065,13 +1202,25 @@ export function MobileDailyActivityForm({
         notes: entry.notes,
       }
     }),
-    routeTemplateId: checklistContext?.routeTemplateId ? `${checklistContext.routeTemplateId}` : '',
-    overtimeCommandLetterId: checklistContext?.overtimeCommandLetterId
-      ? `${checklistContext.overtimeCommandLetterId}`
-      : '',
-    routeShiftCode: checklistContext?.shiftCode ?? '',
+    routeTemplateId:
+      sourceMode === 'self_input' && !hasCheckedChecklist
+        ? ''
+        : checklistContext?.routeTemplateId
+          ? `${checklistContext.routeTemplateId}`
+          : '',
+    overtimeCommandLetterId:
+      sourceMode === 'self_input' && !hasCheckedChecklist
+        ? ''
+        : checklistContext?.overtimeCommandLetterId
+          ? `${checklistContext.overtimeCommandLetterId}`
+          : '',
+    routeShiftCode:
+      sourceMode === 'self_input' && !hasCheckedChecklist
+        ? ''
+        : (checklistContext?.shiftCode ?? ''),
     routeSummaryRemark: '',
-    routeSessionItems,
+    routeSessionItems:
+      sourceMode === 'self_input' && !hasCheckedChecklist ? [] : routeSessionItems,
     customActivityName,
     customActivityDescription,
     equipmentNo,
@@ -1102,6 +1251,7 @@ export function MobileDailyActivityForm({
 
   function validatePayload() {
     if (
+      sourceMode !== 'self_input' &&
       checklistContext?.overtimeCommandLetterId &&
       startTime.slice(0, 10) !== defaultStartTime.slice(0, 10)
     ) {
@@ -1371,11 +1521,11 @@ export function MobileDailyActivityForm({
             materialUsed: entry.materialUsed,
             tireCount: entry.tireCount ?? 1,
             notes: entry.notes,
-            routeTemplateId: index === 0 ? draftPayload.routeTemplateId : '',
-            overtimeCommandLetterId: index === 0 ? draftPayload.overtimeCommandLetterId : '',
-            routeShiftCode: index === 0 ? draftPayload.routeShiftCode : '',
+            routeTemplateId: '',
+            overtimeCommandLetterId: '',
+            routeShiftCode: '',
             routeSummaryRemark: '',
-            routeSessionItems: index === 0 ? routeSessionItems : [],
+            routeSessionItems: [],
             photo: entryEvidence.payloads[0] ?? null,
             photos: entryEvidence.payloads,
             photoUrls: entryEvidence.urls,
@@ -1397,59 +1547,152 @@ export function MobileDailyActivityForm({
 
     setIsSubmitting(true)
     try {
-      if (sourceMode === 'self_input') {
-        const payloads = await buildSelfInputPayloads()
+      let itemsToSubmit: any[] = []
 
-        for (const item of payloads) {
-          try {
-            await sendPayload(item.payload)
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Submit activity gagal.'
-            throw new Error(`Gagal kirim ${item.label}. ${message}`)
-          }
+      if (selectedLibraries.length > 0) {
+        itemsToSubmit = await Promise.all(
+          selectedLibraries.map(async (library, index) => {
+            const libraryId = `${library.id}`
+            const entry =
+              selfInputEntries[libraryId] ??
+              buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+            const entryEvidence = await prepareEvidence(
+              entry.photoFiles,
+              entry.photoFile,
+              entry.restoredPhotoPayload
+            )
+
+            return {
+              label: `${library.activityCode} - ${library.activityName}`,
+              group: library.activityCode || 'Technical',
+              libraryActivityId: library.id,
+              unitNumber: entry.equipmentNo || '',
+              startedAt: entry.startTime ? `${entry.startTime}:00` : undefined,
+              endedAt: entry.endTime ? `${entry.endTime}:00` : undefined,
+              points: library.basePoints || 5,
+              remark: entry.notes || '',
+              materialUsed: entry.materialUsed || '',
+              photoUrl: entryEvidence.urls[0] || null,
+              photos: entryEvidence.urls,
+            }
+          })
+        )
+      } else if (sourceMode === 'custom' && customActivityName) {
+        const customEvidence = await prepareEvidence(photoFiles, photoFile, restoredPhotoPayload)
+        itemsToSubmit = [
+          {
+            label: customActivityName.trim(),
+            group: 'Custom',
+            unitNumber: equipmentNo.trim(),
+            startedAt: startTime ? `${startTime}:00` : undefined,
+            endedAt: endTime ? `${endTime}:00` : undefined,
+            points: 5,
+            remark: notes.trim(),
+            materialUsed: materialUsed.trim(),
+            photoUrl: customEvidence.urls[0] || null,
+            photos: customEvidence.urls,
+          },
+        ]
+      }
+
+      if (checklistContext && routeSessionItems.length > 0) {
+        const checklistItems = await Promise.all(
+          routeSessionItems.map(async (item) => {
+            const state = routeItemState[item.routeItemId!]
+            const evidence = await prepareEvidence(
+              state?.photoFiles,
+              state?.photoFile,
+              state?.restoredPhotoPayload
+            )
+            return {
+              routeItemId: item.routeItemId,
+              overtimeCommandLetterItemId: item.overtimeCommandLetterItemId,
+              label: item.snapshotLabel || 'Checklist Item',
+              group: item.snapshotGroupName || 'Checklist',
+              unitNumber: item.unitNumber || '',
+              startedAt: item.startedAt ? `${item.startedAt}:00` : undefined,
+              endedAt: item.endedAt ? `${item.endedAt}:00` : undefined,
+              points: item.actualPoints || 5,
+              remark: item.remark || '',
+              materialUsed: item.materialUsed || '',
+              photoUrl: evidence.urls[0] || null,
+              photos: evidence.urls,
+            }
+          })
+        )
+        itemsToSubmit = [...itemsToSubmit, ...checklistItems]
+      }
+
+      if (itemsToSubmit.length === 0) {
+        if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+          itemsToSubmit = initialSessionData.sessionItems.map((it: any) => ({
+            id: it.id,
+            label: it.label,
+            group: it.group,
+            libraryActivityId: it.libraryActivityId,
+            unitNumber: it.unitNumber,
+            startedAt: it.startedAt ? `${it.startedAt}:00` : undefined,
+            endedAt: it.endedAt ? `${it.endedAt}:00` : undefined,
+            points: it.points,
+            remark: it.remark,
+            materialUsed: it.materialUsed,
+            photoUrl: it.photoUrl,
+            photos: it.photos,
+          }))
+        } else {
+          throw new Error('Mohon pilih minimal 1 aktivitas.')
+        }
+      }
+
+      const selectedLeader = leaderOptions.find((l) => l.value === leaderEmployeeId)
+      const selectedSuperior = superiorOptions.find((s) => s.value === superiorEmployeeId)
+
+      if (revisionSessionId) {
+        const res = await resubmitDailyActivityApprovalFormAction({
+          sessionId: revisionSessionId,
+          employeeId: employeeId,
+          workDate,
+          shiftCode,
+          notes: notes.trim(),
+          summaryRemark: notes.trim(),
+          items: itemsToSubmit,
+          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
+          leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
+          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
+          superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+        })
+
+        if (!res.success) {
+          throw new Error(res.error || 'Gagal menyimpan revisi.')
         }
 
         setSubmitState({
           kind: 'success',
-          message: `${payloads.length} activity library berhasil dikirim.`,
+          message: 'Revisi Daily Activity berhasil disimpan dan diajukan ulang.',
         })
       } else {
-        const sharedEvidence = await prepareEvidence(photoFiles, photoFile, restoredPhotoPayload)
-        const payloadToSubmit = {
-          ...draftPayload,
-          photo: sharedEvidence.payloads[0] ?? null,
-          photos: sharedEvidence.payloads,
-          photoUrls: sharedEvidence.urls,
-          libraryActivityId: '',
-        }
+        const res = await createDailyActivitySessionAction({
+          employeeId,
+          workDate,
+          shiftCode,
+          siteId: site?.id,
+          notes: notes.trim(),
+          summaryRemark: notes.trim(),
+          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
+          leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
+          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
+          superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+          teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
+          items: itemsToSubmit,
+        })
 
-        if (checklistContext && payloadToSubmit.routeSessionItems) {
-          const checklistEvidence = await Promise.all(
-            payloadToSubmit.routeSessionItems.map((item) => {
-              const state = routeItemState[item.routeItemId!]
-              return prepareEvidence(
-                state?.photoFiles,
-                state?.photoFile,
-                state?.restoredPhotoPayload
-              )
-            })
-          )
-          payloadToSubmit.photos = [
-            ...sharedEvidence.payloads,
-            ...checklistEvidence.flatMap((item) => item.payloads),
-          ]
-          payloadToSubmit.photoUrls = [
-            ...sharedEvidence.urls,
-            ...checklistEvidence.flatMap((item) => item.urls),
-          ]
-          payloadToSubmit.photo = payloadToSubmit.photos[0] ?? null
+        if (!res.success) {
+          throw new Error(res.error || 'Gagal membuat dokumen Daily Activity.')
         }
-
-        await sendPayload(payloadToSubmit)
 
         setSubmitState({
           kind: 'success',
-          message: 'Activity berhasil dikirim ke Daily Activity System.',
+          message: `${itemsToSubmit.length} aktivitas berhasil diajukan dalam 1 dokumen DAR.`,
         })
       }
 
@@ -1616,15 +1859,15 @@ export function MobileDailyActivityForm({
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <div>
               <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                Formulir Aktivitas
+                {revisionSessionId ? 'Revisi Formulir Aktivitas' : 'Formulir Aktivitas'}
               </p>
               <h2 className="text-base font-extrabold text-[#003461]">
                 Details & Employee Profile
               </h2>
             </div>
-            <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] text-[10px] font-bold">
-              Draft Laporan
-            </Badge>
+            <Badge className={revisionSessionId ? "border-0 bg-amber-100 text-amber-800 text-[10px] font-bold" : "border-0 bg-[#eaf4fb] text-[#003f78] text-[10px] font-bold"}>
+                {revisionSessionId ? "Mode Revisi" : "Draft Laporan"}
+              </Badge>
           </div>
 
           {/* Tanggal & Shift Grid */}
@@ -2452,7 +2695,7 @@ export function MobileDailyActivityForm({
                   </span>
                   <SpeechInputButton
                     onFinalTranscript={(text) =>
-                      setNotes((prev) => (prev ? prev + ' ' + text : text))
+                      setNotes((prev: string) => (prev ? prev + ' ' + text : text))
                     }
                     className="size-7"
                   />
@@ -2553,11 +2796,17 @@ export function MobileDailyActivityForm({
           </Button>
           <Button
             type="submit"
-            className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
+            className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] font-bold text-xs"
             disabled={isSubmitting}
           >
             <SendHorizontal className="size-4" />
-            {isSubmitting ? 'Submitting...' : 'Submit Activity'}
+            {isSubmitting
+              ? revisionSessionId
+                ? 'Menyimpan Revisi...'
+                : 'Submitting...'
+              : revisionSessionId
+                ? 'Simpan & Ajukan Ulang Revisi'
+                : 'Submit Activity'}
           </Button>
         </div>
         <input
@@ -2605,6 +2854,282 @@ export function MobileDailyActivityForm({
             }
           }}
         />
+
+        {/* ── Zoomable Formal PDF Preview Modal Dialog ── */}
+        <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
+          <DialogContent className="max-w-2xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-slate-900/95 border-slate-700 text-white shadow-2xl">
+            <DialogHeader className="p-3 bg-slate-800 border-b border-slate-700 flex flex-row items-center justify-between space-y-0">
+              <DialogTitle className="text-xs font-bold text-white flex items-center gap-1.5">
+                <FileText className="size-4 text-amber-400" />
+                Preview Dokumen Daily Activity {initialSessionData?.sessionCode ? `(#${initialSessionData.sessionCode})` : ''}
+              </DialogTitle>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setZoomScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setZoomScale(1)}
+                  className="h-7 px-2 text-[10px] font-bold bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  title="Reset Zoom"
+                >
+                  {Math.round(zoomScale * 100)}%
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setZoomScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isDownloadingPdf}
+                  onClick={handleDownloadPdf}
+                  className="h-7 px-2.5 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white ml-1 flex items-center gap-1"
+                >
+                  <Download className="size-3" />
+                  {isDownloadingPdf ? 'Unduh...' : 'Unduh PDF'}
+                </Button>
+              </div>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-auto p-4 bg-slate-950 flex justify-center items-start">
+              <div
+                ref={pdfPreviewRef}
+                style={{
+                  transform: `scale(${zoomScale})`,
+                  transformOrigin: 'top center',
+                  transition: 'transform 0.15s ease-out',
+                }}
+                className="w-full max-w-[620px] bg-white text-slate-900 shadow-2xl p-6 sm:p-8 rounded-sm text-xs leading-normal border border-slate-200"
+              >
+                {/* Company Header */}
+                <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="size-10 rounded-lg bg-[#003461] text-white flex items-center justify-center font-black text-base tracking-wider">
+                      HERO
+                    </div>
+                    <div>
+                      <p className="font-black text-sm tracking-tight text-slate-900 uppercase">PT CHITRAPARATAMA</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Heavy Equipment &amp; Resource Operations</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-xs text-[#003461]">LAPORAN AKTIVITAS</p>
+                    <p className="font-mono text-[10px] text-slate-500">Doc No: F.OP.ACT-01</p>
+                    <Badge className="border-0 bg-amber-100 text-amber-900 font-bold text-[9px] mt-0.5">
+                      {(initialSessionData?.status || 'DRAFT').toUpperCase()}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div className="text-center my-3">
+                  <h1 className="text-sm font-black uppercase tracking-wider text-slate-900 underline decoration-slate-900 decoration-1 underline-offset-4">
+                    LAPORAN HARIAN AKTIVITAS TEKNISI
+                  </h1>
+                  <p className="font-mono text-xs font-bold text-slate-600 mt-1">
+                    Nomor Sesi: {initialSessionData?.sessionCode || 'ACT-DRAFT-REVISI'}
+                  </p>
+                </div>
+
+                {/* Reversion Notice in PDF if any */}
+                {initialSessionData?.approvals?.find((a: any) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision')?.remarks ? (
+                  <div className="my-3 p-2.5 rounded bg-amber-50 border border-amber-300 text-amber-900 text-[10px]">
+                    <p className="font-bold uppercase tracking-wider text-amber-800">
+                      Catatan Revisi Approver:
+                    </p>
+                    <p className="italic mt-0.5">
+                      &ldquo;{initialSessionData.approvals.find((a: any) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision')?.remarks}&rdquo;
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Section 1: Overview Table */}
+                <div className="my-3 space-y-1.5">
+                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                    I. Profil Teknisi &amp; Parameter Kerja
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Nama Teknisi</span>
+                      <span className="font-semibold text-slate-900">: {employee?.name || initialSessionData?.employee?.name || '-'}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Tanggal Kerja</span>
+                      <span className="font-semibold text-slate-900">: {workDate || '-'}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">SN / NIK</span>
+                      <span className="font-semibold text-slate-900">: {employee?.employeeSn || initialSessionData?.employee?.sn || '-'}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Shift</span>
+                      <span className="font-semibold text-slate-900">: {shiftCode || '-'}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Departemen</span>
+                      <span className="font-semibold text-slate-900">: {employee?.department || initialSessionData?.employee?.department || '-'}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="w-28 text-slate-500 shrink-0 font-medium">Lokasi Site</span>
+                      <span className="font-semibold text-slate-900">: {site?.name || initialSessionData?.site?.name || 'Site Operasional'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Activities Table */}
+                <div className="my-3 space-y-1.5">
+                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                    II. Rincian Aktivitas &amp; Capaian Poin
+                  </p>
+                  <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
+                    <thead>
+                      <tr className="bg-slate-100 font-bold text-slate-700">
+                        <th className="border border-slate-300 px-2 py-1 text-center w-8">No</th>
+                        <th className="border border-slate-300 px-2 py-1">Aktivitas / Uraian</th>
+                        <th className="border border-slate-300 px-2 py-1 text-center w-20">No. Unit</th>
+                        <th className="border border-slate-300 px-2 py-1 text-center w-24">Waktu</th>
+                        <th className="border border-slate-300 px-2 py-1 text-center w-14">Poin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedLibraries.length > 0 ? (
+                        selectedLibraries.map((lib, idx) => {
+                          const entry = selfInputEntries[`${lib.id}`]
+                          return (
+                            <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
+                              <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
+                              <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">
+                                {lib.activityCode} - {lib.activityName}
+                                {entry?.notes ? <p className="text-[9px] font-normal text-slate-500 italic mt-0.5">{entry.notes}</p> : null}
+                              </td>
+                              <td className="border border-slate-300 px-2 py-1 text-center font-mono">{entry?.equipmentNo || '-'}</td>
+                              <td className="border border-slate-300 px-2 py-1 text-center font-mono text-[9px]">
+                                {entry?.startTime || '-'} - {entry?.endTime || '-'}
+                              </td>
+                              <td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{lib.basePoints || 5} pts</td>
+                            </tr>
+                          )
+                        })
+                      ) : initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0 ? (
+                        initialSessionData.sessionItems.map((it: any, idx: number) => (
+                          <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
+                            <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
+                            <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">
+                              {it.label}
+                              {it.remark ? <p className="text-[9px] font-normal text-slate-500 italic mt-0.5">{it.remark}</p> : null}
+                            </td>
+                            <td className="border border-slate-300 px-2 py-1 text-center font-mono">{it.unitNumber || '-'}</td>
+                            <td className="border border-slate-300 px-2 py-1 text-center font-mono text-[9px]">
+                              {it.startedAt || '-'} - {it.endedAt || '-'}
+                            </td>
+                            <td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{it.points || 5} pts</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="border border-slate-300 px-2 py-2 text-center text-slate-400 italic">
+                            Belum ada aktivitas yang dipilih.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {notes ? (
+                  <div className="my-3 space-y-1">
+                    <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                      III. Catatan / Ringkasan Pekerjaan
+                    </p>
+                    <p className="text-[11px] text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200">{notes}</p>
+                  </div>
+                ) : null}
+
+                {/* Section 4: Signatures Table */}
+                <div className="mt-5 space-y-1.5">
+                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
+                    IV. Lembar Persetujuan &amp; Otorisasi
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 text-center text-[10px] mt-2 border border-slate-300 rounded p-2">
+                    {/* Requester */}
+                    <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
+                      <p className="font-bold text-slate-700">Teknisi / Pemohon</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          DIGITALLY SUBMITTED
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">{employee?.name || initialSessionData?.employee?.name || 'Teknisi'}</p>
+                        <p className="text-[9px] text-slate-500">Teknisi</p>
+                      </div>
+                    </div>
+
+                    {/* Step 1 Leader */}
+                    <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
+                      <p className="font-bold text-slate-700">Leader / Supervisor</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        {existingLeaderApproval?.signatureDataUrl ? (
+                          <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="h-8 max-w-[90px] object-contain" />
+                        ) : existingLeaderApproval?.status === 'approved' ? (
+                          <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                        ) : existingLeaderApproval?.status === 'reverted' ? (
+                          <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                        ) : (
+                          <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">
+                          {leaderOptions.find((l) => l.value === leaderEmployeeId)?.label?.split('—')[0]?.trim() || existingLeaderApproval?.approverName || '-'}
+                        </p>
+                        <p className="text-[9px] text-slate-500">Leader (Tahap 1)</p>
+                      </div>
+                    </div>
+
+                    {/* Step 2 Superior */}
+                    <div className="flex flex-col justify-between min-h-[90px]">
+                      <p className="font-bold text-slate-700">Section Head / Superior</p>
+                      <div className="my-1 py-1 flex items-center justify-center">
+                        {existingSuperiorApproval?.signatureDataUrl ? (
+                          <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="h-8 max-w-[90px] object-contain" />
+                        ) : existingSuperiorApproval?.status === 'approved' ? (
+                          <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
+                        ) : existingSuperiorApproval?.status === 'reverted' ? (
+                          <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
+                        ) : (
+                          <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-900 underline">
+                          {superiorOptions.find((s) => s.value === superiorEmployeeId)?.label?.split('—')[0]?.trim() || existingSuperiorApproval?.approverName || '-'}
+                        </p>
+                        <p className="text-[9px] text-slate-500">Section Head (Tahap 2)</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </form>
     </>
   )

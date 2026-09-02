@@ -205,6 +205,23 @@ function drawDocumentHeader(
     });
     rightY -= 12;
   }
+
+  if (data.teamMembersSummary) {
+    page.drawText("Anggota Tim:", {
+      x: 36,
+      y: 695,
+      size: 8,
+      font: boldFont,
+      color: rgb(0.18, 0.24, 0.29),
+    });
+    page.drawText(data.teamMembersSummary.slice(0, 95), {
+      x: 108,
+      y: 695,
+      size: 8,
+      font: regularFont,
+      color: rgb(0.08, 0.12, 0.16),
+    });
+  }
 }
 
 async function drawWorkTable(

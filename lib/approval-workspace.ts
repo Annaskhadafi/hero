@@ -1399,25 +1399,36 @@ async function getDailyActivityInboxItems(
       return emailMatches || empMatches || nameMatches
     }
 
-    // Active Pending Step Approver
-    const rowAppEmail = normalizeMatchValue(row.approverEmail);
-    const rowAppName = normalizeMatchValue(row.approverName);
-    const rowReqEmail = normalizeMatchValue(row.employeeEmail);
+    if (isAdmin) {
+      return true
+    }
 
-    // If logged-in user IS the requester, and they are NOT the active step approver, do NOT show in inbox
-    if (normalizedEmail && rowReqEmail === normalizedEmail && rowAppEmail !== normalizedEmail) {
-      return false;
+    // Active Pending Step Approver
+    const rowAppEmail = normalizeMatchValue(row.approverEmail)
+    const rowAppName = normalizeMatchValue(row.approverName)
+    const rowReqEmail = normalizeMatchValue(row.employeeEmail)
+
+    // Step 1: Karyawan Sign belongs to the requester
+    const isStep1ForRequester =
+      row.stepOrder === 1 &&
+      ((currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id) ||
+        (normalizedEmail && rowReqEmail === normalizedEmail))
+
+    if (isStep1ForRequester) {
+      return true
     }
 
     const emailMatches =
-      normalizedEmail && (
-        rowAppEmail === normalizedEmail ||
-        normalizedEmail === "raihanaraya36@gmail.com"
-      )
+      normalizedEmail &&
+      ((rowAppEmail && rowAppEmail === normalizedEmail) ||
+        normalizedEmail === 'raihanaraya36@gmail.com')
     const employeeMatches =
-      currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
+      currentEmployee?.id != null &&
+      row.approverEmployeeId != null &&
+      row.approverEmployeeId === currentEmployee.id
     const nameMatches =
-      normalizedEmployeeName && rowAppName === normalizedEmployeeName
+      normalizedEmployeeName && rowAppName && rowAppName === normalizedEmployeeName
+
     return emailMatches || employeeMatches || nameMatches
   })
 

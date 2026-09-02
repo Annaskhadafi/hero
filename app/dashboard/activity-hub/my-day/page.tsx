@@ -5,6 +5,9 @@ import {
   submitDailyActivityWithStateAction,
   submitPointDisputeAction,
 } from "@/app/dashboard/activity-hub/actions";
+import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
+import { eq } from "drizzle-orm";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
@@ -104,9 +107,23 @@ export default async function MyDayPage() {
   const session = await getServerSession();
   const userEmail = session?.user?.email ?? '';
 
-  let [data, teamData] = await Promise.all([
+  let [data, teamData, rawTeamMembers] = await Promise.all([
     getDailyActivityEmployeeData(userEmail || null),
     getDailyActivityTeamBoardData(userEmail || null),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        role: employees.role,
+        department: employees.department,
+        siteId: employees.siteId,
+        sectionId: employees.sectionId,
+        employeeId: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(employees.name),
   ]);
 
   if (!data) {
@@ -118,13 +135,17 @@ export default async function MyDayPage() {
     );
   }
 
+  const teamMembers = (rawTeamMembers || []).filter((m) =>
+    data.employee.siteId ? m.siteId === data.employee.siteId : true
+  );
+
   const now = new Date();
   const defaultDateTime = dateTimeLocalValue(now);
-  const assignmentStatuses = Array.from(new Set(data.assignments.map((assignment) => assignment.statusLabel))).sort();
-  const assignmentPriorities = Array.from(new Set(data.assignments.map((assignment) => assignment.priority))).sort();
-  const activityStatuses = Array.from(new Set(data.activities.map((activity) => activity.statusLabel))).sort();
-  const activitySources = Array.from(new Set(data.activities.map((activity) => activity.sourceMode))).sort();
-  const penaltyStatuses = Array.from(new Set(data.penalties.map((penalty) => penalty.disputeStatus))).sort();
+  const assignmentStatuses: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || '')))).sort();
+  const assignmentPriorities: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.priority || '')))).sort();
+  const activityStatuses: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.statusLabel || '')))).sort();
+  const activitySources: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.sourceMode || '')))).sort();
+  const penaltyStatuses: string[] = Array.from(new Set<string>(data.penalties.map((penalty: any) => String(penalty.disputeStatus || '')))).sort();
   const pagePurpose = getActivityPagePurpose("input");
 
   return (
@@ -152,7 +173,7 @@ export default async function MyDayPage() {
               <MetricPill label="Points today" value={data.summary.pointsToday} />
               <MetricPill
                 label="Pending approval"
-                value={data.activities.filter((activity) => activity.statusLabel.toLowerCase().includes("pending")).length}
+                value={data.activities.filter((activity: any) => String(activity.statusLabel || '').toLowerCase().includes("pending")).length}
               />
               <MetricPill label="Penalty" value={`-${data.summary.penaltyToday}`} />
               <MetricPill label="Sync" value={data.summary.syncAt} />
@@ -183,6 +204,7 @@ export default async function MyDayPage() {
                   defaultEndTime={defaultDateTime}
                   defaultSourceMode="assigned"
                   routeChecklist={data.routeChecklist}
+                  teamMembers={teamMembers}
                 />
               </DialogContent>
             </Dialog>
@@ -488,7 +510,7 @@ export default async function MyDayPage() {
                   </TableHeader>
                   <TableBody>
                     {data.activities.length > 0 ? (
-                      data.activities.map((activity) => (
+                      data.activities.map((activity: any) => (
                         <TableRow
                           key={activity.id}
                           data-date-value={activity.startTime.toISOString()}

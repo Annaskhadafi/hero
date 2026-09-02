@@ -54,7 +54,7 @@ async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): P
 export default async function MobileOvertimePage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; extend?: string }>
+  searchParams: Promise<{ tab?: string; extend?: string; edit?: string }>
 }) {
   const session = await getServerSession()
   if (!session?.user?.email) redirect('/sign-in')
@@ -146,8 +146,14 @@ export default async function MobileOvertimePage({
     siteHeadId: e.siteId ? (siteHeadById.get(e.siteId) ?? null) : null,
   }))
 
-  const parentSplId = Number(query.extend ?? 0) || undefined
-  const initialSplData = parentSplId ? await safeQuery(() => getOvertimeApprovalData(parentSplId), null, "getOvertimeApprovalData") : null
+  const rawEdit = query.edit ? String(query.edit).replace(/[^0-9]/g, '') : ''
+  const editSplId = rawEdit && !isNaN(Number(rawEdit)) && Number(rawEdit) > 0 ? Number(rawEdit) : undefined
+
+  const rawExtend = query.extend ? String(query.extend).replace(/[^0-9]/g, '') : ''
+  const parentSplId = rawExtend && !isNaN(Number(rawExtend)) && Number(rawExtend) > 0 ? Number(rawExtend) : undefined
+
+  const targetSplId = editSplId || parentSplId
+  const initialSplData = targetSplId ? await safeQuery(() => getOvertimeApprovalData(targetSplId), null, "getOvertimeApprovalData") : null
   const historyRows: MobileSplHistoryRow[] = data.splDocuments.map((document) => ({
     id: document.id,
     splNumber: document.splNumber,
@@ -194,6 +200,17 @@ export default async function MobileOvertimePage({
   const pendingSplCount = (safeApprovals.overtimeInboxItems || []).length
   const activeSplCount = (historyRows || []).filter((r) => ['approved', 'submitted'].includes(r.status)).length
 
+  const activeTabValue =
+    query.edit || query.extend
+      ? 'apply'
+      : query.tab === 'approval'
+        ? 'approval'
+        : query.tab === 'active'
+          ? 'active'
+          : query.tab === 'history'
+            ? 'history'
+            : 'apply'
+
   return (
     <div className="space-y-5 pb-24">
       <section className="space-y-2">
@@ -212,15 +229,8 @@ export default async function MobileOvertimePage({
       </section>
 
       <Tabs
-        defaultValue={
-          query.tab === 'approval'
-            ? 'approval'
-            : query.tab === 'active'
-              ? 'active'
-              : query.tab === 'history'
-                ? 'history'
-                : 'apply'
-        }
+        key={`tabs-${activeTabValue}-${editSplId || ''}-${parentSplId || ''}`}
+        defaultValue={activeTabValue}
       >
         <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
           <TabsTrigger
@@ -275,19 +285,21 @@ export default async function MobileOvertimePage({
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
                 <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                  {parentSplId ? 'Extension & Revisi' : 'Pengajuan Lembur'}
+                  {editSplId ? 'Revisi SPL' : parentSplId ? 'Extension SPL' : 'Pengajuan Lembur'}
                 </p>
                 <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
-                  {parentSplId ? `Revisi / Perpanjangan SPL #${parentSplId}` : 'Formulir Surat Lembur (SPL)'}
+                  {editSplId
+                    ? `Revisi Surat Lembur (SPL) #${editSplId}`
+                    : parentSplId
+                      ? `Perpanjangan SPL #${parentSplId}`
+                      : 'Formulir Surat Lembur (SPL)'}
                 </h2>
               </div>
               <Badge className="border-0 bg-blue-50 text-blue-700 font-bold text-[10px]">
-                {parentSplId ? 'Mode Extension' : 'SPL Baru'}
+                {editSplId ? 'Mode Revisi' : parentSplId ? 'Mode Extension' : 'SPL Baru'}
               </Badge>
             </div>
-            <p className="mt-2 text-xs leading-5 font-medium text-[#486275]">
-              Isi formulir resmi SPL, tentukan peserta lembur, uraian aktivitas, dan verifikasi persetujuan pengawas.
-            </p>
+
             <div className="mt-4">
               <MobileOvertimeRequestForm
                 employees={sanitizedEmployees}
@@ -298,6 +310,7 @@ export default async function MobileOvertimePage({
                   directManagerId: (data.lead as any).directManagerId ?? null,
                 }}
                 parentSplId={parentSplId}
+                editSplId={editSplId}
                 initialSplData={initialSplData}
               />
             </div>

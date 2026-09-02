@@ -116,6 +116,7 @@ export default async function DailyActivityApprovalListPage() {
             section: employees.section,
             siteName: sites.name,
             siteId: dailyActivitySessions.siteId,
+            summaryRemark: dailyActivitySessions.summaryRemark,
           })
           .from(dailyActivitySessions)
           .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
@@ -352,24 +353,30 @@ export default async function DailyActivityApprovalListPage() {
       if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
     }
 
-    const rows: SessionApprovalRow[] = (sessions || []).map((s) => ({
-      sessionId: Number(s.sessionId),
-      sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
-      workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
-      shiftCode: s.shiftCode || 'ALL',
-      sessionStatus: s.sessionStatus || 'Draft',
-      employeeName: s.employeeName || 'Karyawan',
-      employeeSn: s.employeeSn || '-',
-      department: s.department || 'Operasional',
-      section: s.section || '-',
-      jobTitle: 'Serviceman',
-      customerName: 'Default Customer',
-      siteName: s.siteName || 'Central Site',
-      totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
-      totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
-      items: itemsBySession.get(s.sessionId) || [],
-      approvals: approvalsBySession.get(s.sessionId) || [],
-    }))
+    const rows: SessionApprovalRow[] = (sessions || []).map((s) => {
+      const teamMatch = (s.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+      const teamMembersSummary = teamMatch ? teamMatch[1].trim() : undefined
+
+      return {
+        sessionId: Number(s.sessionId),
+        sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
+        workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
+        shiftCode: s.shiftCode || 'ALL',
+        sessionStatus: s.sessionStatus || 'Draft',
+        employeeName: s.employeeName || 'Karyawan',
+        employeeSn: s.employeeSn || '-',
+        department: s.department || 'Operasional',
+        section: s.section || '-',
+        jobTitle: 'Serviceman',
+        customerName: 'Default Customer',
+        siteName: s.siteName || 'Central Site',
+        teamMembersSummary,
+        totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
+        totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
+        items: itemsBySession.get(s.sessionId) || [],
+        approvals: approvalsBySession.get(s.sessionId) || [],
+      }
+    })
 
     const sanitizedEmployees = (employeeList || []).map((e) => ({
       id: Number(e.id),

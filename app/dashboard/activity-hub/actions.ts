@@ -2474,8 +2474,12 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Activity hanya bisa disubmit untuk akun Anda sendiri.')
   }
 
-  const teamMemberIds: number[] = JSON.parse(payload.teamMemberEmployeeIdsJson || '[]')
-  const targetMemberIds = teamMemberIds.length > 0 ? [employeeId, ...teamMemberIds] : [employeeId]
+  const rawTeamMemberIds: number[] = JSON.parse(payload.teamMemberEmployeeIdsJson || '[]')
+  // Exclude submitter's own ID, filter valid numeric IDs, and deduplicate
+  const cleanTeamMemberIds = Array.from(
+    new Set(rawTeamMemberIds.filter((id) => typeof id === 'number' && id > 0 && id !== employeeId))
+  )
+  const targetMemberIds = [employeeId, ...cleanTeamMemberIds]
   const allTargetEmployees = await db
     .select()
     .from(employees)
@@ -2485,11 +2489,11 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Beberapa anggota tim tidak ditemukan.')
   }
 
-  // Verify that team members belong to the same site and section as the submitter
+  // Verify that team members belong to the same site as the submitter
   for (const emp of allTargetEmployees) {
     if (emp.id !== employeeId) {
-      if (emp.siteId !== employee.siteId || emp.sectionId !== employee.sectionId) {
-        throw new Error(`Anggota tim ${emp.name} tidak berada di site dan section yang sama.`)
+      if (employee.siteId && emp.siteId && emp.siteId !== employee.siteId) {
+        throw new Error(`Anggota tim ${emp.name} tidak berada di site yang sama.`)
       }
     }
   }
@@ -2608,7 +2612,11 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
   }
 
-  if (payload.overtimeCommandLetterId != null) {
+  const isSelfInputWithoutChecklist =
+    payload.sourceMode === 'self_input' &&
+    (!routeSessionItems || routeSessionItems.length === 0 || routeSessionItems.every((i) => !i.isChecked))
+
+  if (payload.overtimeCommandLetterId != null && !isSelfInputWithoutChecklist) {
     const [spl] = await db
       .select({
         id: overtimeCommandLetters.id,
@@ -4422,6 +4430,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
         workDate: dailyActivitySessions.workDate,
         shiftCode: dailyActivitySessions.shiftCode,
         status: dailyActivitySessions.status,
+        submissionSource: dailyActivitySessions.submissionSource,
+        routeTemplateId: dailyActivitySessions.routeTemplateId,
+        overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+        summaryRemark: dailyActivitySessions.summaryRemark,
         submittedAt: dailyActivitySessions.submittedAt,
         approvedAt: dailyActivitySessions.approvedAt,
         employeeId: employees.id,
@@ -4463,6 +4475,9 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     db
       .select({
         id: dailyActivitySessionItems.id,
+        libraryActivityId: dailyActivitySessionItems.libraryActivityId,
+        routeItemId: dailyActivitySessionItems.routeItemId,
+        overtimeCommandLetterItemId: dailyActivitySessionItems.overtimeCommandLetterItemId,
         snapshotLabel: dailyActivitySessionItems.snapshotLabel,
         snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
         snapshotPayload: dailyActivitySessionItems.snapshotPayload,
@@ -4496,16 +4511,24 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       parsedPayload = JSON.parse(item.snapshotPayload || '{}')
     } catch (e) {}
 
+    const photoUrl = parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || (parsedPayload?.photos && parsedPayload?.photos[0]?.url) || null
+    const photos = parsedPayload?.photos || (parsedPayload?.photo ? [parsedPayload.photo] : [])
+
     return {
       id: item.id,
       label: item.snapshotLabel,
       group: item.snapshotGroupName || '',
+      libraryActivityId: item.libraryActivityId || parsedPayload?.libraryActivityId || null,
+      routeItemId: item.routeItemId || parsedPayload?.routeItemId || null,
+      overtimeCommandLetterItemId: item.overtimeCommandLetterItemId || null,
       unitNumber: item.unitNumber || parsedPayload?.unitNumber || parsedPayload?.equipmentNo || parsedPayload?.unitNo || '',
       remark: item.remark || parsedPayload?.remark || parsedPayload?.notes || parsedPayload?.description || '',
+      materialUsed: parsedPayload?.materialUsed || '',
       duration: durationMinutes > 0 ? (hours > 0 ? `${hours}j ${mins}m` : `${mins}m`) : '-',
       points: item.actualPoints || 0,
       sortOrder: item.sortOrder || 0,
-      photoUrl: parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null,
+      photoUrl,
+      photos,
       startedAt: item.startedAt,
       endedAt: item.endedAt,
     }
@@ -4537,6 +4560,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     workDate: header.workDate,
     shiftCode: header.shiftCode,
     status: header.status,
+    submissionSource: header.submissionSource,
+    routeTemplateId: header.routeTemplateId,
+    overtimeCommandLetterId: header.overtimeCommandLetterId,
+    summaryRemark: header.summaryRemark,
     submittedAt: header.submittedAt,
     approvedAt: header.approvedAt,
     employee: {
@@ -5324,13 +5351,23 @@ export async function saveDailyActivityApprovalForm(payload: {
   employeeId?: number | null
   workDate?: string | Date
   shiftCode?: string
+  notes?: string
+  summaryRemark?: string
   items?: Array<{
     id?: number
     label: string
+    group?: string
+    libraryActivityId?: number | null
+    routeItemId?: number | null
     unitNumber?: string
     duration?: string
     points?: number
     remark?: string
+    materialUsed?: string
+    startedAt?: string | Date | null
+    endedAt?: string | Date | null
+    photoUrl?: string | null
+    photos?: any[]
   }>
   itemRemarks?: Record<number, string>
   leaderEmployeeId?: number | null
@@ -5348,6 +5385,7 @@ export async function saveDailyActivityApprovalForm(payload: {
   leaderSignatureDataUrl?: string
   signatures?: Record<number, string>
   stepRemarks?: Record<number, string>
+  teamMemberEmployeeIds?: number[]
 }) {
   try {
     // 1. Update session header if employeeId / workDate / shiftCode provided
@@ -5382,6 +5420,22 @@ export async function saveDailyActivityApprovalForm(payload: {
     if (payload.shiftCode) {
       sessionUpdates.shiftCode = payload.shiftCode
     }
+    if (payload.teamMemberEmployeeIds !== undefined) {
+      let baseRemark = (payload.notes ?? payload.summaryRemark ?? '').replace(/\s*\[Team:\s*[^\]]+\]/gi, '').trim()
+      if (payload.teamMemberEmployeeIds.length > 0) {
+        const teamEmps = await db
+          .select({ name: employees.name })
+          .from(employees)
+          .where(inArray(employees.id, payload.teamMemberEmployeeIds))
+        if (teamEmps.length > 0) {
+          const names = teamEmps.map((e) => e.name).join(', ')
+          baseRemark = baseRemark ? `${baseRemark} [Team: ${names}]` : `[Team: ${names}]`
+        }
+      }
+      sessionUpdates.summaryRemark = baseRemark.substring(0, 1000)
+    } else if (payload.notes !== undefined || payload.summaryRemark !== undefined) {
+      sessionUpdates.summaryRemark = (payload.notes ?? payload.summaryRemark ?? '').substring(0, 1000)
+    }
 
     const [existingSession] = await db
       .select({
@@ -5403,7 +5457,9 @@ export async function saveDailyActivityApprovalForm(payload: {
       }
     }
 
-    const isCurrentlyReverted = (existingSession?.status || '').toLowerCase() === 'reverted'
+    const isCurrentlyReverted =
+      (existingSession?.status || '').toLowerCase().includes('revert') ||
+      (existingSession?.status || '').toLowerCase().includes('revision')
 
     if (isCurrentlyReverted) {
       sessionUpdates.status = 'Submitted'
@@ -5414,7 +5470,10 @@ export async function saveDailyActivityApprovalForm(payload: {
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            eq(dailyActivityApprovals.status, 'reverted')
+            or(
+              eq(dailyActivityApprovals.status, 'reverted'),
+              eq(dailyActivityApprovals.status, 'needs_revision')
+            )
           )
         )
         .orderBy(asc(dailyActivityApprovals.stepOrder))
@@ -5466,7 +5525,7 @@ export async function saveDailyActivityApprovalForm(payload: {
     // 2. Handle items array if provided
     if (payload.items && Array.isArray(payload.items)) {
       const existingDbItems = await db
-        .select({ id: dailyActivitySessionItems.id })
+        .select({ id: dailyActivitySessionItems.id, snapshotPayload: dailyActivitySessionItems.snapshotPayload })
         .from(dailyActivitySessionItems)
         .where(eq(dailyActivitySessionItems.sessionId, payload.sessionId))
 
@@ -5486,14 +5545,35 @@ export async function saveDailyActivityApprovalForm(payload: {
       // Update or insert items
       for (let idx = 0; idx < payload.items.length; idx++) {
         const item = payload.items[idx]
+        const startedAtDate = item.startedAt ? new Date(item.startedAt) : null
+        const endedAtDate = item.endedAt ? new Date(item.endedAt) : null
+
+        const itemPayloadJson = JSON.stringify({
+          unitNumber: item.unitNumber ?? '',
+          remark: (payload.itemRemarks?.[item.id || 0] ?? item.remark ?? '').substring(0, 600),
+          materialUsed: item.materialUsed ?? '',
+          startedAt: item.startedAt ?? null,
+          endedAt: item.endedAt ?? null,
+          photo: item.photoUrl ? { url: item.photoUrl } : undefined,
+          photos: item.photos || (item.photoUrl ? [{ url: item.photoUrl }] : []),
+          libraryActivityId: item.libraryActivityId || null,
+          routeItemId: item.routeItemId || null,
+        })
+
         if (item.id && item.id > 0) {
           await db
             .update(dailyActivitySessionItems)
             .set({
               snapshotLabel: item.label,
+              snapshotGroupName: item.group || 'Technical',
+              libraryActivityId: item.libraryActivityId ? Number(item.libraryActivityId) : undefined,
+              routeItemId: item.routeItemId ? Number(item.routeItemId) : undefined,
               unitNumber: item.unitNumber ?? '',
               actualPoints: item.points ?? 0,
               remark: (payload.itemRemarks?.[item.id] ?? item.remark ?? '').substring(0, 600),
+              startedAt: startedAtDate,
+              endedAt: endedAtDate,
+              snapshotPayload: itemPayloadJson,
               sortOrder: idx + 1,
               updatedAt: new Date(),
             })
@@ -5502,12 +5582,17 @@ export async function saveDailyActivityApprovalForm(payload: {
           await db.insert(dailyActivitySessionItems).values({
             sessionId: payload.sessionId,
             snapshotLabel: item.label.trim(),
-            snapshotGroupName: 'Technical',
+            snapshotGroupName: item.group || 'Technical',
+            libraryActivityId: item.libraryActivityId ? Number(item.libraryActivityId) : null,
+            routeItemId: item.routeItemId ? Number(item.routeItemId) : null,
             unitNumber: item.unitNumber ?? '',
             actualPoints: item.points ?? 5,
             isChecked: true,
             sortOrder: idx + 1,
             remark: (item.remark ?? '').substring(0, 600),
+            startedAt: startedAtDate,
+            endedAt: endedAtDate,
+            snapshotPayload: itemPayloadJson,
           })
         }
       }
@@ -6083,18 +6168,30 @@ export async function createDailyActivitySessionAction(input: {
   workDate: string
   shiftCode: string
   siteId?: number | null
+  notes?: string | null
+  summaryRemark?: string | null
   leaderEmployeeId?: number | null
   leaderName?: string | null
   superiorEmployeeId?: number | null
   superiorName?: string | null
   managerEmployeeId?: number | null
   managerName?: string | null
+  teamMemberEmployeeIds?: number[]
   items?: Array<{
     label: string
+    group?: string
+    libraryActivityId?: number | null
+    routeItemId?: number | null
+    overtimeCommandLetterItemId?: number | null
     unitNumber?: string
+    startedAt?: string | Date
+    endedAt?: string | Date
     duration?: string
     points?: number
     remark?: string
+    materialUsed?: string
+    photoUrl?: string | null
+    photos?: string[]
   }>
 }) {
   try {
@@ -6104,260 +6201,351 @@ export async function createDailyActivitySessionAction(input: {
       targetEmpId = context.id
     }
 
-    const [emp] = await db
+    const teamMemberIds = Array.from(
+      new Set((input.teamMemberEmployeeIds || []).filter((id) => id && id !== targetEmpId))
+    )
+    const allEmployeeIds = [targetEmpId, ...teamMemberIds]
+
+    const allEmps = await db
       .select()
       .from(employees)
-      .where(eq(employees.id, targetEmpId))
-      .limit(1)
+      .where(inArray(employees.id, allEmployeeIds))
 
-    if (!emp) {
+    const primaryEmp = allEmps.find((e) => e.id === targetEmpId)
+    if (!primaryEmp) {
       return { success: false as const, error: 'Karyawan tidak ditemukan.' }
     }
 
-    // Fallback siteId if none is provided
-    let siteId = input.siteId || emp.siteId
-    if (!siteId) {
-      const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
-      siteId = firstSite?.id || 1
-    }
-
-    const dateFormatted = input.workDate ? input.workDate.replace(/-/g, '') : new Date().toISOString().slice(0, 10).replace(/-/g, '')
-    const sessionCode = `DAS-${dateFormatted}-${emp.employeeSn || emp.id}-${Math.floor(100 + Math.random() * 900)}`
-
-    const parsedWorkDate = input.workDate
-      ? new Date(`${input.workDate}T00:00:00.000Z`)
-      : new Date()
-
-    let validDeptId: number | null = null
-    if (emp.departmentId) {
-      const [dept] = await db.select({ id: masterDepartments.id }).from(masterDepartments).where(eq(masterDepartments.id, emp.departmentId)).limit(1)
-      if (dept) validDeptId = dept.id
-    }
-
-    let validSecId: number | null = null
-    if (emp.sectionId) {
-      const [sec] = await db.select({ id: masterSections.id }).from(masterSections).where(eq(masterSections.id, emp.sectionId)).limit(1)
-      if (sec) validSecId = sec.id
-    }
-
-    let validPosId: number | null = null
-    if (emp.positionId) {
-      const [pos] = await db.select({ id: masterPositions.id }).from(masterPositions).where(eq(masterPositions.id, emp.positionId)).limit(1)
-      if (pos) validPosId = pos.id
-    }
-
-    const [created] = await db
-      .insert(dailyActivitySessions)
-      .values({
-        employeeId: targetEmpId,
-        sessionCode,
-        workDate: parsedWorkDate,
-        shiftCode: input.shiftCode || 'ALL',
-        siteId,
-        departmentId: validDeptId,
-        sectionId: validSecId,
-        positionId: validPosId,
-        status: 'submitted',
-        submittedAt: new Date(),
-      })
-      .returning()
-
-    // Insert activity items if provided
-    if (input.items && input.items.length > 0) {
-      const itemsToInsert = input.items
-        .filter((it) => it.label && it.label.trim().length > 0)
-        .map((it, idx) => ({
-          sessionId: created.id,
-          snapshotLabel: it.label.trim(),
-          snapshotGroupName: 'General',
-          unitNumber: it.unitNumber?.trim() || '',
-          remark: it.remark?.trim() || '',
-          actualPoints: Number(it.points) || 5,
-          isChecked: true,
-          sortOrder: idx + 1,
-          snapshotPayload: JSON.stringify({ duration: it.duration || '60m' }),
-          startedAt: new Date(parsedWorkDate.getTime() + 8 * 3600000),
-          endedAt: new Date(parsedWorkDate.getTime() + 9 * 3600000),
-        }))
-
-      if (itemsToInsert.length > 0) {
-        await db.insert(dailyActivitySessionItems).values(itemsToInsert)
-      }
-    }
-
     const workflowSettings = await getDailyActivityWorkflowSettings()
+    let primaryCreatedSessionId: number | null = null
 
-    // 1. Resolve Leader
-    let leaderEmpId = input.leaderEmployeeId
-    let leaderName = input.leaderName
-    let leaderEmail = ''
-
-    if (leaderEmpId) {
-      const [found] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, leaderEmpId))
-        .limit(1)
-      if (found) {
-        leaderName = found.name
-        leaderEmail = found.email || ''
+    for (const emp of allEmps) {
+      // Fallback siteId if none is provided
+      let siteId = input.siteId || emp.siteId
+      if (!siteId) {
+        const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
+        siteId = firstSite?.id || 1
       }
-    } else if (emp.directManagerId) {
-      const [found] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, emp.directManagerId))
-        .limit(1)
-      if (found) {
-        leaderEmpId = found.id
-        leaderName = found.name
-        leaderEmail = found.email || ''
+
+      const dateFormatted = input.workDate
+        ? input.workDate.replace(/-/g, '')
+        : new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const sessionCode = `DAS-${dateFormatted}-${emp.employeeSn || emp.id}-${Math.floor(100 + Math.random() * 900)}`
+
+      const parsedWorkDate = input.workDate
+        ? new Date(`${input.workDate}T00:00:00.000Z`)
+        : new Date()
+
+      let validDeptId: number | null = null
+      if (emp.departmentId) {
+        const [dept] = await db
+          .select({ id: masterDepartments.id })
+          .from(masterDepartments)
+          .where(eq(masterDepartments.id, emp.departmentId))
+          .limit(1)
+        if (dept) validDeptId = dept.id
       }
-    }
-    if (!leaderName) {
-      leaderName = 'Leader Lapangan'
-    }
 
-    // 2. Resolve Section Head (Superior)
-    let superiorEmpId = input.superiorEmployeeId
-    let superiorName = input.superiorName
-    let superiorEmail = ''
-
-    if (superiorEmpId) {
-      const [found] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, superiorEmpId))
-        .limit(1)
-      if (found) {
-        superiorName = found.name
-        superiorEmail = found.email || ''
-      }
-    } else {
-      // Lookup in Workflow Settings Matrix by section or department
-      const empSectionLower = (emp.section || '').trim().toLowerCase()
-      const empDeptLower = (emp.department || '').trim().toLowerCase()
-
-      const matchedSecConfig = (workflowSettings.approvalMatrix.sectionHeads || []).find((sh) => {
-        const secLower = (sh.section || '').trim().toLowerCase()
-        return secLower && (secLower === empSectionLower || empSectionLower.includes(secLower) || secLower.includes(empSectionLower) || secLower === empDeptLower)
-      })
-
-      if (matchedSecConfig?.name) {
-        superiorName = matchedSecConfig.name
-        superiorEmail = matchedSecConfig.email || ''
-        if (matchedSecConfig.email) {
-          const [matEmp] = await db
-            .select({ id: employees.id })
-            .from(employees)
-            .where(sql`LOWER(TRIM(${employees.email})) = ${matchedSecConfig.email.trim().toLowerCase()}`)
-            .limit(1)
-          if (matEmp) superiorEmpId = matEmp.id
-        }
-      } else if (emp.sectionId) {
-        const [secRow] = await db
-          .select({ headEmployeeId: masterSections.headEmployeeId })
+      let validSecId: number | null = null
+      if (emp.sectionId) {
+        const [sec] = await db
+          .select({ id: masterSections.id })
           .from(masterSections)
           .where(eq(masterSections.id, emp.sectionId))
           .limit(1)
-        if (secRow?.headEmployeeId) {
-          const [headEmp] = await db
-            .select({ id: employees.id, name: employees.name, email: employees.email })
-            .from(employees)
-            .where(eq(employees.id, secRow.headEmployeeId))
+        if (sec) validSecId = sec.id
+      }
+
+      let validPosId: number | null = null
+      if (emp.positionId) {
+        const [pos] = await db
+          .select({ id: masterPositions.id })
+          .from(masterPositions)
+          .where(eq(masterPositions.id, emp.positionId))
+          .limit(1)
+        if (pos) validPosId = pos.id
+      }
+
+      const teamNames = allEmps.map((e) => e.name).filter(Boolean).join(', ')
+      let finalSummary = (input.summaryRemark || input.notes || '').trim()
+      if (allEmps.length > 1 && !finalSummary.includes('[Team:')) {
+        finalSummary = finalSummary
+          ? `${finalSummary} | [Team: ${teamNames}]`
+          : `[Team: ${teamNames}]`
+      }
+
+      const [created] = await db
+        .insert(dailyActivitySessions)
+        .values({
+          employeeId: emp.id,
+          sessionCode,
+          workDate: parsedWorkDate,
+          shiftCode: input.shiftCode || 'ALL',
+          siteId,
+          departmentId: validDeptId,
+          sectionId: validSecId,
+          positionId: validPosId,
+          status: 'submitted',
+          summaryRemark: finalSummary,
+          submittedAt: new Date(),
+        })
+        .returning()
+
+      if (emp.id === targetEmpId) {
+        primaryCreatedSessionId = created.id
+      }
+
+      // Insert activity items if provided
+      if (input.items && input.items.length > 0) {
+        const itemsToInsert = input.items
+          .filter((it) => it.label && it.label.trim().length > 0)
+          .map((it, idx) => {
+            const startedAtDate = it.startedAt
+              ? it.startedAt instanceof Date
+                ? it.startedAt
+                : new Date(it.startedAt)
+              : new Date(parsedWorkDate.getTime() + 8 * 3600000)
+            const endedAtDate = it.endedAt
+              ? it.endedAt instanceof Date
+                ? it.endedAt
+                : new Date(it.endedAt)
+              : new Date(parsedWorkDate.getTime() + 9 * 3600000)
+
+            return {
+              sessionId: created.id,
+              snapshotLabel: it.label.trim(),
+              snapshotGroupName: it.group || 'Technical',
+              libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+              routeItemId: it.routeItemId ? Number(it.routeItemId) : null,
+              overtimeCommandLetterItemId: it.overtimeCommandLetterItemId
+                ? Number(it.overtimeCommandLetterItemId)
+                : null,
+              unitNumber: it.unitNumber?.trim() || '',
+              remark: it.remark?.trim() || '',
+              actualPoints: Number(it.points) || 5,
+              isChecked: true,
+              sortOrder: idx + 1,
+              snapshotPayload: JSON.stringify({
+                duration: it.duration || '60m',
+                materialUsed: it.materialUsed || '',
+                photoUrl: it.photoUrl || null,
+                photos: it.photos || [],
+              }),
+              startedAt: startedAtDate,
+              endedAt: endedAtDate,
+            }
+          })
+
+        if (itemsToInsert.length > 0) {
+          await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+        }
+      }
+
+      // 1. Resolve Leader
+      let leaderEmpId = input.leaderEmployeeId
+      let leaderName = input.leaderName
+      let leaderEmail = ''
+
+      if (leaderEmpId) {
+        const [found] = await db
+          .select({ id: employees.id, name: employees.name, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, leaderEmpId))
+          .limit(1)
+        if (found) {
+          leaderName = found.name
+          leaderEmail = found.email || ''
+        }
+      } else if (emp.directManagerId) {
+        const [found] = await db
+          .select({ id: employees.id, name: employees.name, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, emp.directManagerId))
+          .limit(1)
+        if (found) {
+          leaderEmpId = found.id
+          leaderName = found.name
+          leaderEmail = found.email || ''
+        }
+      }
+      if (!leaderName) {
+        leaderName = 'Leader Lapangan'
+      }
+
+      // 2. Resolve Section Head (Superior)
+      let superiorEmpId = input.superiorEmployeeId
+      let superiorName = input.superiorName
+      let superiorEmail = ''
+
+      if (superiorEmpId) {
+        const [found] = await db
+          .select({ id: employees.id, name: employees.name, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, superiorEmpId))
+          .limit(1)
+        if (found) {
+          superiorName = found.name
+          superiorEmail = found.email || ''
+        }
+      } else {
+        const empSectionLower = (emp.section || '').trim().toLowerCase()
+        const empDeptLower = (emp.department || '').trim().toLowerCase()
+
+        const matchedSecConfig = (workflowSettings.approvalMatrix.sectionHeads || []).find((sh) => {
+          const secLower = (sh.section || '').trim().toLowerCase()
+          return (
+            secLower &&
+            (secLower === empSectionLower ||
+              empSectionLower.includes(secLower) ||
+              secLower.includes(empSectionLower) ||
+              secLower === empDeptLower)
+          )
+        })
+
+        if (matchedSecConfig?.name) {
+          superiorName = matchedSecConfig.name
+          superiorEmail = matchedSecConfig.email || ''
+          if (matchedSecConfig.email) {
+            const [matEmp] = await db
+              .select({ id: employees.id })
+              .from(employees)
+              .where(
+                sql`LOWER(TRIM(${employees.email})) = ${matchedSecConfig.email.trim().toLowerCase()}`
+              )
+              .limit(1)
+            if (matEmp) superiorEmpId = matEmp.id
+          }
+        } else if (emp.sectionId) {
+          const [secRow] = await db
+            .select({ headEmployeeId: masterSections.headEmployeeId })
+            .from(masterSections)
+            .where(eq(masterSections.id, emp.sectionId))
             .limit(1)
-          if (headEmp) {
-            superiorEmpId = headEmp.id
-            superiorName = headEmp.name
-            superiorEmail = headEmp.email || ''
+          if (secRow?.headEmployeeId) {
+            const [headEmp] = await db
+              .select({ id: employees.id, name: employees.name, email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, secRow.headEmployeeId))
+              .limit(1)
+            if (headEmp) {
+              superiorEmpId = headEmp.id
+              superiorName = headEmp.name
+              superiorEmail = headEmp.email || ''
+            }
           }
         }
       }
-    }
-    if (!superiorName) {
-      superiorName = 'Section Head'
-    }
-
-    const step1Token = randomUUID()
-    const step2Token = randomUUID()
-    const step3Token = randomUUID()
-
-    // Generate sequential approval steps (Karyawan, Leader / PJO, Section Head)
-    await db.insert(dailyActivityApprovals).values([
-      {
-        sessionId: created.id,
-        stepOrder: 1,
-        stepLabel: 'Karyawan Sign',
-        approverRole: 'employee',
-        approverEmployeeId: targetEmpId,
-        approverName: emp.name,
-        approverEmail: emp.email || '',
-        status: 'pending',
-        approvalToken: step1Token,
-        createdAt: new Date(),
-      },
-      {
-        sessionId: created.id,
-        stepOrder: 2,
-        stepLabel: 'Leader / PJO',
-        approverRole: 'leader',
-        approverEmployeeId: leaderEmpId ?? null,
-        approverName: leaderName,
-        approverEmail: leaderEmail,
-        status: 'waiting',
-        approvalToken: step2Token,
-        createdAt: new Date(),
-      },
-      {
-        sessionId: created.id,
-        stepOrder: 3,
-        stepLabel: 'Section Head',
-        approverRole: 'section_head',
-        approverEmployeeId: superiorEmpId ?? null,
-        approverName: superiorName,
-        approverEmail: superiorEmail,
-        status: 'waiting',
-        approvalToken: step3Token,
-        createdAt: new Date(),
-      },
-    ])
-
-    // Send Step 1 email and in-app notification
-    const [siteRow] = created.siteId
-      ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, created.siteId)).limit(1)
-      : []
-
-    try {
-      if (emp.email) {
-        await publishInAppApprovalNotification({
-          recipientEmail: emp.email,
-          title: `Daily Activity: ${created.sessionCode}`,
-          body: `Laporan aktivitas ${emp.name} telah dibuat dan siap disetujui.`,
-          url: `/dashboard/activity-hub/document/${created.id}/approval`,
-          eventType: 'daily_activity_created',
-        })
-        await sendDailyActivityStepApprovalEmail({
-          sessionId: created.id,
-          sessionCode: created.sessionCode,
-          employeeName: emp.name,
-          workDate: parsedWorkDate,
-          siteName: siteRow?.name || '-',
-          approverName: emp.name,
-          approverEmail: emp.email,
-          approvalStep: 'Karyawan Sign',
-          approvalToken: step1Token,
-        })
+      if (!superiorName) {
+        superiorName = 'Section Head'
       }
-    } catch (notifyErr) {
-      console.warn('Non-blocking notification warning:', notifyErr)
+
+      const step1Token = randomUUID()
+      const step2Token = randomUUID()
+      const step3Token = randomUUID()
+
+      // Generate sequential approval steps:
+      // Step 1: Karyawan Sign (auto-approved on submit by author)
+      // Step 2: Leader / PJO (active and pending in Leader's inbox)
+      // Step 3: Section Head (waiting for Step 2 completion)
+      const submitterSig = emp.signatureDataUrl || primaryEmp.signatureDataUrl || null
+      const now = new Date()
+
+      await db.insert(dailyActivityApprovals).values([
+        {
+          sessionId: created.id,
+          stepOrder: 1,
+          stepLabel: 'Karyawan Sign',
+          approverRole: 'employee',
+          approverEmployeeId: emp.id,
+          approverName: emp.name,
+          approverEmail: emp.email || '',
+          status: 'approved',
+          signedAt: now,
+          signatureDataUrl: submitterSig,
+          remarks: 'Submitted by employee',
+          approvalToken: step1Token,
+          createdAt: now,
+        },
+        {
+          sessionId: created.id,
+          stepOrder: 2,
+          stepLabel: 'Leader / PJO',
+          approverRole: 'leader',
+          approverEmployeeId: leaderEmpId ?? null,
+          approverName: leaderName,
+          approverEmail: leaderEmail,
+          status: 'pending',
+          approvalToken: step2Token,
+          createdAt: now,
+        },
+        {
+          sessionId: created.id,
+          stepOrder: 3,
+          stepLabel: 'Section Head',
+          approverRole: 'section_head',
+          approverEmployeeId: superiorEmpId ?? null,
+          approverName: superiorName,
+          approverEmail: superiorEmail,
+          status: 'waiting',
+          approvalToken: step3Token,
+          createdAt: now,
+        },
+      ])
+
+      // Send Step 2 (Leader / PJO) email and in-app notification to Leader
+      const [siteRow] = created.siteId
+        ? await db
+            .select({ name: sites.name })
+            .from(sites)
+            .where(eq(sites.id, created.siteId))
+            .limit(1)
+        : []
+
+      try {
+        if (leaderEmail) {
+          await publishInAppApprovalNotification({
+            recipientEmail: leaderEmail,
+            title: `Daily Activity Approval: ${created.sessionCode}`,
+            body: `Laporan aktivitas harian dari ${emp.name} membutuhkan persetujuan Anda sebagai Leader / PJO.`,
+            url: `/dashboard/approval`,
+            eventType: 'daily_activity_approval_needed',
+          })
+          await sendDailyActivityStepApprovalEmail({
+            sessionId: created.id,
+            sessionCode: created.sessionCode,
+            employeeName: emp.name,
+            workDate: parsedWorkDate,
+            siteName: siteRow?.name || '-',
+            approverName: leaderName,
+            approverEmail: leaderEmail,
+            approvalStep: 'Leader / PJO',
+            approvalToken: step2Token,
+          })
+        }
+
+        if (emp.email) {
+          await publishInAppApprovalNotification({
+            recipientEmail: emp.email,
+            title: `Daily Activity: ${created.sessionCode}`,
+            body: `Laporan aktivitas Anda telah diajukan dan sedang menunggu persetujuan ${leaderName}.`,
+            url: `/mobile/activity`,
+            eventType: 'daily_activity_submitted',
+          })
+        }
+      } catch (notifyErr) {
+        console.warn('Non-blocking notification warning:', notifyErr)
+      }
     }
 
     try {
+      safeRevalidatePath('/dashboard/activity-hub')
       safeRevalidatePath('/dashboard/activity-hub/approval')
       safeRevalidatePath('/dashboard/approval')
+      safeRevalidatePath('/mobile/activity')
+      safeRevalidatePath('/mobile/approval')
     } catch {}
 
-    return { success: true as const, sessionId: created.id }
+    return { success: true as const, sessionId: primaryCreatedSessionId }
   } catch (err: any) {
     console.error('Error creating daily activity session:', err)
     return { success: false as const, error: err.message || 'Gagal membuat aktivitas harian.' }

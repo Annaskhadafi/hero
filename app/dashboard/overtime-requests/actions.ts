@@ -355,13 +355,16 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
 
 // ── Get Overtime Approval Data ─────────────────────────────────────────────
 
-export async function getOvertimeApprovalData(documentId: number): Promise<OvertimeApprovalData | null> {
-  await ensureOvertimeApprovalsExist(documentId)
+export async function getOvertimeApprovalData(documentId: number | string): Promise<OvertimeApprovalData | null> {
+  const numericId = typeof documentId === 'number' ? documentId : Number(String(documentId).replace(/[^0-9]/g, ''))
+  if (isNaN(numericId) || numericId <= 0) return null
+
+  await ensureOvertimeApprovalsExist(numericId)
 
   const [document] = await db
     .select()
     .from(overtimeCommandLetters)
-    .where(eq(overtimeCommandLetters.id, documentId))
+    .where(eq(overtimeCommandLetters.id, numericId))
     .limit(1)
 
   if (!document) return null
@@ -388,18 +391,18 @@ export async function getOvertimeApprovalData(documentId: number): Promise<Overt
     })
     .from(overtimeCommandLetterParticipants)
     .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
-    .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, documentId))
+    .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, numericId))
 
   const lineItemRows = await db
     .select()
     .from(overtimeCommandLetterItems)
-    .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, documentId))
+    .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, numericId))
     .orderBy(asc(overtimeCommandLetterItems.sortOrder), asc(overtimeCommandLetterItems.id))
 
   const approvalRows = await db
     .select()
     .from(overtimeApprovals)
-    .where(eq(overtimeApprovals.overtimeCommandLetterId, documentId))
+    .where(eq(overtimeApprovals.overtimeCommandLetterId, numericId))
     .orderBy(asc(overtimeApprovals.stepOrder))
 
   // Check permissions

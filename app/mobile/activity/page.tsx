@@ -7,6 +7,7 @@ import { employeeMcu, employees, masterSections, masterDepartments, sites } from
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { resolveEmployeeApproverHierarchy } from "@/lib/overtime-hierarchy";
+import { getDailyActivityApprovalData } from "@/app/dashboard/activity-hub/actions";
 
 async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
   let attempt = 0;
@@ -48,14 +49,15 @@ async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): P
 export default async function MobileActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string }>;
+  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string; edit?: string }>;
 }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
   const query = await searchParams;
   const submitted = query.submitted === "1";
   const submittedSpl = submitted && query.spl === "1";
-  const tabQuery = query.tab;
+  const tabQuery = query.tab || (query.edit ? 'apply' : undefined);
+  const editSessionId = query.edit;
 
   const [data, rawEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
     safeQuery(() => getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }), null, "getDailyActivityEmployeeData"),
@@ -152,6 +154,20 @@ export default async function MobileActivityPage({
       : data.activities.length > 0 ? 100 : 0;
   const splToUpdate = data.routeChecklist?.activeSpl ?? data.standaloneOvertimeChecklist;
 
+  // Fetch edit session data if edit parameter is provided
+  let editSessionData = null;
+  if (editSessionId) {
+    const numericId = editSessionId.replace(/[^0-9]/g, "");
+    const sessionIdVal = numericId && !isNaN(Number(numericId)) && Number(numericId) > 0
+      ? Number(numericId)
+      : editSessionId;
+    try {
+      editSessionData = await getDailyActivityApprovalData(sessionIdVal);
+    } catch (err) {
+      console.error("[MobileActivityPage] Failed to fetch edit session:", err);
+    }
+  }
+
   return (
     <MobileDailyActivityClient
       data={data}
@@ -167,6 +183,7 @@ export default async function MobileActivityPage({
       submitted={submitted}
       submittedSpl={submittedSpl}
       tabQuery={tabQuery}
+      editSessionData={editSessionData}
     />
   );
 }

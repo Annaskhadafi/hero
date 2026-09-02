@@ -218,7 +218,7 @@ export function MobileSplHistory({
             <div className="grid grid-cols-2 gap-2 pt-1">
               {['returned', 'reverted', 'rejected', 'draft'].includes(row.status) ? (
                 <Button asChild className="h-12 col-span-2 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs">
-                  <Link href={`/mobile/overtime?tab=apply&extend=${row.id}`}>
+                  <Link href={`/mobile/overtime?tab=apply&edit=${row.id}`}>
                     <RotateCcw className="size-4 mr-1.5" /> Revisi & Ajukan Ulang SPL
                   </Link>
                 </Button>

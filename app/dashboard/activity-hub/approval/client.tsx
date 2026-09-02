@@ -29,6 +29,8 @@ import {
   Square,
   Trash2,
   Upload,
+  Users,
+  ChevronDown,
   X,
   XCircle,
 } from 'lucide-react'
@@ -48,6 +50,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { EnterpriseActionButtons } from '@/components/ui/enterprise-table-kit'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,6 +104,7 @@ export type SessionApprovalRow = {
   jobTitle?: string
   customerName?: string
   siteName: string
+  teamMembersSummary?: string
   totalItems: number
   totalPoints: number
   items?: Array<{
@@ -213,6 +221,10 @@ export function ApprovalListingClient({
   const [isReminderRunning, setIsReminderRunning] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isTeamLog, setIsTeamLog] = useState(false)
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>([])
+  const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
+  const [teamMemberSearchQuery, setTeamMemberSearchQuery] = useState('')
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     employeeName: '',
@@ -735,6 +747,21 @@ export function ApprovalListingClient({
     }
   }, [createOpen, employees, sites, sectionHeadMap, deptHeadMap, createForm.employeeId])
 
+  const filteredModalEmployees = useMemo(() => {
+    let list = employees
+    if (createForm.siteId) {
+      list = list.filter((e) => !e.siteId || String(e.siteId) === createForm.siteId)
+    }
+    if (!teamMemberSearchQuery) return list
+    const q = teamMemberSearchQuery.toLowerCase()
+    return list.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        (e.employeeId && e.employeeId.toLowerCase().includes(q)) ||
+        (e.jobTitle && e.jobTitle.toLowerCase().includes(q))
+    )
+  }, [employees, createForm.siteId, teamMemberSearchQuery])
+
   const handleCreateSession = async () => {
     if (!createForm.employeeId) {
       toast.error('Pilih karyawan terlebih dahulu')
@@ -758,11 +785,20 @@ export function ApprovalListingClient({
         superiorName: createForm.superiorName || undefined,
         managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
         managerName: createForm.managerName || undefined,
+        teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
         items: validItems,
       })
       if (res.success && res.sessionId) {
         const emp = employees.find((e) => String(e.id) === createForm.employeeId)
         const st = sites.find((s) => String(s.id) === createForm.siteId)
+        const teamMembersSummary =
+          isTeamLog && selectedTeamMemberIds.length > 0
+            ? employees
+                .filter((e) => selectedTeamMemberIds.includes(e.id))
+                .map((e) => e.name)
+                .join(', ')
+            : undefined
+
         const newRow: SessionApprovalRow = {
           sessionId: res.sessionId,
           sessionCode: `DAS-${createForm.workDate.replace(/-/g, '')}-${emp?.employeeId || createForm.employeeId}-${Math.floor(100 + Math.random() * 900)}`,
@@ -775,6 +811,7 @@ export function ApprovalListingClient({
           section: createForm.section || emp?.section || '-',
           jobTitle: createForm.jobTitle || emp?.jobTitle || 'Teknisi',
           siteName: createForm.siteName || st?.name || 'Central Site',
+          teamMembersSummary,
           totalItems: validItems.length,
           totalPoints: validItems.reduce((acc, item) => acc + (item.points || 0), 0),
           items: validItems.map((item, index) => ({
@@ -786,8 +823,8 @@ export function ApprovalListingClient({
             remark: item.remark || '-',
           })),
           approvals: [
-            { stepOrder: 1, stepLabel: 'Karyawan Sign', status: 'pending', approverName: createForm.employeeName || emp?.name || 'Karyawan', signedAt: null },
-            { stepOrder: 2, stepLabel: 'Leader / PJO', status: 'waiting', approverName: createForm.leaderName || 'Leader', signedAt: null },
+            { stepOrder: 1, stepLabel: 'Karyawan Sign', status: 'approved', approverName: createForm.employeeName || emp?.name || 'Karyawan', signedAt: new Date().toISOString() },
+            { stepOrder: 2, stepLabel: 'Leader / PJO', status: 'pending', approverName: createForm.leaderName || 'Leader', signedAt: null },
             { stepOrder: 3, stepLabel: 'Section Head', status: 'waiting', approverName: createForm.superiorName || 'Section Head', signedAt: null },
           ],
         }
@@ -914,6 +951,12 @@ export function ApprovalListingClient({
                 <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Approval</td>
                 <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.sessionStatus}</td>
               </tr>
+              ${row.teamMembersSummary ? `
+              <tr>
+                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Anggota Tim</td>
+                <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: 600; color: #1e3a8a;">${row.teamMembersSummary}</td>
+              </tr>
+              ` : ''}
             </tbody>
           </table>
 
@@ -1045,6 +1088,12 @@ export function ApprovalListingClient({
               <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Approval</td>
               <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.sessionStatus}</td>
             </tr>
+            ${row.teamMembersSummary ? `
+            <tr>
+              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Anggota Tim</td>
+              <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: 600; color: #1e3a8a;">${row.teamMembersSummary}</td>
+            </tr>
+            ` : ''}
           </tbody>
         </table>
 
@@ -1514,6 +1563,13 @@ export function ApprovalListingClient({
                           <td>Site: {currentBatchDoc.siteName || '—'}</td>
                           <td>Customer: {currentBatchDoc.customerName || '—'}</td>
                         </tr>
+                        {currentBatchDoc.teamMembersSummary ? (
+                          <tr>
+                            <td colSpan={2}>
+                              <span className="font-bold">Anggota Tim:</span> {currentBatchDoc.teamMembersSummary}
+                            </td>
+                          </tr>
+                        ) : null}
                       </tbody>
                     </table>
 
@@ -1901,6 +1957,13 @@ export function ApprovalListingClient({
                         <td>Site: {previewTarget.siteName || '—'}</td>
                         <td>Customer: {previewTarget.customerName || '—'}</td>
                       </tr>
+                      {previewTarget.teamMembersSummary ? (
+                        <tr>
+                          <td colSpan={2}>
+                            <span className="font-bold">Anggota Tim:</span> {previewTarget.teamMembersSummary}
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
 
@@ -2454,6 +2517,121 @@ export function ApprovalListingClient({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* 1.1 Team Logging / Input Sekaligus untuk Tim */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="size-4 text-teal-700" />
+                  <div>
+                    <span className="font-bold text-slate-800 text-xs">Team Logging (Input Sekaligus untuk Tim)</span>
+                    <p className="text-[10px] text-slate-500">Pilih rekan kerja untuk dimasukkan ke dokumen aktivitas ini</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-2xs hover:bg-slate-50 transition-colors">
+                  <span>Input untuk Tim</span>
+                  <input
+                    type="checkbox"
+                    checked={isTeamLog}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setIsTeamLog(checked)
+                      if (!checked && createForm.employeeId) {
+                        setSelectedTeamMemberIds([Number(createForm.employeeId)])
+                      }
+                    }}
+                    className="size-4 accent-teal-600 rounded cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {isTeamLog ? (
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <Popover open={teamMemberPickerOpen} onOpenChange={setTeamMemberPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-between rounded-xl bg-white text-xs font-semibold text-slate-800 h-9 border-slate-200"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Users className="size-3.5 text-teal-600" />
+                          {selectedTeamMemberIds.length > 0
+                            ? `${selectedTeamMemberIds.length} Anggota Tim Dipilih`
+                            : 'Pilih Anggota Tim...'}
+                        </span>
+                        <ChevronDown className="size-4 text-slate-400" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-3 space-y-2 bg-white shadow-xl rounded-xl" align="start">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
+                        <Input
+                          placeholder="Cari nama atau NIK..."
+                          value={teamMemberSearchQuery}
+                          onChange={(e) => setTeamMemberSearchQuery(e.target.value)}
+                          className="h-8 pl-8 text-xs bg-white"
+                        />
+                      </div>
+                      <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
+                        {filteredModalEmployees.map((emp) => {
+                          const isSelected = selectedTeamMemberIds.includes(emp.id)
+                          const isPrimary = String(emp.id) === createForm.employeeId
+                          return (
+                            <div
+                              key={emp.id}
+                              onClick={() => {
+                                if (isPrimary) return
+                                setSelectedTeamMemberIds((prev) =>
+                                  isSelected ? prev.filter((id) => id !== emp.id) : [...prev, emp.id]
+                                )
+                              }}
+                              className={cn(
+                                'flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors',
+                                isSelected ? 'bg-teal-50 text-teal-900 font-semibold' : 'hover:bg-slate-100',
+                                isPrimary && 'opacity-80'
+                              )}
+                            >
+                              <div className="space-y-0.5">
+                                <p className="font-medium text-slate-800">
+                                  {emp.name} {isPrimary ? '(Pembuat/Primary)' : ''}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {emp.employeeId || '-'} • {emp.jobTitle || emp.department || 'Staff'}
+                                </p>
+                              </div>
+                              {isSelected ? <Check className="size-4 text-teal-600" /> : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {selectedTeamMemberIds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {employees
+                        .filter((e) => selectedTeamMemberIds.includes(e.id))
+                        .map((e) => (
+                          <Badge
+                            key={e.id}
+                            variant="secondary"
+                            className="text-[11px] font-medium py-1 px-2.5 flex items-center gap-1.5 bg-teal-50 text-teal-900 border border-teal-200"
+                          >
+                            <span>{e.name}</span>
+                            {String(e.id) !== createForm.employeeId ? (
+                              <X
+                                className="size-3 cursor-pointer hover:text-red-600"
+                                onClick={() => setSelectedTeamMemberIds((prev) => prev.filter((id) => id !== e.id))}
+                              />
+                            ) : null}
+                          </Badge>
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE) */}

@@ -2276,8 +2276,16 @@ export async function getDailyActivityEmployeeData(
   const dayStart = startOfDay()
   const dayEnd = endOfDay()
 
-  const [assignmentRows, activityRows, pointRows, penaltyRows, streak, libraryRows, modifierRows] =
-    await Promise.all([
+  const [
+    assignmentRows,
+    activityRows,
+    sessionRows,
+    pointRows,
+    penaltyRows,
+    streak,
+    libraryRows,
+    modifierRows,
+  ] = await Promise.all([
       db
         .select({
           id: jobAssignments.id,
@@ -2350,6 +2358,29 @@ export async function getDailyActivityEmployeeData(
           )
         )
         .orderBy(desc(activities.startTime), desc(activities.id)),
+      db
+        .select({
+          id: dailyActivitySessions.id,
+          sessionCode: dailyActivitySessions.sessionCode,
+          workDate: dailyActivitySessions.workDate,
+          shiftCode: dailyActivitySessions.shiftCode,
+          status: dailyActivitySessions.status,
+          summaryRemark: dailyActivitySessions.summaryRemark,
+          submittedAt: dailyActivitySessions.submittedAt,
+          approvedAt: dailyActivitySessions.approvedAt,
+          createdAt: dailyActivitySessions.createdAt,
+        })
+        .from(dailyActivitySessions)
+        .where(
+          and(
+            eq(dailyActivitySessions.employeeId, employee.id),
+            or(
+              and(gte(dailyActivitySessions.workDate, dayStart), lte(dailyActivitySessions.workDate, dayEnd)),
+              and(gte(dailyActivitySessions.submittedAt, dayStart), lte(dailyActivitySessions.submittedAt, dayEnd))
+            )
+          )
+        )
+        .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id)),
       db
         .select({
           id: pointEvents.id,
@@ -2451,6 +2482,83 @@ export async function getDailyActivityEmployeeData(
     routeChecklist == null
       ? await getStandaloneOvertimeChecklistForEmployee(employee, new Date())
       : null
+
+  const sessionIds = sessionRows.map((s) => s.id)
+  const sessionItemRows =
+    sessionIds.length > 0
+      ? await db
+          .select({
+            id: dailyActivitySessionItems.id,
+            sessionId: dailyActivitySessionItems.sessionId,
+            snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+            snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+          })
+          .from(dailyActivitySessionItems)
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
+      : []
+
+  const itemsBySessionId = new Map<number, typeof sessionItemRows>()
+  for (const item of sessionItemRows) {
+    const list = itemsBySessionId.get(item.sessionId) ?? []
+    list.push(item)
+    itemsBySessionId.set(item.sessionId, list)
+  }
+
+  const mappedSessionActivities = sessionRows.map((s) => {
+    const items = itemsBySessionId.get(s.id) ?? []
+    const firstItem = items[0]
+    const label =
+      items.map((i) => i.snapshotLabel).filter(Boolean).join(' • ') ||
+      s.summaryRemark ||
+      'Laporan DAR'
+    const unitNumber = items.map((i) => i.unitNumber).filter(Boolean).join(', ')
+    const totalPoints = items.reduce((acc, it) => acc + (it.actualPoints || 5), 0)
+    const startTime = firstItem?.startedAt ?? s.workDate
+    const endTime = items[items.length - 1]?.endedAt ?? s.workDate
+
+    return {
+      id: s.id,
+      sessionId: s.id,
+      activityCode: s.sessionCode || 'DAR-DOC',
+      activityType: 'Daily Activity Document',
+      title: label,
+      label,
+      unitNumber,
+      sourceMode: 'self_input' as const,
+      status: s.status,
+      priority: 'Normal',
+      startTime,
+      endTime,
+      submissionTime: s.submittedAt ?? s.createdAt,
+      submissionCategory: 'on_time_standard',
+      pointsAwarded: totalPoints,
+      penaltyDeducted: 0,
+      equipmentNo: unitNumber,
+      materialUsed: '',
+      gpsValid: true,
+      photoCount: 0,
+      remarks: s.summaryRemark || '',
+      assignmentId: null,
+      isTeamActivity: false,
+      teamNameList: '',
+      libraryName: label,
+      photos: [] as Array<{ id: number; url: string; caption: string }>,
+      durationMinutes: minutesBetween(startTime, endTime),
+      durationLabel: formatDurationLabel(minutesBetween(startTime, endTime)),
+      pointsNet: totalPoints,
+      statusLabel: s.status,
+      itemCount: items.length,
+      items,
+    }
+  })
+
   const activityIds = activityRows.map((row) => row.id)
   const activityPhotoRows =
     activityIds.length === 0
@@ -2477,9 +2585,18 @@ export async function getDailyActivityEmployeeData(
     photosByActivityId.set(photo.activityId, photos)
   }
 
-  const approvedOrSubmitted = activityRows.filter((row) =>
-    ['approved', 'pending l1', 'pending approval', 'submitted'].includes(row.status.toLowerCase())
-  ).length
+  const approvedOrSubmitted =
+    mappedSessionActivities.length > 0
+      ? mappedSessionActivities.filter((row) =>
+          ['approved', 'pending l1', 'pending approval', 'submitted'].includes(
+            row.status.toLowerCase()
+          )
+        ).length
+      : activityRows.filter((row) =>
+          ['approved', 'pending l1', 'pending approval', 'submitted'].includes(
+            row.status.toLowerCase()
+          )
+        ).length
   const pointsToday = pointRows
     .filter((row) => row.createdAt >= dayStart && row.createdAt <= dayEnd)
     .reduce((total, row) => total + row.points, 0)
@@ -2563,14 +2680,17 @@ export async function getDailyActivityEmployeeData(
       durationLabel: formatDurationLabel(row.estimatedDuration),
       statusLabel: normalizeStatusLabel(row.status),
     })),
-    activities: activityRows.map((row) => ({
-      ...row,
-      photos: photosByActivityId.get(row.id) ?? [],
-      durationMinutes: minutesBetween(row.startTime, row.endTime),
-      durationLabel: formatDurationLabel(minutesBetween(row.startTime, row.endTime)),
-      pointsNet: row.pointsAwarded - row.penaltyDeducted,
-      statusLabel: row.status,
-    })),
+    activities:
+      mappedSessionActivities.length > 0
+        ? (mappedSessionActivities as any)
+        : activityRows.map((row) => ({
+            ...row,
+            photos: photosByActivityId.get(row.id) ?? [],
+            durationMinutes: minutesBetween(row.startTime, row.endTime),
+            durationLabel: formatDurationLabel(minutesBetween(row.startTime, row.endTime)),
+            pointsNet: row.pointsAwarded - row.penaltyDeducted,
+            statusLabel: row.status,
+          })),
     pointsFeed: pointRows,
     penalties: penaltyRows,
     streak,

@@ -57,6 +57,7 @@ export function MobileDailyActivityClient({
   submitted,
   submittedSpl,
   tabQuery,
+  editSessionData,
 }: {
   data: any
   rawEmployees: any[]
@@ -71,6 +72,7 @@ export function MobileDailyActivityClient({
   submitted?: boolean
   submittedSpl?: boolean
   tabQuery?: string
+  editSessionData?: any
 }) {
   const activeCount = data.summary.jobsAssigned || data.assignments.length || 0
   const pendingApprovalCount = data.activities.filter((a: any) =>
@@ -190,6 +192,7 @@ export function MobileDailyActivityClient({
             standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
             site={data.site}
             teamMembers={teamMembers}
+            initialSessionData={editSessionData?.session || editSessionData}
           />
         </TabsContent>
 

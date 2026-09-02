@@ -1,11 +1,16 @@
-import { jsPDF } from 'jspdf'
-import html2canvas from 'html2canvas-pro'
-import JSZip from 'jszip'
-
 export async function generateElementAsPdfBlob(
   element: HTMLElement,
   options?: { orientation?: 'portrait' | 'landscape' }
 ): Promise<Blob> {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF generation is only supported in the browser.')
+  }
+
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas-pro'),
+  ])
+
   if (document.fonts?.ready) {
     await Promise.race([
       document.fonts.ready,
@@ -156,6 +161,7 @@ export async function downloadFilesAsZip(
   files: Array<{ name: string; blob: Blob }>,
   zipFileName: string = 'documents.zip'
 ): Promise<void> {
+  const { default: JSZip } = await import('jszip')
   const zip = new JSZip()
   for (const f of files) {
     zip.file(f.name, f.blob)

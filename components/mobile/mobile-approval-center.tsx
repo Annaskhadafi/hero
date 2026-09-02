@@ -624,7 +624,7 @@ export function MobileApprovalCenter({
           toast.info(`Daily Activity #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`, {
             action: {
               label: 'Buka Dokumen Revisi',
-              onClick: () => router.push(`/mobile/activity/document/${sessId}/approval`),
+              onClick: () => router.push(`/mobile/activity?edit=${sessId}`),
             },
           })
         } else if (action === 'reject') {
@@ -649,7 +649,7 @@ export function MobileApprovalCenter({
           toast.info(`Surat Lembur (SPL) #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`, {
             action: {
               label: 'Buka Form SPL',
-              onClick: () => router.push(`/mobile/overtime?tab=apply&extend=${splId}`),
+              onClick: () => router.push(`/mobile/overtime?tab=apply&edit=${splId}`),
             },
           })
         } else if (action === 'reject') {
@@ -1058,7 +1058,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
                     >
-                      <Link href={`/mobile/activity/document/${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}/approval`}>
+                      <Link href={`/mobile/activity?edit=${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}`}>
                         Buat Baru (Duplicate)
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -1068,7 +1068,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      <Link href={`/mobile/activity/document/${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}/approval`}>
+                      <Link href={`/mobile/activity?edit=${(item as any).rawDaily?.sessionId || (item as any).sessionId || String(item.id).replace(/[^0-9]/g, '') || item.id}`}>
                         REVISI DOKUMEN ↗
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -1145,7 +1145,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-xs font-bold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
                     >
-                      <Link href={`/mobile/overtime?tab=apply&extend=${item.id}`}>
+                      <Link href={`/mobile/overtime?tab=apply&extend=${(item as any).splId || (item as any).rawOvertime?.splId || String(item.id).replace(/[^0-9]/g, '')}`}>
                         Buat Baru (Duplicate)
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -1155,7 +1155,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white shadow-xs transition active:scale-98"
                     >
-                      <Link href={`/mobile/overtime?tab=apply&extend=${item.id}`}>
+                      <Link href={`/mobile/overtime?tab=apply&edit=${(item as any).splId || (item as any).rawOvertime?.splId || String(item.id).replace(/[^0-9]/g, '')}`}>
                         REVISI DOKUMEN ↗
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
@@ -2638,7 +2638,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="w-full h-10 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl mt-1 shadow-xs"
                     >
-                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&extend=${currentBatchDoc.id}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity/document/${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}/approval`}>
+                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&extend=${(currentBatchDoc as any).splId || currentBatchDoc.rawOvertime?.splId || String(currentBatchDoc.id).replace(/[^0-9]/g, '')}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity?edit=${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}`}>
                         Buat Pengajuan Baru ↗
                       </Link>
                     </Button>
@@ -2666,7 +2666,7 @@ export function MobileApprovalCenter({
                       asChild
                       className="w-full h-10 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl mt-1 shadow-xs"
                     >
-                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&extend=${currentBatchDoc.id}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity/document/${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}/approval`}>
+                      <Link href={currentBatchDoc.category === 'OVERTIME' ? `/mobile/overtime?tab=apply&edit=${(currentBatchDoc as any).splId || currentBatchDoc.rawOvertime?.splId || String(currentBatchDoc.id).replace(/[^0-9]/g, '')}` : currentBatchDoc.category === 'PTW' ? `/mobile/hse/ptw?extend=${currentBatchDoc.rawPtw?.ptwId || currentBatchDoc.id}` : `/mobile/activity?edit=${currentBatchDoc.rawDaily?.sessionId || (currentBatchDoc as any).sessionId || String(currentBatchDoc.id).replace(/[^0-9]/g, '') || currentBatchDoc.id}`}>
                         Buka Form Revisi Pengajuan ↗
                       </Link>
                     </Button>
