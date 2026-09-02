@@ -10,8 +10,12 @@ export type PdfSignatureNames = {
   pjoLeader: string
   approvedBy: string
   hrName?: string
+  externalPreparedBy?: string
+  externalApprovedBy?: string
   customSigners?: PdfSigner[]
   logoUrl?: string
+  useExternalOnly?: boolean
+  omitExternal?: boolean
 }
 
 export async function embedCustomLogo(
@@ -50,24 +54,52 @@ export function drawPdfSignatures(
   y: number,
   names: PdfSignatureNames
 ) {
-  const labels: [string, string][] = [
-    ['Dibuat oleh :', names.preparedBy],
-    ['Approved by:', names.pjoLeader],
-    ['Approved by:', names.approvedBy],
-    ['Diketahui oleh:', names.hrName || ''],
-    ...(names.customSigners ?? [])
-      .filter((s) => s.label.trim() && s.name.trim())
-      .map((s) => [s.label.trim(), s.name.trim()] as [string, string]),
-  ]
+  let labels: [string, string][] = []
+
+  if (names.useExternalOnly) {
+    labels = [
+      ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || '-'],
+      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+    ]
+  } else {
+    labels = [
+      ['Dibuat oleh :', names.preparedBy || '-'],
+      ['Approved by:', names.pjoLeader || '-'],
+      ['Approved by:', names.approvedBy || '-'],
+      ['Diketahui oleh:', names.hrName || ''],
+    ]
+
+    if (!names.omitExternal) {
+      if (names.externalPreparedBy?.trim()) {
+        labels.push(['Dibuat oleh (Eksternal):', names.externalPreparedBy.trim()])
+      }
+      if (names.externalApprovedBy?.trim()) {
+        labels.push(['Approved by (SPV Eksternal):', names.externalApprovedBy.trim()])
+      }
+      if (names.customSigners && names.customSigners.length > 0) {
+        names.customSigners
+          .filter((s) => s.label.trim() && s.name.trim())
+          .forEach((s) => labels.push([s.label.trim(), s.name.trim()]))
+      }
+    }
+  }
+
   const { width } = page.getSize()
-  const columnWidth = (width - 80) / labels.length
+  const isTwoSigners = labels.length === 2
+  const columnWidth = isTwoSigners ? 220 : (width - 80) / labels.length
+  const lineWidth = isTwoSigners ? 180 : columnWidth - 20
 
   labels.forEach(([label, name], index) => {
-    const x = 40 + index * columnWidth
+    const x = isTwoSigners
+      ? index === 0
+        ? 60
+        : width - 60 - lineWidth
+      : 40 + index * columnWidth
+
     page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
     page.drawLine({
       start: { x, y: y - 55 },
-      end: { x: x + columnWidth - 20, y: y - 55 },
+      end: { x: x + lineWidth, y: y - 55 },
       color: rgb(0.5, 0.5, 0.5),
       thickness: 0.5,
     })
@@ -76,7 +108,7 @@ export function drawPdfSignatures(
       y: y - 70,
       font: fonts.regular,
       size: 7,
-      maxWidth: columnWidth - 20,
+      maxWidth: lineWidth,
     })
   })
 }
