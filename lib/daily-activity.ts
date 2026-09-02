@@ -2375,8 +2375,10 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(dailyActivitySessions.employeeId, employee.id),
             or(
+              inArray(dailyActivitySessions.status, ['submitted', 'pending', 'reverted', 'needs_revision', 'draft', 'Draft', 'Submitted', 'pending l1', 'pending approval']),
               and(gte(dailyActivitySessions.workDate, dayStart), lte(dailyActivitySessions.workDate, dayEnd)),
-              and(gte(dailyActivitySessions.submittedAt, dayStart), lte(dailyActivitySessions.submittedAt, dayEnd))
+              and(gte(dailyActivitySessions.submittedAt, dayStart), lte(dailyActivitySessions.submittedAt, dayEnd)),
+              and(gte(dailyActivitySessions.createdAt, dayStart), lte(dailyActivitySessions.createdAt, dayEnd))
             )
           )
         )

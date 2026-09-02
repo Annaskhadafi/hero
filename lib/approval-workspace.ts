@@ -210,22 +210,27 @@ function getTodayWindow(reference = new Date()) {
 
 export function checkIsAdmin(
   email: string,
-  currentEmployee: { id?: number; name?: string; accessRole?: string | null } | null
+  currentEmployee: { id?: number; name?: string; accessRole?: string | null; role?: string | null } | null
 ): boolean {
   const normalizedEmail = normalizeMatchValue(email)
   if (!normalizedEmail) return false
+  const role = (currentEmployee as any)?.role || ''
+  const accessRole = currentEmployee?.accessRole || ''
   if (
-    ['Super Admin', 'Site Admin', 'Admin'].includes(
-      currentEmployee?.accessRole || ''
-    )
+    ['Super Admin', 'Site Admin', 'Admin'].includes(accessRole) ||
+    ['Super Admin', 'Site Admin', 'Admin'].includes(role) ||
+    role.toLowerCase().includes('admin') ||
+    accessRole.toLowerCase().includes('admin')
   ) {
     return true
   }
   if (
     normalizedEmail === 'raihanaraya36@gmail.com' ||
+    normalizedEmail === 'chitra.operation.hero@gmail.com' ||
     normalizedEmail === 'admin@chitraparatama.com' ||
     normalizedEmail.startsWith('admin.') ||
-    normalizedEmail.startsWith('admin_')
+    normalizedEmail.startsWith('admin_') ||
+    normalizedEmail.includes('admin')
   ) {
     return true
   }
@@ -1157,6 +1162,7 @@ async function getEmployeeByEmail(email: string) {
         email: employees.email,
         jobTitle: employees.jobTitle,
         accessRole: employees.accessRole,
+        role: employees.role,
         department: employees.department,
         section: employees.section,
         siteId: employees.siteId,
@@ -1181,6 +1187,7 @@ async function getEmployeeByEmail(email: string) {
         email: employees.email,
         jobTitle: employees.jobTitle,
         accessRole: employees.accessRole,
+        role: employees.role,
         department: employees.department,
         section: employees.section,
         siteId: employees.siteId,
@@ -1392,7 +1399,8 @@ async function getDailyActivityInboxItems(
       const emailMatches =
         normalizedEmail && (
           normalizedEmail === normalizeMatchValue(row.employeeEmail) ||
-          normalizedEmail === "raihanaraya36@gmail.com"
+          normalizedEmail === "raihanaraya36@gmail.com" ||
+          normalizedEmail === "chitra.operation.hero@gmail.com"
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
       const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.employeeName) === normalizedEmployeeName
@@ -1412,7 +1420,8 @@ async function getDailyActivityInboxItems(
     const isStep1ForRequester =
       row.stepOrder === 1 &&
       ((currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id) ||
-        (normalizedEmail && rowReqEmail === normalizedEmail))
+        (normalizedEmail && rowReqEmail === normalizedEmail) ||
+        (normalizedEmployeeName && normalizeMatchValue(row.employeeName) === normalizedEmployeeName))
 
     if (isStep1ForRequester) {
       return true
@@ -1421,15 +1430,39 @@ async function getDailyActivityInboxItems(
     const emailMatches =
       normalizedEmail &&
       ((rowAppEmail && rowAppEmail === normalizedEmail) ||
-        normalizedEmail === 'raihanaraya36@gmail.com')
+        normalizedEmail === 'raihanaraya36@gmail.com' ||
+        normalizedEmail === 'chitra.operation.hero@gmail.com')
     const employeeMatches =
       currentEmployee?.id != null &&
       row.approverEmployeeId != null &&
       row.approverEmployeeId === currentEmployee.id
     const nameMatches =
-      normalizedEmployeeName && rowAppName && rowAppName === normalizedEmployeeName
+      normalizedEmployeeName && rowAppName && (
+        rowAppName === normalizedEmployeeName ||
+        rowAppName.includes(normalizedEmployeeName) ||
+        normalizedEmployeeName.includes(rowAppName)
+      )
 
-    return emailMatches || employeeMatches || nameMatches
+    // Generic Approver matching when approver has no explicit employee ID/email
+    const userRoleLower = (
+      (currentEmployee as any)?.role ||
+      currentEmployee?.jobTitle ||
+      currentEmployee?.accessRole ||
+      ''
+    ).toLowerCase()
+    const isSupervisory =
+      userRoleLower.includes('leader') ||
+      userRoleLower.includes('supervisor') ||
+      userRoleLower.includes('head') ||
+      userRoleLower.includes('manager') ||
+      userRoleLower.includes('pjo') ||
+      userRoleLower.includes('admin') ||
+      userRoleLower.includes('officer')
+
+    const genericApproverMatches =
+      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
+
+    return emailMatches || employeeMatches || nameMatches || genericApproverMatches
   })
 
   const sessionIds = Array.from(new Set(filtered.map((r) => r.sessionId)))
@@ -1648,11 +1681,16 @@ async function getOvertimeInboxItems(
       const emailMatches =
         normalizedEmail && (
           normalizedEmail === normalizeMatchValue(row.requesterEmail) ||
-          normalizedEmail === "raihanaraya36@gmail.com"
+          normalizedEmail === "raihanaraya36@gmail.com" ||
+          normalizedEmail === "chitra.operation.hero@gmail.com"
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
       const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.requesterName) === normalizedEmployeeName
       return emailMatches || empMatches || nameMatches
+    }
+
+    if (isAdmin) {
+      return true
     }
 
     // Active Pending Step Approver
@@ -1661,20 +1699,45 @@ async function getOvertimeInboxItems(
     const rowReqEmail = normalizeMatchValue(row.requesterEmail);
 
     // If logged-in user IS the requester, and they are NOT the active step approver, do NOT show in inbox
-    if (normalizedEmail && rowReqEmail === normalizedEmail && rowAppEmail !== normalizedEmail) {
+    if (normalizedEmail && rowReqEmail === normalizedEmail && rowAppEmail !== normalizedEmail && !isAdmin) {
       return false;
     }
 
     const emailMatches =
       normalizedEmail && (
         rowAppEmail === normalizedEmail ||
-        normalizedEmail === "raihanaraya36@gmail.com"
+        normalizedEmail === "raihanaraya36@gmail.com" ||
+        normalizedEmail === "chitra.operation.hero@gmail.com"
       )
     const employeeMatches =
       currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
     const nameMatches =
-      normalizedEmployeeName && rowAppName === normalizedEmployeeName
-    return emailMatches || employeeMatches || nameMatches
+      normalizedEmployeeName && rowAppName && (
+        rowAppName === normalizedEmployeeName ||
+        rowAppName.includes(normalizedEmployeeName) ||
+        normalizedEmployeeName.includes(rowAppName)
+      )
+
+    // Generic Approver matching when approver has no explicit employee ID/email
+    const userRoleLower = (
+      (currentEmployee as any)?.role ||
+      currentEmployee?.jobTitle ||
+      currentEmployee?.accessRole ||
+      ''
+    ).toLowerCase()
+    const isSupervisory =
+      userRoleLower.includes('leader') ||
+      userRoleLower.includes('supervisor') ||
+      userRoleLower.includes('head') ||
+      userRoleLower.includes('manager') ||
+      userRoleLower.includes('pjo') ||
+      userRoleLower.includes('admin') ||
+      userRoleLower.includes('officer')
+
+    const genericApproverMatches =
+      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
+
+    return emailMatches || employeeMatches || nameMatches || genericApproverMatches
   })
 
   const splIds = Array.from(new Set(filtered.map((r) => r.splId)))

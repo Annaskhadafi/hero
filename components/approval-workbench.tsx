@@ -206,6 +206,7 @@ function InboxTab({
   ptwItems = [],
   contractReviewItems = [],
   sopWinRequestItems = [],
+  filterCategory,
 }: {
   groups: ApprovalCenterData['inboxGroups']
   dailyActivityItems?: ApprovalCenterData['dailyActivityInboxItems']
@@ -213,6 +214,7 @@ function InboxTab({
   ptwItems?: ApprovalCenterData['ptwInboxItems']
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
+  filterCategory?: string
 }) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -464,8 +466,12 @@ function InboxTab({
       })
     }
 
+    if (filterCategory) {
+      return list.filter((it) => it.category === filterCategory)
+    }
+
     return list
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, groups])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, groups, filterCategory])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1120,124 +1126,18 @@ function InboxTab({
                           </a>
                         </Button>
                       ) : (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border-indigo-200"
-                            >
-                              {item.actionLabel || 'Buka TTD ↗'}
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0 overflow-hidden rounded-xl border border-outline-ghost bg-background">
-                            <DialogHeader className="px-6 py-4 border-b border-outline-ghost/70 bg-surface-container-lowest">
-                              <DialogTitle className="text-base flex items-center justify-between">
-                                <span>Review Pengajuan: {item.title}</span>
-                                <span className="text-xs font-normal text-muted-foreground mr-6">
-                                  Request No: {(item as any).requestNumber || item.documentNumber || "-"}
-                                </span>
-                              </DialogTitle>
-                            </DialogHeader>
-                            
-                            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden bg-background">
-                              <div className="md:col-span-7 flex flex-col h-full border-r border-outline-ghost overflow-y-auto p-6 space-y-6">
-                                <div className="space-y-4">
-                                  <h3 className="text-sm font-bold text-foreground">Dokumen Pengajuan</h3>
-                                  <ApprovalRequestDetails item={item as any} />
-                                </div>
-                                
-                                <div className="border-t border-outline-ghost/60 pt-6 space-y-4">
-                                  <h3 className="text-sm font-bold text-foreground">Jejak Keputusan & Timeline</h3>
-                                  <div className="space-y-2">
-                                    {(item as any).steps && (item as any).steps.length > 0 ? (
-                                      (item as any).steps.map((step: any) => (
-                                        <div key={step.approvalId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-xs">
-                                          <div>
-                                            <p className="font-semibold">Level {step.level}: {step.label}</p>
-                                            <p className="text-muted-foreground mt-0.5">{step.approverName}</p>
-                                          </div>
-                                          <AdminStatusBadge value={step.status} />
-                                        </div>
-                                      ))
-                                    ) : (
-                                      <p className="text-xs text-muted-foreground italic">Belum ada jejak step.</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="md:col-span-5 flex flex-col h-full overflow-hidden">
-                                <div className="flex-1 overflow-y-auto p-6 border-b border-outline-ghost space-y-4">
-                                  <h3 className="text-sm font-bold text-foreground">Diskusi & Catatan</h3>
-                                  <div className="space-y-3">
-                                    {(item as any).notes && (item as any).notes.length > 0 ? (
-                                      (item as any).notes.map((note: any) => (
-                                        <div key={note.id} className="p-3 rounded-lg bg-surface-container-low border border-outline-ghost/30 text-xs">
-                                          <div className="flex items-center justify-between">
-                                            <span className="font-semibold text-foreground">{note.actor}</span>
-                                            <AdminStatusBadge value={note.kind} />
-                                          </div>
-                                          <p className="mt-1.5 text-muted-foreground">{note.message}</p>
-                                          <p className="mt-1 text-[10px] text-right text-muted-foreground/80">
-                                            {note.at.toLocaleString("id-ID")}
-                                          </p>
-                                        </div>
-                                      ))
-                                    ) : (
-                                      <p className="text-xs text-muted-foreground italic">Belum ada diskusi.</p>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="p-6 bg-surface-container-lowest space-y-4">
-                                  <form action={reviewApprovalAction} className="space-y-4">
-                                    <input type="hidden" name="approvalId" value={(item as any).approvalId || item.id} />
-                                    
-                                    <div className="space-y-1.5">
-                                      <label className="text-xs font-semibold text-foreground">Catatan Keputusan</label>
-                                      <Textarea
-                                        name="note"
-                                        rows={3}
-                                        placeholder="Tulis alasan jika menolak/revisi, atau beri catatan persetujuan..."
-                                        className="text-xs resize-none"
-                                      />
-                                    </div>
-
-                                    <div className="grid grid-cols-3 gap-2">
-                                      <Button
-                                        type="submit"
-                                        name="decision"
-                                        value="approved"
-                                        className="w-full bg-[#087f73] hover:bg-[#06635a] text-white text-xs h-9"
-                                      >
-                                        Setujui
-                                      </Button>
-                                      <Button
-                                        type="submit"
-                                        name="decision"
-                                        value="rejected"
-                                        variant="destructive"
-                                        className="w-full text-xs h-9"
-                                      >
-                                        Tolak
-                                      </Button>
-                                      <Button
-                                        type="submit"
-                                        name="decision"
-                                        value="needs_correction"
-                                        variant="outline"
-                                        className="w-full border-amber-500 text-amber-600 hover:bg-amber-50 text-xs h-9"
-                                      >
-                                        Minta revisi
-                                      </Button>
-                                    </div>
-                                  </form>
-                                </div>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedIds(new Set([item.id]))
+                            setBatchReviewIndex(0)
+                            setIsBatchReviewOpen(true)
+                          }}
+                          className="h-8 text-xs font-bold text-indigo-700 hover:bg-indigo-50 border-indigo-200 cursor-pointer shadow-xs"
+                        >
+                          {item.actionLabel || 'Buka TTD ↗'}
+                        </Button>
                       )}
                     </TableCell>
                   </TableRow>
@@ -3039,7 +2939,21 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] })
   )
 }
 
-export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
+export function ApprovalWorkbench({
+  data,
+  filterCategory,
+  title,
+  eyebrow,
+  description,
+  customActions,
+}: {
+  data: ApprovalCenterData
+  filterCategory?: string
+  title?: string
+  eyebrow?: string
+  description?: string
+  customActions?: React.ReactNode
+}) {
   const safeData = data || {
     inboxMetrics: { pendingGroups: 0, pendingActivities: 0, dueSoon: 0, overdue: 0 },
     historyMetrics: { approved: 0, rejected: 0 },
@@ -3052,33 +2966,42 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
     sopWinRequestInboxItems: [],
   }
 
+  const isDailyOnly = filterCategory === 'DAILY_ACTIVITY'
+  const dailyCount = safeData.dailyActivityInboxItems?.length ?? 0
+  const dailyDueSoon = safeData.dailyActivityInboxItems?.filter((d) => d.dueState === 'due_soon').length ?? 0
+  const dailyOverdue = safeData.dailyActivityInboxItems?.filter((d) => d.dueState === 'overdue').length ?? 0
+
   return (
     <AdminPageShell
-      eyebrow="Approval"
-      title="Approval Inbox"
-      description="Tugas yang harus saya approve. Gunakan halaman ini untuk mengambil keputusan sebagai approver, bukan untuk memantau request yang saya buat."
+      eyebrow={eyebrow || 'Approval'}
+      title={title || 'Approval Inbox'}
+      description={
+        description ||
+        'Tugas yang harus saya approve. Gunakan halaman ini untuk mengambil keputusan sebagai approver, bukan untuk memantau request yang saya buat.'
+      }
+      actions={customActions}
     >
       <AdminMetricGrid
         mode="compact"
         items={[
           {
-            label: 'Grup menunggu',
-            value: `${safeData.inboxMetrics?.pendingGroups ?? 0}`,
-            meta: 'Requester-hari yang masih perlu keputusan',
+            label: isDailyOnly ? 'Total Sesi' : 'Grup menunggu',
+            value: `${isDailyOnly ? dailyCount : safeData.inboxMetrics?.pendingGroups ?? 0}`,
+            meta: isDailyOnly ? 'Seluruh pengajuan DAR aktif' : 'Requester-hari yang masih perlu keputusan',
           },
           {
-            label: 'Item pending',
-            value: `${safeData.inboxMetrics?.pendingActivities ?? 0}`,
-            meta: 'Pengajuan yang bisa diputuskan sekarang',
+            label: isDailyOnly ? 'Menunggu Approval' : 'Item pending',
+            value: `${isDailyOnly ? dailyCount : safeData.inboxMetrics?.pendingActivities ?? 0}`,
+            meta: isDailyOnly ? 'Dokumen butuh tanda tangan Anda' : 'Pengajuan yang bisa diputuskan sekarang',
           },
           {
             label: 'Segera jatuh tempo',
-            value: `${safeData.inboxMetrics?.dueSoon ?? 0}`,
+            value: `${isDailyOnly ? dailyDueSoon : safeData.inboxMetrics?.dueSoon ?? 0}`,
             meta: 'Butuh diprioritaskan di shift ini',
           },
           {
             label: 'Terlambat',
-            value: `${safeData.inboxMetrics?.overdue ?? 0}`,
+            value: `${isDailyOnly ? dailyOverdue : safeData.inboxMetrics?.overdue ?? 0}`,
             meta: 'Sudah melewati SLA review',
           },
           {
@@ -3102,12 +3025,13 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
 
         <TabsContent value="inbox">
           <InboxTab
-            groups={safeData.inboxGroups || []}
+            groups={isDailyOnly ? [] : safeData.inboxGroups || []}
             dailyActivityItems={safeData.dailyActivityInboxItems || []}
-            overtimeItems={safeData.overtimeInboxItems || []}
-            ptwItems={safeData.ptwInboxItems || []}
-            contractReviewItems={safeData.contractReviewInboxItems || []}
-            sopWinRequestItems={safeData.sopWinRequestInboxItems || []}
+            overtimeItems={isDailyOnly ? [] : safeData.overtimeInboxItems || []}
+            ptwItems={isDailyOnly ? [] : safeData.ptwInboxItems || []}
+            contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
+            sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
+            filterCategory={filterCategory}
           />
         </TabsContent>
 

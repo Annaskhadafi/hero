@@ -6,10 +6,16 @@ import {
   submitPointDisputeAction,
 } from "@/app/dashboard/activity-hub/actions";
 import { db } from "@/db";
-import { employees } from "@/db/schema/hero";
+import {
+  activityLibraries,
+  employees,
+  masterDepartments,
+  masterSections,
+  sites,
+} from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
-import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
+import { MyDayActivityCreateTrigger } from "@/components/my-day-activity-create-trigger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableFilterPresets } from "@/components/table-filter-presets";
@@ -107,7 +113,7 @@ export default async function MyDayPage() {
   const session = await getServerSession();
   const userEmail = session?.user?.email ?? '';
 
-  let [data, teamData, rawTeamMembers] = await Promise.all([
+  let [data, teamData, rawEmployees, rawSites, rawSections, rawDepts, rawPresets] = await Promise.all([
     getDailyActivityEmployeeData(userEmail || null),
     getDailyActivityTeamBoardData(userEmail || null),
     db
@@ -116,14 +122,38 @@ export default async function MyDayPage() {
         name: employees.name,
         role: employees.role,
         department: employees.department,
+        section: employees.section,
         siteId: employees.siteId,
         sectionId: employees.sectionId,
+        departmentId: employees.departmentId,
+        directManagerId: employees.directManagerId,
         employeeId: employees.employeeSn,
         jobTitle: employees.jobTitle,
+        email: employees.email,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(employees.name),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        location: sites.location,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true)),
+    db.select().from(masterSections),
+    db.select().from(masterDepartments),
+    db
+      .select({
+        id: activityLibraries.id,
+        code: activityLibraries.activityCode,
+        name: activityLibraries.activityName,
+        basePoints: activityLibraries.basePoints,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .limit(60),
   ]);
 
   if (!data) {
@@ -135,12 +165,43 @@ export default async function MyDayPage() {
     );
   }
 
-  const teamMembers = (rawTeamMembers || []).filter((m) =>
-    data.employee.siteId ? m.siteId === data.employee.siteId : true
-  );
+  const sectionHeadMap: Record<string, number | null> = {}
+  for (const s of rawSections || []) {
+    if (s?.id) sectionHeadMap[String(s.id)] = s.headEmployeeId || null
+  }
 
-  const now = new Date();
-  const defaultDateTime = dateTimeLocalValue(now);
+  const deptHeadMap: Record<string, number | null> = {}
+  for (const d of rawDepts || []) {
+    if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
+  }
+
+  const modalEmployees = (rawEmployees || []).map((e) => ({
+    id: Number(e.id),
+    name: e.name || '',
+    employeeId: e.employeeId || '',
+    email: e.email || '',
+    jobTitle: e.jobTitle || '',
+    department: e.department || '',
+    section: e.section || '',
+    siteId: e.siteId ? Number(e.siteId) : null,
+    directManagerId: e.directManagerId ? Number(e.directManagerId) : null,
+    sectionId: e.sectionId ? Number(e.sectionId) : null,
+    departmentId: e.departmentId ? Number(e.departmentId) : null,
+  }))
+
+  const modalSites = (rawSites || []).map((s) => ({
+    id: Number(s.id),
+    name: s.name || '',
+    location: s.location || '',
+  }))
+
+  const modalPresets = (rawPresets || []).map((p) => ({
+    id: Number(p.id),
+    code: p.code || '',
+    name: p.name || '',
+    basePoints: Number(p.basePoints) || 0,
+  }))
+
   const assignmentStatuses: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || '')))).sort();
   const assignmentPriorities: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.priority || '')))).sort();
   const activityStatuses: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.statusLabel || '')))).sort();
@@ -181,33 +242,14 @@ export default async function MyDayPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="rounded-full">
-                  <Sparkles className="size-4" />
-                  Input Aktivitas Harian
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>Input Aktivitas Harian</DialogTitle>
-                  <DialogDescription>
-                    Form desktop dan mobile memakai konsep yang sama; modal ini hanya layout desktop untuk input cepat.
-                  </DialogDescription>
-                </DialogHeader>
-                <DailyActivitySubmitForm
-                  action={submitDailyActivityWithStateAction}
-                  employeeId={data.employee.id}
-                  assignments={data.assignments}
-                  availableLibrary={data.availableLibrary}
-                  defaultStartTime={defaultDateTime}
-                  defaultEndTime={defaultDateTime}
-                  defaultSourceMode="assigned"
-                  routeChecklist={data.routeChecklist}
-                  teamMembers={teamMembers}
-                />
-              </DialogContent>
-            </Dialog>
+            <MyDayActivityCreateTrigger
+              employees={modalEmployees}
+              sites={modalSites}
+              activityPresets={modalPresets}
+              sectionHeadMap={sectionHeadMap}
+              deptHeadMap={deptHeadMap}
+              currentEmployeeId={data.employee.id}
+            />
 
             <Button asChild variant="outline" className="rounded-full">
               <Link href="/dashboard/leaderboard">

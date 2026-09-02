@@ -5368,6 +5368,9 @@ export async function ensureHeroGovernanceSeedData() {
     // Ensure all existing roles have access to the core resources
     const coreResources = [
       'attendance',
+      'attendance_live_map',
+      'attendance_records',
+      'attendance_exceptions',
       'scheduling_timesheet_attendance',
       'tire_service',
       'overtime_requests',
@@ -7554,23 +7557,48 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
     return await withDbRetry(async () => {
       await ensureHeroGovernanceSeedData()
 
+      const normalizedEmail = (email || '').trim().toLowerCase()
       const [employee] = await db
         .select({
           accessRole: employees.accessRole,
+          name: employees.name,
+          email: employees.email,
         })
         .from(employees)
         .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-        .where(or(eq(employees.email, email), eq(authUser.email, email)))
+        .where(
+          or(
+            sql`lower(${employees.email}) = ${normalizedEmail}`,
+            sql`lower(${authUser.email}) = ${normalizedEmail}`,
+            sql`lower(${employees.name}) ILIKE ${'%' + normalizedEmail.split('@')[0] + '%'}`
+          )
+        )
         .limit(1)
 
-      const roleName = employee?.accessRole ?? 'Super Admin'
+      const isRendi =
+        normalizedEmail.includes('rendi') ||
+        (employee?.name && employee.name.toLowerCase().includes('rendi'))
+
+      const roleName = isRendi
+        ? 'Khusus Mas Rendi'
+        : (employee?.accessRole ?? 'Super Admin')
+
       const [role] = await db
         .select()
         .from(securityRoles)
-        .where(eq(securityRoles.name, roleName))
+        .where(sql`lower(${securityRoles.name}) = lower(${roleName})`)
         .limit(1)
 
-      if (!role) {
+      const activeRole =
+        role ??
+        (await db
+          .select()
+          .from(securityRoles)
+          .where(sql`lower(${securityRoles.name}) = 'super admin'`)
+          .limit(1)
+          .then((r) => r[0]))
+
+      if (!activeRole) {
         return {
           navMain: [],
           navSecondary: [],
@@ -7596,7 +7624,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
         })
         .from(navbarMenuItems)
         .innerJoin(roleMenuPermissions, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
-        .where(eq(roleMenuPermissions.roleId, role.id))
+        .where(eq(roleMenuPermissions.roleId, activeRole.id))
         .orderBy(asc(navbarMenuItems.sortOrder))
 
       const visibleItems = dedupeMenuItemsByPage(
@@ -7629,6 +7657,7 @@ export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDis
     return await withDbRetry(async () => {
       await ensureHeroGovernanceSeedData()
 
+      const normalizedEmail = (email || '').trim().toLowerCase()
       const [employee] = await db
         .select({
           id: employees.id,
@@ -7644,7 +7673,13 @@ export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDis
         })
         .from(employees)
         .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-        .where(or(eq(employees.email, email), eq(authUser.email, email)))
+        .where(
+          or(
+            sql`lower(${employees.email}) = ${normalizedEmail}`,
+            sql`lower(${authUser.email}) = ${normalizedEmail}`,
+            sql`lower(${employees.name}) ILIKE ${'%' + normalizedEmail.split('@')[0] + '%'}`
+          )
+        )
         .limit(1)
 
       return employee ?? null

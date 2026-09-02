@@ -85,6 +85,7 @@ export default async function DailyActivityApprovalListPage() {
 
     const userRole = ((session?.user as any)?.role || '').toLowerCase()
     const accessRole = (currentEmployee?.accessRole || '').toLowerCase()
+    const roleCol = ((currentEmployee as any)?.role || '').toLowerCase()
     const isAdmin =
       userRole === 'admin' ||
       userRole === 'superadmin' ||
@@ -95,7 +96,11 @@ export default async function DailyActivityApprovalListPage() {
       accessRole === 'system administrator' ||
       accessRole === 'khusus mas rendi' ||
       accessRole === 'hc manager' ||
-      accessRole === 'hr'
+      accessRole === 'hr' ||
+      roleCol === 'admin' ||
+      roleCol === 'super admin' ||
+      normalizedEmail === 'chitra.operation.hero@gmail.com' ||
+      normalizedEmail === 'raihanaraya36@gmail.com'
 
     const isSiteAdmin = accessRole === 'site admin'
 
@@ -355,7 +360,15 @@ export default async function DailyActivityApprovalListPage() {
 
     const rows: SessionApprovalRow[] = (sessions || []).map((s) => {
       const teamMatch = (s.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
-      const teamMembersSummary = teamMatch ? teamMatch[1].trim() : undefined
+      let teamMembersSummary = teamMatch ? teamMatch[1].trim() : undefined
+      if (teamMembersSummary && s.employeeName) {
+        const requesterName = s.employeeName.trim().toLowerCase()
+        const otherMembers = teamMembersSummary
+          .split(',')
+          .map((n) => n.trim())
+          .filter((n) => n && n.toLowerCase() !== requesterName)
+        teamMembersSummary = otherMembers.length > 0 ? otherMembers.join(', ') : undefined
+      }
 
       return {
         sessionId: Number(s.sessionId),

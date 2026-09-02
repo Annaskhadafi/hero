@@ -167,7 +167,13 @@ export async function getDailyActivitySessionDocumentData(
   let teamMembersSummary = ''
   const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
   if (teamMatch && teamMatch[1]) {
-    teamMembersSummary = teamMatch[1].trim()
+    const rawMembers = teamMatch[1].trim()
+    const requesterName = (header.employeeName || '').trim().toLowerCase()
+    const otherMembers = rawMembers
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n && n.toLowerCase() !== requesterName)
+    teamMembersSummary = otherMembers.join(', ')
   }
 
   const checkedItems = itemRows

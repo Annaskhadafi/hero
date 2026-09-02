@@ -5,8 +5,11 @@ type ApprovalInboxItem = Awaited<
   ReturnType<typeof getApprovalCenterData>
 >['inboxGroups'][number]['items'][number]
 
-function formatDateTime(value: Date) {
-  return value.toLocaleString('id-ID', {
+function formatDateTime(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleString('id-ID', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -15,42 +18,52 @@ function formatDateTime(value: Date) {
   })
 }
 
-function formatDate(value: Date) {
-  return value.toLocaleDateString('id-ID', {
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
   })
 }
 
-function formatTime(value: Date) {
-  return value.toLocaleTimeString('id-ID', {
+function formatTime(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
   })
 }
 
 export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
+  const workItems = item?.workItems || []
+  const evidencePhotoUrls = item?.evidencePhotoUrls || []
+  const evidenceProgressPercent = item?.evidenceProgressPercent ?? 0
+
   return (
     <div className="space-y-4">
       <section className="rounded-2xl bg-[#eef6fb] p-4 text-[#082033]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold tracking-[0.16em] text-[#486275] uppercase">
-              {item.requestNumber || item.activityType}
+              {item.requestNumber || item.activityType || item.documentNumber || 'DAR-REQ'}
             </p>
-            <h3 className="mt-1 text-lg font-black tracking-tight">{item.title}</h3>
+            <h3 className="mt-1 text-lg font-black tracking-tight">{item.title || 'Pengajuan'}</h3>
           </div>
-          <AdminStatusBadge value={item.requestKindLabel} />
+          <AdminStatusBadge value={item.requestKindLabel || item.category || 'Daily Activity'} />
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-xs font-semibold text-[#60788a]">Site</dt>
-            <dd className="mt-0.5 font-bold">{item.siteName}</dd>
+            <dd className="mt-0.5 font-bold">{item.siteName || '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold text-[#60788a]">Total lembur</dt>
-            <dd className="mt-0.5 font-bold tabular-nums">{item.overtimeLabel}</dd>
+            <dt className="text-xs font-semibold text-[#60788a]">Total lembur / Poin</dt>
+            <dd className="mt-0.5 font-bold tabular-nums">{item.overtimeLabel || (item as any).totalPoints ? `${(item as any).totalPoints} pts` : '—'}</dd>
           </div>
           {(item as any).tireCount ? (
             <div>
@@ -60,7 +73,7 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
           ) : null}
           <div className="col-span-2 border-t border-[#d5e5ef] pt-3">
             <dt className="text-xs font-semibold text-[#60788a]">Tanggal</dt>
-            <dd className="mt-1 text-base font-black">{formatDate(item.startTime)}</dd>
+            <dd className="mt-1 text-base font-black">{formatDate(item.startTime || (item as any).workDate || (item as any).submittedAt)}</dd>
           </div>
           <div className="rounded-xl bg-white/70 p-3">
             <dt className="text-xs font-semibold text-[#60788a]">Mulai</dt>
@@ -87,17 +100,17 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-black text-[#082033]">Daily Activity</h4>
-          <AdminStatusBadge value={item.dailyActivityStatus} />
+          <AdminStatusBadge value={item.dailyActivityStatus || 'Aktif'} />
         </div>
-        {item.workItems.length > 0 ? (
+        {workItems.length > 0 ? (
           <div className="mt-2 divide-y divide-[#dce9f2] overflow-hidden rounded-2xl bg-[#f7fbfe]">
-            {item.workItems.map((workItem) => (
+            {workItems.map((workItem) => (
               <article key={workItem.id} className="p-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-[#082033]">{workItem.label}</p>
                     <p className="mt-1 text-xs leading-5 text-[#60788a]">
-                      {workItem.employeeName} • Unit {workItem.unitNumber}
+                      {workItem.employeeName} • Unit {workItem.unitNumber || '-'}
                     </p>
                   </div>
                   <AdminStatusBadge value={workItem.isChecked ? 'selesai' : 'belum selesai'} />
@@ -121,7 +134,7 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
           </div>
         ) : (
           <p className="mt-2 rounded-xl bg-[#f7fbfe] p-3 text-sm text-[#60788a]">
-            Belum ada checklist Daily Activity pada SPL ini.
+            Belum ada checklist Daily Activity pada pengajuan ini.
           </p>
         )}
       </section>
@@ -130,18 +143,18 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
         <div className="flex items-center justify-between gap-3">
           <h4 className="text-sm font-black text-[#082033]">Evidence</h4>
           <span className="text-sm font-black text-[#003f78] tabular-nums">
-            {item.evidenceProgressPercent}%
+            {evidenceProgressPercent}%
           </span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#dce9f2]">
           <div
             className="h-full rounded-full bg-[#087f73]"
-            style={{ width: `${item.evidenceProgressPercent}%` }}
+            style={{ width: `${evidenceProgressPercent}%` }}
           />
         </div>
-        {item.evidencePhotoUrls.length > 0 ? (
+        {evidencePhotoUrls.length > 0 ? (
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {item.evidencePhotoUrls.map((url, index) => (
+            {evidencePhotoUrls.map((url, index) => (
               <a
                 key={url}
                 href={url}
@@ -151,7 +164,7 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
               >
                 <img
                   src={url}
-                  alt={`Evidence SPL ${index + 1}`}
+                  alt={`Evidence ${index + 1}`}
                   className="aspect-[4/3] w-full object-cover"
                   loading="lazy"
                 />

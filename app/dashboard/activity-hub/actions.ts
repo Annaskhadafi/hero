@@ -6266,12 +6266,17 @@ export async function createDailyActivitySessionAction(input: {
         if (pos) validPosId = pos.id
       }
 
-      const teamNames = allEmps.map((e) => e.name).filter(Boolean).join(', ')
+      const otherTeamNames = allEmps
+        .filter((e) => e.id !== emp.id)
+        .map((e) => e.name)
+        .filter(Boolean)
+        .join(', ')
+
       let finalSummary = (input.summaryRemark || input.notes || '').trim()
-      if (allEmps.length > 1 && !finalSummary.includes('[Team:')) {
+      if (otherTeamNames.length > 0 && !finalSummary.includes('[Team:')) {
         finalSummary = finalSummary
-          ? `${finalSummary} | [Team: ${teamNames}]`
-          : `[Team: ${teamNames}]`
+          ? `${finalSummary} | [Team: ${otherTeamNames}]`
+          : `[Team: ${otherTeamNames}]`
       }
 
       const [created] = await db
@@ -6368,6 +6373,56 @@ export async function createDailyActivitySessionAction(input: {
           leaderEmail = found.email || ''
         }
       }
+
+      if (!leaderEmpId && !leaderEmail) {
+        if (emp.sectionId) {
+          const [secLeader] = await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(
+              and(
+                eq(employees.sectionId, emp.sectionId),
+                eq(employees.isActive, true),
+                or(
+                  sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
+                  sql`LOWER(${employees.jobTitle}) LIKE '%supervisor%'`,
+                  sql`LOWER(${employees.role}) LIKE '%leader%'`,
+                  sql`LOWER(${employees.role}) LIKE '%admin%'`
+                )
+              )
+            )
+            .limit(1)
+          if (secLeader) {
+            leaderEmpId = secLeader.id
+            leaderName = secLeader.name
+            leaderEmail = secLeader.email || ''
+          }
+        }
+        if (!leaderEmpId && emp.siteId) {
+          const [siteLeader] = await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(
+              and(
+                eq(employees.siteId, emp.siteId),
+                eq(employees.isActive, true),
+                or(
+                  sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
+                  sql`LOWER(${employees.jobTitle}) LIKE '%pjo%'`,
+                  sql`LOWER(${employees.jobTitle}) LIKE '%admin%'`,
+                  sql`LOWER(${employees.role}) LIKE '%admin%'`
+                )
+              )
+            )
+            .limit(1)
+          if (siteLeader) {
+            leaderEmpId = siteLeader.id
+            leaderName = siteLeader.name
+            leaderEmail = siteLeader.email || ''
+          }
+        }
+      }
+
       if (!leaderName) {
         leaderName = 'Leader Lapangan'
       }
@@ -6459,10 +6514,7 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: emp.id,
           approverName: emp.name,
           approverEmail: emp.email || '',
-          status: 'approved',
-          signedAt: now,
-          signatureDataUrl: submitterSig,
-          remarks: 'Submitted by employee',
+          status: 'pending',
           approvalToken: step1Token,
           createdAt: now,
         },
@@ -6474,7 +6526,7 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: leaderEmpId ?? null,
           approverName: leaderName,
           approverEmail: leaderEmail,
-          status: 'pending',
+          status: 'waiting',
           approvalToken: step2Token,
           createdAt: now,
         },

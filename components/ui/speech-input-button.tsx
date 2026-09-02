@@ -45,10 +45,23 @@ export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, clas
       };
 
       recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        if (event.error !== 'no-speech') {
-          toast.error("Error mikrofon: " + event.error);
+        const err = event.error || 'unknown';
+        if (err === 'no-speech' || err === 'aborted') {
           setIsRecording(false);
+          return;
+        }
+
+        console.warn('Speech recognition warning:', err);
+        setIsRecording(false);
+
+        if (err === 'not-allowed' || err === 'service-not-allowed') {
+          toast.error('Izin mikrofon diblokir. Silakan aktifkan izin mikrofon pada browser Anda.');
+        } else if (err === 'audio-capture') {
+          toast.error('Mikrofon tidak terdeteksi pada perangkat Anda.');
+        } else if (err === 'network') {
+          toast.error('Koneksi jaringan terputus saat memproses suara.');
+        } else {
+          toast.error(`Error mikrofon: ${err}`);
         }
       };
 
@@ -83,9 +96,13 @@ export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, clas
       recognitionRef.current.start();
       setIsRecording(true);
     } catch (err: any) {
-      console.error(err);
-      toast.error("Gagal memulai perekaman. Coba muat ulang halaman.");
-      setIsRecording(false);
+      if (err?.name === 'InvalidStateError') {
+        setIsRecording(true);
+      } else {
+        console.warn('Speech recognition start error:', err);
+        toast.error('Gagal memulai mikrofon. Pastikan izin mikrofon telah diberikan.');
+        setIsRecording(false);
+      }
     }
   };
 

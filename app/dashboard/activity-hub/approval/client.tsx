@@ -823,13 +823,41 @@ export function ApprovalListingClient({
             remark: item.remark || '-',
           })),
           approvals: [
-            { stepOrder: 1, stepLabel: 'Karyawan Sign', status: 'approved', approverName: createForm.employeeName || emp?.name || 'Karyawan', signedAt: new Date().toISOString() },
-            { stepOrder: 2, stepLabel: 'Leader / PJO', status: 'pending', approverName: createForm.leaderName || 'Leader', signedAt: null },
+            { stepOrder: 1, stepLabel: 'Karyawan Sign', status: 'pending', approverName: createForm.employeeName || emp?.name || 'Karyawan', signedAt: null },
+            { stepOrder: 2, stepLabel: 'Leader / PJO', status: 'waiting', approverName: createForm.leaderName || 'Leader', signedAt: null },
             { stepOrder: 3, stepLabel: 'Section Head', status: 'waiting', approverName: createForm.superiorName || 'Section Head', signedAt: null },
           ],
         }
         setRows((prev) => [newRow, ...prev])
         toast.success('Sesi Daily Activity berhasil disimpan!')
+        setCreateForm({
+          employeeId: '',
+          employeeName: '',
+          employeeSn: '',
+          jobTitle: '',
+          department: '',
+          section: '',
+          workDate: new Date().toISOString().split('T')[0],
+          shiftCode: 'ALL',
+          siteId: '',
+          siteName: '',
+          customerName: '',
+          leaderEmployeeId: '',
+          leaderName: '',
+          superiorEmployeeId: '',
+          superiorName: '',
+          managerEmployeeId: '',
+          managerName: '',
+          sourceMode: 'self_input',
+          assignmentId: '',
+          customName: '',
+          customDescription: '',
+          customUnit: '',
+          items: [],
+        })
+        setIsTeamLog(false)
+        setSelectedTeamMemberIds([])
+        setTeamMemberSearchQuery('')
         setCreateOpen(false)
         router.refresh()
       } else {
