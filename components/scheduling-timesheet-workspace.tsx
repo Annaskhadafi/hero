@@ -32,6 +32,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -5147,7 +5148,7 @@ export function SchedulingTimesheetWorkspace({
 
   function getSummaryPdfSignatures(
     baseSignatures: typeof pdfSignatures
-  ): typeof pdfSignatures {
+  ): PdfSignatureNames {
     const cfg = siteConfig.pdfConfig
     if (pdfUseExternalSignatures) {
       const extPrep =

@@ -563,11 +563,23 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
       const matched = pjoCandidates.find((c) => isPjoOrTechnical(c.jobTitle))
       if (matched) siteHead = matched
     }
-    if (siteHead) {
-      firstApprover = siteHead
+    if (siteHead && siteHead.id) {
+      firstApprover = {
+        id: siteHead.id,
+        name: siteHead.name,
+        email: siteHead.email,
+        jobTitle: siteHead.jobTitle || '',
+      }
     } else if (userEmployee.directManagerId) {
       const directMgr = await getUserById(userEmployee.directManagerId)
-      if (directMgr?.email) firstApprover = directMgr
+      if (directMgr?.email && directMgr.id) {
+        firstApprover = {
+          id: directMgr.id,
+          name: directMgr.name,
+          email: directMgr.email,
+          jobTitle: directMgr.jobTitle || '',
+        }
+      }
     }
   }
 

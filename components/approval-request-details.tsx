@@ -50,11 +50,11 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold tracking-[0.16em] text-[#486275] uppercase">
-              {item.requestNumber || item.activityType || item.documentNumber || 'DAR-REQ'}
+              {item.requestNumber || item.activityType || (item as unknown as { documentNumber?: string }).documentNumber || 'DAR-REQ'}
             </p>
             <h3 className="mt-1 text-lg font-black tracking-tight">{item.title || 'Pengajuan'}</h3>
           </div>
-          <AdminStatusBadge value={item.requestKindLabel || item.category || 'Daily Activity'} />
+          <AdminStatusBadge value={item.requestKindLabel || (item as unknown as { category?: string }).category || 'Daily Activity'} />
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
