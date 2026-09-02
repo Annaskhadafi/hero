@@ -113,6 +113,7 @@ export type MasterSite = {
   headEmployeeId: number | null;
   headEmployeeName: string | null;
   siteType: string;
+  timezone: string;
   isActive: boolean;
   employeeCount: number;
   createdAt: Date;
@@ -414,6 +415,7 @@ export async function getMasterSites(): Promise<MasterSite[]> {
         headEmployeeId: sites.headEmployeeId,
         headEmployeeName: headEmployees.name,
         siteType: sites.siteType,
+        timezone: sites.timezone,
         isActive: sites.isActive,
         createdAt: sites.createdAt,
       })

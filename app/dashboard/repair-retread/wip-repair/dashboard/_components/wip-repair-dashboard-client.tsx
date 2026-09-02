@@ -57,9 +57,15 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import type { WipRepairRecord, WipRepairWorkOrderDetailRecord } from "@/lib/types/wip-repair"
-import { buildWipRepairDashboardData, type WipRepairDashboardData } from "@/lib/wip-repair-dashboard"
+import {
+  buildWipRepairDashboardData,
+  getWipRepairAgingUnder30Rows,
+  type WipRepairDashboardData,
+} from "@/lib/wip-repair-dashboard"
 import { normalizeWipRepairBrand } from "@/lib/wip-repair-brand"
 
 type WipRepairDashboardClientProps = {
@@ -662,6 +668,11 @@ export function WipRepairDashboardClient({
     return buildWipRepairDashboardData(filteredWorkOrders, filteredDetails)
   }, [filteredDetails, filteredWorkOrders])
 
+  const agingUnder30Rows = useMemo(
+    () => getWipRepairAgingUnder30Rows(dashboard.workOrderInsights),
+    [dashboard.workOrderInsights]
+  )
+
   const detailRows = useMemo(() => {
     const workOrderByKey = filteredWorkOrders.reduce<Record<string, WipRepairRecord>>((accumulator, item) => {
       accumulator[getHeaderDetailLookupKey(item)] = item
@@ -739,14 +750,14 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    const rows = Object.values(grouped)
+    const rows = Object.values(grouped || {})
       .map((item) => ({
         ...item,
         workOrderCount: item.workOrders.size,
         activeDayCount: item.activeDays.size,
         averageMinutes: item.jobs > 0 ? item.minutes / item.jobs : 0,
         topJob:
-          Object.entries(item.jobCounts)
+          Object.entries(item.jobCounts || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.minutes - left.minutes || right.jobs - left.jobs || left.name.localeCompare(right.name))
@@ -776,7 +787,7 @@ export function WipRepairDashboardClient({
         {}
       )
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({ ...item, workOrderCount: item.workOrders.size }))
       .sort((left, right) => right.rows - left.rows || right.quantity - left.quantity || left.name.localeCompare(right.name))
   }, [detailRows])
@@ -900,13 +911,13 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         customersCount: item.customers.size,
         sitesCount: item.sites.size,
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.waitingWo - left.waitingWo || right.emptyWo - left.emptyWo || right.workOrders - left.workOrders || left.name.localeCompare(right.name))
@@ -999,17 +1010,17 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         topSize:
-          Object.entries(item.sizes)
+          Object.entries(item.sizes || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
         topCustomer:
-          Object.entries(item.customers)
+          Object.entries(item.customers || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.workOrders - left.workOrders || right.totalMinutes - left.totalMinutes || left.name.localeCompare(right.name))
@@ -1079,12 +1090,12 @@ export function WipRepairDashboardClient({
       return accumulator
     }, {})
 
-    return Object.values(grouped)
+    return Object.values(grouped || {})
       .map((item) => ({
         ...item,
         name: `${item.brand} / ${item.size}`,
         topInjury:
-          Object.entries(item.injuries)
+          Object.entries(item.injuries || {})
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "-",
       }))
       .sort((left, right) => right.workOrders - left.workOrders || left.brand.localeCompare(right.brand) || left.size.localeCompare(right.size))
@@ -1113,7 +1124,7 @@ export function WipRepairDashboardClient({
       {}
     )
 
-    const prepared = Object.entries(buckets)
+    const prepared = Object.entries(buckets || {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([, value]) => value)
 
@@ -1339,6 +1350,68 @@ export function WipRepairDashboardClient({
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-4">
+        <MinimalTableShell
+          title="Daftar Aging <30 Hari"
+          description="WO berumur 0-29 hari yang mengikuti seluruh filter dashboard aktif."
+          label="WO aging <30 hari"
+          fileName={`wip-repair-aging-under-30-${selectedMonth === ALL_FILTER ? "semua-bulan" : selectedMonth}`}
+          searchPlaceholder="Cari WO, tire SN, customer, site..."
+          showImport={false}
+          dateFilter={false}
+          tableViewportClassName="max-h-[460px]"
+        >
+          <Table className="min-w-[1280px]">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+              <TableRow>
+                <TableHead>WO</TableHead>
+                <TableHead>Tire SN</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Jobsite</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead>Pattern</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Injury</TableHead>
+                <TableHead>Received Date</TableHead>
+                <TableHead>WO Date</TableHead>
+                <TableHead className="text-right">Aging (Hari)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agingUnder30Rows.length > 0 ? (
+                agingUnder30Rows.map((item) => (
+                  <TableRow key={item.insightKey} data-date-value={item.receivedDate}>
+                    <TableCell className="font-mono text-xs font-semibold">{item.wo}</TableCell>
+                    <TableCell>{item.tireSn}</TableCell>
+                    <TableCell>{item.customer}</TableCell>
+                    <TableCell>{item.site}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>{item.brand}</TableCell>
+                    <TableCell>{item.pattern}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn("rounded-full px-2.5 py-1 text-xs", getStatusTone(item.status))}>
+                        {item.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{item.injury}</TableCell>
+                    <TableCell>{formatDate(item.receivedDate)}</TableCell>
+                    <TableCell>{formatDate(item.woDate)}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{formatNumber(item.agingDays ?? 0)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={12} className="h-24 text-center text-slate-500">
+                    Tidak ada WO dengan aging kurang dari 30 hari untuk filter saat ini.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">

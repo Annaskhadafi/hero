@@ -45,9 +45,10 @@ export default async function RfrCreateFormPage({ searchParams }: PageProps) {
   let defaultRequestorJobTitle = ''
   let defaultSectionDepartment = ''
 
-  if (session?.user?.email || session?.user?.employeeSn) {
-    const userEmail = session.user.email
-    const employeeSn = session.user.employeeSn ? String(session.user.employeeSn) : ''
+  const userObj = session?.user as any
+  if (userObj?.email || userObj?.employeeSn) {
+    const userEmail = userObj.email
+    const employeeSn = userObj.employeeSn ? String(userObj.employeeSn) : ''
 
     try {
       const rows = await db

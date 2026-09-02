@@ -67,6 +67,16 @@ export type WipRepairDashboardData = {
   workOrderInsights: WipRepairWorkOrderInsight[]
 }
 
+export function getWipRepairAgingUnder30Rows(items: WipRepairWorkOrderInsight[]) {
+  return items
+    .filter((item) => item.agingDays !== null && item.agingDays >= 0 && item.agingDays < 30)
+    .sort(
+      (left, right) =>
+        (right.agingDays ?? 0) - (left.agingDays ?? 0) ||
+        left.wo.localeCompare(right.wo)
+    )
+}
+
 export type WipRepairProductionData = {
   year: number
   month: number
@@ -173,13 +183,13 @@ function percentage(value: number, total: number) {
 }
 
 function getTopCountItems(values: string[], total: number, limit = 8): WipRepairRankingItem[] {
-  const counts = values.reduce<Record<string, number>>((accumulator, rawValue) => {
+  const counts = (values || []).reduce<Record<string, number>>((accumulator, rawValue) => {
     const value = normalizeValue(rawValue)
     accumulator[value] = (accumulator[value] ?? 0) + 1
     return accumulator
   }, {})
 
-  return Object.entries(counts)
+  return Object.entries(counts || {})
     .map(([name, value]) => ({
       name,
       value,
@@ -306,10 +316,11 @@ export function buildWipRepairProductionData(
   }))
   const countBy = (items: typeof yearOutputs, field: "site" | "size") =>
     Object.entries(
-      items.reduce<Record<string, number>>((counts, item) => {
+      (items || []).reduce<Record<string, number>>((counts, item) => {
+        if (!item) return counts
         counts[item[field]] = (counts[item[field]] ?? 0) + 1
         return counts
-      }, {})
+      }, {}) || {}
     )
       .map(([name, total]) => ({ name, total }))
       .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name))

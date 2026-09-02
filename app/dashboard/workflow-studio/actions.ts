@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 
 import { db } from '@/db'
 import {
@@ -29,6 +29,7 @@ import {
 } from '@/db/schema/hero'
 import { fiveRMasterAreas } from '@/db/schema/five-r'
 import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
+import { approvalWorkflowPresets } from '@/db/schema'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { logAuditEvent } from '@/lib/audit-logger'
@@ -171,7 +172,7 @@ export async function saveWorkflowStudioApprovalAction(
     )
 
     const allEmployeeIds = parsedSiteEntries.flatMap((entry) =>
-      Object.entries(entry.values)
+      Object.entries(entry.values || {})
         .filter(([stepId, id]) => !sectionStepIds.has(stepId) && id != null && id > 0)
         .map(([, id]) => id as number)
     )
@@ -790,7 +791,10 @@ export async function resendWorkflowStudioReminderAction(formData: FormData) {
   }
 }
 
-export async function markWorkflowStudioInvestigatedAction(formData: FormData) {
+export async function markWorkflowStudioInvestigatedAction(
+  _prevState: { status: 'idle' | 'success' | 'error'; message: string },
+  formData: FormData
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
   try {
     await requireWorkflowStudioEdit()
     const parsed = investigateSchema.safeParse({
@@ -813,5 +817,102 @@ export async function markWorkflowStudioInvestigatedAction(formData: FormData) {
   } catch (error) {
     console.error('[workflow-studio] investigate failed:', error)
     return { status: 'error' as const, message: 'Gagal menandai investigated.' }
+  }
+}
+
+const presetBuilderSchema = z.object({
+  id: z.string().optional(),
+  presetKey: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(200),
+  description: z.string().trim().optional(),
+  category: z.string().trim().default('general'),
+  stepsJson: z.string().trim().min(1),
+  isActive: z.enum(['true', 'false']).default('true'),
+})
+
+export async function saveWorkflowStudioPresetAction(
+  _state: { status: 'idle' | 'success' | 'error'; message: string },
+  formData: FormData
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
+  try {
+    await requireWorkflowStudioEdit()
+    const parsed = presetBuilderSchema.safeParse(Object.fromEntries(formData.entries()))
+    if (!parsed.success) {
+      return { status: 'error' as const, message: 'Payload preset belum lengkap.' }
+    }
+    const payload = parsed.data
+    const session = await getServerSession()
+    
+    let stepsJsonParsed = []
+    try {
+      stepsJsonParsed = JSON.parse(payload.stepsJson)
+    } catch {
+      return { status: 'error' as const, message: 'Format steps JSON tidak valid.' }
+    }
+
+    const now = new Date()
+    const presetId = payload.id || crypto.randomUUID()
+
+    await db
+      .insert(approvalWorkflowPresets)
+      .values({
+        id: presetId,
+        presetKey: payload.presetKey,
+        name: payload.name,
+        description: payload.description ?? '',
+        category: payload.category,
+        stepsJson: stepsJsonParsed,
+        isSystemPreset: false,
+        isActive: payload.isActive === 'true',
+        createdBy: session?.user?.id ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: approvalWorkflowPresets.presetKey,
+        set: {
+          name: payload.name,
+          description: payload.description ?? '',
+          category: payload.category,
+          stepsJson: stepsJsonParsed,
+          isActive: payload.isActive === 'true',
+          updatedAt: now,
+        }
+      })
+
+    revalidatePath('/dashboard/workflow-studio')
+    return { status: 'success' as const, message: 'Preset berhasil disimpan.' }
+  } catch (error: any) {
+    return { status: 'error' as const, message: error.message || 'Gagal menyimpan preset.' }
+  }
+}
+
+export async function deleteWorkflowStudioPresetAction(
+  _state: { status: 'idle' | 'success' | 'error'; message: string },
+  formData: FormData
+): Promise<{ status: 'idle' | 'success' | 'error'; message: string }> {
+  try {
+    await requireWorkflowStudioEdit()
+    const id = formData.get('id')?.toString()
+    if (!id) {
+      return { status: 'error' as const, message: 'ID preset tidak valid.' }
+    }
+
+    const [preset] = await db
+      .select({ isSystemPreset: approvalWorkflowPresets.isSystemPreset })
+      .from(approvalWorkflowPresets)
+      .where(eq(approvalWorkflowPresets.id, id))
+      .limit(1)
+
+    if (preset?.isSystemPreset) {
+      return { status: 'error' as const, message: 'Preset sistem bawaan tidak boleh dihapus.' }
+    }
+
+    await db.delete(approvalWorkflowPresets).where(eq(approvalWorkflowPresets.id, id))
+
+    revalidatePath('/dashboard/workflow-studio')
+    return { status: 'success' as const, message: 'Preset berhasil dihapus.' }
+  } catch (error: any) {
+    return { status: 'error' as const, message: error.message || 'Gagal menghapus preset.' }
   }
 }

@@ -972,11 +972,12 @@ export function SecurityRoleManagement({
                                                 updateDataScope(menuItem.id, value)
                                               }
                                             >
-                                              <SelectTrigger className="mx-auto h-8 w-[110px] text-[11px]">
+                                              <SelectTrigger className="mx-auto h-8 w-[120px] text-[11px]">
                                                 <SelectValue />
                                               </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="global">Global</SelectItem>
+                                                <SelectItem value="site">Site Only</SelectItem>
                                                 <SelectItem value="own">Own Only</SelectItem>
                                               </SelectContent>
                                             </Select>
@@ -1067,6 +1068,9 @@ export function SecurityRoleManagement({
                                         <SelectContent>
                                           <SelectItem value="global">
                                             Global — Lihat semua data
+                                          </SelectItem>
+                                          <SelectItem value="site">
+                                            Site Only — Hanya lokasi tugas
                                           </SelectItem>
                                           <SelectItem value="own">
                                             Own Only — Hanya data sendiri

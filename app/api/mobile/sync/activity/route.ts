@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     const queuedPhotos = payload.photos ?? []
     const photos = queuedPhotos.length > 0 ? queuedPhotos : payload.photo ? [payload.photo] : []
     for (const [index, photo] of photos.entries()) {
+      if (!photo?.dataUrl) continue
       const matches = photo.dataUrl.match(/^data:(.+);base64,(.+)$/)
       if (!matches) {
         throw new Error('Activity photo payload is invalid.')
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
 
       const [, mimeType, base64] = matches
       const buffer = Buffer.from(base64, 'base64')
-      const file = new File([buffer], photo.name || `activity-${Date.now()}-${index + 1}.jpg`, {
+      const file = new File([new Uint8Array(buffer)], photo.name || `activity-${Date.now()}-${index + 1}.jpg`, {
         type: photo.type || mimeType,
       })
       formData.append('photoFiles', file)
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       message: 'Activity synchronized successfully.',
     })
   } catch (error) {
+    console.error('[POST /api/mobile/sync/activity] Error:', error)
     const message = error instanceof Error ? error.message : 'Activity sync failed.'
 
     return NextResponse.json(

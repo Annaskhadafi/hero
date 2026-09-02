@@ -8,6 +8,7 @@ import {
 
 import { ExpandableList } from "@/components/expandable-list";
 import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settings";
+import { MobileSignatureSection } from "@/components/mobile/mobile-signature-section";
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
@@ -119,6 +120,8 @@ export default async function MobileProfilePage() {
       id: employees.id, name: employees.name, email: employees.email,
       contractDurationStart: employees.contractDurationStart, contractDurationEnd: employees.contractDurationEnd,
       joinDate: employees.joinDate, birthDate: employees.birthDate,
+      signatureDataUrl: employees.signatureDataUrl,
+      signatureRegisteredAt: employees.signatureRegisteredAt,
     })
     .from(employees)
     .where(eq(employees.email, emp.email))
@@ -473,6 +476,16 @@ export default async function MobileProfilePage() {
           )}
         </Card>
       </CollapsibleSection>
+
+      {/* ── Tanda Tangan Digital ──────────────────── */}
+      <MobileSignatureSection
+        initialSignatureDataUrl={hrEmp?.signatureDataUrl}
+        initialRegisteredAt={
+          hrEmp?.signatureRegisteredAt
+            ? new Date(hrEmp.signatureRegisteredAt).toISOString()
+            : null
+        }
+      />
 
       {/* ── Settings ──────────────────────────────── */}
       <MobileProfileSettings

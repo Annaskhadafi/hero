@@ -857,8 +857,8 @@ export function ReportClientPage({
                     }
                   />
                   <Legend />
-                  <Bar dataKey="Forecast" fill="#8884d8" label={renderBarLabel} />
-                  <Bar dataKey="Actual" fill="#82ca9d" label={renderBarLabel} />
+                  <Bar dataKey="Forecast" fill="#8884d8" label={renderBarLabel as any} />
+                  <Bar dataKey="Actual" fill="#82ca9d" label={renderBarLabel as any} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>

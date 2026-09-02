@@ -184,7 +184,7 @@ export function IncidentReportsDashboard({ data }: { data: SafetyData }) {
     acc[key] = (acc[key] ?? 0) + 1
     return acc
   }, {})
-  const chartData = Object.entries(categoryCount)
+  const chartData = Object.entries(categoryCount || {})
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
 

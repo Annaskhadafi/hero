@@ -5,8 +5,17 @@ import {
   submitDailyActivityWithStateAction,
   submitPointDisputeAction,
 } from "@/app/dashboard/activity-hub/actions";
+import { db } from "@/db";
+import {
+  activityLibraries,
+  employees,
+  masterDepartments,
+  masterSections,
+  sites,
+} from "@/db/schema/hero";
+import { eq } from "drizzle-orm";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
-import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
+import { MyDayActivityCreateTrigger } from "@/components/my-day-activity-create-trigger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableFilterPresets } from "@/components/table-filter-presets";
@@ -102,27 +111,102 @@ function SelectFilter({
 
 export default async function MyDayPage() {
   const session = await getServerSession();
+  const userEmail = session?.user?.email ?? '';
 
-  if (!session?.user?.email) {
-    redirect("/sign-in");
-  }
-
-  const [data, teamData] = await Promise.all([
-    getDailyActivityEmployeeData(session.user.email),
-    getDailyActivityTeamBoardData(session.user.email),
+  let [data, teamData, rawEmployees, rawSites, rawSections, rawDepts, rawPresets] = await Promise.all([
+    getDailyActivityEmployeeData(userEmail || null),
+    getDailyActivityTeamBoardData(userEmail || null),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        role: employees.role,
+        department: employees.department,
+        section: employees.section,
+        siteId: employees.siteId,
+        sectionId: employees.sectionId,
+        departmentId: employees.departmentId,
+        directManagerId: employees.directManagerId,
+        employeeId: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        email: employees.email,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(employees.name),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        location: sites.location,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true)),
+    db.select().from(masterSections),
+    db.select().from(masterDepartments),
+    db
+      .select({
+        id: activityLibraries.id,
+        code: activityLibraries.activityCode,
+        name: activityLibraries.activityName,
+        basePoints: activityLibraries.basePoints,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .limit(60),
   ]);
 
   if (!data) {
-    return null;
+    return (
+      <div className="p-8 text-center text-slate-500">
+        <p className="font-semibold text-lg">Data aktivitas harian tidak ditemukan.</p>
+        <p className="text-xs text-slate-400 mt-1">Silakan hubungi administrator atau pastikan data karyawan Anda telah terdaftar.</p>
+      </div>
+    );
   }
 
-  const now = new Date();
-  const defaultDateTime = dateTimeLocalValue(now);
-  const assignmentStatuses = Array.from(new Set(data.assignments.map((assignment) => assignment.statusLabel))).sort();
-  const assignmentPriorities = Array.from(new Set(data.assignments.map((assignment) => assignment.priority))).sort();
-  const activityStatuses = Array.from(new Set(data.activities.map((activity) => activity.statusLabel))).sort();
-  const activitySources = Array.from(new Set(data.activities.map((activity) => activity.sourceMode))).sort();
-  const penaltyStatuses = Array.from(new Set(data.penalties.map((penalty) => penalty.disputeStatus))).sort();
+  const sectionHeadMap: Record<string, number | null> = {}
+  for (const s of rawSections || []) {
+    if (s?.id) sectionHeadMap[String(s.id)] = s.headEmployeeId || null
+  }
+
+  const deptHeadMap: Record<string, number | null> = {}
+  for (const d of rawDepts || []) {
+    if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
+  }
+
+  const modalEmployees = (rawEmployees || []).map((e) => ({
+    id: Number(e.id),
+    name: e.name || '',
+    employeeId: e.employeeId || '',
+    email: e.email || '',
+    jobTitle: e.jobTitle || '',
+    department: e.department || '',
+    section: e.section || '',
+    siteId: e.siteId ? Number(e.siteId) : null,
+    directManagerId: e.directManagerId ? Number(e.directManagerId) : null,
+    sectionId: e.sectionId ? Number(e.sectionId) : null,
+    departmentId: e.departmentId ? Number(e.departmentId) : null,
+  }))
+
+  const modalSites = (rawSites || []).map((s) => ({
+    id: Number(s.id),
+    name: s.name || '',
+    location: s.location || '',
+  }))
+
+  const modalPresets = (rawPresets || []).map((p) => ({
+    id: Number(p.id),
+    code: p.code || '',
+    name: p.name || '',
+    basePoints: Number(p.basePoints) || 0,
+  }))
+
+  const assignmentStatuses: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || '')))).sort();
+  const assignmentPriorities: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.priority || '')))).sort();
+  const activityStatuses: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.statusLabel || '')))).sort();
+  const activitySources: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.sourceMode || '')))).sort();
+  const penaltyStatuses: string[] = Array.from(new Set<string>(data.penalties.map((penalty: any) => String(penalty.disputeStatus || '')))).sort();
   const pagePurpose = getActivityPagePurpose("input");
 
   return (
@@ -150,7 +234,7 @@ export default async function MyDayPage() {
               <MetricPill label="Points today" value={data.summary.pointsToday} />
               <MetricPill
                 label="Pending approval"
-                value={data.activities.filter((activity) => activity.statusLabel.toLowerCase().includes("pending")).length}
+                value={data.activities.filter((activity: any) => String(activity.statusLabel || '').toLowerCase().includes("pending")).length}
               />
               <MetricPill label="Penalty" value={`-${data.summary.penaltyToday}`} />
               <MetricPill label="Sync" value={data.summary.syncAt} />
@@ -158,32 +242,14 @@ export default async function MyDayPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="rounded-full">
-                  <Sparkles className="size-4" />
-                  Input Aktivitas Harian
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>Input Aktivitas Harian</DialogTitle>
-                  <DialogDescription>
-                    Form desktop dan mobile memakai konsep yang sama; modal ini hanya layout desktop untuk input cepat.
-                  </DialogDescription>
-                </DialogHeader>
-                <DailyActivitySubmitForm
-                  action={submitDailyActivityWithStateAction}
-                  employeeId={data.employee.id}
-                  assignments={data.assignments}
-                  availableLibrary={data.availableLibrary}
-                  defaultStartTime={defaultDateTime}
-                  defaultEndTime={defaultDateTime}
-                  defaultSourceMode="assigned"
-                  routeChecklist={data.routeChecklist}
-                />
-              </DialogContent>
-            </Dialog>
+            <MyDayActivityCreateTrigger
+              employees={modalEmployees}
+              sites={modalSites}
+              activityPresets={modalPresets}
+              sectionHeadMap={sectionHeadMap}
+              deptHeadMap={deptHeadMap}
+              currentEmployeeId={data.employee.id}
+            />
 
             <Button asChild variant="outline" className="rounded-full">
               <Link href="/dashboard/leaderboard">
@@ -234,12 +300,20 @@ export default async function MyDayPage() {
                 <Badge variant="outline">{data.routeChecklist.itemCount} item</Badge>
                 {data.routeChecklist.mobileEnabled ? <Badge variant="outline">Mobile ready</Badge> : null}
                 {data.routeChecklist.sessionId ? (
-                  <Button asChild variant="outline" size="sm" className="rounded-full">
-                    <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
-                      <FileSignature className="size-4" />
-                      Dokumen user
-                    </Link>
-                  </Button>
+                  <>
+                    <Button asChild variant="outline" size="sm" className="rounded-full">
+                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
+                        <FileSignature className="size-4" />
+                        Dokumen user
+                      </Link>
+                    </Button>
+                    <Button asChild variant="default" size="sm" className="rounded-full">
+                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}/approval`}>
+                        <FileSignature className="size-4" />
+                        Approval Workflow
+                      </Link>
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -478,7 +552,7 @@ export default async function MyDayPage() {
                   </TableHeader>
                   <TableBody>
                     {data.activities.length > 0 ? (
-                      data.activities.map((activity) => (
+                      data.activities.map((activity: any) => (
                         <TableRow
                           key={activity.id}
                           data-date-value={activity.startTime.toISOString()}

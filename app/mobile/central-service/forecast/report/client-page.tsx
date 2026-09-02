@@ -199,12 +199,13 @@ export function MobileReportClientPage({
 
   // Customer Grouping Breakdown with Per-Category Remarks
   const customerBreakdown = useMemo(() => {
-    type CategoryData = { amount: number; remarkMonthly: string; remarkDaily: string }
+    type CategoryData = { amount: number; remarkMonthly: string; remarkDaily: string; statusDoc?: string }
     const map = new Map<
       string,
       {
         customerName: string
         salesmen: string
+        statusDoc?: string
         totalForecast: number
         totalActual: number
         itemsCount: number
@@ -516,7 +517,7 @@ export function MobileReportClientPage({
         </div>
 
         <div className="space-y-2.5">
-          {Object.entries(categorySummary).map(([key, cat]) => {
+          {Object.entries(categorySummary || {}).map(([key, cat]) => {
             const pct = cat.forecast > 0 ? Math.min(100, (cat.actual / cat.forecast) * 100) : 0
             const barColor =
               pct >= 100

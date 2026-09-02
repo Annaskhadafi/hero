@@ -58,6 +58,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { OrgStructureBuilder } from "@/components/org-structure-builder";
 import { ApprovalMatrixManager } from "@/components/approval-matrix-manager";
+import {
+  INDONESIA_TIMEZONES,
+  inferTimezoneFromLocation,
+} from "@/lib/indonesia-timezone";
 import { ApprovalRouteSimulator } from "@/components/approval-route-simulator";
 
 interface MasterDataManagementProps {
@@ -121,6 +125,7 @@ type SiteFormState = {
   contractNumber: string;
   headEmployeeId: string;
   siteType: string;
+  timezone: string;
   isActive: boolean;
 };
 
@@ -139,6 +144,7 @@ const EMPTY_SITE_FORM: SiteFormState = {
   contractNumber: "",
   headEmployeeId: "",
   siteType: "Site",
+  timezone: "WITA",
   isActive: true,
 };
 
@@ -1624,6 +1630,7 @@ function SiteManagement({
         contractNumber: site.contractNumber,
         headEmployeeId: site.headEmployeeId?.toString() ?? "",
         siteType: site.siteType || "Site",
+        timezone: site.timezone || "WITA",
         isActive: site.isActive,
       });
     } else {
@@ -1655,6 +1662,7 @@ function SiteManagement({
     form.append("contractNumber", formData.contractNumber);
     form.append("headEmployeeId", formData.headEmployeeId);
     form.append("siteType", formData.siteType);
+    form.append("timezone", formData.timezone);
     form.append("isActive", formData.isActive.toString());
 
     const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
@@ -1728,6 +1736,7 @@ function SiteManagement({
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead>Nama Site</TableHead>
                 <TableHead>Jenis Site</TableHead>
+                <TableHead>Zonasi</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>No. Kontrak</TableHead>
@@ -1745,6 +1754,11 @@ function SiteManagement({
                     <TableCell>
                       <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                         {site.siteType || 'Site'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 border border-blue-200">
+                        {site.timezone || 'WITA'}
                       </span>
                     </TableCell>
                     <TableCell className="text-[#64748b]">{site.location}</TableCell>
@@ -1794,7 +1808,7 @@ function SiteManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={9} className="h-24 text-center text-[#64748b]">
                     Tidak ada data site
                   </TableCell>
                 </TableRow>
@@ -1835,6 +1849,27 @@ function SiteManagement({
               </Select>
             </div>
             <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="site-timezone">Zonasi Waktu (Timezone)</Label>
+                <span className="text-[11px] text-muted-foreground">Auto sync mengikuti lokasi provinsi</span>
+              </div>
+              <Select
+                value={formData.timezone || "WITA"}
+                onValueChange={(value) => setFormData({ ...formData, timezone: value })}
+              >
+                <SelectTrigger id="site-timezone">
+                  <SelectValue placeholder="Pilih zonasi waktu" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(INDONESIA_TIMEZONES).map((tz) => (
+                    <SelectItem key={tz.code} value={tz.code}>
+                      <span className="font-semibold">{tz.code}</span> ({tz.offsetString}) - {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="site-country">Negara</Label>
               <Input id="site-country" value="Indonesia" readOnly />
             </div>
@@ -1863,10 +1898,13 @@ function SiteManagement({
                     }
 
                     const selectedProvince = provinceOptions.find((option) => option.id === value);
+                    const provName = selectedProvince?.name ?? "";
+                    const autoTz = inferTimezoneFromLocation(provName);
                     setFormData({
                       ...formData,
                       provinceId: value,
-                      provinceName: selectedProvince?.name ?? "",
+                      provinceName: provName,
+                      timezone: autoTz,
                       regencyId: "",
                       regencyName: "",
                       districtId: "",
@@ -3372,12 +3410,15 @@ function DepartmentManagement({
           </form>
         </DialogContent>
       </Dialog>
-      <DepartmentEmployeeDialog
-        department={employeeDialogDept}
+      <EmployeeListDialog
+        employees={employees}
+        entityId={employeeDialogDept?.id ?? null}
+        entityLabel={employeeDialogDept?.name ?? ""}
+        filterKey="departmentId"
         sections={sections}
         departments={departments}
         open={employeeDialogDept !== null}
-        onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
+        onOpenChange={(open: boolean) => { if (!open) setEmployeeDialogDept(null); }}
       />
     </Card>
   );

@@ -461,20 +461,16 @@ export function MobileDailyClientPage({
   const handleDeleteActual = async () => {
     if (!deleteActualId) return
     try {
-      const res = await deleteForecastActual(deleteActualId)
-      if (res.success) {
-        toast.success('Actual revenue dihapus')
-        setItems((prev) =>
-          prev.map((e) => ({
-            ...e,
-            actuals: e.actuals.filter((a: any) => a.id !== deleteActualId),
-          }))
-        )
-      } else {
-        toast.error(res.error || 'Gagal menghapus actual')
-      }
+      await deleteForecastActual(deleteActualId)
+      toast.success('Actual revenue dihapus')
+      setItems((prev) =>
+        prev.map((e) => ({
+          ...e,
+          actuals: e.actuals.filter((a: any) => a.id !== deleteActualId),
+        }))
+      )
     } catch (err: any) {
-      toast.error('Terjadi kesalahan saat menghapus')
+      toast.error(err.message || 'Terjadi kesalahan saat menghapus')
     } finally {
       setDeleteActualId(null)
     }
@@ -483,21 +479,21 @@ export function MobileDailyClientPage({
   const handleUpdateStatus = async () => {
     if (!itemForStatusChange || !newStatus) return
     try {
-      const res = await updateForecastItemStatus(itemForStatusChange.id, newStatus)
-      if (res.success) {
-        toast.success(`Status item diubah menjadi ${newStatus}`)
-        setItems((prev) =>
-          prev.map((e) =>
-            e.item.id === itemForStatusChange.id
-              ? { ...e, item: { ...e.item, status: newStatus } }
-              : e
-          )
+      await updateForecastItemStatus(
+        itemForStatusChange.id,
+        newStatus,
+        itemForStatusChange.remark || ''
+      )
+      toast.success(`Status item diubah menjadi ${newStatus}`)
+      setItems((prev) =>
+        prev.map((e) =>
+          e.item.id === itemForStatusChange.id
+            ? { ...e, item: { ...e.item, status: newStatus } }
+            : e
         )
-      } else {
-        toast.error(res.error || 'Gagal mengubah status')
-      }
+      )
     } catch (err: any) {
-      toast.error('Terjadi kesalahan')
+      toast.error(err.message || 'Terjadi kesalahan')
     } finally {
       setStatusDialogOpen(false)
     }
@@ -1030,7 +1026,7 @@ export function MobileDailyClientPage({
               </Button>
               <Button
                 size="sm"
-                onClick={handleSaveItemEdit}
+                onClick={handleSaveEditItem}
                 disabled={isSubmittingItem}
                 className="bg-[#003461] hover:bg-[#002342] text-white text-xs h-9 font-bold"
               >

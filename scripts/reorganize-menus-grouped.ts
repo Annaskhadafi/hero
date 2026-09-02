@@ -111,12 +111,16 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Security Overview", url: "/dashboard/security", section: "Laporan", iconName: "database", resource: "security_session", sortOrder: 5 },
     { title: "Audit Log", url: "/dashboard/security/audit-logs", section: "Laporan", iconName: "report", resource: "security_audit", sortOrder: 6 },
   ],
+  "GOBPI": [
+    { title: "SOP/WIN", url: "/dashboard/sop-win", section: "GOBPI", iconName: "files", resource: "sop-win", sortOrder: 1 },
+  ],
   "Pengaturan": [
     { title: "Role Management", url: "/dashboard/security/roles", section: "Pengaturan", iconName: "shield", resource: "security_roles", sortOrder: 1 },
     { title: "User Management", url: "/dashboard/security/users", section: "Pengaturan", iconName: "users", resource: "security_users", sortOrder: 2, menuArea: "secondary" },
     { title: "Navbar Setting", url: "/dashboard/settings/navbar", section: "Pengaturan", iconName: "settings", resource: "settings_navbar", sortOrder: 3, menuArea: "secondary" },
     { title: "Portal Chitra Settings", url: "/dashboard/settings/portal-chitra", section: "Pengaturan", iconName: "settings", resource: "settings_portal_chitra", sortOrder: 4, menuArea: "secondary" },
     { title: "Email Delivery Log", url: "/dashboard/settings/email", section: "Pengaturan", iconName: "mail", resource: "settings_email", sortOrder: 5, menuArea: "secondary" },
+    { title: "Backup & Restore", url: "/dashboard/settings/system-backup", section: "Pengaturan", iconName: "database", resource: "settings_system_backup", sortOrder: 6, menuArea: "secondary" },
   ],
 };
 

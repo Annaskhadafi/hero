@@ -298,7 +298,7 @@ export function MonthlyClientPage({
     return acc
   }, {})
 
-  const allCustomers = Object.keys(groupedByCustomer)
+  const allCustomers = Object.keys(groupedByCustomer || {})
   const [expandAll, setExpandAll] = useState(false)
   const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set(allCustomers))
 
@@ -531,7 +531,7 @@ export function MonthlyClientPage({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  Object.entries(groupedByCustomer).map(([customer, custItems]) => {
+                  Object.entries(groupedByCustomer || {}).map(([customer, custItems]) => {
                     const isCollapsed = collapsedCustomers.has(customer)
                     const custTotal = custItems.reduce(
                       (s, i) =>

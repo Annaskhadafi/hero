@@ -28,17 +28,37 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  FileCheck,
+  Filter,
+  Play,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { DocumentPreviewModal } from "@/components/hero-genius/document-preview-modal";
+import { PdfCanvasViewer } from "@/components/hero-genius/pdf-canvas-viewer";
 import { SopWinFormDialog } from "./sop-win-form-dialog";
 import { SopWinEditDialog } from "./sop-win-edit-dialog";
 import { SopWinRevisionDialog } from "./sop-win-revision-dialog";
 import { SopWinDepartmentManageDialog } from "./sop-win-department-manage-dialog";
+import { SopWinRequestModal } from "./sop-win-request-modal";
 import {
   deleteSopWinDocumentAction,
   getSopWinDocumentDetailAction,
@@ -47,6 +67,9 @@ import {
   retrySopWinRagItemAction,
   retryAllFailedSopWinRagAction,
   syncAndAutoChunkSopWinAction,
+  deleteSopWinRagQueueItemAction,
+  clearAllCompletedOrFailedQueueAction,
+  triggerSopWinRagWorkerAction,
 } from "@/app/dashboard/sop-win/actions";
 import { STANDARD_DEPARTMENTS } from "@/lib/sop-win-constants";
 import {
@@ -179,6 +202,121 @@ export function SopWinExplorerWorkspace({
     return initialDocuments.find((d) => d.id === selectedDocId) || null;
   }, [initialDocuments, selectedDocId]);
 
+  // Multi-select Checkbox State for Batch Document Request
+  const [checkedDocIds, setCheckedDocIds] = useState<Set<number>>(new Set());
+
+  const toggleCheckDoc = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCheckedDocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleCheckAllDocs = () => {
+    const visibleIds = filteredDocuments.map((d) => d.id);
+    const allChecked = visibleIds.length > 0 && visibleIds.every((id) => checkedDocIds.has(id));
+
+    setCheckedDocIds((prev) => {
+      const next = new Set(prev);
+      if (allChecked) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const checkedDocsList = useMemo(() => {
+    return initialDocuments.filter((d) => checkedDocIds.has(d.id));
+  }, [initialDocuments, checkedDocIds]);
+
+  // Request Document Modal State
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [requestModalDoc, setRequestModalDoc] = useState<any>(null);
+  const [multiDeptWarningModal, setMultiDeptWarningModal] = useState<{
+    isOpen: boolean;
+    depts: string[];
+  }>({ isOpen: false, depts: [] });
+
+  const handleOpenRequestModal = (doc?: any) => {
+    if (doc) {
+      // Single doc request from row button
+      setRequestModalDoc({
+        id: doc.id,
+        documentCode: doc.documentNumber,
+        title: doc.title,
+        docType: doc.documentType,
+        departmentName: doc.departmentCode,
+        docCount: 1,
+        docTitleAndNumber: `${doc.documentNumber} - ${doc.title}`,
+      });
+    } else if (checkedDocIds.size > 0) {
+      // Multi-select Batch Request
+      const docs = checkedDocsList;
+
+      // Validate: Block multi-select across different departments
+      const distinctDepts = Array.from(
+        new Set(
+          docs
+            .map((d) => (d.departmentCode || "").trim().toUpperCase())
+            .filter(Boolean)
+        )
+      );
+
+      if (distinctDepts.length > 1) {
+        setMultiDeptWarningModal({
+          isOpen: true,
+          depts: distinctDepts,
+        });
+        toast.warning("Permintaan Lintas Departemen Tidak Diperbolehkan", {
+          description: `Dokumen yang Anda pilih berasal dari ${distinctDepts.length} departemen (${distinctDepts.join(", ")}). Permintaan hanya bisa diajukan per 1 departemen agar alur approval jelas.`,
+          duration: 6000,
+        });
+        return;
+      }
+
+      const docTitlesFormatted = docs
+        .map((d, i) => `${i + 1}. [${d.documentType}] ${d.documentNumber} - ${d.title}`)
+        .join("\n");
+
+      const firstType = docs[0]?.documentType || "SOP";
+      const firstDept = docs[0]?.departmentCode || "";
+
+      setRequestModalDoc({
+        id: docs[0]?.id,
+        documentCode: `BATCH (${docs.length} Dokumen)`,
+        title:
+          docs.length === 1
+            ? docs[0].title
+            : `Permintaan ${docs.length} Dokumen: ${docs.map((d) => d.documentNumber).join(", ")}`,
+        docType: firstType,
+        departmentName: firstDept,
+        docCount: docs.length,
+        docTitleAndNumber: docTitlesFormatted,
+      });
+    } else if (activeDoc) {
+      setRequestModalDoc({
+        id: activeDoc.id,
+        documentCode: activeDoc.documentNumber,
+        title: activeDoc.title,
+        docType: activeDoc.documentType,
+        departmentName: activeDoc.departmentCode,
+        docCount: 1,
+        docTitleAndNumber: `${activeDoc.documentNumber} - ${activeDoc.title}`,
+      });
+    } else {
+      setRequestModalDoc(null);
+    }
+    setIsRequestModalOpen(true);
+  };
+
   // Load document revisions in background
   useEffect(() => {
     if (!selectedDocId) {
@@ -207,7 +345,7 @@ export function SopWinExplorerWorkspace({
     };
   }, [selectedDocId]);
 
-  // Queue stats state
+  // Queue stats & modal state
   const [queueStatus, setQueueStatus] = useState<{
     isWorkerRunning: boolean;
     pendingCount: number;
@@ -219,8 +357,12 @@ export function SopWinExplorerWorkspace({
     processingCount: 0,
     failedCount: 0,
   });
+  const [queueDetails, setQueueDetails] = useState<any[]>([]);
+  const [isRagQueueModalOpen, setIsRagQueueModalOpen] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isClearingQueue, setIsClearingQueue] = useState(false);
+  const [isTriggeringWorker, setIsTriggeringWorker] = useState(false);
 
   // Calculate unchunked documents count
   const unchunkedDocsCount = useMemo(() => {
@@ -242,10 +384,11 @@ export function SopWinExplorerWorkspace({
             processingCount: res.processingCount,
             failedCount: res.failedCount,
           });
+          setQueueDetails(res.queue || []);
 
-          // If items are in queue, poll again in 3.5 seconds
+          // If items are in queue, poll again in 3 seconds
           if (res.pendingCount > 0 || res.processingCount > 0) {
-            timer = setTimeout(checkQueue, 3500);
+            timer = setTimeout(checkQueue, 3000);
           } else {
             // Re-fetch document list once queue is empty
             if (onRefreshData) onRefreshData();
@@ -271,7 +414,15 @@ export function SopWinExplorerWorkspace({
       if (res.success) {
         toast.success(res.message || "Sinkronisasi AI & Auto-Chunking berhasil dipicu!");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal sinkronisasi data RAG AI.");
@@ -290,7 +441,15 @@ export function SopWinExplorerWorkspace({
       if (res.success) {
         toast.success(res.message || "Dokumen dimasukkan ke antrian chunking AI.");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal memasukkan dokumen ke antrian.");
@@ -307,9 +466,17 @@ export function SopWinExplorerWorkspace({
       setIsRetrying(true);
       const res = await retryAllFailedSopWinRagAction();
       if (res.success) {
-        toast.success(res.message || "Semua dokumen belum di-chunk dimasukkan ke antrian AI.");
+        toast.success(res.message || "Semua dokumen berhasil dimasukkan ke antrian AI.");
         const qRes = await getSopWinRagQueueStatusAction();
-        if (qRes.success) setQueueStatus(qRes);
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
         if (onRefreshData) onRefreshData();
       } else {
         toast.error(res.error || "Gagal retry antrian.");
@@ -318,6 +485,72 @@ export function SopWinExplorerWorkspace({
       toast.error(err.message || "Gagal retry semua dokumen.");
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const handleTriggerWorkerNow = async () => {
+    try {
+      setIsTriggeringWorker(true);
+      const res = await triggerSopWinRagWorkerAction();
+      toast.success(res.message || "Worker AI chunking dijalankan.");
+      const qRes = await getSopWinRagQueueStatusAction();
+      if (qRes.success) {
+        setQueueStatus({
+          isWorkerRunning: qRes.isWorkerRunning,
+          pendingCount: qRes.pendingCount,
+          processingCount: qRes.processingCount,
+          failedCount: qRes.failedCount,
+        });
+        setQueueDetails(qRes.queue || []);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menjalankan worker.");
+    } finally {
+      setIsTriggeringWorker(false);
+    }
+  };
+
+  const handleClearQueueHistory = async () => {
+    try {
+      setIsClearingQueue(true);
+      const res = await clearAllCompletedOrFailedQueueAction();
+      toast.success(res.message || "Riwayat antrian berhasil dibersihkan.");
+      const qRes = await getSopWinRagQueueStatusAction();
+      if (qRes.success) {
+        setQueueStatus({
+          isWorkerRunning: qRes.isWorkerRunning,
+          pendingCount: qRes.pendingCount,
+          processingCount: qRes.processingCount,
+          failedCount: qRes.failedCount,
+        });
+        setQueueDetails(qRes.queue || []);
+      }
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      toast.error(err.message || "Gagal membersihkan riwayat.");
+    } finally {
+      setIsClearingQueue(false);
+    }
+  };
+
+  const handleDeleteQueueItem = async (queueId: number) => {
+    try {
+      const res = await deleteSopWinRagQueueItemAction(queueId);
+      if (res.success) {
+        toast.success(res.message);
+        const qRes = await getSopWinRagQueueStatusAction();
+        if (qRes.success) {
+          setQueueStatus({
+            isWorkerRunning: qRes.isWorkerRunning,
+            pendingCount: qRes.pendingCount,
+            processingCount: qRes.processingCount,
+            failedCount: qRes.failedCount,
+          });
+          setQueueDetails(qRes.queue || []);
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menghapus item antrian.");
     }
   };
 
@@ -399,9 +632,9 @@ export function SopWinExplorerWorkspace({
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 w-full min-h-[calc(100vh-200px)] items-stretch">
+    <div className="flex flex-col lg:flex-row gap-4 w-full items-start">
       {/* 1. Left Sidebar: Department Folders Tree */}
-      <div className="w-full lg:w-64 xl:w-72 shrink-0 rounded-3xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col">
+      <div className="w-full lg:w-64 xl:w-72 shrink-0 rounded-3xl border border-slate-200 bg-white p-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col h-[calc(100vh-210px)] min-h-[580px] max-h-[820px]">
         <div className="flex items-center justify-between px-2 py-2 border-b border-slate-100 dark:border-slate-800 mb-2">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
             <Building className="size-3.5 text-[#003461]" />
@@ -520,40 +753,59 @@ export function SopWinExplorerWorkspace({
 
       {/* 2. Center Area: Documents List Table */}
       <div
-        className={`flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 overflow-hidden transition-all ${
+        className={`flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 overflow-hidden transition-all h-[calc(100vh-210px)] min-h-[580px] max-h-[820px] ${
           selectedDocId ? "w-full lg:w-5/12 xl:w-5/12" : "flex-1"
         }`}
       >
         {/* Table Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
-          {/* Type Tabs */}
-          <Tabs value={typeFilter} onValueChange={setTypeFilter} className="w-full sm:w-auto">
-            <TabsList className="bg-slate-200/80 p-0.5 h-8 dark:bg-slate-800">
-              <TabsTrigger value="ALL" className="text-[11px] font-bold px-2.5 h-7">
-                Semua
-              </TabsTrigger>
-              <TabsTrigger value="SOP" className="text-[11px] font-bold px-2.5 h-7 text-indigo-700">
-                SOP
-              </TabsTrigger>
-              <TabsTrigger value="WIN" className="text-[11px] font-bold px-2.5 h-7 text-sky-700">
-                WIN
-              </TabsTrigger>
-              <TabsTrigger value="POL" className="text-[11px] font-bold px-2.5 h-7 text-emerald-700">
-                POL
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex flex-wrap items-center justify-between gap-2 p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-md">
+            {/* Compact Filter Icon Button Dropdown */}
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger
+                className="h-8 px-2.5 gap-1.5 text-xs font-bold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs shrink-0 text-slate-700 dark:text-slate-200"
+                title="Filter Tipe Dokumen"
+              >
+                <Filter className="size-3.5 text-indigo-600 shrink-0" />
+                <span className="text-[11px] font-bold">
+                  {typeFilter === "ALL" ? "Semua Tipe" : typeFilter}
+                </span>
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value="ALL" className="text-xs font-semibold">Semua Tipe</SelectItem>
+                <SelectItem value="SOP" className="text-xs font-semibold text-indigo-700">SOP</SelectItem>
+                <SelectItem value="WIN" className="text-xs font-semibold text-sky-700">WIN</SelectItem>
+                <SelectItem value="POL" className="text-xs font-semibold text-emerald-700">POL</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <div className="relative flex-1 sm:w-44">
+            {/* Search Input */}
+            <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
               <Input
                 placeholder="Cari dokumen..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 rounded-xl text-xs bg-white dark:bg-slate-900"
+                className="h-8 pl-8 rounded-xl text-xs bg-white dark:bg-slate-900 w-full"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => handleOpenRequestModal()}
+              className="h-8 gap-1.5 rounded-lg bg-[#0f172a] hover:bg-[#1e293b] text-white text-xs font-medium shrink-0 shadow-2xs"
+            >
+              <FileCheck className="size-3.5" />
+              <span>Request Document</span>
+              {checkedDocIds.size > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-white/20 text-white">
+                  {checkedDocIds.size}
+                </span>
+              )}
+            </Button>
 
             <Button
               type="button"
@@ -561,13 +813,13 @@ export function SopWinExplorerWorkspace({
               variant="outline"
               disabled={isSyncing}
               onClick={handleSyncAndAutoChunk}
-              className="h-8 gap-1.5 rounded-xl border-slate-200 hover:bg-slate-100 text-slate-700 dark:border-slate-800 dark:text-slate-300 text-xs font-semibold shrink-0 shadow-xs"
-              title="Sinkronkan dokumen dengan Knowledge Base & Chunk otomatis dokumen yang belum memiliki chunk"
+              className="h-8 gap-1.5 rounded-lg border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium shrink-0"
+              title="Sinkronkan dokumen dengan RAG AI"
             >
-              <RefreshCw className={`size-3 text-indigo-600 ${isSyncing ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-3.5 text-slate-500 ${isSyncing ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Sinkron AI</span>
               {unchunkedDocsCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                   {unchunkedDocsCount} Belum
                 </span>
               )}
@@ -577,15 +829,15 @@ export function SopWinExplorerWorkspace({
               <Button
                 type="button"
                 size="sm"
+                variant="outline"
                 onClick={() => setCreateDialogOpen(true)}
-                className="h-8 gap-1.5 rounded-xl bg-[#003461] hover:bg-[#002647] text-white text-xs font-semibold shrink-0 shadow-xs"
+                className="h-8 gap-1 rounded-lg border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-medium shrink-0"
               >
                 <Plus className="size-3.5" />
                 Tambah
               </Button>
             )}
           </div>
-
         </div>
 
         {/* Active Background Queue Notification Banner */}
@@ -600,29 +852,41 @@ export function SopWinExplorerWorkspace({
               <span>
                 <strong>Antrian RAG AI:</strong>{" "}
                 {queueStatus.processingCount > 0
-                  ? "1 dokumen sedang diproses OCR & chunking"
+                  ? "Sedang memproses ekstraksi & chunking AI..."
                   : "Menunggu giliran antrian"}
                 {queueStatus.pendingCount > 0 && `, ${queueStatus.pendingCount} dalam antrian`}
                 {queueStatus.failedCount > 0 && (
                   <span className="text-rose-600 font-semibold ml-1">
-                    ({queueStatus.failedCount} gagal sinkron)
+                    ({queueStatus.failedCount} gagal)
                   </span>
                 )}
               </span>
             </div>
-            {queueStatus.failedCount > 0 && (
+            <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={isRetrying}
-                onClick={handleRetryAllFailed}
-                className="h-6 px-2 text-[10px] font-bold text-rose-700 bg-white border-rose-200 hover:bg-rose-50 dark:bg-slate-900 dark:text-rose-300 dark:border-rose-800 shrink-0"
+                onClick={() => setIsRagQueueModalOpen(true)}
+                className="h-6 px-2 text-[10px] font-semibold text-[#003461] bg-white border-blue-200 hover:bg-blue-50 dark:bg-slate-900 dark:text-sky-300 dark:border-slate-700 shrink-0"
               >
-                <RefreshCw className={`size-2.5 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
-                Retry Gagal ({queueStatus.failedCount})
+                <Layers className="size-2.5 mr-1" />
+                Kelola Antrian
               </Button>
-            )}
+              {queueStatus.failedCount > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRetrying}
+                  onClick={handleRetryAllFailed}
+                  className="h-6 px-2 text-[10px] font-bold text-rose-700 bg-white border-rose-200 hover:bg-rose-50 dark:bg-slate-900 dark:text-rose-300 dark:border-rose-800 shrink-0"
+                >
+                  <RefreshCw className={`size-2.5 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
+                  Retry Gagal ({queueStatus.failedCount})
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
@@ -631,6 +895,18 @@ export function SopWinExplorerWorkspace({
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-900">
               <tr>
+                <th className="w-10 px-3 py-2.5 text-center">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filteredDocuments.length > 0 &&
+                      filteredDocuments.every((d) => checkedDocIds.has(d.id))
+                    }
+                    onChange={toggleCheckAllDocs}
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 size-3.5 cursor-pointer"
+                    title="Pilih Semua Dokumen"
+                  />
+                </th>
                 <th className="px-3.5 py-2.5">No. Dokumen</th>
                 <th className="px-3 py-2.5">Judul Dokumen</th>
                 <th className="px-2 py-2.5">Tipe</th>
@@ -642,7 +918,7 @@ export function SopWinExplorerWorkspace({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
               {filteredDocuments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-400">
+                  <td colSpan={7} className="py-16 text-center text-slate-400">
                     <FileText className="mx-auto size-10 stroke-1 text-slate-300 mb-2" />
                     <p className="font-semibold text-xs text-slate-600 dark:text-slate-300">
                       Tidak ada dokumen yang sesuai
@@ -655,16 +931,27 @@ export function SopWinExplorerWorkspace({
               ) : (
                 filteredDocuments.map((doc) => {
                   const isSelected = selectedDocId === doc.id;
+                  const isChecked = checkedDocIds.has(doc.id);
                   return (
                     <tr
                       key={doc.id}
                       onClick={() => setSelectedDocId(doc.id)}
                       className={`cursor-pointer transition-colors ${
-                        isSelected
+                        isChecked
+                          ? "bg-emerald-50/70 dark:bg-emerald-950/30"
+                          : isSelected
                           ? "bg-blue-50/90 dark:bg-blue-950/40"
                           : "hover:bg-slate-50/60 dark:hover:bg-slate-900/40"
                       }`}
                     >
+                      <td className="w-10 px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => toggleCheckDoc(doc.id)}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 size-3.5 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-3.5 py-3 font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           {isSelected && (
@@ -673,24 +960,16 @@ export function SopWinExplorerWorkspace({
                           {doc.documentNumber}
                         </div>
                       </td>
-                      <td className="px-3 py-3 font-medium text-slate-800 dark:text-slate-200">
-                        <p className="font-semibold text-xs leading-snug line-clamp-2">{doc.title}</p>
-                        <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-slate-400">
-                          <span>Dept: {doc.departmentCode}</span>
-                          {doc.ownerName && <span>• PIC: {doc.ownerName}</span>}
-                          <span>•</span>
-                          {renderRagStatusBadge(doc)}
-                        </div>
+                      <td className="px-3 py-2.5 font-medium text-slate-800 dark:text-slate-200">
+                        <p className="font-semibold text-xs leading-snug line-clamp-2 text-slate-900">{doc.title}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Dept: {doc.departmentCode} {doc.ownerName && `• PIC: ${doc.ownerName}`}
+                        </p>
                       </td>
-                      <td className="px-2 py-3 whitespace-nowrap">
+                      <td className="px-2 py-2.5 whitespace-nowrap">
                         <Badge
-                          className={`text-[9px] font-black border-none ${
-                            doc.documentType === "SOP"
-                              ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300"
-                              : doc.documentType === "WIN"
-                              ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
-                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          }`}
+                          variant="outline"
+                          className="text-[10px] font-mono font-semibold bg-slate-50 border-slate-200 text-slate-700"
                         >
                           {doc.documentType}
                         </Badge>
@@ -761,35 +1040,24 @@ export function SopWinExplorerWorkspace({
         </div>
       </div>
 
-      {/* 3. Right Panel: Side-by-Side PDF Preview (Full Height & Width) */}
+      {/* 3. Right Panel: Side-by-Side PDF Preview (Balanced Height & Width) */}
       {selectedDocId && activeDoc && (
-        <div className="w-full lg:w-7/12 xl:w-7/12 rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col overflow-hidden">
+        <div className="w-full lg:w-7/12 xl:w-7/12 rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 flex flex-col overflow-hidden h-[calc(100vh-210px)] min-h-[580px] max-h-[820px] lg:sticky lg:top-4">
           {/* Side Panel Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 bg-[#003461] px-4 py-3 text-white dark:border-slate-800 shrink-0">
+          <div className="flex items-center justify-between border-b border-slate-800 bg-[#0f172a] px-4 py-2.5 text-white shrink-0">
             <div className="min-w-0 pr-2">
               <div className="flex items-center gap-2">
-                <Badge
-                  className={`text-[9px] font-bold border-none ${
-                    activeDoc.documentType === "SOP"
-                      ? "bg-indigo-400 text-indigo-950"
-                      : activeDoc.documentType === "WIN"
-                      ? "bg-sky-300 text-sky-950"
-                      : "bg-emerald-300 text-emerald-950"
-                  }`}
-                >
+                <Badge variant="outline" className="text-[9px] font-mono font-semibold border-white/20 text-white bg-white/10">
                   {activeDoc.documentType}
                 </Badge>
                 <span className="font-mono text-xs font-bold text-white truncate">
                   {activeDoc.documentNumber}
                 </span>
-                <span className="text-[10px] text-blue-200">
+                <span className="text-[10px] text-slate-300">
                   (Rev {activeDoc.currentRevision})
                 </span>
-                <Badge variant="outline" className="text-[9px] border-white/30 text-white">
-                  Dept: {activeDoc.departmentCode}
-                </Badge>
               </div>
-              <h4 className="text-xs font-semibold text-blue-50 truncate mt-0.5">
+              <h4 className="text-xs font-medium text-slate-200 truncate mt-0.5">
                 {activeDoc.title}
               </h4>
             </div>
@@ -797,10 +1065,21 @@ export function SopWinExplorerWorkspace({
             <div className="flex items-center gap-1.5 shrink-0">
               <Button
                 type="button"
+                size="sm"
+                onClick={() => handleOpenRequestModal(activeDoc)}
+                className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg gap-1.5 font-medium shadow-2xs"
+                title="Ajukan Permintaan Dokumen Ini"
+              >
+                <FileCheck className="size-3.5" />
+                <span className="hidden sm:inline">Request Document</span>
+              </Button>
+
+              <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => handleNavigateChat(activeDoc)}
-                className="h-7 px-2.5 text-xs bg-white/10 text-white hover:bg-white/20 rounded-lg gap-1.5 font-semibold"
+                className="h-7 px-2 text-xs text-white/80 hover:bg-white/10 hover:text-white rounded-lg gap-1 font-medium"
                 title="Chat dengan Dokumen Ini di Hero Genius"
               >
                 <Sparkles className="size-3.5 text-amber-300" />
@@ -815,7 +1094,7 @@ export function SopWinExplorerWorkspace({
                     setEditingDoc(activeDoc);
                     setEditDialogOpen(true);
                   }}
-                  className="h-7 px-2 text-xs text-amber-200 hover:bg-white/15 hover:text-white rounded-lg gap-1"
+                  className="h-7 px-2 text-xs text-white/80 hover:bg-white/10 hover:text-white rounded-lg gap-1 font-medium"
                   title="Edit / Pindah Departemen"
                 >
                   <Edit3 className="size-3.5" />
@@ -851,23 +1130,64 @@ export function SopWinExplorerWorkspace({
             </div>
           </div>
 
-          {/* Full Height Side PDF Previewer */}
+          {/* Balanced Side PDF Previewer */}
           <div
-            className="relative flex-1 min-h-[500px] xl:min-h-[560px] w-full bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
+            className="relative flex-1 min-h-0 w-full bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 select-none overflow-hidden"
             onContextMenu={(e) => e.preventDefault()}
           >
-            <iframe
-              src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
-                activeDoc.pdfFileUrl
-              )}&filename=${encodeURIComponent(activeDoc.documentNumber)}#toolbar=0&navpanes=0&scrollbar=1`}
-              title={activeDoc.title}
-              className="w-full h-full border-0 bg-white dark:bg-slate-900"
-            />
+            {activeDoc.pdfFileUrl ? (
+              /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(activeDoc.pdfFileUrl) ? (
+                <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-50 dark:bg-slate-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                      activeDoc.pdfFileUrl
+                    )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
+                    alt={activeDoc.title}
+                    className="max-h-full max-w-full object-contain rounded-lg shadow-2xl"
+                  />
+                </div>
+              ) : (
+                <PdfCanvasViewer
+                  url={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                    activeDoc.pdfFileUrl
+                  )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
+                  filename={activeDoc.documentNumber || activeDoc.title}
+                  defaultViewMode="single"
+                  className="h-full w-full"
+                />
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-center p-6 text-slate-400 bg-white dark:bg-slate-900">
+                <FileText className="size-12 text-slate-400 mb-3" />
+                <p className="font-semibold text-sm text-slate-700 dark:text-slate-200">
+                  Dokumen PDF Belum Tersedia
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
+                  File PDF untuk dokumen ini belum diunggah atau masih dalam proses pembaruan.
+                </p>
+                {canEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingDoc(activeDoc);
+                      setEditDialogOpen(true);
+                    }}
+                    className="mt-4 text-xs border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+                  >
+                    <Edit3 className="size-3.5 mr-1.5" />
+                    Unggah / Edit Dokumen
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
 
           {/* Document Meta & Revision Log Tab Area */}
-          <div className="p-4 space-y-3 shrink-0 max-h-56 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
+          <div className="p-3.5 space-y-2 shrink-0 max-h-44 overflow-y-auto bg-slate-50/50 dark:bg-slate-900/30">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span>
@@ -886,28 +1206,32 @@ export function SopWinExplorerWorkspace({
                 </span>
                 <div className="flex items-center gap-1.5">
                   <strong className="text-slate-500">Status AI:</strong>
-                  {renderRagStatusBadge(activeDoc)}
+                  <span className="text-xs font-semibold text-slate-700">
+                    Siap AI ({(activeDoc.ragChunksCount ?? 0)} Chunks)
+                  </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   type="button"
+                  variant="outline"
                   size="sm"
                   onClick={() => handleNavigateChat(activeDoc)}
-                  className="h-7 px-2.5 rounded-lg bg-gradient-to-r from-blue-700 to-indigo-600 hover:from-blue-800 hover:to-indigo-700 text-white text-[11px] font-bold gap-1 shadow-xs"
+                  className="h-7 px-2.5 rounded-lg border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium gap-1"
                 >
-                  <Sparkles className="size-3 text-amber-300" />
+                  <Sparkles className="size-3 text-slate-500" />
                   Chat Dokumen
                 </Button>
                 {canEdit && (
                   <Button
                     type="button"
+                    variant="outline"
                     size="sm"
                     onClick={() => setRevisionDialogOpen(true)}
-                    className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold gap-1"
+                    className="h-7 px-2.5 rounded-lg border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium gap-1"
                   >
-                    <Plus className="size-3" />
+                    <Plus className="size-3 text-slate-500" />
                     Terbitkan Revisi
                   </Button>
                 )}
@@ -917,21 +1241,20 @@ export function SopWinExplorerWorkspace({
                     variant="ghost"
                     size="sm"
                     onClick={() => handleDelete(activeDoc.id, activeDoc.documentNumber)}
-                    className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                    className="h-7 text-[11px] text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg gap-1"
                   >
-                    <Trash2 className="size-3.5 mr-1" />
+                    <Trash2 className="size-3.5" />
                     Hapus
                   </Button>
                 )}
               </div>
-
             </div>
 
             {/* Revision Changelogs */}
             {activeDocRevisions.length > 0 && (
               <div className="space-y-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-800">
                 <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <History className="size-3 text-indigo-600" />
+                  <History className="size-3 text-slate-500" />
                   Riwayat Revisi ({activeDocRevisions.length})
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -941,12 +1264,9 @@ export function SopWinExplorerWorkspace({
                       className="rounded-xl border border-slate-200/80 bg-white p-2 text-xs space-y-1 shadow-2xs dark:border-slate-800 dark:bg-slate-950"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant="outline" className="font-mono text-[9px] font-bold">
-                            Rev {rev.revisionNumber}
-                          </Badge>
-                          {renderRagStatusBadge(rev)}
-                        </div>
+                        <Badge variant="outline" className="font-mono text-[9px] font-semibold text-slate-700 bg-slate-50 border-slate-200">
+                          Rev {rev.revisionNumber}
+                        </Badge>
                         <span className="text-[9px] text-slate-400">
                           {new Date(rev.effectiveDate || rev.createdAt).toLocaleDateString(
                             "id-ID",
@@ -1022,6 +1342,299 @@ export function SopWinExplorerWorkspace({
           }}
         />
       )}
+
+      {/* Floating Window Request Document Modal */}
+      <SopWinRequestModal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
+        selectedDoc={requestModalDoc}
+        departmentsProp={departmentsList}
+      />
+
+      {/* Warning Modal for Multi-Department Selection Block */}
+      <Dialog
+        open={multiDeptWarningModal.isOpen}
+        onOpenChange={(open) =>
+          setMultiDeptWarningModal((prev) => ({ ...prev, isOpen: open }))
+        }
+      >
+        <DialogContent className="max-w-md rounded-2xl border-amber-200 bg-white p-6 shadow-xl">
+          <DialogHeader className="space-y-2 text-center sm:text-left">
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 sm:mx-0">
+              <AlertTriangle className="size-6" />
+            </div>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Permintaan Lintas Departemen Tidak Diperbolehkan
+            </DialogTitle>
+            <DialogDescription className="text-xs leading-relaxed text-slate-600">
+              Dokumen yang Anda centang berasal dari{" "}
+              <strong className="font-semibold text-slate-900">
+                {multiDeptWarningModal.depts.length} departemen berbeda
+              </strong>{" "}
+              ({multiDeptWarningModal.depts.join(", ")}).
+              <br />
+              <br />
+              Satu pengajuan permohonan approval hanya dapat mencakup dokumen dari{" "}
+              <strong className="font-semibold text-amber-700">
+                1 departemen yang sama
+              </strong>{" "}
+              agar alur penandatanganan (*approval route*) berjalan presisi dan tidak bentrok antar manajer departemen.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-[11px] font-medium text-amber-900 leading-normal">
+            💡 <strong>Saran:</strong> Filter tabel berdasarkan 1 departemen atau centang dokumen dari departemen yang sama (misal: hanya FAM atau hanya TC), lalu ajukan permohonan.
+          </div>
+
+          <DialogFooter className="mt-5 sm:justify-end">
+            <Button
+              type="button"
+              onClick={() =>
+                setMultiDeptWarningModal({ isOpen: false, depts: [] })
+              }
+              className="w-full bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 sm:w-auto"
+            >
+              Mengerti & Pilih Ulang
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* RAG AI Queue Manager Modal Dialog */}
+      <Dialog open={isRagQueueModalOpen} onOpenChange={setIsRagQueueModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-slate-900 p-0 gap-0 shadow-2xl overflow-hidden border-slate-200 dark:border-slate-800">
+          <DialogHeader className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-[#003461] text-white shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-lg bg-white/15 flex items-center justify-center text-sky-300">
+                  <Layers className="size-4" />
+                </div>
+                <div>
+                  <DialogTitle className="text-sm sm:text-base font-bold text-white">
+                    Manajemen Antrian Pemrosesan RAG AI
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-blue-200 mt-0.5">
+                    Pantau status ekstraksi OCR, embedding vektor, dan antrian latar belakang AI.
+                  </DialogDescription>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Queue Summary Cards */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
+                <span className="text-[10px] text-slate-500 font-medium">Status Worker</span>
+                <div className="flex items-center gap-1.5 mt-1 font-bold text-xs">
+                  {queueStatus.isWorkerRunning ? (
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <Loader2 className="size-3 animate-spin" /> Aktif Bekerja
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-slate-500">
+                      <Clock className="size-3" /> Siaga (Idle)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-blue-100 dark:border-blue-900/40 shadow-xs">
+                <span className="text-[10px] text-blue-600 font-medium">Dalam Antrian</span>
+                <div className="text-base font-bold text-blue-700 dark:text-blue-400 mt-0.5">
+                  {queueStatus.pendingCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-100 dark:border-amber-900/40 shadow-xs">
+                <span className="text-[10px] text-amber-600 font-medium">Sedang Diproses</span>
+                <div className="text-base font-bold text-amber-700 dark:text-amber-400 mt-0.5">
+                  {queueStatus.processingCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-rose-100 dark:border-rose-900/40 shadow-xs">
+                <span className="text-[10px] text-rose-600 font-medium">Gagal / Perlu Retry</span>
+                <div className="text-base font-bold text-rose-700 dark:text-rose-400 mt-0.5">
+                  {queueStatus.failedCount} <span className="text-[10px] font-normal text-slate-500">dokumen</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Action Toolbar in Modal */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isTriggeringWorker}
+                  onClick={handleTriggerWorkerNow}
+                  className="h-7 px-2.5 text-xs font-semibold text-[#003461] bg-white border-blue-200 hover:bg-blue-50 dark:bg-slate-900 dark:text-sky-300 dark:border-slate-700"
+                >
+                  <Play className={`size-3 mr-1.5 ${isTriggeringWorker ? "animate-spin" : ""}`} />
+                  Jalankan Worker Sekarang
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isRetrying}
+                  onClick={handleRetryAllFailed}
+                  className="h-7 px-2.5 text-xs font-semibold text-amber-700 bg-white border-amber-200 hover:bg-amber-50 dark:bg-slate-900 dark:text-amber-300 dark:border-amber-800"
+                >
+                  <RefreshCw className={`size-3 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
+                  Retry Semua Gagal
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isSyncing}
+                  onClick={handleSyncAndAutoChunk}
+                  className="h-7 px-2.5 text-xs font-semibold text-emerald-700 bg-white border-emerald-200 hover:bg-emerald-50 dark:bg-slate-900 dark:text-emerald-300 dark:border-emerald-800"
+                >
+                  <Sparkles className={`size-3 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                  Sync & Auto-Chunk Semua
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={isClearingQueue}
+                onClick={handleClearQueueHistory}
+                className="h-7 px-2 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                title="Hapus riwayat antrian selesai dan gagal"
+              >
+                <Trash2 className="size-3 mr-1 text-slate-400" />
+                Bersihkan Riwayat
+              </Button>
+            </div>
+          </div>
+
+          {/* Queue Items Table */}
+          <div className="flex-1 min-h-0 overflow-y-auto max-h-[360px] p-0">
+            {queueDetails.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
+                <CheckCircle2 className="size-10 text-emerald-500 mb-2 opacity-80" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Antrian Bersih & Tidak Ada Tugas Tertunda
+                </p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                  Semua dokumen telah selesai diproses atau belum ada dokumen baru yang dimasukkan ke antrian.
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-slate-100/90 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase text-slate-500 tracking-wider">
+                  <tr>
+                    <th className="py-2 px-3">No. Dokumen & Judul</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3">Percobaan</th>
+                    <th className="py-2 px-3">Keterangan / Pesan</th>
+                    <th className="py-2 px-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {queueDetails.map((q) => (
+                    <tr key={q.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                      <td className="py-2.5 px-3 min-w-[200px]">
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          {q.documentNumber || `Doc #${q.documentId}`}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-xs">
+                          {q.documentTitle || q.fileName || "-"}
+                        </div>
+                      </td>
+
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        {q.status === "completed" ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                            Selesai
+                          </Badge>
+                        ) : q.status === "processing" ? (
+                          <Badge className="bg-blue-500/15 text-blue-700 border-blue-200 text-[10px] font-semibold animate-pulse">
+                            Memproses...
+                          </Badge>
+                        ) : q.status === "pending_retry" ? (
+                          <Badge className="bg-amber-500/15 text-amber-700 border-amber-200 text-[10px] font-semibold">
+                            Antri Ulang
+                          </Badge>
+                        ) : q.status === "failed" ? (
+                          <Badge className="bg-rose-500/15 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                            Gagal
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px] font-semibold">
+                            Menunggu
+                          </Badge>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-[11px] font-mono text-slate-600 dark:text-slate-400">
+                        {q.attempts || 0}x
+                      </td>
+
+                      <td className="py-2.5 px-3 text-[11px] text-slate-600 dark:text-slate-400 max-w-xs truncate">
+                        {q.errorMessage ? (
+                          <span className="text-rose-600 dark:text-rose-400" title={q.errorMessage}>
+                            {q.errorMessage}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Siap diproses</span>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          {(q.status === "failed" || q.status === "pending_retry") && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRetryItem(q.documentId)}
+                              className="size-7 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                              title="Retry dokumen ini"
+                            >
+                              <RefreshCw className="size-3" />
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteQueueItem(q.id)}
+                            className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            title="Hapus dari antrian"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shrink-0 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRagQueueModalOpen(false)}
+              className="text-xs"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Fullscreen Read-Only Preview Modal */}
       {fullscreenPreviewDoc && (

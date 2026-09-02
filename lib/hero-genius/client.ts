@@ -4,7 +4,6 @@
  */
 
 const DEFAULT_BASE_URL = 'https://vision.chitraparatama.com/api/v1'
-const DEFAULT_API_KEY = 'rv_e5ddc389b891d26ce04a426b8399090e'
 
 export function getRagBaseUrl(): string {
   const envUrl = process.env.RARAY_VISION_BASE_URL?.replace(/\/+$/, '')
@@ -13,7 +12,7 @@ export function getRagBaseUrl(): string {
 }
 
 export function getRagApiKey(): string {
-  return process.env.RARAY_VISION_API_KEY || DEFAULT_API_KEY
+  return process.env.RARAY_VISION_API_KEY || ''
 }
 
 export function resolveRagDocumentUrl(rawUrl?: string | null): string {

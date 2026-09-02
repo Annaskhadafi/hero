@@ -1284,8 +1284,8 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       await db
         .update(employees)
         .set({
-          totalPoints: (employee.totalPoints || 0) + 100
-        })
+          totalPoints: ((employee as any).totalPoints || 0) + 100
+        } as any)
         .where(eq(employees.id, employee.id));
     }
 
@@ -1712,7 +1712,7 @@ export async function requestInternalLmsEnrollmentAction(formData: FormData) {
       await sendLmsEnrollmentRequestNotification({
         employeeName: employee.name,
         employeeSn: employee.employeeSn ?? '',
-        employeeSection: employee.section ?? '-',
+        employeeSection: (employee as any).section ?? '-',
         courseTitle: course.title,
         actorEmail: employee.email,
       })
@@ -2120,5 +2120,5 @@ export async function publishOnlineAssignmentWithBroadcastAction(formData: FormD
 }
 
 export async function getLmsCourseDetailsAction(courseId: number, userEmail?: string, employeeSn?: string) {
-  return { success: false, data: null, error: "Legacy LMS action not supported" };
+  return { success: false, data: null, curriculum: [] as any[], error: "Legacy LMS action not supported" };
 }

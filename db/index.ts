@@ -3,7 +3,8 @@ import { Pool } from "pg";
 import { serverEnv } from "@/lib/server-env";
 
 declare global {
-  // Reuse the same pool during hot reloads in development.
+  // Reuse one pool for the process and across hot reloads. Creating a Pool per
+  // query quickly exhausts PostgreSQL connections and makes auth look invalid.
   var heroDbPool: Pool | undefined;
   var heroDbConnectionString: string | undefined;
   var heroDrizzleDb: ReturnType<typeof drizzle> | undefined;
@@ -56,19 +57,22 @@ function getPool(): Pool {
     }
   }
 
-  const maxConnections = process.env.DATABASE_MAX_CONNECTIONS
-    ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
-    : process.env.NODE_ENV === "production"
-    ? 10
-    : 4;
+  const parsedMax = process.env.DB_MAX_CONNECTIONS
+    ? parseInt(process.env.DB_MAX_CONNECTIONS, 10)
+    : NaN;
+  const maxConnections =
+    !isNaN(parsedMax) && parsedMax > 0
+      ? parsedMax
+      : process.env.NODE_ENV === "production"
+      ? 15
+      : 10;
 
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: 2000,
-    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 15000 : 5000,
+    connectionTimeoutMillis: 30000,
     max: maxConnections,
-    allowExitOnIdle: true,
     keepAlive: true,
     keepAliveInitialDelayMillis: 5000,
   });
@@ -79,23 +83,20 @@ function getPool(): Pool {
 
   globalThis.heroDbPool = pool;
   globalThis.heroDbConnectionString = connectionString;
-  globalThis.heroDrizzleDb = drizzle({ client: pool });
 
   return pool;
 }
 
+let cachedPool: Pool | undefined;
+
 function getDb(): ReturnType<typeof drizzle> {
-  if (
-    globalThis.heroDrizzleDb &&
-    globalThis.heroDbPool &&
-    globalThis.heroDbConnectionString ===
-      (process.env.DATABASE_URL?.trim() || serverEnv.databaseUrl)
-  ) {
-    return globalThis.heroDrizzleDb;
+  const currentPool = getPool();
+  if (!drizzleDb || cachedPool !== currentPool) {
+    cachedPool = currentPool;
+    drizzleDb = drizzle({ client: currentPool });
   }
 
-  getPool();
-  return globalThis.heroDrizzleDb!;
+  return drizzleDb;
 }
 
 export const db = new Proxy({} as ReturnType<typeof drizzle>, {

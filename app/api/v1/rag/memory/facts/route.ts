@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { heroGeniusLearnedFacts } from "@/db/schema";
 import { deleteRagMemoryFact, getRagMemoryFacts } from "@/lib/hero-genius/client";
+import { getServerSession } from "@/lib/auth-session";
 import { and, desc, eq, ilike } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { status: "error", message: "Unauthorized", total: 0, facts: [] },
+        { status: 401 }
+      );
+    }
+
     const url = new URL(req.url);
     const limit = parseInt(url.searchParams.get("limit") || "100", 10);
     const category = url.searchParams.get("category");
@@ -63,6 +72,11 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
+    }
+
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     if (!id) {

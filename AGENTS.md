@@ -1,4 +1,32 @@
-# Codex Task Management Guide
+# Agent Execution & Workflow Guide
+
+## Core Modes & Phase Separation
+
+### 1. Communication & Planning Mode (Caveman Full)
+- **Fase:** Eksplorasi, investigasi, task breakdown, dan interaksi percakapan.
+- **Aturan:** Respons super ringkas, padat, tanpa filler/pleasantry.
+- **Kecualian:** Saat membuat dokumen formal (ADR, Spec, GitHub Issue bodies), gunakan format Markdown standar yang lengkap dan presisi.
+
+### 2. Engineering Architecture & Workflow (Matt Pocock Skills)
+- **Fase:** Manajemen tiket, domain modeling, ADR, dan wayfinding.
+- **Issue Tracker:** GitHub issues (`gh` CLI). Baca `docs/agents/issue-tracker.md`.
+- **Domain Docs:** Single-context repo (`CONTEXT.md` & `docs/adr/`). Baca `docs/agents/domain.md`.
+- **Glossary First:** Gunakan terminologi dari `CONTEXT.md` untuk semua nama issue, tipe data, dan fungsi.
+
+### 3. Code Implementation Mode (Ponytail Full)
+- **Fase:** Penulisan kode, edit file, dan refactoring.
+- **Decision Ladder:** YAGNI → stdlib → native platform → installed dependency → one line → minimum viable.
+- **Guardrails:** Jangan buat abstraksi prematur; tandai shortcut dengan komentar `ponytail: <upgrade-path>`; jangan pernah kompromi pada validasi security/RBAC dan data integrity.
+
+### 4. Requirement Clarification & Feature Alignment (Grill-Me Mode)
+- **Kondisi:** Setiap kali ada fitur baru yang spesifikasinya kurang jelas, ambigu, atau memiliki banyak percabangan keputusan desain/flow.
+- **Aturan:** WAJIB gunakan mode interview `/grill-me` (tanya detail, bongkar asumsi, kunci requirements) sebelum eksekusi coding.
+- **Output:** Dokumen planning/spec yang matang, komprehensif, dan presisi ("gacor") sebelum mulai penulisan kode.
+
+### 5. Multi-Agent & Teamwork Delegation (Teamwork & Sub-agents)
+- **Kondisi:** Setiap kali scope planning besar, memiliki banyak task/komponen paralel, riset mendalam, atau refactoring berskala luas.
+- **Aturan:** SELALU gunakan delegasi **Sub-agent** dan manfaatkan workflow `/teamwork-preview` agar eksekusi lebih cepat, fokus, terarah, dan paralel tanpa membebani konteks utama.
+- **Eksekusi:** Breakdown task menjadi modul-modul independen, delegasikan ke sub-agent (research/self/teamwork), dan verifikasi hasil secara objektif.
 
 ### Ponytail (YAGNI Minimalism) — Auto-load
 
@@ -25,23 +53,6 @@
 - Saat memulai session, muat semua file memori yang ada untuk konteks lengkap.
 - Update file memori setelah perubahan signifikan dengan timestamp.
 - Kompres file memori jika total token melebihi 4000 (gunakan skill `compress`).
-
-### Coding Mode (Ponytail)
-
-- Wajib gunakan skill `ponytail` saat ngoding / implementasi kode / edit file.
-- Default intensity: `full`.
-- Terapkan decision ladder sebelum tulis kode: YAGNI → stdlib → native platform → installed dependency → one line → minimum viable.
-- Tandai setiap shortcut dengan komentar `ponytail:` + nama upgrade path.
-- Trust-boundary validation, data-loss handling, security, accessibility — jangan pernah skip.
-
-### Planning Mode (Caveman)
-
-- Wajib gunakan skill `caveman` saat planning, breakdown tugas, roadmap, atau jawaban yang sifatnya perencanaan.
-- Default intensity: `full`.
-- Gaya respons: singkat, langsung, tanpa filler/pleasantry/hedging; fragmen kalimat boleh selama makna teknis tetap jelas.
-- Pertahankan istilah teknis, command, error message, kode, path, nama file, dan data penting secara akurat.
-- Turunkan ke gaya normal hanya saat dibutuhkan untuk warning keamanan, konfirmasi aksi irreversible, instruksi multi-step yang rawan salah baca, atau saat user eksplisit meminta `normal mode` / `stop caveman`.
-- Setelah bagian yang butuh gaya normal selesai, kembali ke `caveman full`.
 
 ### Final Database Push Check
 
@@ -423,3 +434,14 @@ Rules:
   - Jika checklist Ubah atau Hapus di Role Management TIDAK dicentang, maka icon/tombol/teks tersebut **HARUS OTOMATIS HILANG** dari UI.
 - **Data Scope Enforcement**: Jika `dataScope === 'own'` dan `canSelectAll` false, data query / tabel client WAJIB dibatasi hanya untuk data milik employee/user yang sedang login.
 - **Server Action Protection**: Setiap Server Action yang melakukan operasi mutasi (insert, update, delete) WAJIB memvalidasi permission menggunakan `getAuthenticatedSession(resource, 'create' | 'edit' | 'delete')` atau `checkPermission`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context repo. See `docs/agents/domain.md`.
+

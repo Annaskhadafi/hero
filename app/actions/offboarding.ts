@@ -19,8 +19,31 @@ import {
   sendWorkflowEmailToMany,
 } from "@/lib/workflow-email";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
-import { getEmployeeTargetByEmail } from "@/lib/push-notifications";
 import { createLegacyApprovalRequest } from "@/lib/legacy-approval-engine";
+import { getServerSession } from "@/lib/auth-session";
+import { getCurrentEmployeeAccessRole } from "@/lib/hero-access";
+import { getEmployeeTargetByEmail } from "@/lib/push-notifications";
+
+async function requireSuperAdminOrHcManager() {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
+  const role = await getCurrentEmployeeAccessRole();
+  const isAuthorized =
+    role === "Super Admin" ||
+    role === "HC Manager" ||
+    role === "Khusus Mas Rendi" ||
+    role === "System Administrator" ||
+    Boolean(role?.toLowerCase().includes("admin"));
+
+  if (!isAuthorized) {
+    throw new Error("Akses ditolak: Hanya Super Admin dan HC Manager yang diizinkan untuk melakukan aksi ini.");
+  }
+
+  return { session, role };
+}
 
 // ─── Default Clearance Checklist Items ────────────────────────────────────────
 
@@ -489,6 +512,7 @@ export async function updateOffboardingRequest(
 // ─── Approve Offboarding ─────────────────────────────────────────────────────
 
 export async function approveOffboarding(id: number, approvedBy: string) {
+  await requireSuperAdminOrHcManager();
   const [updated] = await db
     .update(hcOffboardingRequests)
     .set({
@@ -511,6 +535,7 @@ export async function completeClearanceItem(
   completedBy: string,
   notes?: string
 ) {
+  await requireSuperAdminOrHcManager();
   const [updated] = await db
     .update(hcClearanceItems)
     .set({
@@ -529,6 +554,7 @@ export async function completeClearanceItem(
 // ─── Uncomplete Clearance Item ───────────────────────────────────────────────
 
 export async function uncompleteClearanceItem(itemId: number) {
+  await requireSuperAdminOrHcManager();
   const [updated] = await db
     .update(hcClearanceItems)
     .set({
@@ -547,6 +573,7 @@ export async function uncompleteClearanceItem(itemId: number) {
 // ─── Complete Offboarding ────────────────────────────────────────────────────
 
 export async function completeOffboarding(id: number) {
+  await requireSuperAdminOrHcManager();
   const [record] = await db
     .select({ employeeId: hcOffboardingRequests.employeeId })
     .from(hcOffboardingRequests)
@@ -610,6 +637,7 @@ export async function completeOffboarding(id: number) {
 // ─── Delete Offboarding ──────────────────────────────────────────────────────
 
 export async function deleteOffboarding(id: number) {
+  await requireSuperAdminOrHcManager();
   // Clearance items are cascade-deleted by FK constraint
   await db
     .delete(hcOffboardingRequests)

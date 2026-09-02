@@ -252,7 +252,7 @@ export function flattenMcuMetrics(
   for (const category of MCU_METRIC_CATEGORIES) {
     const catMap = extraction.metrics?.[category];
     if (!catMap) continue;
-    for (const [key, entry] of Object.entries(catMap)) {
+    for (const [key, entry] of Object.entries(catMap || {})) {
       if (!entry) continue;
       rows.push({
         category,

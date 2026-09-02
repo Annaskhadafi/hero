@@ -109,7 +109,7 @@ export function MobileSopWinView({
     });
 
     // 2. Also check if any documents have department codes not in departments list
-    Object.entries(docCountsMap).forEach(([code, count]) => {
+    Object.entries(docCountsMap || {}).forEach(([code, count]) => {
       if (count > 0 && !deptMap.has(code)) {
         deptMap.set(code, {
           code,
@@ -253,52 +253,19 @@ export function MobileSopWinView({
           )}
         </div>
 
-        {/* Type Filter Pills */}
-        <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2 border-t border-white/10 text-center">
-          <button
-            type="button"
-            onClick={() => setSelectedType("ALL")}
-            className={`py-1 px-1.5 rounded-xl text-[11px] font-bold transition-all ${
-              selectedType === "ALL"
-                ? "bg-white text-[#003461] shadow-sm"
-                : "bg-white/10 text-white hover:bg-white/20"
-            }`}
+        {/* Type Filter Select Dropdown */}
+        <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-white/10 text-xs">
+          <span className="font-semibold text-blue-100">Filter Tipe Dokumen:</span>
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value as any)}
+            className="bg-white/15 text-white font-bold text-xs py-1 px-2.5 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-amber-300"
           >
-            Semua ({counts.all})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedType("SOP")}
-            className={`py-1 px-1.5 rounded-xl text-[11px] font-bold transition-all ${
-              selectedType === "SOP"
-                ? "bg-white text-indigo-800 shadow-sm"
-                : "bg-white/10 text-white hover:bg-white/20"
-            }`}
-          >
-            SOP ({counts.sop})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedType("WIN")}
-            className={`py-1 px-1.5 rounded-xl text-[11px] font-bold transition-all ${
-              selectedType === "WIN"
-                ? "bg-white text-sky-800 shadow-sm"
-                : "bg-white/10 text-white hover:bg-white/20"
-            }`}
-          >
-            WIN ({counts.win})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedType("POL")}
-            className={`py-1 px-1.5 rounded-xl text-[11px] font-bold transition-all ${
-              selectedType === "POL"
-                ? "bg-white text-emerald-800 shadow-sm"
-                : "bg-white/10 text-white hover:bg-white/20"
-            }`}
-          >
-            POL ({counts.pol})
-          </button>
+            <option value="ALL" className="text-slate-900 font-bold">Semua Tipe ({counts.all})</option>
+            <option value="SOP" className="text-slate-900 font-bold">SOP ({counts.sop})</option>
+            <option value="WIN" className="text-slate-900 font-bold">WIN ({counts.win})</option>
+            <option value="POL" className="text-slate-900 font-bold">POL ({counts.pol})</option>
+          </select>
         </div>
       </div>
 

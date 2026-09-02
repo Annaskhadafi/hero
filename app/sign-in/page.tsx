@@ -71,6 +71,18 @@ function SignInContent() {
         if (searchParams.get("reset") === "success") {
             setMessage("Password updated successfully. Please log in with the new password.");
         }
+        const errorType = searchParams.get("error");
+        if (errorType) {
+            if (errorType === "new_user_signup_disabled") {
+                setError("Akun user Anda tidak ditemukan. Harap pastikan email Anda sudah terdaftar.");
+            } else if (errorType === "INVALID_TOKEN") {
+                setError("Token login biometrik tidak valid atau sudah digunakan.");
+            } else if (errorType === "EXPIRED_TOKEN") {
+                setError("Token login biometrik telah kedaluwarsa.");
+            } else {
+                setError(`Gagal login biometrik: ${errorType}`);
+            }
+        }
     }, [searchParams]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -85,31 +97,46 @@ function SignInContent() {
             // Resolve SN to email if input is not an email
             let loginEmail = email.trim();
             if (!loginEmail.includes("@")) {
-                const snRes = await resolveSnAction(loginEmail);
-                if (snRes.success && snRes.email) {
-                    loginEmail = snRes.email;
-                    setResolvedEmail(snRes.email);
-                    setResolvedName(snRes.name || "");
-                } else {
-                    // Fallback to HTTP endpoint if needed
+                let resolved = false;
+                try {
+                    const res = await fetch("/api/resolve-sn", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ sn: loginEmail }),
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.email) {
+                        loginEmail = data.email;
+                        setResolvedEmail(data.email);
+                        setResolvedName(data.name || "");
+                        resolved = true;
+                    } else if (data.error) {
+                        setError(data.error);
+                        setIsLoading(false);
+                        return;
+                    }
+                } catch {
+                    // Fallback to server action if fetch fails
+                }
+
+                if (!resolved) {
                     try {
-                        const res = await fetch("/api/resolve-sn", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sn: loginEmail }),
-                        });
-                        const data = await res.json();
-                        if (res.ok && data.email) {
-                            loginEmail = data.email;
-                            setResolvedEmail(data.email);
-                            setResolvedName(data.name || "");
+                        const snRes = await resolveSnAction(loginEmail);
+                        if (snRes.success && snRes.email) {
+                            loginEmail = snRes.email;
+                            setResolvedEmail(snRes.email);
+                            setResolvedName(snRes.name || "");
                         } else {
-                            setError(data.error || snRes.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
+                            setError(snRes.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
                             setIsLoading(false);
                             return;
                         }
-                    } catch {
-                        setError(snRes.error || "SN tidak ditemukan. Pastikan SN karyawan benar.");
+                    } catch (err: any) {
+                        if (err?.message?.includes("Server Action") || err?.message?.includes("not found")) {
+                            window.location.reload();
+                            return;
+                        }
+                        setError("SN tidak ditemukan. Pastikan SN karyawan benar.");
                         setIsLoading(false);
                         return;
                     }
@@ -132,6 +159,10 @@ function SignInContent() {
             // to be present on the next server render.
             window.location.href = callbackURL;
         } catch (err: any) {
+            if (err?.message?.includes("Server Action") || err?.message?.includes("not found")) {
+                window.location.reload();
+                return;
+            }
             setError(err?.message || "An unexpected error occurred during sign in");
             setIsLoading(false);
         }

@@ -170,9 +170,13 @@ export function isCompleteScheduleV2(rows: ScheduleV2Row[], employeeIds: number[
 
 export function mergeActiveSchedulePlans<
   T extends { siteId: number; period: string },
-  V extends { siteId: number; period: string; status: string; activeSchedule: ScheduleV2Row[] },
+  V extends { siteId: number; period: string; status: string; activeSchedule: ScheduleV2Row[]; draftSchedule?: ScheduleV2Row[] },
 >(v1Plans: T[], v2Plans: V[], toPlan: (plan: V) => T) {
-  const activeV2 = v2Plans.filter((plan) => plan.status === 'active' && plan.activeSchedule.length)
+  const activeV2 = v2Plans.filter(
+    (plan) =>
+      (plan.status === 'active' && ((plan.activeSchedule && plan.activeSchedule.length > 0) || (plan.draftSchedule && plan.draftSchedule.length > 0))) ||
+      (plan.activeSchedule && plan.activeSchedule.length > 0)
+  )
   const activeKeys = new Set(activeV2.map((plan) => `${plan.siteId}:${plan.period}`))
   return [
     ...v1Plans.filter((plan) => !activeKeys.has(`${plan.siteId}:${plan.period}`)),

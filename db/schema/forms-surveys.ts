@@ -1,7 +1,7 @@
 import { relations } from "drizzle-orm"
 import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core"
 
-import type { FormBuilderSchema } from "@/lib/forms-surveys"
+export type FormBuilderSchema = Record<string, any>
 
 import { user } from "./auth"
 

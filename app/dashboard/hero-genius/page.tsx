@@ -6,8 +6,9 @@ import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { GeniusChatWorkspace } from "@/components/hero-genius/genius-chat-workspace";
 import { GeniusKnowledgeWorkspace } from "@/components/hero-genius/genius-knowledge-workspace";
 import { GeniusMemoryWorkspace } from "@/components/hero-genius/genius-memory-workspace";
+import { GeniusSopWinApprovalWorkspace } from "@/components/hero-genius/genius-sop-win-approval-workspace";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Database, Bot, Brain } from "lucide-react";
+import { Sparkles, Database, Bot, Brain, GitFork } from "lucide-react";
 
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
 
@@ -18,7 +19,14 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function HeroGeniusPage() {
+export default async function HeroGeniusPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : {};
+  const activeTab = resolvedParams?.tab || "chat";
+
   const [overview, session] = await Promise.all([
     getHeroGeniusOverviewAction(),
     getServerSession(),
@@ -80,7 +88,7 @@ export default async function HeroGeniusPage() {
       </div>
 
       {/* Tabs Layout */}
-      <Tabs defaultValue="chat" className="space-y-4">
+      <Tabs defaultValue={activeTab} className="space-y-4">
         <TabsList className="bg-slate-100/80 p-1 dark:bg-slate-900">
           <TabsTrigger
             value="chat"
@@ -102,6 +110,13 @@ export default async function HeroGeniusPage() {
           >
             <Database className="size-3.5" />
             Knowledge Base ({overview.totalDocuments} Dokumen)
+          </TabsTrigger>
+          <TabsTrigger
+            value="sop-approval"
+            className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-sm"
+          >
+            <GitFork className="size-3.5 text-indigo-600" />
+            Generator Approval SOP/WIN
           </TabsTrigger>
         </TabsList>
 
@@ -126,6 +141,10 @@ export default async function HeroGeniusPage() {
             redisInfo={overview.redis}
             canManageDocuments={isSuperAdmin}
           />
+        </TabsContent>
+
+        <TabsContent value="sop-approval" className="space-y-4 outline-none">
+          <GeniusSopWinApprovalWorkspace />
         </TabsContent>
       </Tabs>
     </div>

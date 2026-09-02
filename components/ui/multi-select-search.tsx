@@ -119,11 +119,11 @@ export function MultiSelectSearch({
           {filteredOptions.length === 0 ? (
             <div className="py-6 text-center text-sm text-slate-500">Tidak ada {label.toLowerCase()} ditemukan.</div>
           ) : (
-            filteredOptions.map((option) => {
+            filteredOptions.map((option, idx) => {
               const isSelected = values.includes(option.value);
               return (
                 <button
-                  key={option.value}
+                  key={`${option.value}-${idx}`}
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",

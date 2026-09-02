@@ -631,7 +631,7 @@ async function preserveMovedNodeIdentityFromEmployees(nodeIds: number[]) {
     if (node.sectionId == null && sectionId != null) updateData.sectionId = sectionId
     if (node.siteId == null && siteId != null) updateData.siteId = siteId
 
-    if (Object.keys(updateData).length === 1) continue
+    if (Object.keys(updateData || {}).length === 1) continue
 
     await db.update(hrOrgNodes).set(updateData).where(eq(hrOrgNodes.id, node.id))
   }

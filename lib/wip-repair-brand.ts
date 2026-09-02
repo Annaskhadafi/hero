@@ -36,7 +36,7 @@ const BRAND_ALIASES: Record<string, string> = {
   TRIANGLE: "TRIANGLE",
 }
 
-const CANONICAL_TIRE_BRANDS = Array.from(new Set(Object.values(BRAND_ALIASES).filter((brand) => brand !== "-"))).sort()
+const CANONICAL_TIRE_BRANDS = Array.from(new Set(Object.values(BRAND_ALIASES || {}).filter((brand) => brand !== "-"))).sort()
 
 function compactBrand(value: string) {
   return value.replace(/[^A-Z0-9]/g, "")

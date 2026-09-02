@@ -125,6 +125,7 @@ export function GeniusMemoryWorkspace() {
 
     try {
       const res = await learnHeroGeniusFactAction({
+        content: newFact.trim(),
         fact: newFact.trim(),
         category: newCategory,
         source: newSource.trim() || "Self-Growth Manual Input",

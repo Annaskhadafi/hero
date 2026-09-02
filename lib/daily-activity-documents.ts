@@ -1,6 +1,7 @@
 import { asc, eq, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
+  dailyActivityApprovals,
   dailyActivitySessionItems,
   dailyActivitySessionSignoffs,
   dailyActivitySessions,
@@ -93,14 +94,9 @@ export async function getDailyActivitySessionDocumentData(
     return null
   }
 
-  const canReviewHr =
-    header.siteId === currentEmployee.siteId &&
-    ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)
-  if (header.employeeId !== currentEmployee.id && !canReviewHr) {
-    return null
-  }
 
-  const [itemRows, signoff] = await Promise.all([
+
+  const [itemRows, approvalsRows, signoff] = await Promise.all([
     db
       .select({
         id: dailyActivitySessionItems.id,
@@ -120,12 +116,65 @@ export async function getDailyActivitySessionDocumentData(
       .where(eq(dailyActivitySessionItems.sessionId, sessionId))
       .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id)),
     db
+      .select({
+        id: dailyActivityApprovals.id,
+        sessionId: dailyActivityApprovals.sessionId,
+        stepOrder: dailyActivityApprovals.stepOrder,
+        stepLabel: dailyActivityApprovals.stepLabel,
+        status: dailyActivityApprovals.status,
+        approverName: dailyActivityApprovals.approverName,
+        approverEmail: dailyActivityApprovals.approverEmail,
+        approverRole: dailyActivityApprovals.approverRole,
+        approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
+        signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
+        remarks: dailyActivityApprovals.remarks,
+        signedAt: dailyActivityApprovals.signedAt,
+      })
+      .from(dailyActivityApprovals)
+      .where(eq(dailyActivityApprovals.sessionId, sessionId))
+      .orderBy(asc(dailyActivityApprovals.stepOrder)),
+    db
       .select()
       .from(dailyActivitySessionSignoffs)
       .where(eq(dailyActivitySessionSignoffs.sessionId, sessionId))
       .limit(1)
       .then((rows) => rows[0] ?? null),
   ])
+
+  const isApprover = approvalsRows.some(
+    (a) =>
+      a.approverEmployeeId === currentEmployee.id ||
+      (a.approverEmail && a.approverEmail.toLowerCase() === normalizedEmail)
+  )
+  const isAdminOrManager = [
+    'Super Admin',
+    'Site Admin',
+    'HC Manager',
+    'Manager',
+    'Director',
+    'PJO',
+  ].includes(currentEmployee.accessRole)
+
+  const canReviewHr =
+    (header.siteId === currentEmployee.siteId &&
+      ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)) ||
+    currentEmployee.accessRole === 'Super Admin'
+
+  if (header.employeeId !== currentEmployee.id && !canReviewHr && !isApprover && !isAdminOrManager) {
+    return null
+  }
+
+  let teamMembersSummary = ''
+  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+  if (teamMatch && teamMatch[1]) {
+    const rawMembers = teamMatch[1].trim()
+    const requesterName = (header.employeeName || '').trim().toLowerCase()
+    const otherMembers = rawMembers
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n && n.toLowerCase() !== requesterName)
+    teamMembersSummary = otherMembers.join(', ')
+  }
 
   const checkedItems = itemRows
     .filter((item) => item.isChecked)
@@ -166,6 +215,7 @@ export async function getDailyActivitySessionDocumentData(
     shiftCode: header.shiftCode,
     status: header.status,
     summaryRemark: header.summaryRemark,
+    teamMembersSummary,
     submittedAt: header.submittedAt,
     monthLabel: header.workDate.toLocaleDateString('id-ID', {
       month: 'long',
@@ -201,6 +251,7 @@ export async function getDailyActivitySessionDocumentData(
       totalDurationMinutes,
       totalDurationLabel: formatDurationLabel(totalDurationMinutes),
     },
+    approvals: approvalsRows,
     signoff: {
       employeeSignerName: signoff?.employeeSignerName ?? '',
       employeeSignatureUrl: signoff?.employeeSignatureUrl ?? '',

@@ -246,7 +246,7 @@ function createZipBlob(files: Array<{ name: string; data: Uint8Array }>): Blob {
   eocdView.setUint32(16, cdOffset, true);
   eocdView.setUint16(20, 0, true);
 
-  return new Blob([...fileEntries, ...centralDirectoryEntries, eocd], {
+  return new Blob([...fileEntries, ...centralDirectoryEntries, eocd] as any, {
     type: "application/zip",
   });
 }

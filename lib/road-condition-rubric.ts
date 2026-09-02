@@ -261,7 +261,7 @@ export const ROAD_CONDITION_CATEGORIES: Record<RoadConditionCategoryKey, RoadCon
   },
 }
 
-export const ROAD_CONDITION_CATEGORY_OPTIONS = Object.values(ROAD_CONDITION_CATEGORIES).map(
+export const ROAD_CONDITION_CATEGORY_OPTIONS = Object.values(ROAD_CONDITION_CATEGORIES || {}).map(
   ({ key, label }) => ({ value: key, label })
 )
 

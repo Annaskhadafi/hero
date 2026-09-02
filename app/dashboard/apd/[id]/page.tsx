@@ -202,7 +202,7 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
                           )}
                         </div>
                         <time className="text-xs text-muted-foreground">
-                          {step.resolvedAt ? step.resolvedAt.toLocaleString("id-ID") : "Menunggu"}
+                          {(step as any).resolvedAt ? new Date((step as any).resolvedAt).toLocaleString("id-ID") : "Menunggu"}
                         </time>
                       </div>
                       <div className="text-sm text-muted-foreground capitalize">

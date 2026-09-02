@@ -255,7 +255,7 @@ export function MobileGeniusChat({
     try {
       await sendHeroGeniusFeedbackAction({
         session_id: sessionId,
-        message_id: msg.message_id ? String(msg.message_id) : undefined,
+        message_id: String(msg.message_id || msg.id || 'msg-1'),
         query: msg.userQuery || "Mobile query",
         answer: msg.content,
         rating: 1,
@@ -277,7 +277,7 @@ export function MobileGeniusChat({
     try {
       await sendHeroGeniusFeedbackAction({
         session_id: sessionId,
-        message_id: activeFeedbackMsg.message_id ? String(activeFeedbackMsg.message_id) : undefined,
+        message_id: String(activeFeedbackMsg.message_id || activeFeedbackMsg.id || 'msg-1'),
         query: activeFeedbackMsg.userQuery || "Mobile query",
         answer: activeFeedbackMsg.content,
         rating: -1,

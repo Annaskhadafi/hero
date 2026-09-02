@@ -155,7 +155,7 @@ function getAvailableYears(sellingOutByMonth: MonthlySellingQty[]): string[] {
     const currentYear = new Date().getFullYear().toString()
     const yearSet = new Set<string>([currentYear])
     for (const item of sellingOutByMonth) {
-        for (const month of Object.keys(item.monthlyQty)) {
+        for (const month of Object.keys(item.monthlyQty || {})) {
             yearSet.add(month.slice(0, 4))
         }
     }
@@ -274,7 +274,7 @@ export function SlowMovingClient({
                 acc.totalRevenue += revenue
                 acc.totalGrossProfit += grossProfit
                 const monthlyQty = entry?.monthlyQty ?? {}
-                for (const [month, qty] of Object.entries(monthlyQty)) {
+                for (const [month, qty] of Object.entries(monthlyQty || {})) {
                     if (allMonths.includes(month)) {
                         monthlyTotals[month] = (monthlyTotals[month] ?? 0) + qty
                     }

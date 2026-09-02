@@ -80,9 +80,9 @@ function downloadText(content: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url)
 }
 
-function normalizeFileName(value: string) {
+function normalizeFileName(value?: string | null) {
   return (
-    value
+    (value ?? '')
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -90,8 +90,8 @@ function normalizeFileName(value: string) {
   )
 }
 
-function toDatasetSuffix(key: string) {
-  return key
+function toDatasetSuffix(key?: string | null) {
+  return (key ?? '')
     .replace(/[^a-zA-Z0-9]+(.)/g, (_, character: string) => character.toUpperCase())
     .replace(/^[A-Z]/, (character) => character.toLowerCase())
 }
@@ -100,9 +100,9 @@ function normalizeFilterValue(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
-function normalizeImportKey(value: string) {
+function normalizeImportKey(value?: string | null) {
   return (
-    value
+    (value ?? '')
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
@@ -160,7 +160,7 @@ export function exportRowsToFile({
 }: {
   columns: string[]
   rows: Array<Array<string | number | null | undefined>>
-  fileName: string
+  fileName?: string | null
 }) {
   const normalizedRows = [columns, ...rows.map((row) => row.map((cell) => `${cell ?? ''}`))]
   const baseName = normalizeFileName(fileName)
@@ -254,6 +254,7 @@ type MinimalTableShellProps = {
   actions?: React.ReactNode
   importAction?: React.ReactNode
   showImport?: boolean
+  showExport?: boolean
   primaryAction?: React.ReactNode
   presets?: React.ReactNode
   scorecards?: EnterpriseScorecardItem[]
@@ -300,6 +301,7 @@ export function MinimalTableShell({
   actions,
   importAction,
   showImport = true,
+  showExport = true,
   primaryAction,
   presets,
   scorecards,
@@ -325,11 +327,11 @@ export function MinimalTableShell({
     Array<{ key: string; label: string; required?: boolean }>
   >([{ key: 'primary', label: 'Kolom utama', required: true }])
 
-  const isDateHeader = React.useEffectEvent((value: string) =>
-    /\b(date|tanggal|time|waktu|created|updated|submitted|deadline|expiry|expired|reported|event time|join)\b/i.test(value)
-  )
+  const isDateHeader = React.useCallback((value: string) =>
+    /\b(date|tanggal|time|waktu|created|updated|submitted|deadline|expiry|expired|reported|event time|join)\b/i.test(value),
+  [])
 
-  const supportsDateFilter = React.useEffectEvent((snapshot: TableSnapshot) => {
+  const supportsDateFilter = React.useCallback((snapshot: TableSnapshot) => {
     if (dateFilter === true) return true
     if (dateFilter === false) return false
     const hasDateHeader = snapshot.headerCells.some((cell) => isDateHeader(cell))
@@ -337,9 +339,9 @@ export function MinimalTableShell({
       Boolean(row.dataset.dateValue ?? row.querySelector<HTMLElement>('[data-date-value]')?.dataset.dateValue)
     )
     return hasDateHeader || hasDateData
-  })
+  }, [dateFilter, isDateHeader])
 
-  const getTableSnapshot = React.useEffectEvent((): TableSnapshot | null => {
+  const getTableSnapshot = React.useCallback((): TableSnapshot | null => {
     const root = shellRef.current
     if (!root) return null
     const table = root.querySelector('table')
@@ -357,9 +359,9 @@ export function MinimalTableShell({
     })
     const dataRows = bodyRows.filter((row) => !emptyRows.includes(row) && !detailRows.includes(row))
     return { tbody, headerCells, emptyRows, dataRows }
-  })
+  }, [])
 
-  const applyFilters = React.useEffectEvent(() => {
+  const applyFilters = React.useCallback(() => {
     const snapshot = getTableSnapshot()
     if (!snapshot) return
 
@@ -431,7 +433,7 @@ export function MinimalTableShell({
     setFilteredCount((prev) => (prev === nextFilteredCount ? prev : nextFilteredCount))
     const nextShowNoResults = snapshot.dataRows.length > 0 && nextFilteredCount === 0
     setShowNoResults((prev) => (prev === nextShowNoResults ? prev : nextShowNoResults))
-  })
+  }, [dateRange, getTableSnapshot, pageIndex, pageSize, query, supportsDateFilter])
 
   React.useEffect(() => {
     applyFilters()
@@ -540,14 +542,16 @@ export function MinimalTableShell({
               </div>
             ) : null}
             {primaryAction ? <React.Fragment key="table-primary-action-slot">{primaryAction}</React.Fragment> : null}
-            <Button
-              key="table-export-slot"
-              variant="outline"
-              onClick={() => exportVisibleTable()}
-              className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium tracking-normal normal-case shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-            >
-              <IconFileSpreadsheet className="size-4" /> Excel
-            </Button>
+            {showExport ? (
+              <Button
+                key="table-export-slot"
+                variant="outline"
+                onClick={() => exportVisibleTable()}
+                className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium tracking-normal normal-case shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+              >
+                <IconFileSpreadsheet className="size-4" /> Excel
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

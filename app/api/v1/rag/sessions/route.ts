@@ -8,13 +8,17 @@ import { desc, eq } from "drizzle-orm";
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession();
-    const userId = session?.user?.id;
-    const url = new URL(req.url);
-    const queryUserId = url.searchParams.get("user_id") || userId;
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { status: "error", message: "Unauthorized", sessions: [] },
+        { status: 401 }
+      );
+    }
+    const userId = session.user.id;
 
-    // 1. Try remote RAG endpoint
+    // 1. Try remote RAG endpoint scoped to logged-in user
     try {
-      const remoteRes = await listRagSessions(queryUserId);
+      const remoteRes = await listRagSessions(userId);
       if (remoteRes && Array.isArray(remoteRes.sessions) && remoteRes.sessions.length > 0) {
         return NextResponse.json(remoteRes);
       }
@@ -22,11 +26,13 @@ export async function GET(req: NextRequest) {
       // Fallback to local DB
     }
 
-    // 2. Local database sessions
-    const query = db.select().from(heroGeniusSessions);
-    const sessions = queryUserId
-      ? await query.where(eq(heroGeniusSessions.userId, queryUserId)).orderBy(desc(heroGeniusSessions.lastActiveAt)).limit(50)
-      : await query.orderBy(desc(heroGeniusSessions.lastActiveAt)).limit(50);
+    // 2. Local database sessions scoped strictly to logged-in user
+    const sessions = await db
+      .select()
+      .from(heroGeniusSessions)
+      .where(eq(heroGeniusSessions.userId, userId))
+      .orderBy(desc(heroGeniusSessions.lastActiveAt))
+      .limit(50);
 
     return NextResponse.json({
       status: "ok",

@@ -77,39 +77,48 @@ export async function getRecipientNotifications(email: string, limit = 20): Prom
   return rows.map((row) => {
     const payload = parsePayloadSnapshot(row.payloadSnapshot);
 
+    const createdDate = row.createdAt ? (row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt)) : new Date();
+    const sentDate = row.sentAt ? (row.sentAt instanceof Date ? row.sentAt : new Date(row.sentAt)) : null;
+    const readDate = row.readAt ? (row.readAt instanceof Date ? row.readAt : new Date(row.readAt)) : null;
+
     return {
       id: row.id,
       title: payload.title || row.eventType || "HERO notification",
       body: payload.body || row.errorMessage || "Update baru dari HERO.",
       href: payload.url || "/dashboard/notifications",
-      channel: row.channel,
-      status: row.status,
-      eventType: row.eventType,
-      createdAt: row.createdAt.toISOString(),
-      sentAt: row.sentAt?.toISOString() ?? null,
-      readAt: row.readAt?.toISOString() ?? null,
+      channel: row.channel || "in_app",
+      status: row.status || "sent",
+      eventType: row.eventType || null,
+      createdAt: !isNaN(createdDate.getTime()) ? createdDate.toISOString() : new Date().toISOString(),
+      sentAt: sentDate && !isNaN(sentDate.getTime()) ? sentDate.toISOString() : null,
+      readAt: readDate && !isNaN(readDate.getTime()) ? readDate.toISOString() : null,
       isRead: Boolean(row.readAt),
     };
   });
 }
 
 export async function getRecipientUnreadNotificationCount(email: string) {
-  await ensureNotificationInfrastructure();
+  try {
+    await ensureNotificationInfrastructure();
 
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(notificationDeliveries)
-    .where(
-      and(
-        buildRecipientFilter(email),
-        eq(notificationDeliveries.deliveryChannel, "in_app"),
-        ne(notificationDeliveries.status, "failed"),
-        isNull(notificationDeliveries.clearedAt),
-        isNull(notificationDeliveries.readAt),
-      ),
-    );
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notificationDeliveries)
+      .where(
+        and(
+          buildRecipientFilter(email),
+          eq(notificationDeliveries.deliveryChannel, "in_app"),
+          ne(notificationDeliveries.status, "failed"),
+          isNull(notificationDeliveries.clearedAt),
+          isNull(notificationDeliveries.readAt),
+        ),
+      );
 
-  return row?.count ?? 0;
+    return row?.count ?? 0;
+  } catch (error) {
+    console.warn('[getRecipientUnreadNotificationCount] Transient database timeout/error:', error instanceof Error ? error.message : error);
+    return 0;
+  }
 }
 
 function buildNotificationScope(email: string, ids?: number[]) {

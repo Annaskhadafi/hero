@@ -389,6 +389,34 @@ function splitLongTextWithOverlap(text: string, chunkSize: number, chunkOverlap:
   return result.length > 0 ? result : [text];
 }
 
+export function isPrivateIpOrHost(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    const host = parsed.hostname.toLowerCase();
+
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host === "169.254.169.254" ||
+      host.startsWith("127.") ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      host.startsWith("169.254.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+      host.endsWith(".local") ||
+      host.endsWith(".internal") ||
+      host.endsWith(".localhost")
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 /**
  * 5. Master Orchestrator: Fetch URL, Clean, Parse to Markdown & Generate Semantic Chunks
  */
@@ -404,6 +432,10 @@ export async function parseWebUrl(
     }
   } catch {
     throw new Error(`URL tidak valid: "${targetUrl}"`);
+  }
+
+  if (isPrivateIpOrHost(parsedUrl.toString())) {
+    throw new Error("Akses ke alamat IP atau host privat/internal dilarang demi keamanan (SSRF Protection).");
   }
 
   const timeout = options.timeoutMs || 15000;

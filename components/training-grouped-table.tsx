@@ -122,7 +122,7 @@ export function TrainingGroupedTable({
   }
 
   // Sort employees alphabetically by name
-  const sortedGroups = Object.values(employeeGroups).sort((a, b) =>
+  const sortedGroups = Object.values(employeeGroups || {}).sort((a, b) =>
     a.employeeName.localeCompare(b.employeeName)
   )
 

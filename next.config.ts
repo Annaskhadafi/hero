@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  turbopack: {},
   images: {
     remotePatterns: [
       {
@@ -27,6 +28,50 @@ const nextConfig: NextConfig = {
             value: 'public, max-age=31536000, immutable',
           },
         ],
+      },
+    ]
+  },
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/scheduling%20timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling%20timesheet',
+        destination: '/dashboard/scheduling-timesheet',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling_timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling_timesheet',
+        destination: '/dashboard/scheduling-timesheet',
+        permanent: false,
+      },
+    ]
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/dashboard/scheduling/timesheet/field_break',
+        destination: '/dashboard/scheduling-timesheet/field-break',
+      },
+      {
+        source: '/dashboard/scheduling/timesheet/field-break',
+        destination: '/dashboard/scheduling-timesheet/field-break',
+      },
+      {
+        source: '/dashboard/scheduling/timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+      },
+      {
+        source: '/dashboard/scheduling/timesheet',
+        destination: '/dashboard/scheduling-timesheet',
       },
     ]
   },

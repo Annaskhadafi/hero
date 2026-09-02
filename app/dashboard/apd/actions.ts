@@ -129,7 +129,6 @@ export async function submitApdRequest(formData: FormData) {
         resolutionSource: firstStep?.resolutionSource ?? 'system',
         routeSnapshot: JSON.stringify(route),
         payloadSnapshot,
-        previewSnapshot,
         decisionNote: '',
         submittedAt: new Date(),
       })

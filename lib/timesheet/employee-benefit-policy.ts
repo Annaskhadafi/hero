@@ -132,8 +132,8 @@ export function isMealsEligibleScheduleCode(
 ) {
   if (isFieldBreakPeriod) return false
   const code = String(scheduleCode ?? '').trim().toUpperCase()
-  if (!code || code === '-' || code === 'FB' || code === 'OFF') return false
-  return code === 'IN' || code === 'DS' || code === 'NS' || code === 'ST'
+  if (!code || code === '-' || code === 'FB') return false
+  return code === 'IN' || code === 'DS' || code === 'NS' || code === 'ST' || code === 'OFF'
 }
 
 export function isMealsEligibleDay(input: {

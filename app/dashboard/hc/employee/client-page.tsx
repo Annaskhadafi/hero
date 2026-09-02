@@ -551,7 +551,7 @@ export function EmployeeClientPage({
           {access.canEdit && (
             <MinePermitReminderDialog />
           )}
-          {access.canCreate && (
+          {(access.canEdit || (access as any).canCreate) && (
             <Button
               onClick={handleOpenAdd}
               className={hcPrimaryActionClassName}

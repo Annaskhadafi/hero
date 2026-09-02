@@ -17,6 +17,8 @@ import {
   X,
   SortAsc,
   SortDesc,
+  Edit2,
+  UserCheck,
 } from "lucide-react"
 import { toast } from "sonner"
 import { usePermissions } from "@/hooks/use-permissions"
@@ -851,11 +853,13 @@ export function CustomerManagementWorkspace({
                       <div className="pt-2 flex justify-between">
                         <span className="text-slate-500">Terdaftar Sejak</span>
                         <strong className="text-slate-700">
-                          {new Date(viewCustomer.createdAt).toLocaleDateString("id-ID", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
+                          {viewCustomer.createdAt
+                            ? new Date(viewCustomer.createdAt).toLocaleDateString("id-ID", {
+                                day: "numeric",
+                                month: "long",
+                                year: "numeric",
+                              })
+                            : "-"}
                         </strong>
                       </div>
                     </div>

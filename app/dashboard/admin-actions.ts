@@ -19,7 +19,9 @@ import {
 } from '@/lib/workflow-email'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
-import { getCurrentEmployeeAccessRole } from '@/lib/get-current-employee'
+import { getCurrentEmployeeAccessRole, requireAdminOrHcManagerRole } from '@/lib/get-current-employee'
+import { normalizeIndonesiaTimezone } from '@/lib/indonesia-timezone'
+import { resyncSiteAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -223,6 +225,7 @@ import { appendApprovalNoteEntry } from '@/lib/approval-notes'
 import {
   getCurrentEmployeeAccessContext,
   getCurrentMenuPermission,
+  getUserAccessibleSiteIds,
   hasGlobalDataAccess,
 } from '@/lib/hero-access'
 
@@ -241,8 +244,16 @@ async function assertSchedulingSiteScope(siteId: number, permission: 'edit' | 'f
     requireSchedulingTimesheetAccess(permission),
     getCurrentEmployeeAccessContext(),
   ])
-  if (!hasGlobalDataAccess(access) && context?.siteId !== siteId) {
-    throw new Error('Anda hanya dapat mengelola scheduling untuk site sendiri.')
+  if (!hasGlobalDataAccess(access)) {
+    const allowedSiteIds = context?.employeeId
+      ? await getUserAccessibleSiteIds(context.employeeId)
+      : context?.siteId != null
+        ? [context.siteId]
+        : []
+
+    if (!allowedSiteIds.includes(siteId)) {
+      throw new Error('Anda hanya dapat mengelola scheduling untuk site yang ditugaskan kepada Anda.')
+    }
   }
   return { access, context }
 }
@@ -644,7 +655,7 @@ async function syncFieldBreakPlansFromV2Rows(
   }
 ) {
   const employeeIds = input.rows.map((row) => row.employeeId)
-  const employeeRows = employeeIds.length
+  const employeeRows: Array<{ id: number; name: string; section: string | null; role: string | null }> = employeeIds.length
     ? await tx
         .select({
           id: employees.id,
@@ -656,7 +667,7 @@ async function syncFieldBreakPlansFromV2Rows(
         .where(inArray(employees.id, employeeIds))
     : []
   const employeeById = new Map(
-    employeeRows.map((employee: (typeof employeeRows)[number]) => [employee.id, employee])
+    employeeRows.map((employee: { id: number; name: string; section: string | null; role: string | null }) => [employee.id, employee])
   )
 
   for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
@@ -2655,6 +2666,7 @@ const saveSchedulingConfigSchema = z.object({
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
   overtimeType: z.string().max(60),
+  timezone: z.string().max(20).optional().default('WITA'),
   fieldBreakConfig: schedulingFieldBreakConfigSchema.optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
@@ -2683,6 +2695,10 @@ export async function saveSchedulingConfigAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
+  const resolvedTimezone = payload.timezone
+    ? normalizeIndonesiaTimezone(payload.timezone).code
+    : 'WITA'
+
   // Validate site exists in sites table
   const [site] = await db
     .select({ id: sites.id, name: sites.name })
@@ -2750,6 +2766,7 @@ export async function saveSchedulingConfigAction(
         msaType: payload.msaType,
         mealsType: payload.mealsType,
         overtimeType: payload.overtimeType,
+        timezone: resolvedTimezone,
         fieldBreakConfig: payload.fieldBreakConfig,
         allowanceVariables: payload.allowanceVariables,
         overtimeVariables: payload.overtimeVariables,
@@ -2766,6 +2783,7 @@ export async function saveSchedulingConfigAction(
           msaType: payload.msaType,
           mealsType: payload.mealsType,
           overtimeType: payload.overtimeType,
+          timezone: resolvedTimezone,
           fieldBreakConfig: payload.fieldBreakConfig,
           allowanceVariables: payload.allowanceVariables,
           overtimeVariables: payload.overtimeVariables,
@@ -2775,6 +2793,12 @@ export async function saveSchedulingConfigAction(
           updatedAt: now,
         },
       })
+
+    // Synchronize timezone with hero_sites
+    await tx
+      .update(sites)
+      .set({ timezone: resolvedTimezone })
+      .where(eq(sites.id, payload.siteId))
 
     let structureId: number | null = null
     const getStructureId = async () => {
@@ -2996,10 +3020,29 @@ export async function saveSchedulingConfigAction(
     entityLabel: String(payload.siteId),
     description: 'Saved scheduling timesheet configuration.',
   })
+
+  // Automatically re-evaluate and sync timesheet attendance under the configured timezone
+  try {
+    await resyncSiteAttendanceToTimesheet(payload.siteId)
+  } catch (error) {
+    console.error(`[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`, error)
+  }
+
   revalidatePath('/dashboard/scheduling-timesheet')
   revalidatePath('/dashboard/scheduling-timesheet/setup')
   revalidatePath('/dashboard/master-data')
+  revalidatePath('/dashboard/attendance')
+  revalidatePath('/dashboard/attendance/records')
   return { ok: true }
+}
+
+export async function resyncSiteAttendanceAction(siteId: number, period?: string) {
+  await assertSchedulingSiteScope(siteId, 'edit')
+  const result = await resyncSiteAttendanceToTimesheet(siteId, period)
+  revalidatePath('/dashboard/scheduling-timesheet')
+  revalidatePath('/dashboard/attendance')
+  revalidatePath('/dashboard/attendance/records')
+  return { ok: true, ...result }
 }
 
 const applyMealsConfigToAllSitesSchema = z.object({
@@ -3172,16 +3215,30 @@ const importUsersSchema = z.object({
 })
 
 export type ImportUsersActionState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
   importedCount?: number
   updatedCount?: number
   skippedCount?: number
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 export type AdminMutationState = {
-  status: 'idle' | 'success' | 'error'
+  status: 'idle' | 'success' | 'error' | 'duplicate_found'
   message: string
+  duplicateDetails?: {
+    name: string
+    employeeSn: string
+    email: string
+    existingEmployeeId: number | null
+    existingAuthUserId: string | null
+  }
 }
 
 const optionalFormString = z.preprocess(
@@ -4188,15 +4245,23 @@ async function applyLegacySubmissionDecision(params: {
   return true
 }
 
-function parseApprovalRouteSnapshot(routeSnapshot: string) {
-  const trimmedSnapshot = routeSnapshot.trim()
+function parseApprovalRouteSnapshot(routeSnapshot: string): ApprovalRouteResolution | null {
+  const trimmedSnapshot = routeSnapshot ? routeSnapshot.trim() : ''
 
   if (!trimmedSnapshot) {
     return null
   }
 
   try {
-    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution
+    const parsed = JSON.parse(trimmedSnapshot)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+    return {
+      ...parsed,
+      steps: Array.isArray(parsed.steps) ? parsed.steps : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    } as ApprovalRouteResolution
   } catch {
     return null
   }
@@ -5048,21 +5113,21 @@ async function applyApprovalDecision(params: {
   const now = new Date()
   const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
   const currentStepIndex =
-    approvalRoute?.steps.findIndex(
+    approvalRoute?.steps?.findIndex(
       (step) =>
         step.stepOrder === approval.level &&
         (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId)
     ) ?? -1
   const currentStep =
-    approvalRoute != null && currentStepIndex >= 0
+    approvalRoute != null && currentStepIndex >= 0 && Array.isArray(approvalRoute.steps)
       ? (approvalRoute.steps[currentStepIndex] ?? null)
       : null
   const currentStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
   const nextStepGroup =
-    approvalRoute != null && currentStep != null
+    approvalRoute != null && currentStep != null && Array.isArray(approvalRoute.steps)
       ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
       : []
 
@@ -5383,6 +5448,28 @@ function normalizeLookupValue(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
+type ImportSiteLookup = {
+  id: number
+  name: string
+  location: string | null
+}
+
+function resolveSiteFromImportedLocation(
+  value: string,
+  siteRows: ImportSiteLookup[],
+  fallbackSite: ImportSiteLookup
+) {
+  const normalized = normalizeLookupValue(value)
+  if (!normalized) return fallbackSite
+
+  return (
+    siteRows.find(
+      (site) =>
+        normalizeLookupValue(site.name) === normalized ||
+        normalizeLookupValue(site.location) === normalized
+    ) ?? fallbackSite
+  )
+}
 function extractActivitySupplementalPayload(formData: FormData) {
   const checklistCompletion = formData
     .getAll('checklistCompletion')
@@ -6532,7 +6619,13 @@ export async function importSecurityUsersAction(
       return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [[defaultSite]] = await Promise.all([db.select().from(sites).limit(1)])
+    const [[defaultSite], siteRows] = await Promise.all([
+      db.select().from(sites).limit(1),
+      db
+        .select({ id: sites.id, name: sites.name, location: sites.location })
+        .from(sites)
+        .where(eq(sites.isActive, true)),
+    ])
 
     if (!defaultSite) {
       return { status: 'error', message: 'Site default belum tersedia untuk import user.' }
@@ -6582,6 +6675,8 @@ export async function importSecurityUsersAction(
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
       const levelName = getMappedValue(record, headers, mapping, 'levelName') || 'Rookie'
       const workLocation = getMappedValue(record, headers, mapping, 'workLocation') || ''
+      const resolvedSite = resolveSiteFromImportedLocation(workLocation, siteRows, defaultSite)
+      const resolvedWorkLocation = workLocation || resolvedSite.location || resolvedSite.name
       const accessRole = getMappedValue(record, headers, mapping, 'accessRole') || 'User'
       const employeeStatusType =
         getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
@@ -6605,7 +6700,7 @@ export async function importSecurityUsersAction(
         department,
         section,
         jobTitle,
-        siteId: defaultSite.id,
+        siteId: resolvedSite.id,
         statusName: employeeStatusType,
       })
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
@@ -6647,7 +6742,8 @@ export async function importSecurityUsersAction(
         email,
         role: jobTitle,
         department,
-        siteId: defaultSite.id,
+        workLocation: resolvedWorkLocation,
+        siteId: resolvedSite.id,
         joinDate: joinDate || null,
         birthDate: birthDate || null,
         departmentId: hrGovernanceIds.departmentId,
@@ -6704,6 +6800,9 @@ export async function importSecurityUsersAction(
 
 const importUpdateUsersSchema = z.object({
   rawCsv: z.string().trim().min(1, 'CSV file is required.'),
+  confirmLocationChanges: z.preprocess((value) => value === 'true' || value === 'on' || value === true, z.boolean().default(false)),
+  selectedColumnsJson: z.string().optional(),  // JSON array of header strings; empty = update all
+  importMode: z.enum(['new', 'update']).default('update'),
 })
 
 const IMPORT_UPDATE_HEADERS = [
@@ -6758,7 +6857,22 @@ export async function importUpdateUsersAction(
   try {
     const payload = importUpdateUsersSchema.parse({
       rawCsv: formData.get('rawCsv'),
+      confirmLocationChanges: formData.get('confirmLocationChanges'),
+      selectedColumnsJson: formData.get('selectedColumnsJson'),
+      importMode: formData.get('importMode') ?? 'update',
     })
+
+    // Parse selected columns: if provided and non-empty, only those headers will be updated
+    let selectedColumns: string[] = []
+    if (payload.selectedColumnsJson) {
+      try {
+        const parsed = JSON.parse(payload.selectedColumnsJson)
+        if (Array.isArray(parsed)) selectedColumns = parsed.filter((s): s is string => typeof s === 'string')
+      } catch { /* ignore malformed JSON */ }
+    }
+    const isUpdateMode = payload.importMode === 'update'
+    const isNewMode = payload.importMode === 'new'
+
 
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
 
@@ -6777,6 +6891,11 @@ export async function importUpdateUsersAction(
     if (snCol === undefined) {
       return { status: 'error', message: 'Kolom "SN" wajib ada di file.' }
     }
+
+    const siteRows = await db
+      .select({ id: sites.id, name: sites.name, location: sites.location })
+      .from(sites)
+      .where(eq(sites.isActive, true))
 
     // Fetch all existing employees
     const existingEmployees = await db
@@ -6827,13 +6946,59 @@ export async function importUpdateUsersAction(
       return undefined
     }
 
+    const lokasiSiteImportIdx = col('lokasi site')
+    const pendingLocationChanges: string[] = []
+    if (lokasiSiteImportIdx !== undefined) {
+      for (const record of records) {
+        const recordValues = Object.values(record)
+        const employeeSn = (recordValues[snCol] ?? '').trim()
+        const nextLocation = (recordValues[lokasiSiteImportIdx] ?? '').trim()
+        if (!employeeSn || !nextLocation) continue
+
+        const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+        if (!existing) continue
+
+        const resolvedSite = resolveSiteFromImportedLocation(nextLocation, siteRows, {
+          id: existing.siteId,
+          name: existing.workLocation ?? '',
+          location: existing.workLocation ?? '',
+        })
+        const currentLocation = existing.workLocation || ''
+        const locationChanged =
+          normalizeLookupValue(currentLocation) !== normalizeLookupValue(nextLocation) ||
+          existing.siteId !== resolvedSite.id
+
+        if (locationChanged) {
+          pendingLocationChanges.push(
+            `${existing.employeeSn || existing.email || existing.id}: ${currentLocation || '-'} -> ${nextLocation}`
+          )
+        }
+      }
+    }
+
+    if (pendingLocationChanges.length > 0 && !payload.confirmLocationChanges) {
+      return {
+        status: 'error',
+        message: `Import ditahan: ada ${pendingLocationChanges.length} perubahan Lokasi Site. Centang konfirmasi perubahan lokasi dulu. Contoh: ${pendingLocationChanges.slice(0, 5).join('; ')}`,
+      }
+    }
     let updatedCount = 0
     let skippedCount = 0
     const errors: string[] = []
+    let createdCount = 0
+
+    // Helper: checks if a CSV column header is included in the selectedColumns list
+    // When selectedColumns is empty (new mode or update-all), always returns true
+    const isColumnSelected = (headerName: string): boolean => {
+      if (!isUpdateMode || selectedColumns.length === 0) return true
+      return selectedColumns.some(
+        (sel) => sel.trim().toLowerCase() === headerName.trim().toLowerCase()
+      )
+    }
 
     type RecordType = (typeof records)[number]
     for (const record of records) {
-      const recordValues = Object.values(record)
+      const recordValues = Object.values(record || {})
       const employeeSn = (recordValues[snCol] ?? '').trim()
       if (!employeeSn) {
         skippedCount++
@@ -6841,6 +7006,91 @@ export async function importUpdateUsersAction(
       }
 
       const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+
+      // --- NEW MODE: only create records that don't exist yet ---
+      if (isNewMode) {
+        if (existing) {
+          skippedCount++ // already exists — skip
+          continue
+        }
+
+        // Build a minimal employee record from available columns
+        const nameIdx   = col('name')
+        const deptIdx   = col('department')
+        const sectionIdx = col('section')
+        const jobTitleIdx = col('job title')
+        const levelNameIdx = col('level staff')
+        const peranIdx  = col('peran')
+        const lokasiSiteIdx = col('lokasi site')
+        const tipeStatusIdx = col('tipe status')
+        const genderIdx = col('gender')
+        const agamaIdx  = col('agama')
+        const pendidikanIdx = col('pendidikan')
+        const maritalIdx = col('marital status')
+        const pohIdx    = col('poh')
+        const joinDateIdx = col('join date')
+        const contractStartIdx = col('contract start')
+        const contractEndIdx   = col('contract end')
+        const permanentDateIdx = col('permanent date')
+        const tglLahirIdx      = col('tgl lahir')
+        const emailIdx   = col('email')
+        const phoneIdx   = col('phone number')
+        const domicileIdx = col('domicile')
+        const statusAkunIdx = col('status akun')
+
+        const getValue = (idx: number | undefined): string =>
+          idx !== undefined ? (recordValues[idx] ?? '').trim() : ''
+        const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
+
+        const newName = getValue(nameIdx)
+        if (!newName) { skippedCount++; continue }
+
+        const lokasiVal = getValue(lokasiSiteIdx)
+        const fallbackSite: ImportSiteLookup = siteRows[0] ?? { id: 1, name: '', location: '' }
+        const resolvedSite = lokasiVal
+          ? resolveSiteFromImportedLocation(lokasiVal, siteRows, fallbackSite)
+          : fallbackSite
+
+        const statusVal = getValue(statusAkunIdx).toLowerCase()
+        const isActive = statusVal.includes('active') || statusVal === 'aktif' ? true
+          : statusVal.includes('non') || statusVal.includes('inactive') ? false
+          : true
+
+        const resolvedSiteId = resolvedSite.id
+
+        await db.insert(employees).values({
+          employeeSn,
+          name: newName,
+          email: getValue(emailIdx) || `import-${employeeSn.toLowerCase()}@placeholder.local`,
+          role: getValue(peranIdx) || 'Site Admin',
+          department: getValue(deptIdx) || '',
+          section: getValue(sectionIdx) || '',
+          jobTitle: getValue(jobTitleIdx) || '',
+          levelName: getValue(levelNameIdx) || '',
+          accessRole: getValue(peranIdx) || 'Site Admin',
+          workLocation: lokasiVal || '',
+          siteId: resolvedSiteId,
+          employeeStatusType: getValue(tipeStatusIdx) || '',
+          gender: getValue(genderIdx) || '',
+          religion: getValue(agamaIdx) || '',
+          education: getValue(pendidikanIdx) || '',
+          maritalStatus: getValue(maritalIdx) || '',
+          pointOfHire: getValue(pohIdx) || '',
+          joinDate: getDate(joinDateIdx),
+          contractDurationStart: getDate(contractStartIdx),
+          contractDurationEnd: getDate(contractEndIdx),
+          permanentDate: getDate(permanentDateIdx),
+          birthDate: getDate(tglLahirIdx),
+          phoneNumber: getValue(phoneIdx) || '',
+          domicile: getValue(domicileIdx) || '',
+          isActive,
+          employmentStatus: isActive ? 'active' : 'inactive',
+        })
+        createdCount++
+        continue
+      }
+
+      // --- UPDATE MODE: update only selected columns on existing records ---
       if (!existing) {
         skippedCount++
         continue
@@ -6874,93 +7124,102 @@ export async function importUpdateUsersAction(
 
       const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
 
+      // Build update payload — skip fields whose CSV column is not in selectedColumns
       const employeeUpdate: Record<string, unknown> = {}
 
-      if (nameIdx !== undefined) {
+      if (nameIdx !== undefined && isColumnSelected(headers[nameIdx])) {
         const v = getValue(nameIdx)
         if (v) employeeUpdate.name = v
       }
-      if (deptIdx !== undefined) {
+      if (deptIdx !== undefined && isColumnSelected(headers[deptIdx])) {
         const v = getValue(deptIdx)
         if (v) employeeUpdate.department = v
       }
-      if (sectionIdx !== undefined) {
+      if (sectionIdx !== undefined && isColumnSelected(headers[sectionIdx])) {
         const v = getValue(sectionIdx)
         if (v) employeeUpdate.section = v
       }
-      if (jobTitleIdx !== undefined) {
+      if (jobTitleIdx !== undefined && isColumnSelected(headers[jobTitleIdx])) {
         const v = getValue(jobTitleIdx)
         if (v) employeeUpdate.jobTitle = v
       }
-      if (levelNameIdx !== undefined) {
+      if (levelNameIdx !== undefined && isColumnSelected(headers[levelNameIdx])) {
         const v = getValue(levelNameIdx)
         if (v) employeeUpdate.levelName = v
       }
-      if (peranIdx !== undefined) {
+      if (peranIdx !== undefined && isColumnSelected(headers[peranIdx])) {
         const v = getValue(peranIdx)
         if (v) employeeUpdate.accessRole = v
       }
-      if (lokasiSiteIdx !== undefined) {
+      if (lokasiSiteIdx !== undefined && isColumnSelected(headers[lokasiSiteIdx])) {
         const v = getValue(lokasiSiteIdx)
-        if (v) employeeUpdate.workLocation = v
+        if (v) {
+          const resolvedSite = resolveSiteFromImportedLocation(v, siteRows, {
+            id: existing.siteId,
+            name: existing.workLocation ?? '',
+            location: existing.workLocation ?? '',
+          })
+          employeeUpdate.workLocation = v
+          employeeUpdate.siteId = resolvedSite.id
+        }
       }
-      if (tipeStatusIdx !== undefined) {
+      if (tipeStatusIdx !== undefined && isColumnSelected(headers[tipeStatusIdx])) {
         const v = getValue(tipeStatusIdx)
         if (v) employeeUpdate.employeeStatusType = v
       }
-      if (genderIdx !== undefined) {
+      if (genderIdx !== undefined && isColumnSelected(headers[genderIdx])) {
         const v = getValue(genderIdx)
         if (v && v !== '-') employeeUpdate.gender = v
       }
-      if (agamaIdx !== undefined) {
+      if (agamaIdx !== undefined && isColumnSelected(headers[agamaIdx])) {
         const v = getValue(agamaIdx)
         if (v && v !== '-') employeeUpdate.religion = v
       }
-      if (pendidikanIdx !== undefined) {
+      if (pendidikanIdx !== undefined && isColumnSelected(headers[pendidikanIdx])) {
         const v = getValue(pendidikanIdx)
         if (v && v !== '-') employeeUpdate.education = v
       }
-      if (maritalIdx !== undefined) {
+      if (maritalIdx !== undefined && isColumnSelected(headers[maritalIdx])) {
         const v = getValue(maritalIdx)
         employeeUpdate.maritalStatus = v && v !== '-' ? v : ''
       }
-      if (pohIdx !== undefined) {
+      if (pohIdx !== undefined && isColumnSelected(headers[pohIdx])) {
         const v = getValue(pohIdx)
         if (v && v !== '-') employeeUpdate.pointOfHire = v
       }
-      if (joinDateIdx !== undefined) {
+      if (joinDateIdx !== undefined && isColumnSelected(headers[joinDateIdx])) {
         const d = getDate(joinDateIdx)
         if (d) employeeUpdate.joinDate = d
       }
-      if (contractStartIdx !== undefined) {
+      if (contractStartIdx !== undefined && isColumnSelected(headers[contractStartIdx])) {
         const d = getDate(contractStartIdx)
         if (d) employeeUpdate.contractDurationStart = d
       }
-      if (contractEndIdx !== undefined) {
+      if (contractEndIdx !== undefined && isColumnSelected(headers[contractEndIdx])) {
         const d = getDate(contractEndIdx)
         if (d) employeeUpdate.contractDurationEnd = d
       }
-      if (permanentDateIdx !== undefined) {
+      if (permanentDateIdx !== undefined && isColumnSelected(headers[permanentDateIdx])) {
         const d = getDate(permanentDateIdx)
         if (d) employeeUpdate.permanentDate = d
       }
-      if (tglLahirIdx !== undefined) {
+      if (tglLahirIdx !== undefined && isColumnSelected(headers[tglLahirIdx])) {
         const d = getDate(tglLahirIdx)
         if (d) employeeUpdate.birthDate = d
       }
-      if (emailIdx !== undefined) {
+      if (emailIdx !== undefined && isColumnSelected(headers[emailIdx])) {
         const v = getValue(emailIdx)
         if (v && v !== '-') employeeUpdate.email = v
       }
-      if (phoneIdx !== undefined) {
+      if (phoneIdx !== undefined && isColumnSelected(headers[phoneIdx])) {
         const v = getValue(phoneIdx)
         if (v && v !== '-') employeeUpdate.phoneNumber = v
       }
-      if (domicileIdx !== undefined) {
+      if (domicileIdx !== undefined && isColumnSelected(headers[domicileIdx])) {
         const v = getValue(domicileIdx)
         if (v && v !== '-') employeeUpdate.domicile = v
       }
-      if (statusAkunIdx !== undefined) {
+      if (statusAkunIdx !== undefined && isColumnSelected(headers[statusAkunIdx])) {
         const v = getValue(statusAkunIdx).toLowerCase()
         if (v.includes('active') || v === 'aktif') {
           employeeUpdate.isActive = true
@@ -6971,7 +7230,7 @@ export async function importUpdateUsersAction(
         }
       }
 
-      if (Object.keys(employeeUpdate).length === 0) {
+      if (Object.keys(employeeUpdate || {}).length === 0) {
         skippedCount++
         continue
       }
@@ -6994,18 +7253,22 @@ export async function importUpdateUsersAction(
     const actorEmail = await getCurrentActorEmail()
     await logAuditEvent({
       actorEmail,
-      action: 'user.bulk_updated',
+      action: isNewMode ? 'user.bulk_imported' : 'user.bulk_updated',
       entityType: 'user_import',
-      entityLabel: 'import_update_users',
-      description: `Updated ${updatedCount} users from CSV import, skipped ${skippedCount}.`,
+      entityLabel: isNewMode ? 'import_new_users' : 'import_update_users',
+      description: isNewMode
+        ? `Created ${createdCount} new employees from CSV import, skipped ${skippedCount}.`
+        : `Updated ${updatedCount} employees from CSV import (${selectedColumns.length > 0 ? selectedColumns.length + ' columns selected' : 'all columns'}), skipped ${skippedCount}.`,
     })
 
     revalidateAdminSurfaces()
 
     return {
       status: 'success',
-      message: `Update selesai: ${updatedCount} diperbarui, ${skippedCount} dilewati.`,
-      importedCount: 0,
+      message: isNewMode
+        ? `Import selesai: ${createdCount} data baru ditambahkan, ${skippedCount} dilewati (SN sudah ada).`
+        : `Update selesai: ${updatedCount} diperbarui${selectedColumns.length > 0 ? ` (${selectedColumns.length} kolom)` : ''}, ${skippedCount} dilewati.`,
+      importedCount: createdCount,
       updatedCount,
       skippedCount,
     }
@@ -7022,6 +7285,7 @@ export async function manageSecurityUserAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityUserSchema.parse({
@@ -7474,7 +7738,7 @@ export async function manageSecurityUserAction(
           pointOfHire,
           contractDurationStart,
           contractDurationEnd,
-          permanentDate,
+          permanentDate: payload.permanentDate || null,
           workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
@@ -7698,6 +7962,7 @@ export async function manageSecurityRoleAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
+    await requireAdminOrHcManagerRole()
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityRoleSchema.parse({
@@ -10427,3 +10692,8 @@ function parseSioExcelDate(value: string): string | null {
   const d = new Date(value)
   return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null
 }
+
+
+
+
+

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { normalizeSloc, normalizedSlocSql } from "@/lib/sloc"
+import { getServerSession } from "@/lib/auth-session"
 
 export const dynamic = "force-dynamic"
 
@@ -58,6 +59,11 @@ async function fetchFallbackStockMaterialSap(searchParams: URLSearchParams) {
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getServerSession()
+  if (!session?.user) {
+    return NextResponse.json({ status: "UNAUTHORIZED", error: "Unauthorized" }, { status: 401 })
+  }
+
   const { searchParams } = new URL(req.url)
 
   try {

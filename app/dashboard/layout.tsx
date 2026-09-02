@@ -20,6 +20,7 @@ import '@/app/dashboard/theme.css'
 
 export const dynamic = 'force-dynamic'
 
+// Main Dashboard Layout
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession()
 
@@ -80,11 +81,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="flex flex-1 flex-col">{children}</div>
         <FloatingGeniusChat />
       </SidebarInset>
-      <FaceRegistrationReminderPopup
-        isRegistered={!!(employeeDisplay?.faceRegisteredAt || employeeDisplay?.faceRarayRegisteredAt)}
-        employeeId={employeeDisplay?.id}
-        siteId={employeeDisplay?.siteId}
-      />
     </SidebarProvider>
   )
 }

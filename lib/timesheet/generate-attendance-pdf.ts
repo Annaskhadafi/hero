@@ -299,10 +299,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
   // === TABLE ===
   const rowH = 15
-  const cols =
-    input.showTotalOvertime === false
-      ? [30, 60, 50, 45, 50, 50, 0, 50, 150]
-      : [30, 60, 50, 45, 50, 50, 50, 50, 150]
+  const showTotal = input.showTotalOvertime !== false
+  const cols = showTotal
+    ? [30, 60, 50, 45, 50, 50, 50, 50, 150]
+    : [30, 60, 50, 45, 50, 50, 0, 50, 200]
   const totalTableW = cols.reduce((s, c) => s + c, 0)
   const tableStartX = (width - totalTableW) / 2
   const colX: number[] = []
@@ -364,7 +364,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     fontSize: 7,
     align: 'center',
   })
-  if (input.showTotalOvertime !== false) {
+  if (showTotal) {
     drawCell(page, colX[6], y - hH, cols[6], hH, {
       text: 'Total\nOvertime',
       font: fontBold,
@@ -489,7 +489,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
     }
 
-    if (input.showTotalOvertime !== false) {
+    if (showTotal) {
       drawCell(page, colX[6], y, cols[6], rowH, {
         text: ot > 0 ? String(Math.round(ot * 100) / 100) : '',
         font: fontBold,
@@ -502,9 +502,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     let remark = ''
     if (overtime?.splNumbers.length) remark = `SPL ${overtime.splNumbers.join(', ')}`
-    if (overtime?.unauthorizedMinutes) {
-      remark = remark ? `${remark} / Perlu SPL` : 'Perlu SPL'
-    }
+
     if (!remark && day.status === 'standby') remark = 'ST'
     else if (!remark && day.status === 'field_break') remark = 'FB'
     else if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName
@@ -541,7 +539,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     align: 'center',
     bgColor: tBg,
   })
-  if (input.showTotalOvertime !== false) {
+  if (showTotal) {
     drawCell(page, colX[6], y, cols[6], rowH, {
       text: String(Math.round(totalOT * 10) / 10),
       font: fontBold,
@@ -1377,6 +1375,8 @@ export async function generateSummaryTablePdf(
         cellColor = cRedText
       } else if (text === 'FB') {
         cellBg = cFbBg
+      } else if (text === 'ST') {
+        cellColor = cBlueText
       } else if (text === 'SPL') {
         cellColor = cRedText
       } else if (text === 'Izin') {

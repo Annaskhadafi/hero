@@ -16,6 +16,9 @@ export function FaceRegistrationReminderPopup({ isRegistered, employeeId, siteId
 
   useEffect(() => {
     if (isRegistered) return
+    const dismissed = typeof window !== 'undefined' ? sessionStorage.getItem('dismissed_face_registration_reminder') : null
+    if (dismissed === '1') return
+
     const timer = setTimeout(() => setShow(true), 1500)
     return () => clearTimeout(timer)
   }, [isRegistered])
@@ -23,6 +26,9 @@ export function FaceRegistrationReminderPopup({ isRegistered, employeeId, siteId
   if (!show) return null
 
   const dismiss = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('dismissed_face_registration_reminder', '1')
+    }
     setShow(false)
   }
 

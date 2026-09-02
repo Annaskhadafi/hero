@@ -3,15 +3,27 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Camera, ImagePlus, SendHorizontal } from "lucide-react";
+import { Camera, Check, ChevronDown, ImagePlus, Search, SendHorizontal, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import type { RouteSessionSyncItem } from "@/lib/offline-sync";
 import { cn } from "@/lib/utils";
 
 type SourceMode = "assigned" | "self_input" | "custom";
+
+export type TeamMemberOption = {
+  id: number;
+  name: string;
+  employeeId?: string | null;
+  role?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+};
 
 type AssignmentOption = {
   id: number;
@@ -114,6 +126,7 @@ type DailyActivitySubmitFormProps = {
   defaultEndTime: string;
   defaultSourceMode?: SourceMode;
   routeChecklist?: RouteChecklist | null;
+  teamMembers?: TeamMemberOption[];
   className?: string;
   variant?: "desktop" | "mobile";
 };
@@ -166,6 +179,7 @@ export function DailyActivitySubmitForm({
   defaultEndTime,
   defaultSourceMode = "self_input",
   routeChecklist = null,
+  teamMembers = [],
   className,
   variant = "desktop",
 }: DailyActivitySubmitFormProps) {
@@ -183,6 +197,12 @@ export function DailyActivitySubmitForm({
   const showAssignment = sourceMode === "assigned";
   const isMobile = variant === "mobile";
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({});
+  
+  // Team logging state
+  const [isTeamLog, setIsTeamLog] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>(() => [employeeId]);
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState("");
   const selectedAssignment = useMemo(
     () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
     [assignmentId, assignments],
@@ -554,28 +574,54 @@ export function DailyActivitySubmitForm({
   ) : null;
 
   const libraryField = showLibrary ? (
-    <Label className={labelClass}>
-      <span className={labelTextClass}>Library activity</span>
-      <select
-        name="libraryActivityId"
-        value={libraryActivityId}
-        required={showLibrary}
-        onChange={(event) => setLibraryActivityId(event.target.value)}
-        className={fieldClass}
-      >
-        <option value="">Pilih activity library</option>
-        {availableLibrary.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.activityCode} - {item.activityName} ({item.basePoints} pts)
-          </option>
-        ))}
-      </select>
-      <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
-        {selectedLibrary?.requiresPhoto
-          ? "Library ini wajib upload foto evidence."
-          : "Pilih activity library sesuai pekerjaan real di lapangan."}
-      </span>
-    </Label>
+    <div className="space-y-3">
+      <Label className={labelClass}>
+        <span className={labelTextClass}>Library activity</span>
+        <select
+          name="libraryActivityId"
+          value={libraryActivityId}
+          required={showLibrary}
+          onChange={(event) => setLibraryActivityId(event.target.value)}
+          className={fieldClass}
+        >
+          <option value="">Pilih activity library</option>
+          {availableLibrary.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.activityCode} - {item.activityName} ({item.basePoints} pts)
+            </option>
+          ))}
+        </select>
+      </Label>
+
+      {selectedLibrary ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-xs text-blue-900">
+              {selectedLibrary.activityCode} • {selectedLibrary.activityName}
+            </span>
+            <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-black text-white">
+              {selectedLibrary.basePoints} pts
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {selectedLibrary.requiresPhoto ? (
+              <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                FOTO EVIDENCE WAJIB
+              </span>
+            ) : null}
+            {selectedLibrary.requiresTireCount ? (
+              <span className="rounded-md bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                TIRE COUNT
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
+          Pilih activity library sesuai pekerjaan real di lapangan.
+        </span>
+      )}
+    </div>
   ) : null;
 
   const customFields =
@@ -603,6 +649,125 @@ export function DailyActivitySubmitForm({
       </>
     ) : null;
 
+  const filteredTeamMembers = useMemo(() => {
+    if (!memberSearchQuery) return teamMembers;
+    const q = memberSearchQuery.toLowerCase();
+    return teamMembers.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.employeeId && m.employeeId.toLowerCase().includes(q)) ||
+        (m.jobTitle && m.jobTitle.toLowerCase().includes(q))
+    );
+  }, [memberSearchQuery, teamMembers]);
+
+  const teamLoggingSection = teamMembers.length > 0 ? (
+    <div className={cn("space-y-3 rounded-2xl border p-4", isMobile ? "bg-white" : "bg-slate-50/70")}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="size-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">Team Logging</span>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-muted-foreground">
+          <span>Input Sekaligus untuk Tim</span>
+          <input
+            type="checkbox"
+            checked={isTeamLog}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setIsTeamLog(checked);
+              if (!checked) {
+                setSelectedMemberIds([employeeId]);
+              }
+            }}
+            className="size-4 accent-primary rounded cursor-pointer"
+          />
+        </label>
+      </div>
+
+      {isTeamLog ? (
+        <div className="space-y-2 pt-2 border-t">
+          <Popover open={memberPickerOpen} onOpenChange={setMemberPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between rounded-xl bg-white text-xs font-semibold text-foreground h-10"
+              >
+                <span>
+                  {selectedMemberIds.length > 0
+                    ? `${selectedMemberIds.length} Anggota Tim Dipilih`
+                    : "Pilih Anggota Tim"}
+                </span>
+                <ChevronDown className="size-4 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-3 space-y-2" align="start">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Cari nama atau NIK..."
+                  value={memberSearchQuery}
+                  onChange={(e) => setMemberSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <div className="max-h-52 overflow-y-auto space-y-1 pr-1">
+                {filteredTeamMembers.map((member) => {
+                  const isSelected = selectedMemberIds.includes(member.id);
+                  const isSelf = member.id === employeeId;
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => {
+                        if (isSelf) return;
+                        setSelectedMemberIds((prev) =>
+                          isSelected ? prev.filter((id) => id !== member.id) : [...prev, member.id]
+                        );
+                      }}
+                      className={cn(
+                        "flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors",
+                        isSelected ? "bg-primary/10 text-primary font-semibold" : "hover:bg-slate-100",
+                        isSelf && "opacity-80"
+                      )}
+                    >
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-foreground">{member.name} {isSelf ? "(Anda)" : ""}</p>
+                        <p className="text-[10px] text-muted-foreground">{member.employeeId || "-"} • {member.jobTitle || member.role || "Staff"}</p>
+                      </div>
+                      {isSelected ? <Check className="size-4 text-primary" /> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {selectedMemberIds.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {teamMembers
+                .filter((m) => selectedMemberIds.includes(m.id))
+                .map((m) => (
+                  <Badge
+                    key={m.id}
+                    variant="secondary"
+                    className="text-[11px] font-medium py-1 px-2.5 flex items-center gap-1.5 bg-blue-50 text-blue-900 border border-blue-200"
+                  >
+                    <span>{m.name}</span>
+                    {m.id !== employeeId ? (
+                      <X
+                        className="size-3 cursor-pointer hover:text-red-600"
+                        onClick={() => setSelectedMemberIds((prev) => prev.filter((id) => id !== m.id))}
+                      />
+                    ) : null}
+                  </Badge>
+                ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <form action={formAction} className={cn("space-y-4", className)}>
       <input type="hidden" name="employeeId" value={employeeId} />
@@ -612,6 +777,11 @@ export function DailyActivitySubmitForm({
       <input type="hidden" name="routeShiftCode" value={routeChecklist?.shiftCode ?? ""} />
       <input type="hidden" name="routeSummaryRemark" value="" />
       <input type="hidden" name="routeSessionItemsJson" value={JSON.stringify(routeSessionItems)} />
+      <input
+        type="hidden"
+        name="teamMemberEmployeeIdsJson"
+        value={JSON.stringify(isTeamLog ? selectedMemberIds : [])}
+      />
 
       {state.status !== "idle" ? (
         <div
@@ -628,6 +798,8 @@ export function DailyActivitySubmitForm({
 
       {isMobile ? (
         <div className="space-y-4">
+          {teamLoggingSection}
+
           <section className={mobileSectionClass}>
             {modeField}
             {assignmentField}
@@ -757,6 +929,8 @@ export function DailyActivitySubmitForm({
         </div>
       ) : (
         <>
+          {teamLoggingSection}
+
           <div className="grid gap-4 sm:grid-cols-2">
             {modeField}
             {assignmentField}

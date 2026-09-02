@@ -230,8 +230,8 @@ export async function getMasterCategoryOptions() {
 export async function getActiveMasterCategoryOptionMap(): Promise<MasterCategoryOptionMap> {
   const rows = await getMasterCategoryOptions();
 
-  return rows.reduce<MasterCategoryOptionMap>((accumulator, row) => {
-    if (!row.isActive) {
+  return (rows || []).reduce<MasterCategoryOptionMap>((accumulator, row) => {
+    if (!row || !row.isActive) {
       return accumulator;
     }
 

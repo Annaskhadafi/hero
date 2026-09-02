@@ -7,7 +7,13 @@ import { getServerSession } from "@/lib/auth-session";
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession();
-    const userId = session?.user?.id;
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { status: "error", message: "Unauthorized. Sesi login diperlukan untuk menambahkan memori." },
+        { status: 401 }
+      );
+    }
+    const userId = session.user.id;
     const body = await req.json();
 
     const { fact, category = "General", source = "Self-Growth Input", tags = [] } = body;
@@ -23,11 +29,11 @@ export async function POST(req: NextRequest) {
     let remoteData: any = null;
     try {
       const remoteRes = await teachRagMemory({
+        content: fact.trim(),
         fact: fact.trim(),
         category,
         source,
         tags: Array.isArray(tags) ? tags : [],
-        user_id: userId,
       });
       remoteData = remoteRes.data;
     } catch (e) {

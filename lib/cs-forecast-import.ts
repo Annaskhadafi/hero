@@ -170,7 +170,7 @@ export function getCsForecastImportValue(
   if (!field) return ''
 
   const normalizedHeaders = new Map(
-    Object.keys(row).map((header) => [normalizeHeader(header), header])
+    Object.keys(row || {}).map((header) => [normalizeHeader(header), header])
   )
 
   const header =

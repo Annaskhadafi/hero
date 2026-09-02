@@ -143,8 +143,8 @@ export function MobileAppShell({
   }
 
   const activeItem = [...drawerItems, ...bottomNavItems].find((item) => {
-    if (item.type === 'section' || !('href' in item)) return false
-    return pathname === item.href || pathname.startsWith(`${item.href}/`)
+    if (('type' in item && (item as any).type === 'section') || !('href' in item)) return false
+    return pathname === (item as any).href || pathname.startsWith(`${(item as any).href}/`)
   })
 
   // Check access for the current path based on the matched menu item's resource

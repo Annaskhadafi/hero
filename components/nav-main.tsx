@@ -136,9 +136,9 @@ export function NavMain({
   const pathname = usePathname()
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
     Object.fromEntries(
-      groups.map((group) => [
+      (groups || []).map((group) => [
         group.title,
-        group.items.some((item) => isMenuItemActive(pathname, item.url)),
+        (group.items || []).some((item) => isMenuItemActive(pathname, item?.url)),
       ])
     )
   )
@@ -148,8 +148,8 @@ export function NavMain({
       const next = { ...previous }
       let hasChanged = false
 
-      for (const group of groups) {
-        const hasActiveItem = group.items.some((item) => isMenuItemActive(pathname, item.url))
+      for (const group of groups || []) {
+        const hasActiveItem = (group.items || []).some((item) => isMenuItemActive(pathname, item?.url))
 
         if (!(group.title in next)) {
           next[group.title] = hasActiveItem

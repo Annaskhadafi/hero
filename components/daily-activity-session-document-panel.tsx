@@ -127,16 +127,27 @@ export function DailyActivitySessionDocumentPanel({
                 sedangkan TTD customer disiapkan sebagai area tanda tangan manual di PDF.
               </CardDescription>
             </div>
-            <Button asChild className="rounded-full">
-              <Link
-                prefetch={false}
-                href={`/api/activity-sessions/${data.sessionId}/pdf`}
-                target="_blank"
-              >
-                <Download className="size-4" />
-                Download PDF
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button asChild variant="outline" className="rounded-full">
+                <Link
+                  prefetch={false}
+                  href={`/dashboard/activity-hub/document/${data.sessionId}/approval`}
+                >
+                  <FileSignature className="size-4" />
+                  Approval Workflow
+                </Link>
+              </Button>
+              <Button asChild className="rounded-full">
+                <Link
+                  prefetch={false}
+                  href={`/api/activity-sessions/${data.sessionId}/pdf`}
+                  target="_blank"
+                >
+                  <Download className="size-4" />
+                  Download PDF
+                </Link>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

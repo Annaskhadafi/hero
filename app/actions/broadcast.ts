@@ -113,26 +113,73 @@ async function getCreatorPermissions(email: string) {
   };
 }
 
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      const errStr = String(err?.message || err?.cause?.message || err || '').toLowerCase();
+      const isNetworkError =
+        err?.code === 'ECONNRESET' ||
+        err?.code === '53300' ||
+        errStr.includes('econnreset') ||
+        errStr.includes('connection terminated') ||
+        errStr.includes('timeout exceeded') ||
+        errStr.includes('trying to connect') ||
+        errStr.includes('too many clients') ||
+        errStr.includes('sorry, too many clients') ||
+        errStr.includes('connection reset') ||
+        errStr.includes('remaining connection slots are reserved');
+      if (attempt <= retries && isNetworkError) {
+        await new Promise((res) => setTimeout(res, delayMs * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): Promise<T> {
+  try {
+    return await withDbRetry(fn);
+  } catch (err) {
+    console.error(`[BroadcastAction] Warning in ${label}:`, (err as any)?.message || err);
+    return fallback;
+  }
+}
+
 async function getCurrentEmployeeForBroadcast(sessionUser: { id?: string; email?: string | null }) {
   const normalizedEmail = sessionUser.email?.toLowerCase().trim();
 
   if (sessionUser.id) {
-    const [employee] = await db
-      .select()
-      .from(employees)
-      .where(eq(employees.authUserId, sessionUser.id))
-      .limit(1);
+    const [employee] = await safeQuery(
+      () =>
+        db
+          .select()
+          .from(employees)
+          .where(eq(employees.authUserId, sessionUser.id!))
+          .limit(1),
+      [],
+      "getCurrentEmployeeForBroadcastById"
+    );
 
     if (employee) return employee;
   }
 
   if (!normalizedEmail) return null;
 
-  const [employee] = await db
-    .select()
-    .from(employees)
-    .where(eq(sql`lower(${employees.email})`, normalizedEmail))
-    .limit(1);
+  const [employee] = await safeQuery(
+    () =>
+      db
+        .select()
+        .from(employees)
+        .where(eq(sql`lower(${employees.email})`, normalizedEmail))
+        .limit(1),
+    [],
+    "getCurrentEmployeeForBroadcastByEmail"
+  );
 
   return employee ?? null;
 }
@@ -525,37 +572,42 @@ export async function getEligibleBroadcastsForMobile() {
   }
 
   // Get all broadcasts matching the target conditions
-  const eligibleBroadcasts = await db
-    .select({
-      id: broadcasts.id,
-      title: broadcasts.title,
-      content: broadcasts.content,
-      imageUrl: broadcasts.imageUrl,
-      linkUrl: broadcasts.linkUrl,
-      mediaType: broadcasts.mediaType,
-      targetType: broadcasts.targetType,
-      maxPopups: broadcasts.maxPopups,
-      viewsCount: sql<number>`coalesce(${broadcastInteractions.viewsCount}, 0)::int`,
-      dismissed: sql<boolean>`coalesce(${broadcastInteractions.dismissed}, false)`,
-      liked: broadcastInteractions.liked,
-      categoryName: broadcastCategories.name,
-    })
-    .from(broadcasts)
-    .leftJoin(
-      broadcastInteractions,
-      and(
-        eq(broadcasts.id, broadcastInteractions.broadcastId),
-        eq(broadcastInteractions.userId, session.user.id)
-      )
-    )
-    .leftJoin(broadcastCategories, eq(broadcasts.categoryId, broadcastCategories.id))
-    .where(
-      and(
-        eq(broadcasts.isActive, true),
-        or(...targetConditions)
-      )
-    )
-    .orderBy(desc(broadcasts.createdAt));
+  const eligibleBroadcasts = await safeQuery(
+    () =>
+      db
+        .select({
+          id: broadcasts.id,
+          title: broadcasts.title,
+          content: broadcasts.content,
+          imageUrl: broadcasts.imageUrl,
+          linkUrl: broadcasts.linkUrl,
+          mediaType: broadcasts.mediaType,
+          targetType: broadcasts.targetType,
+          maxPopups: broadcasts.maxPopups,
+          viewsCount: sql<number>`coalesce(${broadcastInteractions.viewsCount}, 0)::int`,
+          dismissed: sql<boolean>`coalesce(${broadcastInteractions.dismissed}, false)`,
+          liked: broadcastInteractions.liked,
+          categoryName: broadcastCategories.name,
+        })
+        .from(broadcasts)
+        .leftJoin(
+          broadcastInteractions,
+          and(
+            eq(broadcasts.id, broadcastInteractions.broadcastId),
+            eq(broadcastInteractions.userId, session.user.id)
+          )
+        )
+        .leftJoin(broadcastCategories, eq(broadcasts.categoryId, broadcastCategories.id))
+        .where(
+          and(
+            eq(broadcasts.isActive, true),
+            or(...targetConditions)
+          )
+        )
+        .orderBy(desc(broadcasts.createdAt)),
+    [],
+    "getEligibleBroadcastsForMobile"
+  );
 
   // Filter based on capping logic:
   // Show if viewsCount < maxPopups AND dismissed is false AND no reaction given (liked is null)

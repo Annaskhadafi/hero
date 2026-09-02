@@ -1,4 +1,4 @@
-import { getContractReviewSettings, getContractReviews } from "@/app/actions/contract-review"
+import { getContractReviewSettings, getContractReviews, getExpiringContractEmployees } from "@/app/actions/contract-review"
 import { ContractReviewClientPage } from "./client-page"
 import { db } from "@/db"
 import { employees, hrPositions, masterDepartments } from "@/db/schema/hero"
@@ -29,7 +29,11 @@ function populateEmailsFromEmployees(settings: any, empList: any[]) {
 }
 
 export default async function ContractReviewPage() {
-  const [reviewsResult, settings] = await Promise.all([getContractReviews(), getContractReviewSettings()])
+  const [reviewsResult, settings, expiringEmployees] = await Promise.all([
+    getContractReviews(),
+    getContractReviewSettings(),
+    getExpiringContractEmployees(),
+  ])
   const reviews = reviewsResult.success ? reviewsResult.data : []
   
   const employeeList = await db
@@ -55,6 +59,7 @@ export default async function ContractReviewPage() {
       reviews={reviews as any[]}
       employees={employeeList}
       settings={enrichedSettings as any}
+      expiringEmployees={expiringEmployees as any[]}
     />
   )
 }

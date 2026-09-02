@@ -17,6 +17,8 @@ export type AuthResult =
  * No dev mode bypass — always requires valid credentials.
  * For session auth, validates employeeId ownership.
  */
+import { timingSafeEqual } from 'crypto'
+
 export async function authenticateMobileRequest(
   request: NextRequest,
   requestEmployeeId?: number
@@ -28,7 +30,9 @@ export async function authenticateMobileRequest(
   if (authHeader && apiKey) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim()
 
-    if (token === apiKey) {
+    const tokenBuf = Buffer.from(token)
+    const keyBuf = Buffer.from(apiKey)
+    if (tokenBuf.length === keyBuf.length && timingSafeEqual(tokenBuf, keyBuf)) {
       return { authenticated: true, type: 'api-key' }
     }
   }

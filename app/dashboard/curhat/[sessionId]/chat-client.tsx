@@ -42,6 +42,7 @@ export default function ChatClient({
   currentUserId,
   isHrView = false,
   backPath,
+  forwardOptions,
 }: {
   session: Session;
   initialMessages: Message[];

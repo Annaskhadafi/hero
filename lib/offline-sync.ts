@@ -19,8 +19,11 @@ const queuedImageFileSchema = z.object({
 const trimmedCoordinate = z
   .string()
   .trim()
+  .max(80)
+  .optional()
+  .default('')
   .refine(
-    (value) => value.length > 0 && Number.isFinite(Number(value)),
+    (value) => !value || Number.isFinite(Number(value)),
     'Koordinat GPS tidak valid.'
   )
 
@@ -214,8 +217,8 @@ export const activitySyncPayloadSchema = z.object({
       snapshotPayload: z.record(z.string(), z.unknown()),
       unitNumber: trimmedOptionalText(80),
       remark: trimmedOptionalText(1200),
-      startedAt: z.string().trim().min(1).max(80),
-      endedAt: z.string().trim().min(1).max(80),
+      startedAt: trimmedOptionalText(80),
+      endedAt: trimmedOptionalText(80),
       isChecked: z.boolean(),
       actualPoints: z.number().int().min(0).max(5000),
       tireCount: z.number().int().min(0).max(100).optional().default(0),

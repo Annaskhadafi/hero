@@ -172,7 +172,7 @@ export async function fetchSafetyShoesMatrix() {
   for (let y = currentYear; y >= minYear; y--) allYears.add(y);
   
   for (const row of Array.from(employeeMap.values())) {
-    for (const yearStr of Object.keys(row.history)) {
+    for (const yearStr of Object.keys(row.history || {})) {
       allYears.add(parseInt(yearStr, 10));
     }
   }

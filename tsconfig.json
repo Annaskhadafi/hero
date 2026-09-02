@@ -40,6 +40,17 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "scripts",
+    "tests",
+    "scratch*",
+    "scratch_*",
+    "seed-route*",
+    "sync-data.ts",
+    "test-*.ts",
+    "check_cols*",
+    "check-cols*",
+    "add_column*",
+    "**/*.old.tsx"
   ]
 }

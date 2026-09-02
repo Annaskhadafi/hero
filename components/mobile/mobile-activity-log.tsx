@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactNode, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Camera, CheckCircle2, Clock3, ImageIcon, ZoomIn } from 'lucide-react'
+import { Camera, CheckCircle2, Clock3, FileSignature, ImageIcon, RotateCcw, ZoomIn } from 'lucide-react'
 
 type ActivityLogItem = {
   id: number
@@ -377,6 +378,35 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
                   </div>
                 </section>
 
+                <section className="rounded-[1.25rem] bg-white p-4 ring-1 ring-[#dbe8f0] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black tracking-[0.12em] text-[#486275] uppercase">
+                      Status Approval (3 Tahap)
+                    </p>
+                    <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] text-[9px] font-bold">
+                      {selected.statusLabel}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] pt-1">
+                    <div className="rounded-lg bg-emerald-50 p-2 border border-emerald-100">
+                      <p className="font-bold text-emerald-800">1. Karyawan</p>
+                      <p className="text-emerald-600 text-[9px]">Signed</p>
+                    </div>
+                    <div className={selected.statusLabel.includes('L2') || selected.statusLabel.toLowerCase().includes('approved') ? "rounded-lg bg-emerald-50 p-2 border border-emerald-100" : "rounded-lg bg-amber-50 p-2 border border-amber-100"}>
+                      <p className={selected.statusLabel.includes('L2') || selected.statusLabel.toLowerCase().includes('approved') ? "font-bold text-emerald-800" : "font-bold text-amber-800"}>2. Leader</p>
+                      <p className={selected.statusLabel.includes('L2') || selected.statusLabel.toLowerCase().includes('approved') ? "text-emerald-600 text-[9px]" : "text-amber-600 text-[9px]"}>
+                        {selected.statusLabel.includes('L1') ? 'Pending' : 'Approved'}
+                      </p>
+                    </div>
+                    <div className={selected.statusLabel.toLowerCase().includes('approved') ? "rounded-lg bg-emerald-50 p-2 border border-emerald-100" : "rounded-lg bg-slate-50 p-2 border border-slate-200"}>
+                      <p className={selected.statusLabel.toLowerCase().includes('approved') ? "font-bold text-emerald-800" : "font-bold text-slate-700"}>3. Section Head</p>
+                      <p className={selected.statusLabel.toLowerCase().includes('approved') ? "text-emerald-600 text-[9px]" : "text-slate-500 text-[9px]"}>
+                        {selected.statusLabel.toLowerCase().includes('approved') ? 'Approved' : 'Waiting'}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
                 {selected.remarks ? (
                   <section className="rounded-[1.25rem] bg-[#f3f9fd] p-4">
                     <p className="text-[10px] font-black tracking-[0.12em] text-[#486275] uppercase">
@@ -388,11 +418,31 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
                   </section>
                 ) : null}
 
-                <div className="sticky bottom-0 -mx-4 bg-white/95 px-4 pt-2 pb-1 backdrop-blur-sm sm:-mx-5 sm:px-5">
+                <div className="sticky bottom-0 -mx-4 flex flex-col sm:flex-row gap-2 bg-white/95 px-4 pt-2 pb-1 backdrop-blur-sm sm:-mx-5 sm:px-5">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="h-11 flex-1 rounded-xl border-[#003f78]/30 bg-[#eaf4fb] text-[#003f78] font-bold text-xs shadow-xs"
+                  >
+                    <Link href={`/mobile/activity/document/${selected.id}`}>
+                      <FileSignature className="size-4 mr-1.5" /> Buka Laporan Approval
+                    </Link>
+                  </Button>
+                  {['rejected', 'returned', 'reverted'].some((st) => selected.status.toLowerCase().includes(st) || selected.statusLabel.toLowerCase().includes(st)) ? (
+                    <Button
+                      asChild
+                      className="h-11 flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs"
+                    >
+                      <Link href={`/mobile/activity/document/${selected.id}/approval`}>
+                        <RotateCcw className="size-4 mr-1.5" /> Revisi Dokumen Aktivitas
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
+                    variant="ghost"
                     onClick={() => setSelected(null)}
-                    className="h-11 w-full rounded-xl"
+                    className="h-11 rounded-xl text-slate-500 font-semibold"
                   >
                     Tutup
                   </Button>

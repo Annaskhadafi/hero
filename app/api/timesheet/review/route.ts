@@ -1,7 +1,30 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
 import { timesheetDailyRecords, timesheetValidationIssues } from "@/db/schema/timesheet";
+import { getServerSession } from "@/lib/auth-session";
 import { eq, and } from "drizzle-orm";
+
+async function requireTimesheetAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin", "Payroll Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
 
 /**
  * GET /api/timesheet/review?siteId=1&periodMonth=4&periodYear=2026
@@ -9,6 +32,9 @@ import { eq, and } from "drizzle-orm";
  */
 export async function GET(request: NextRequest) {
   try {
+    const access = await requireTimesheetAccess();
+    if (access.error) return access.error;
+
     const { searchParams } = new URL(request.url);
     const siteId = parseInt(searchParams.get("siteId") || "");
     const periodMonth = parseInt(searchParams.get("periodMonth") || "");

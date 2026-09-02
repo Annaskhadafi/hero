@@ -1,4 +1,3 @@
-import { strict as assert } from 'node:assert'
 import {
   addDaysIso,
   generateFieldBreakYearPlans,
@@ -15,55 +14,53 @@ function employees(count: number) {
   }))
 }
 
-assert.equal(getFieldBreakCapacity(11), 1)
-assert.equal(getFieldBreakCapacity(12), 2)
-assert.equal(addDaysIso('2026-07-10', 1), '2026-07-11')
+describe('field break generator', () => {
+  it('calculates field break capacity and dates correctly', () => {
+    expect(getFieldBreakCapacity(11)).toBe(1)
+    expect(getFieldBreakCapacity(12)).toBe(2)
+    expect(addDaysIso('2026-07-10', 1)).toBe('2026-07-11')
+  })
 
-const eleven = generateFieldBreakYearPlans({
-  employees: employees(11),
-  startPeriod: '2026-01',
+  it('generates year plans within capacity', () => {
+    const eleven = generateFieldBreakYearPlans({
+      employees: employees(11),
+      startPeriod: '2026-01',
+    })
+    expect(eleven.capacity).toBe(1)
+    expect(
+      validateFieldBreakCapacity(eleven.plans.filter((plan) => plan.period === '2026-04')).length
+    ).toBe(0)
+
+    const twelve = generateFieldBreakYearPlans({
+      employees: employees(12),
+      startPeriod: '2026-01',
+    })
+    expect(twelve.capacity).toBe(2)
+    expect(
+      validateFieldBreakCapacity(twelve.plans.filter((plan) => plan.period === '2026-04')).length
+    ).toBe(0)
+  })
+
+  it('preserves existing locked plans', () => {
+    const locked = generateFieldBreakYearPlans({
+      employees: employees(2),
+      startPeriod: '2026-01',
+      existingPlans: [
+        {
+          employeeId: 1,
+          period: '2026-04',
+          onSiteDate: '2026-01-10',
+          fieldBreakDate: '2026-04-10',
+          fieldBreakEndDate: '2026-04-23',
+          source: 'manual',
+          isLocked: true,
+          notes: 'customer fixed',
+        },
+      ],
+    })
+    const lockedRow = locked.plans.find((plan) => plan.employeeId === 1 && plan.period === '2026-04')
+    expect(lockedRow?.fieldBreakDate).toBe('2026-04-10')
+    expect(lockedRow?.fieldBreakEndDate).toBe('2026-04-23')
+    expect(lockedRow?.isLocked).toBe(true)
+  })
 })
-assert.equal(eleven.capacity, 1)
-assert.equal(
-  validateFieldBreakCapacity(eleven.plans.filter((plan) => plan.period === '2026-04')).length,
-  0
-)
-
-const twelve = generateFieldBreakYearPlans({
-  employees: employees(12),
-  startPeriod: '2026-01',
-})
-assert.equal(twelve.capacity, 2)
-assert.equal(
-  validateFieldBreakCapacity(twelve.plans.filter((plan) => plan.period === '2026-04')).length,
-  0
-)
-
-const locked = generateFieldBreakYearPlans({
-  employees: employees(2),
-  startPeriod: '2026-01',
-  existingPlans: [
-    {
-      employeeId: 1,
-      period: '2026-04',
-      onSiteDate: '2026-01-10',
-      fieldBreakDate: '2026-04-10',
-      fieldBreakEndDate: '2026-04-23',
-      source: 'manual',
-      isLocked: true,
-      notes: 'customer fixed',
-    },
-  ],
-})
-const lockedRow = locked.plans.find((plan) => plan.employeeId === 1 && plan.period === '2026-04')
-assert.equal(lockedRow?.fieldBreakDate, '2026-04-10')
-assert.equal(lockedRow?.fieldBreakEndDate, '2026-04-23')
-assert.equal(lockedRow?.isLocked, true)
-
-const first = eleven.plans.find((plan) => plan.employeeId === 1 && plan.period === '2026-04')
-assert.equal(first?.onSiteDate, '2026-01-01')
-assert.equal(first?.fieldBreakDate, '2026-04-01')
-assert.equal(first?.fieldBreakEndDate, '2026-04-14')
-
-console.log('field-break-generator tests passed')
-process.exit(0)

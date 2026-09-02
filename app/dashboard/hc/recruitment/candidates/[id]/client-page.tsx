@@ -55,7 +55,7 @@ function AnswerValue({ value }: { value: any }): React.ReactNode {
   if (Array.isArray(value)) {
     if (value.length === 0) return <span className="text-muted-foreground">-</span>;
     if (value.every((v) => typeof v === "object" && v !== null && !Array.isArray(v))) {
-      const keys = Array.from(new Set(value.flatMap((v) => Object.keys(v))));
+      const keys = Array.from(new Set(value.flatMap((v) => Object.keys(v || {}))));
       return (
         <table className="w-full text-xs border border-border/40 rounded">
           <thead>
@@ -83,7 +83,7 @@ function AnswerValue({ value }: { value: any }): React.ReactNode {
     return (
       <table className="w-full text-xs">
         <tbody>
-          {Object.entries(value).map(([k, v]) => (
+          {Object.entries(value || {}).map(([k, v]) => (
             <tr key={k} className="border-b border-border/30 last:border-0">
               <td className="py-1 pr-3 font-medium text-muted-foreground whitespace-nowrap align-top capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</td>
               <td className="py-1"><AnswerValue value={v} /></td>
@@ -102,7 +102,7 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
     const parsed = JSON.parse(text);
     return (
       <div className="rounded-lg border bg-muted/20 p-3 text-sm space-y-2">
-        {Object.entries(parsed).map(([key, value]) => (
+        {Object.entries(parsed || {}).map(([key, value]) => (
           <div key={key} className="grid grid-cols-[140px_1fr] gap-2">
             <span className="text-xs font-medium text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
             <span className="text-xs text-foreground"><AnswerValue value={value} /></span>

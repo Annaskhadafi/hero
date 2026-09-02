@@ -1,8 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import type React from "react";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -84,7 +83,7 @@ type PtwRecord = {
 };
 
 const fallbackUsers = ["HSE Superintendent", "Workshop Supervisor Tire Repair", "Workshop Supervisor Tire Service", "Site Manager"];
-const permitTypes = ["Hot Work", "Confined Space", "Working at Height", "Lifting Operation", "Electrical Isolation", "Excavation", "Pressure Test", "Critical Tire Workshop Task"];
+const permitTypes = ["Cold Permit", "Hot Work", "Digging Permit", "Electrical / Mechanical", "Working at Height", "Lifting Operation", "General Critical Work"];
 const statusOptions: PermitStatus[] = ["Draft", "Pending Approval", "Approved", "Active", "Closed", "Rejected"];
 const riskOptions: RiskLevel[] = ["Low", "Medium", "High", "Critical"];
 const ppeOptions = ["Helmet", "Safety Shoes", "Gloves", "Safety Glasses", "Respirator", "Full Body Harness", "Face Shield", "Hearing Protection", "Fire Blanket"];
@@ -166,164 +165,404 @@ function splitLines(text: string) {
 
 function PtwDocumentDialog({ record }: { record: PtwRecord }) {
   const [open, setOpen] = useState(false);
+  const [origin, setOrigin] = useState<string>("");
+
+  React.useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
   const openPrintPage = () => {
     window.localStorage.setItem("hero-ptw-print-record", JSON.stringify(record));
     window.open("/print/izin-kerja-ptw", "_blank", "noopener,noreferrer");
   };
 
+  const ppeList = Array.isArray(record.ppe) ? record.ppe : [];
+  const activePermitType = (record.permitType || "").toUpperCase();
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-view-${record.id}`} onClick={() => setOpen(true)}><Eye className="size-4" /> View</Button>
-      <DialogContent className="ptw-print-dialog max-w-6xl bg-slate-100 p-0">
-        <style dangerouslySetInnerHTML={{ __html: `
-          @media print {
-            @page { size: A4 portrait; margin: 8mm; }
-
-            html,
-            body {
-              margin: 0 !important;
-              padding: 0 !important;
-              background: white !important;
-              overflow: visible !important;
-              height: auto !important;
-              width: auto !important;
-            }
-
-            body * { visibility: hidden !important; }
-
-            .ptw-print-sheet,
-            .ptw-print-sheet * { visibility: visible !important; }
-
-            [data-slot="sidebar-wrapper"],
-            [data-slot="dialog-overlay"],
-            [data-slot="dialog-close"],
-            [role="dialog"] > button,
-            .no-print { display: none !important; }
-
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-
-            div[data-radix-portal],
-            div[data-radix-portal] > div,
-            div[role="presentation"],
-            [data-slot="dialog-portal"],
-            [data-slot="dialog-content"],
-            .ptw-print-dialog {
-              position: static !important;
-              left: auto !important;
-              top: auto !important;
-              right: auto !important;
-              bottom: auto !important;
-              inset: auto !important;
-              transform: none !important;
-              translate: none !important;
-              display: block !important;
-              width: auto !important;
-              max-width: none !important;
-              min-width: 0 !important;
-              height: auto !important;
-              min-height: 0 !important;
-              max-height: none !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              border: none !important;
-              box-shadow: none !important;
-              background: transparent !important;
-              overflow: visible !important;
-            }
-
-            .ptw-print-shell {
-              position: static !important;
-              display: block !important;
-              width: 194mm !important;
-              max-width: 194mm !important;
-              margin: 0 auto !important;
-              padding: 0 !important;
-              overflow: visible !important;
-              background: white !important;
-            }
-
-            .ptw-print-sheet {
-              position: static !important;
-              display: block !important;
-              width: 194mm !important;
-              max-width: 194mm !important;
-              min-width: 0 !important;
-              margin: 0 auto !important;
-              padding: 6mm !important;
-              border: none !important;
-              box-shadow: none !important;
-              background: white !important;
-              overflow: visible !important;
-              border-radius: 0 !important;
-              transform: none !important;
-            }
-
-            .ptw-print-sheet .absolute { position: absolute !important; }
-            .ptw-print-sheet .grid { gap: 4mm !important; }
-            .ptw-print-sheet .rounded-2xl {
-              border-radius: 10px !important;
-              break-inside: avoid !important;
-              page-break-inside: avoid !important;
-            }
-          }
-        ` }} />
+      <DialogContent className="ptw-print-dialog max-w-6xl max-h-[92vh] overflow-y-auto bg-slate-100 p-0 rounded-2xl">
         <DialogHeader className="border-b bg-white px-6 py-4 no-print">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <DialogTitle>Permit to Work Detail</DialogTitle>
-              <DialogDescription>{record.projectName}</DialogDescription>
+              <DialogTitle className="text-base font-bold text-slate-900">IJIN KERJA BERBAHAYA (Work Permit) — Official Landscape</DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">{record.projectName}</DialogDescription>
             </div>
             <div className="flex gap-2 pr-8">
-              <Button size="sm" className="gap-2 bg-[#1a2332] text-white hover:bg-[#1a2332]/90" onClick={openPrintPage}><Download className="size-4" /> Download PDF</Button>
+              <Button size="sm" className="gap-2 bg-[#0f172a] text-white hover:bg-[#1e293b]" onClick={openPrintPage}><Download className="size-4" /> Download Landscape PDF</Button>
               <Button size="sm" variant="outline" className="gap-2" onClick={openPrintPage}><Printer className="size-4" /> Cetak Dokumen</Button>
             </div>
           </div>
         </DialogHeader>
-        <div className="ptw-print-shell px-6 py-6">
-          <div className="ptw-print-sheet relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="pointer-events-none absolute right-12 top-12 opacity-10"><ShieldCheck className="size-48" /></div>
-            <div className="flex items-center gap-6 border-b border-slate-200 pb-6">
-              <Image src="/cp_logo-removebg-preview.png" alt="PT Chitra Paratama Logo" width={120} height={60} className="shrink-0 object-contain" />
+        <div className="ptw-print-shell p-4 overflow-x-auto">
+          <article className="ptw-landscape-sheet w-full max-w-[1122px] min-h-[793px] mx-auto bg-white p-6 shadow-xl border-2 border-slate-900 text-slate-900 font-sans text-[8.5pt] flex flex-col justify-between">
+            {/* ── HEADER TABLE ── */}
+            <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
+              <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
+                <Image src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" width={150} height={50} className="object-contain" />
+              </div>
+              <div className="bg-[#bfe6ff] flex items-center justify-center font-bold text-base tracking-wider uppercase py-2.5 text-slate-900">
+                IJIN KERJA BERBAHAYA ( Work Permit )
+              </div>
+            </div>
+
+            {/* ── FORM META FIELDS ── */}
+            <div className="grid grid-cols-12 border-b-2 border-slate-900 text-[8pt]">
+              <div className="col-span-4 border-r border-slate-900 p-1.5 bg-slate-50">
+                <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{record.id}</span>
+              </div>
+              <div className="col-span-8 p-1.5 bg-slate-50">
+                <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{record.id}</span>
+              </div>
+
+              <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
+                <span className="font-bold block text-[7.5pt] text-slate-500">Nama Pekerja :</span>
+                <span className="font-semibold text-slate-900">{record.applicant || "-"}</span>
+              </div>
+              <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
+                <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
+                <span className="font-semibold text-slate-900">{record.location} ({record.area})</span>
+              </div>
+              <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
+                <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
+                <span className="font-semibold text-slate-900">{record.projectName || record.description || "-"}</span>
+              </div>
+
+              <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                <span className="font-bold text-slate-800">Referensi HIRADC :</span>{" "}
+                <span className="font-semibold text-blue-900">
+                  {(record as any).hiradcReference || (record.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || "—"}
+                </span>
+              </div>
+              <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{" "}
+                <span className="font-semibold uppercase text-slate-900">{record.permitType || "Cold Permit"}</span>
+              </div>
+            </div>
+
+            {/* ── TABLE TITLE: JENIS PEKERJAAN ── */}
+            <div className="bg-[#e2e8f0] text-center font-bold uppercase text-[8.5pt] py-1 border-b-2 border-slate-900">
+              JENIS PEKERJAAN
+            </div>
+
+            {/* ── DYNAMIC COLUMNS FOR SELECTED PERMIT TYPES ONLY ── */}
+            {(() => {
+              const activeUpper = (record.permitType || "").toUpperCase()
+              const activeTypes: string[] = []
+              if (activeUpper.includes("HOT")) activeTypes.push("HOT")
+              if (activeUpper.includes("CONFINED")) activeTypes.push("CONFINED")
+              if (activeUpper.includes("DIGGING")) activeTypes.push("DIGGING")
+              if (activeUpper.includes("COLD")) activeTypes.push("COLD")
+              if (activeUpper.includes("ELECTRICAL") || activeUpper.includes("MECHANICAL")) activeTypes.push("ELECTRICAL")
+
+              const columnsToShow = activeTypes.length > 0 ? activeTypes : ["HOT", "CONFINED", "DIGGING", "COLD", "ELECTRICAL"]
+              const gridColsClass =
+                columnsToShow.length === 1
+                  ? "grid-cols-1"
+                  : columnsToShow.length === 2
+                  ? "grid-cols-2"
+                  : columnsToShow.length === 3
+                  ? "grid-cols-3"
+                  : columnsToShow.length === 4
+                  ? "grid-cols-4"
+                  : "grid-cols-5"
+
+              return (
+                <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
+                  {/* Column 1: Hot Work Permit (Red Header) */}
+                  {columnsToShow.includes("HOT") && (
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                          Hot Work Permit
+                        </div>
+                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                          <div>- Welding</div>
+                          <div>- Cutting torch</div>
+                          <div>- Grinding</div>
+                          <div>- Brazing</div>
+                        </div>
+                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                          Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
+                        </div>
+                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                          <thead>
+                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td>1 Daerah kerja bebas dari bahan terbakar</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>2 Tersedia APAR</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>3 Apakah daerah kerja dilokalisir?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>4 Welding Glove</td><td className="text-center">{ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td></tr>
+                            <tr><td>5 Welding Cloth/Appron</td><td className="text-center">{ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td></tr>
+                            <tr><td>6 Face Shield</td><td className="text-center">{ppeList.includes("Face Shield") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Face Shield") ? "☑" : "☐"}</td></tr>
+                            <tr><td>7 Respirator</td><td className="text-center">{ppeList.includes("Respirator") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Respirator") ? "☑" : "☐"}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Column 2: Confined Space Permit (Yellow Header) */}
+                  {columnsToShow.includes("CONFINED") && (
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
+                          Confined Space Permit
+                        </div>
+                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                          <div>- Pekerjaan Tangki</div>
+                          <div>- Chute</div>
+                          <div>- Sewer / Saluran air</div>
+                        </div>
+                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                          Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
+                        </div>
+                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                          <thead>
+                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td>1 Breathing Set diperlukan?</td><td className="text-center">{record.gasTestRequired ? "☑" : "☐"}</td><td className="text-center">{!record.gasTestRequired ? "☑" : "☐"}</td></tr>
+                            <tr><td>2 Disposal Respirator</td><td className="text-center">{ppeList.includes("Respirator") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Respirator") ? "☑" : "☐"}</td></tr>
+                            <tr><td>3 Peralatan bebas percikan api</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>4 Safety harness & lifeline diperlukan?</td><td className="text-center">{ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td></tr>
+                            <tr><td>5 Ventilasi telah memadai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>6 Pemeriksaan O2 dilakukan?</td><td className="text-center">{record.gasTestRequired ? "☑" : "☐"}</td><td className="text-center">{!record.gasTestRequired ? "☑" : "☐"}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Column 3: Digging Permit (Green Header) */}
+                  {columnsToShow.includes("DIGGING") && (
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
+                          Digging Permit
+                        </div>
+                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                          <div>- Penggalian parit</div>
+                          <div>- Pembuatan pondasi</div>
+                          <div>- Penggalian jalur kabel listrik/telepon</div>
+                          <div>- Penggalian jalur pipa air</div>
+                        </div>
+                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                          Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
+                        </div>
+                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                          <thead>
+                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td>1 Peta / gambar tersedia?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>2 Penggalian dilakukan dengan Alat?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>3 Penggalian dilakukan dengan manual?</td><td className="text-center">☐</td><td className="text-center">☑</td></tr>
+                            <tr><td>4 Tanda / barricade telah tersedia?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>5 Hand glove</td><td className="text-center">{ppeList.some(p => p.toLowerCase().includes("glove")) ? "☑" : "☐"}</td><td className="text-center">{!ppeList.some(p => p.toLowerCase().includes("glove")) ? "☑" : "☐"}</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Column 4: Cold Work Permit (Cyan Header) */}
+                  {columnsToShow.includes("COLD") && (
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                          Cold Work Permit
+                        </div>
+                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                          <div>- Pekerjaan Perbaikan Sipil</div>
+                          <div>- Inspeksi & Maintenance Umum</div>
+                          <div>- Penataan & Kebersihan Area</div>
+                        </div>
+                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                          Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
+                        </div>
+                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                          <thead>
+                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td>1 Peralatan kerja layak pakai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>2 APD sesuai standar K3?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>3 Penerangan area memadai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>4 Pengamanan area kerja?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>5 Housekeeping / Kebersihan?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Column 5: Electrical / Mechanical Permit (Blue Header) */}
+                  {columnsToShow.includes("ELECTRICAL") && (
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
+                          Electrical / Mechanical Permit
+                        </div>
+                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
+                          <div>- Perbaikan Drainase & Kabel</div>
+                          <div>- Pembuatan pondasi & Pompa</div>
+                          <div>- Maintenance / LOTO Boiler</div>
+                        </div>
+                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
+                          Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
+                        </div>
+                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
+                          <thead>
+                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
+                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
+                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td>1 Body Harness untuk Ketinggian?</td><td className="text-center">{ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td></tr>
+                            <tr><td>2 Alat potong kupas kabel layak?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>3 Isolasi / LOTO layak?</td><td className="text-center">{record.isolationRequired ? "☑" : "☐"}</td><td className="text-center">{!record.isolationRequired ? "☑" : "☐"}</td></tr>
+                            <tr><td>4 APAR tersedia di area kerja?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                            <tr><td>5 APD yang sesuai pekerjaan</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
+            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
+              <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+              <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                {ppeList.length > 0 ? (
+                  ppeList.map((apd) => (
+                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                      ☑ {apd}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
+                )}
+              </div>
+            </div>
+
+            {/* ── LAMPIRAN DOKUMEN PENDUKUNG & QR CODE ── */}
+            <div className="p-2.5 border-b-2 border-slate-900 text-[8pt] bg-slate-50/90 grid grid-cols-12 gap-3 items-center">
+              <div className="col-span-9 space-y-1">
+                <span className="font-bold text-[8.5pt] text-slate-900 block uppercase tracking-wide">
+                  LAMPIRAN DOKUMEN PENDUKUNG (JSA / WORK PLAN)
+                </span>
+                <p className="text-[7.5pt] text-slate-700 leading-snug">
+                  Dokumen JSA & Prosedur Keselamatan Kerja K3 terintegrasi secara digital. Scan QR Code di samping atau buka tautan publik di bawah ini untuk mengunduh/melihat berkas lampiran.
+                </p>
+                <div className="text-[6.5pt] font-mono text-slate-600 pt-0.5 break-all" suppressHydrationWarning>
+                  URL Publik: {origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
+                </div>
+              </div>
+              <div className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                    origin ? `${origin}/review/ptw/${record.id}` : `https://hero.chitraparatama.com/review/ptw/${record.id}`
+                  )}`}
+                  alt="QR Code Lampiran PTW"
+                  className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded"
+                />
+                <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center">Scan QR Lampiran</span>
+              </div>
+            </div>
+
+            {/* ── MASA BERLAKU IKB ── */}
+            <div className="border-b-2 border-slate-900 text-[8pt]">
+              <div className="bg-slate-100 text-center font-bold uppercase py-0.5 border-b border-slate-900 text-[8pt]">
+                MASA BERLAKU IKB (IJIN KERJA BERBAHAYA)
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-slate-900">
+                <div className="grid grid-cols-2 divide-x divide-slate-900 border-r border-slate-900">
+                  <div className="p-1 text-center">
+                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL MULAI</span>
+                    <span className="font-semibold">{formatDate(record.startDate)}</span>
+                  </div>
+                  <div className="p-1 text-center">
+                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU MULAI</span>
+                    <span className="font-semibold">{record.startTime || "08:00"}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 divide-x divide-slate-900">
+                  <div className="p-1 text-center">
+                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL BERAKHIR</span>
+                    <span className="font-semibold">{formatDate(record.endDate)}</span>
+                  </div>
+                  <div className="p-1 text-center">
+                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
+                    <span className="font-semibold">{record.endTime || "17:00"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+            <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
+              <div className="p-1.5 text-center flex flex-col justify-between">
+                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
+                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
+                  Ditandatangani Digital
+                </div>
+                <div className="border-t border-slate-900 pt-1 font-bold">{record.applicant || "NAMA & TANDA TANGAN"}</div>
+              </div>
+
+              <div className="p-1.5 text-center flex flex-col justify-between">
+                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
+                  Ditandatangani Digital
+                </div>
+                <div className="border-t border-slate-900 pt-1 font-bold">{record.fieldPic || "NAMA & TANDA TANGAN"}</div>
+              </div>
+
+              <div className="p-1.5 text-center flex flex-col justify-between">
+                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
+                  Ditandatangani Digital
+                </div>
+                <div className="border-t border-slate-900 pt-1 font-bold">{record.authorizedBy || "NAMA & TANDA TANGAN"}</div>
+              </div>
+            </div>
+
+            {/* ── CATATAN FOOTER ── */}
+            <div className="p-2 text-[7pt] space-y-0.5 bg-slate-50 flex items-start justify-between">
               <div>
-                <h1 className="font-display text-2xl font-black uppercase tracking-tight text-slate-900">PT. CHITRA PARATAMA</h1>
-                <p className="text-sm font-bold tracking-wide text-blue-700">SAFETY FIRST | COLLABORATE -INNOVATE - DOMINATE</p>
-                <p className="mt-1 text-[10px] font-bold text-slate-600">OFFICIAL HSE SYSTEM</p>
+                <span className="font-bold block text-slate-900">CATATAN :</span>
+                <div>1. Ijin kerja ini hanya berlaku untuk satu area kerja saja.</div>
+                <div>2. Ijin kerja ini selalu berada ditempat kerja</div>
+                <div>3. Dilarang melakukan pekerjaan sebelum ada ijin kerja</div>
               </div>
-              <div className="ml-auto hidden sm:block"><div className="flex size-16 rotate-12 items-center justify-center rounded-full border-2 border-slate-800 text-center text-[10px] font-bold leading-tight">VERIFIED<br />DOCUMENT</div></div>
-            </div>
-            <div className="grid grid-cols-2 gap-4 border-b border-slate-100 py-6 md:grid-cols-6">
-              <InfoMini label="Document ID" value={record.id} />
-              <InfoMini label="Classification" value="Permit to Work" />
-              <InfoMini label="Location / Site" value={record.location} />
-              <InfoMini label="Date / Period" value={`${formatDate(record.startDate)} ${record.startTime}`} />
-              <InfoMini label="PIC / Auditor" value={record.authorizedBy} />
-              <div><p className="mb-1 text-[8px] font-bold uppercase tracking-wide text-slate-400">Doc Status</p><Pill className={statusTone[record.status]}>{record.status}</Pill></div>
-            </div>
-            <div className="flex flex-col gap-6 py-8 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <p className="mb-2 text-sm font-bold uppercase tracking-widest text-blue-600">Permit to Work ({record.permitType})</p>
-                <h2 className="mb-4 font-display text-3xl font-black uppercase leading-tight text-slate-900">{record.projectName}</h2>
-                <div className="flex flex-wrap gap-2"><Badge className="rounded-md bg-slate-900 text-white">ID: {record.id}</Badge><Badge variant="outline" className="rounded-md bg-slate-50 uppercase">{record.area}</Badge><Badge variant="outline" className="rounded-md border-blue-200 bg-blue-50 text-blue-700">📍 {record.location}</Badge></div>
-              </div>
-              <div className={cn("rounded-xl border-2 px-6 py-4 text-center shadow-sm", record.risk === "Critical" ? "border-red-200 bg-red-50 text-red-700" : record.risk === "High" ? "border-yellow-200 bg-yellow-50 text-yellow-700" : "border-green-200 bg-green-50 text-green-700")}><p className="text-2xl font-black leading-none">{record.risk}</p><p className="mt-1 text-xs font-bold opacity-80">RISK</p></div>
-            </div>
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="space-y-6 lg:col-span-2">
-                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6"><h3 className="mb-5 text-sm font-bold uppercase tracking-wide text-slate-700">Work Info & Location</h3><div className="grid gap-4 text-sm md:grid-cols-2"><Info label="Project / Site" value={record.projectName} /><Info label="Specific Location" value={`${record.location} (${record.area})`} /><Info label="Valid From" value={`${formatDate(record.startDate)} ${record.startTime}`} /><Info label="Valid Until" value={`${formatDate(record.endDate)} ${record.endTime}`} /></div></section>
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Detailed Description</h3><p className="text-sm font-medium leading-relaxed text-slate-700">{record.description}</p></section>
-                <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-6 shadow-sm"><div className="absolute left-0 top-0 h-full w-1 bg-blue-500" /><h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-blue-700"><ShieldCheck className="size-4" /> Langkah Pengendalian</h3><ul className="space-y-2 text-sm font-medium leading-relaxed text-slate-700">{splitLines(record.controlSteps).map((line) => <li key={line}>{line}</li>)}</ul></section>
-              </div>
-              <div className="space-y-6">
-                <section className="rounded-2xl bg-[#1a2332] p-6 text-white shadow-lg"><p className="mb-5 text-xs font-bold uppercase tracking-widest text-slate-400">Authorization & Responsibility</p><InfoDark icon="👤" label="Applicant" value={record.applicant} /><InfoDark icon="✅" label="Authorized By" value={record.authorizedBy} /><InfoDark icon="📍" label="Field PIC" value={record.fieldPic} /></section>
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Critical Checks</h3><div className="space-y-2 text-sm font-semibold text-slate-700"><p>Gas Test: {record.gasTestRequired ? "Required" : "Not Required"}</p><p>Isolation / LOTO: {record.isolationRequired ? "Required" : "Not Required"}</p><p>PPE: {record.ppe.join(", ")}</p></div></section>
-                <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center"><FileText className="mx-auto size-10 text-slate-300" /><p className="mt-2 text-sm font-bold text-slate-900">{record.attachmentName}</p></section>
+              <div className="text-right text-slate-500 font-mono text-[6.5pt] pt-1 shrink-0">
+                No. Form: CP-F-SHE-026 / P-HSE-SOP-031.00
               </div>
             </div>
-            <div className="mt-10 grid grid-cols-3 gap-6 text-center text-[10px] font-bold uppercase text-slate-500"><Signature label="Pemohon" name={record.applicant} /><Signature label="HSE Officer" name={record.authorizedBy} /><Signature label="Supervisor Lapangan" name={record.fieldPic} /></div>
-          </div>
+          </article>
         </div>
       </DialogContent>
     </Dialog>

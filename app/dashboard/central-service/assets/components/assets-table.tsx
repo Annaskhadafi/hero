@@ -402,48 +402,41 @@ function AssetAttachmentsDialog({
   );
 }
 
-function exportToCSV(data: Asset[]) {
-  const headers = [
-    "No",
-    "Section",
-    "Kategori Alat",
-    "Lokasi Site",
-    "Description",
-    "Nomor Aset",
-    "SN",
-    "Certificate Date",
-    "Delivery To Site",
-    "Condition",
-    "Certificate Due",
-    "Qty",
-    "Remarks",
-  ];
-  const rows = data.map((a, i) => [
-    i + 1,
-    a.workSection,
-    a.section,
-    a.location,
-    a.description,
-    a.assetNumber ?? "",
-    a.serialNumber ?? "",
-    fmtDate(a.certificateDate),
-    fmtDate(a.deliveryToSiteDate),
-    a.condition,
-    fmtDate(a.certificateDueDate),
-    a.qty,
-    a.remarks ?? "",
-  ]);
-  const csv =
-    headers.join(",") +
-    "\n" +
-    rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `assets_${format(new Date(), "yyyyMMdd")}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+async function exportToXLSX(data: Asset[], label?: string) {
+  const XLSX = await import("xlsx");
+  const rows = data.map((a, i) => ({
+    "No": i + 1,
+    "Work Section": a.workSection,
+    "Kategori Alat": a.section,
+    "Lokasi Site": a.location,
+    "Deskripsi / Nama Alat": a.description,
+    "Nomor Aset": a.assetNumber ?? "-",
+    "Serial Number": a.serialNumber ?? "-",
+    "Tgl Pembelian": fmtDate(a.purchaseDate),
+    "Delivery To Site": fmtDate(a.deliveryToSiteDate),
+    "Kondisi": a.condition,
+    "Qty": a.qty,
+    "Tgl Kalibrasi Terakhir": fmtDate(a.lastCalibrationDate),
+    "Siklus Kalibrasi (bln)": a.calibrationCycleMonths ?? "-",
+    "Kalibrasi Due Date": fmtDate(a.calibrationDueDate),
+    "Tgl Sertifikat": fmtDate(a.certificateDate),
+    "Siklus Sertifikat (bln)": a.certificateCycleMonths ?? "-",
+    "Sertifikat Due Date": fmtDate(a.certificateDueDate),
+    "Remarks": a.remarks ?? "-",
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Auto-width columns
+  const colWidths = Object.keys(rows[0] ?? {}).map((key) => ({
+    wch: Math.max(key.length, ...rows.map((r) => String((r as Record<string, unknown>)[key] ?? "").length)) + 2,
+  }));
+  ws["!cols"] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Assets");
+
+  const filename = `Assets_${label ? label + "_" : ""}${format(new Date(), "yyyyMMdd_HHmm")}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
 
 const SECTIONS = [
@@ -1097,11 +1090,22 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
           <Button
             variant="outline"
             size="sm"
-            onClick={() => exportToCSV(data)}
+            onClick={() => {
+              const filteredData = table.getFilteredRowModel().rows.map((r) => r.original);
+              const workSectionVal = (table.getColumn("workSection")?.getFilterValue() as string) || "";
+              const sectionVal = (table.getColumn("section")?.getFilterValue() as string) || "";
+              const locationVal = (table.getColumn("location")?.getFilterValue() as string) || "";
+              const conditionVal = (table.getColumn("condition")?.getFilterValue() as string) || "";
+              const labelParts = [workSectionVal, sectionVal, locationVal, conditionVal].filter(Boolean);
+              const label = labelParts.length > 0 ? labelParts.join("_").replace(/\s+/g, "-") : "All";
+              exportToXLSX(filteredData, label);
+            }}
             className="h-9"
           >
             <Download className="mr-2 h-4 w-4" />
-            Export
+            Export Excel{table.getFilteredRowModel().rows.length < table.getCoreRowModel().rows.length
+              ? ` (${table.getFilteredRowModel().rows.length})`
+              : ""}
           </Button>
           <input
             ref={fileInputRef}

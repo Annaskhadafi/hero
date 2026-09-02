@@ -114,10 +114,11 @@ function buildAutoMapping(fields: AdminImportField[], columns: string[]) {
 export function AdminImportDialog({
   title,
   description,
-  fields,
+  fields = [],
   trigger,
   onConfirm,
 }: AdminImportDialogProps) {
+  const safeFields = Array.isArray(fields) ? fields : []
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null)
   const [fileName, setFileName] = React.useState("")
   const [fileTypeNote, setFileTypeNote] = React.useState("Upload CSV/XLSX untuk preview header live, sample row, dan mapping field.")
@@ -125,8 +126,8 @@ export function AdminImportDialog({
   const [parsedRows, setParsedRows] = React.useState<string[][]>([])
   const [sampleRows, setSampleRows] = React.useState<string[][]>([])
   const [mapping, setMapping] = React.useState<Record<string, string>>({})
-  const missingRequired = fields.filter((field) => field.required && !mapping[field.key])
-  const mappedCount = fields.filter((field) => mapping[field.key]).length
+  const missingRequired = safeFields.filter((field) => field.required && !mapping[field.key])
+  const mappedCount = safeFields.filter((field) => mapping[field.key]).length
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -157,7 +158,7 @@ export function AdminImportDialog({
           ? `Header ${file.name.toLowerCase().endsWith(".csv") ? "CSV" : "Excel"} terdeteksi. Mapping bisa disesuaikan sebelum import.`
           : "File terbaca, tapi header tidak ditemukan. Tetap lanjut dengan mapping manual.",
       )
-      setMapping(buildAutoMapping(fields, nextColumns))
+      setMapping(buildAutoMapping(safeFields, nextColumns))
     } catch (error) {
       setDetectedColumns(sampleColumns)
       setParsedRows([])
@@ -244,7 +245,7 @@ export function AdminImportDialog({
           </div>
 
           <div className="grid gap-2">
-            {fields.map((field) => (
+            {safeFields.map((field) => (
               <div
                 key={field.key}
                 className="grid gap-2 rounded-xl border border-border/70 bg-white p-3 sm:grid-cols-[1fr_240px] sm:items-center"

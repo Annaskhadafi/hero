@@ -39,7 +39,7 @@ export const portalChitraIconMap = {
   bolt: Zap,
 } as const satisfies Record<string, LucideIcon>;
 
-export const PORTAL_CHITRA_ICON_OPTIONS = Object.keys(portalChitraIconMap);
+export const PORTAL_CHITRA_ICON_OPTIONS = Object.keys(portalChitraIconMap || {});
 
 export function PortalChitraIcon({
   name,

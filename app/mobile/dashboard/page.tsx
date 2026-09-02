@@ -94,7 +94,7 @@ function formatFeedTime(value: Date) {
 
 function buildRecentFeed(data: NonNullable<Awaited<ReturnType<typeof getDailyActivityEmployeeData>>>) {
   return [
-    ...data.activities.map((activity) => ({
+    ...data.activities.map((activity: any) => ({
       id: `activity-${activity.id}`,
       title: activity.title,
       detail: `${activity.statusLabel} • ${activity.durationLabel}`,

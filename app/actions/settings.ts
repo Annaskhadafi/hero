@@ -23,8 +23,15 @@ export async function getSetting(key: string) {
     }
 }
 
+import { getServerSession } from "@/lib/auth-session"
+
 export async function updateSetting(key: string, value: string) {
     try {
+        const session = await getServerSession()
+        if (!session?.user) {
+            return { success: false, error: "Unauthorized: Session required" }
+        }
+
         const existing = await getSetting(key)
         if (existing !== null) {
             await db.update(settings).set({ value, updatedAt: new Date() }).where(eq(settings.key, key))
@@ -41,7 +48,11 @@ export async function updateSetting(key: string, value: string) {
 
 export async function getRealtimeExchangeRate() {
     try {
-        const response = await fetch("https://v6.exchangerate-api.com/v6/06e9b7015f4acef21c8bad94/latest/USD", {
+        const apiKey = process.env.EXCHANGE_RATE_API_KEY
+        if (!apiKey) {
+            return { success: false, error: "Exchange rate API key is not configured" }
+        }
+        const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`, {
             next: { revalidate: 3600 } // Cache for 1 hour
         })
         const data = await response.json()

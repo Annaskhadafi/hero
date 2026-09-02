@@ -307,7 +307,7 @@ export async function generateAiReport(id: string) {
 
   // Update photo captions
   if (aiResult.content.photoCaptions) {
-    for (const [photoId, aiCaption] of Object.entries(aiResult.content.photoCaptions)) {
+    for (const [photoId, aiCaption] of Object.entries(aiResult.content.photoCaptions || {})) {
       await db.update(heroInspectionPhotos)
         .set({ aiCaption })
         .where(eq(heroInspectionPhotos.id, photoId));

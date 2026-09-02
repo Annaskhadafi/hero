@@ -62,7 +62,7 @@ export function computeAggregates(
   for (const r of rows) {
     typeMap[r.certType] = (typeMap[r.certType] || 0) + 1
   }
-  const certTypeDistribution = Object.entries(typeMap)
+  const certTypeDistribution = Object.entries(typeMap || {})
     .map(([type, count]) => ({ type, count }))
     .sort((a, b) => b.count - a.count)
 
@@ -73,7 +73,7 @@ export function computeAggregates(
     deptMap[dept].count++
     deptMap[dept].employees.add(r.employeeId)
   }
-  const departmentCoverage = Object.entries(deptMap)
+  const departmentCoverage = Object.entries(deptMap || {})
     .map(([name, d]) => ({ name, count: d.count, employees: d.employees.size }))
     .sort((a, b) => b.count - a.count)
 

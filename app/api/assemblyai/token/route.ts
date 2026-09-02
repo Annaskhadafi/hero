@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-session";
 
 export async function POST() {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const apiKey = process.env.ASSEMBLYAI_API_KEY || "";
     if (!apiKey) {
       return NextResponse.json({ error: "Missing API Key" }, { status: 500 });
@@ -18,3 +24,4 @@ export async function POST() {
     );
   }
 }
+

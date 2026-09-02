@@ -3,11 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { user, verification } from "@/db/schema/auth";
-import { eq, isNotNull, and, or } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import crypto from "crypto";
 import { rarayRecognizeFace, rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from "@/lib/raray-vision/client";
-import { extractServerFaceEmbedding } from "@/lib/face-recognition/server-face-api";
-import { cosineSimilarity } from "@/lib/face-recognition/cosine-similarity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +36,12 @@ export async function POST(request: NextRequest) {
     }
 
     const [, mimeType, base64Data] = matches;
+    if (base64Data.length > 7 * 1024 * 1024) {
+      return NextResponse.json(
+        { success: false, error: "Ukuran gambar wajah terlalu besar. Ambil ulang foto dengan kamera." },
+        { status: 413 }
+      );
+    }
     const imageBuffer = Buffer.from(base64Data, "base64");
 
     let matchedEmployee: typeof employees.$inferSelect | null = null;
@@ -59,6 +63,14 @@ export async function POST(request: NextRequest) {
       mimeType,
     });
 
+    if (antiSpoof.status === "error") {
+      console.error("[face-login] Anti-spoof service unavailable:", antiSpoof.message);
+      return NextResponse.json(
+        { success: false, error: "Layanan verifikasi wajah sedang tidak tersedia. Coba lagi beberapa saat atau gunakan password." },
+        { status: 503 }
+      );
+    }
+
     if (antiSpoof.status === "spoof_detected" || (antiSpoof.status === "success" && !antiSpoof.is_real)) {
       console.warn("[face-login] Spoof attack detected:", antiSpoof.verdict, antiSpoof.confidence);
       return NextResponse.json(
@@ -78,19 +90,25 @@ export async function POST(request: NextRequest) {
     if (identifier && typeof identifier === "string" && identifier.trim()) {
       const cleanIdentifier = identifier.trim().toLowerCase();
       
-      const [emp] = await db
-        .select()
+      const [row] = await db
+        .select({
+          employee: employees,
+        })
         .from(employees)
+        .leftJoin(user, eq(employees.authUserId, user.id))
         .where(
           and(
             eq(employees.isActive, true),
             or(
               eq(employees.email, cleanIdentifier),
-              eq(employees.employeeSn, identifier.trim())
+              eq(employees.employeeSn, identifier.trim()),
+              eq(user.email, cleanIdentifier)
             )
           )
         )
         .limit(1);
+
+      const emp = row?.employee;
 
       if (!emp) {
         console.log("[face-login] Identifier provided but employee not found in active database:", cleanIdentifier);
@@ -116,40 +134,19 @@ export async function POST(request: NextRequest) {
 
         console.log("[face-login] Raray 1:1 verify result:", JSON.stringify(verifyRes));
 
-        if (verifyRes.status === "success" && verifyRes.verified && (verifyRes.confidence ?? 0) >= 0.65) {
+        if (verifyRes.status === "success" && verifyRes.verified) {
           matchedEmployee = emp;
           confidenceScore = verifyRes.confidence || 0.85;
           console.log("[face-login] 1:1 verification succeeded for:", emp.name, "Confidence:", confidenceScore);
         } else {
-          console.log("[face-login] Raray 1:1 verification failed / confidence below threshold 0.65:", verifyRes.confidence);
+          console.log("[face-login] Raray 1:1 verification failed:", verifyRes.confidence);
         }
       } catch (err) {
         console.error("[face-login] Raray 1:1 verify request failed:", err);
       }
 
-      // If Raray 1:1 failed, try local embedding as last resort — but ONLY against the same employee
-      if (!matchedEmployee) {
-        console.log("[face-login] Raray 1:1 failed. Trying local embedding for same employee:", emp.name);
-        try {
-          const extraction = await extractServerFaceEmbedding(imageBuffer);
-          if (extraction && extraction.embedding && Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
-            const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
-            console.log("[face-login] Local 1:1 embedding similarity for", emp.name, ":", sim);
-            if (sim >= 0.65) {
-              matchedEmployee = emp;
-              confidenceScore = sim;
-              verificationMode = "local-1:1";
-              console.log("[face-login] Local 1:1 embedding match succeeded for:", emp.name);
-            } else {
-              console.log("[face-login] Local 1:1 embedding similarity too low:", sim);
-            }
-          }
-        } catch (err) {
-          console.error("[face-login] Local 1:1 embedding failed:", err);
-        }
-      }
-
-      // If still no match, reject — do NOT fall through to 1:N against other employees
+      // Raray Vision owns the configured threshold and liveness decision.
+      // If it rejects, do not authenticate through a separate local model.
       if (!matchedEmployee) {
         return NextResponse.json(
           {
@@ -175,8 +172,7 @@ export async function POST(request: NextRequest) {
         if (
           rarayResult.status === "success" &&
           rarayResult.recognized &&
-          (rarayResult.employee_id || rarayResult.face_id) &&
-          (rarayResult.confidence ?? 0) >= 0.65
+          (rarayResult.employee_id || rarayResult.face_id)
         ) {
           const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || "").trim();
           const numericId = Number(rawIdOrSn);
@@ -236,47 +232,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Anonymous fallback: Local embedding comparison across all employees (no identifier)
-    if (!matchedEmployee && !identifierBoundEmployee) {
-      console.log("[face-login] Anonymous: Raray Vision could not match. Trying local embedding...");
-      try {
-        const extraction = await extractServerFaceEmbedding(imageBuffer);
-        if (extraction && extraction.embedding) {
-          console.log("[face-login] Local embedding extracted. Score:", extraction.detectionScore);
-          const registeredEmployees = await db
-            .select()
-            .from(employees)
-            .where(and(eq(employees.isActive, true), isNotNull(employees.faceEmbedding)));
-
-          let highestSimilarity = 0;
-          let bestMatch: typeof employees.$inferSelect | null = null;
-
-          for (const emp of registeredEmployees) {
-            if (Array.isArray(emp.faceEmbedding) && emp.faceEmbedding.length > 0) {
-              const sim = cosineSimilarity(extraction.embedding, emp.faceEmbedding as number[]);
-              if (sim > highestSimilarity) {
-                highestSimilarity = sim;
-                bestMatch = emp;
-              }
-            }
-          }
-
-          console.log("[face-login] Local embedding best match:", bestMatch ? bestMatch.name : "None", "Similarity:", highestSimilarity);
-
-          if (bestMatch && highestSimilarity >= 0.65) {
-            matchedEmployee = bestMatch;
-            confidenceScore = highestSimilarity;
-          }
-        } else {
-          console.log("[face-login] Local face-api did not detect any face.");
-        }
-      } catch (err) {
-        console.error("[face-login] Local embedding matching failed:", err);
-      }
-    }
-
-
-    // 4. Verification failed response
+    // 3. Verification failed response
     if (!matchedEmployee) {
       return NextResponse.json(
         {
@@ -287,18 +243,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Check if user has login account
+    // 4. Check if user has login account and get their registered email
     let targetAuthUserId = matchedEmployee.authUserId;
+    let targetUserEmail = "";
 
-    if (!targetAuthUserId && matchedEmployee.email) {
+    if (targetAuthUserId) {
       const [foundUser] = await db
-        .select({ id: user.id })
+        .select({ email: user.email })
+        .from(user)
+        .where(eq(user.id, targetAuthUserId))
+        .limit(1);
+      if (foundUser) {
+        targetUserEmail = foundUser.email;
+      }
+    } else if (matchedEmployee.email) {
+      const [foundUser] = await db
+        .select({ id: user.id, email: user.email })
         .from(user)
         .where(eq(user.email, matchedEmployee.email.toLowerCase().trim()))
         .limit(1);
 
       if (foundUser) {
         targetAuthUserId = foundUser.id;
+        targetUserEmail = foundUser.email;
         await db
           .update(employees)
           .set({ authUserId: foundUser.id })
@@ -306,7 +273,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!targetAuthUserId) {
+    if (!targetAuthUserId || !targetUserEmail) {
       return NextResponse.json(
         {
           success: false,
@@ -316,24 +283,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!matchedEmployee.email) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Wajah dikenali sebagai ${matchedEmployee.name}, tetapi email tidak terdaftar di data karyawan.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // NATIVE AUTHENTICATION WAY: Generate a temporary magic link login token
+    // 5. Generate a temporary magic link login token
     const magicToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes validity
 
     await db.insert(verification).values({
       id: crypto.randomBytes(16).toString("hex"),
       identifier: magicToken,
-      value: JSON.stringify({ email: matchedEmployee.email.toLowerCase().trim(), name: matchedEmployee.name }),
+      value: JSON.stringify({ email: targetUserEmail.toLowerCase().trim(), name: matchedEmployee.name }),
       expiresAt: expiresAt,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -349,7 +306,7 @@ export async function POST(request: NextRequest) {
       token: magicToken,
       user: {
         name: matchedEmployee.name,
-        email: matchedEmployee.email,
+        email: targetUserEmail,
         employeeSn: matchedEmployee.employeeSn,
         employeeId: matchedEmployee.id,
       },

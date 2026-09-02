@@ -341,10 +341,11 @@ export function SioReminderPanel() {
                           deptGroups[key].items.push(h)
                           freq[key][raw] = (freq[key][raw] || 0) + 1
                         }
-                        for (const k of Object.keys(deptGroups)) {
-                          deptGroups[k].label = Object.entries(freq[k]).sort((a, b) => b[1] - a[1])[0][0]
+                        for (const k of Object.keys(deptGroups || {})) {
+                          const sortedFreq = Object.entries(freq[k] || {}).sort((a, b) => b[1] - a[1])
+                          deptGroups[k].label = sortedFreq[0]?.[0] || deptGroups[k].label || k
                         }
-                        return Object.entries(deptGroups).sort((a, b) => a[1].label.localeCompare(b[1].label)).map(([normKey, { label: dept, items: heads }]) => {
+                        return Object.entries(deptGroups || {}).sort((a, b) => a[1].label.localeCompare(b[1].label)).map(([normKey, { label: dept, items: heads }]) => {
                           const isExpanded = expandedDepts.has(dept)
                           return (
                             <Fragment key={normKey}>

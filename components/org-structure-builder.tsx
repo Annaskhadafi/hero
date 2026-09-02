@@ -1052,11 +1052,11 @@ export function OrgStructureBuilder({
                   <div
                     key={org.id}
                     onClick={() => {
-                      setSelectedOrgId(org.id);
-                      setSelectedOrgState(org);
+                      setSelectedStructureId(org.id.toString());
+                      setCanvasNodes(org.nodes ?? []);
                     }}
                     className={`cursor-pointer rounded-[1.05rem] border p-4 transition-all duration-200 ${
-                      org.id === selectedOrgId
+                      org.id.toString() === selectedStructureId
                         ? "border-[#2563eb] bg-[#eff6ff] shadow-sm"
                         : "border-[#e2e8f0] bg-white hover:border-[#cbd5e1]"
                     }`}

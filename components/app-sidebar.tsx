@@ -13,6 +13,7 @@ import {
   IconDatabase,
   IconFileWord,
   IconFileText,
+  IconFiles,
   IconFolder,
   IconHelp,
   IconListDetails,
@@ -174,6 +175,7 @@ const DESKTOP_MENU_ORDER = [
   "HSE",
   "Quality & CPI",
   "Central Service",
+  "GOBPI",
   "Laporan",
   "Pengaturan",
 ] as const
@@ -190,6 +192,7 @@ const desktopMenuIconMap = {
   HSE: IconShieldHalfFilled,
   "Quality & CPI": IconSparkles,
   "Central Service": IconDatabase,
+  GOBPI: IconFiles,
   Laporan: IconReport,
   "Command Center": IconBell,
   Pengaturan: IconSettings,
@@ -370,7 +373,7 @@ export function AppSidebar({
             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Dokumen
             </div>
-            <NavDocuments items={documentItems} />
+            <NavDocuments items={documentItems as any} />
           </>
         ) : null}
       </SidebarContent>

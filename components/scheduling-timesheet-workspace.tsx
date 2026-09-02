@@ -9,6 +9,7 @@ import {
   Calculator,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -31,10 +32,16 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +56,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { SearchableSelect } from '@/components/ui/searchable-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   applyAttendanceImportPreviewAction,
   applyMealsConfigToAllSitesAction,
@@ -98,6 +112,11 @@ import {
 } from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import {
+  INDONESIA_TIMEZONES,
+  IndonesiaTimezoneCode,
+  inferTimezoneFromLocation,
+} from '@/lib/indonesia-timezone'
 import {
   attendanceStatusLabel,
   calculateAttendanceOvertime,
@@ -174,6 +193,7 @@ type SiteOption = {
   location?: string | null
   customerName: string
   headEmployeeId?: number | null
+  timezone?: string | null
 }
 
 type FieldBreakTimelineView = 'month' | 'quarter' | 'semester' | 'year'
@@ -242,6 +262,58 @@ type EmployeeScheduleProfile = {
   isLokal?: boolean
 }
 
+export type AttendancePdfDocType =
+  | 'overtime_summary'
+  | 'msa_summary'
+  | 'mls_summary'
+  | 'tu_summary'
+  | 'overtime_record'
+  | 'payable_site_allowance'
+
+export const ATTENDANCE_PDF_OPTIONS: Array<{
+  id: AttendancePdfDocType
+  number: number
+  label: string
+  description: string
+}> = [
+  {
+    id: 'overtime_summary',
+    number: 1,
+    label: 'OVERTIME SUMMARY',
+    description: 'Tabel Rekapitulasi Overtime seluruh karyawan',
+  },
+  {
+    id: 'msa_summary',
+    number: 2,
+    label: 'MSA summary',
+    description: 'Tabel Rekapitulasi Meal & Site Allowance (MSA)',
+  },
+  {
+    id: 'mls_summary',
+    number: 3,
+    label: 'MLS summary',
+    description: 'Tabel Rekapitulasi Meals Allowance (MLS)',
+  },
+  {
+    id: 'tu_summary',
+    number: 4,
+    label: 'TU summary',
+    description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
+  },
+  {
+    id: 'overtime_record',
+    number: 5,
+    label: 'overtime record',
+    description: 'Lembar catatan detail lembur per karyawan',
+  },
+  {
+    id: 'payable_site_allowance',
+    number: 6,
+    label: 'payable site allowance',
+    description: 'Lembar rincian tunjangan site per karyawan',
+  },
+]
+
 type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office' | 'hybrid'
 type SiteRosterType = '5:2' | '6:1' | '13:1' | 'vale'
@@ -258,6 +330,7 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  timezone: IndonesiaTimezoneCode
   defaultShiftType: DefaultShiftType
   defaultClockIn: string
   defaultClockOut: string
@@ -382,7 +455,11 @@ type PdfConfigSigner = {
 type PdfConfig = {
   preparedBy: string
   pjoLeader: string
+  pjoLeaderCk?: string
   approvedBy: string
+  hrName: string
+  externalPreparedBy?: string
+  externalApprovedBy?: string
   customSigners: PdfConfigSigner[]
   logoUrl: string
 }
@@ -459,6 +536,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
+  timezone: 'WITA',
   defaultShiftType: 'day-shift',
   defaultClockIn: '07:00',
   defaultClockOut: '17:00',
@@ -487,7 +565,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   employeeBenefitConfig: DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   quotationBillingConfig: DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
   overtimeConfig: normalizeSiteOvertimeConfig(null),
-  pdfConfig: { preparedBy: '', pjoLeader: '', approvedBy: '', customSigners: [], logoUrl: '' },
+  pdfConfig: { preparedBy: '', pjoLeader: '', pjoLeaderCk: '', approvedBy: '', hrName: '', externalPreparedBy: '', externalApprovedBy: '', customSigners: [], logoUrl: '' },
 }
 
 function serializeSiteConfig(config: SiteSchedulingConfig) {
@@ -552,6 +630,7 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       fieldBreakWorkMonths,
       fieldBreakBreakDays,
       fieldBreakUnit: config.rosterType === '13:1' ? 'weeks' : 'legacy',
+      timezone: config.timezone,
       employeeBenefitConfig,
       quotationBillingConfig,
     },
@@ -577,7 +656,11 @@ function normalizePdfConfig(
   return {
     preparedBy: (cfg.preparedBy as string) || currentEmployeeName,
     pjoLeader: (cfg.pjoLeader as string) || headEmp,
+    pjoLeaderCk: (cfg.pjoLeaderCk as string) || '',
     approvedBy: (cfg.approvedBy as string) || defaultApprovedBy,
+    hrName: (cfg.hrName as string) || '',
+    externalPreparedBy: (cfg.externalPreparedBy as string) || '',
+    externalApprovedBy: (cfg.externalApprovedBy as string) || '',
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
   }
@@ -988,11 +1071,20 @@ const EMPTY_SCHEDULING_STATUSES: Array<{
 
 const EMPTY_APPROVAL_EMPLOYEES: Array<{ id: number; name: string }> = []
 const EMPTY_APPROVAL_SECTIONS: Array<{
-  id: number
-  siteId: number | null
+  id: string
+  siteId: number
+  departmentId: number
+  departmentName: string | null
+  sectionId: number
+  sectionName: string
+  matrixId: number | null
+  matrixName: string | null
   pjoLeaderId: number | null
+  pjoLeaderName: string | null
   sectionHeadId: number | null
+  sectionHeadName: string | null
   departmentHeadId: number | null
+  departmentHeadName: string | null
 }> = []
 const EMPTY_ACTIVITIES: Array<{
   id: number
@@ -1337,6 +1429,20 @@ export function SchedulingTimesheetWorkspace({
   const [importHistoryOpen, setImportHistoryOpen] = useState(false)
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
+  const [includeTotalOvertime, setIncludeTotalOvertime] = useState<boolean>(true)
+  const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
+  const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
+  const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
+  const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
+  const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
+    'overtime_summary',
+    'msa_summary',
+    'mls_summary',
+    'tu_summary',
+    'overtime_record',
+    'payable_site_allowance',
+  ])
+  const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
@@ -1425,16 +1531,16 @@ export function SchedulingTimesheetWorkspace({
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
     if (typeof window === 'undefined') return false
-    return localStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+    return sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
   })
 
   function setConflictsDismissed(value: boolean) {
     setConflictsDismissedState(value)
     if (typeof window !== 'undefined') {
       if (value) {
-        localStorage.setItem(conflictsDismissKey, 'true')
+        sessionStorage.setItem(conflictsDismissKey, 'true')
       } else {
-        localStorage.removeItem(conflictsDismissKey)
+        sessionStorage.removeItem(conflictsDismissKey)
       }
     }
   }
@@ -1479,8 +1585,8 @@ export function SchedulingTimesheetWorkspace({
       ])
     )
     setApprovalApprovers((prev) => {
-      const prevKeys = Object.keys(prev)
-      const nextKeys = Object.keys(nextMap)
+      const prevKeys = Object.keys(prev || {})
+      const nextKeys = Object.keys(nextMap || {})
       if (
         prevKeys.length === nextKeys.length &&
         prevKeys.every(
@@ -1497,19 +1603,82 @@ export function SchedulingTimesheetWorkspace({
   }, [approvalSections])
   const pdfSignatures = useMemo(() => {
     const cfg = siteConfig.pdfConfig
+
+    // Find employees at the current site
+    const siteEmployees = employees.filter((e) =>
+      site?.id ? String(e.siteId) === String(site.id) : true
+    )
+
+    // Group employees by department to find the most common one
+    const deptCounts = new Map<string, number>()
+    for (const emp of siteEmployees) {
+      const dept = (emp.department || '').trim()
+      if (dept) {
+        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1)
+      }
+    }
+    // Find the most common department
+    let mostCommonDept = ''
+    let maxCount = 0
+    for (const [dept, count] of deptCounts) {
+      if (count > maxCount) {
+        maxCount = count
+        mostCommonDept = dept
+      }
+    }
+
+    // Match the most common department to an approval section
+    const matchedSection = siteApprovalSections.find((s) => {
+      const sDept = (s.departmentName || '').trim()
+      const empDept = mostCommonDept.toLowerCase()
+      return sDept && empDept && (
+        sDept.toLowerCase() === empDept ||
+        empDept.includes(sDept.toLowerCase()) ||
+        sDept.toLowerCase().includes(empDept)
+      )
+    }) || siteApprovalSections[0]
+
+    // Koordinator: section head dari matched section
+    const defaultCoordinator = matchedSection?.sectionHeadName || ''
     const pjoLeaderName =
       cfg.pjoLeader ||
+      defaultCoordinator ||
       employees.find((employee) => employee.id === site?.headEmployeeId)?.name ||
-      'Belum diset di Master Data Site'
-    const approvedByName = cfg.approvedBy || `Plant. SPV Department (${site?.name || 'Site'})`
+      ''
+
+    // Manager: department head dari matched section, fallback ke site head
+    const defaultManager = matchedSection?.departmentHeadName || ''
+    const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
+    const approvedByName =
+      cfg.approvedBy ||
+      defaultManager ||
+      siteHeadName ||
+      ''
+
+    // HR: cari employee dengan role/department HR di site yang sama
+    const hrKeywords = ['hr', 'hrd', 'human resource', 'human capital']
+    const defaultHr =
+      siteEmployees.find((e) => {
+        const role = (e.role || '').toLowerCase()
+        const dept = (e.department || '').toLowerCase()
+        return hrKeywords.some((kw) => role.includes(kw) || dept.includes(kw))
+      })?.name ||
+      siteEmployees.find((e) => {
+        const role = (e.role || '').toLowerCase()
+        return role.includes('admin') || role.includes('gm') || role.includes('general manager')
+      })?.name || ''
+
     return {
       preparedBy: cfg.preparedBy || currentEmployeeName,
       pjoLeader: pjoLeaderName,
       approvedBy: approvedByName,
+      hrName: cfg.hrName || defaultHr,
+      externalPreparedBy: cfg.externalPreparedBy,
+      externalApprovedBy: cfg.externalApprovedBy,
       customSigners: cfg.customSigners,
       logoUrl: cfg.logoUrl,
     }
-  }, [currentEmployeeName, employees, site, siteConfig.pdfConfig])
+  }, [currentEmployeeName, employees, site, siteConfig.pdfConfig, siteApprovalSections])
   const isThirteenOneRoster = siteConfig.rosterType === '13:1'
   const fieldBreakWorkCycleDays = isThirteenOneRoster ? siteConfig.fieldBreakWorkMonths * 7 : 90
   const fieldBreakRestDays = isThirteenOneRoster
@@ -1846,7 +2015,7 @@ export function SchedulingTimesheetWorkspace({
     setSelectedAttendanceKeys([])
     // Reset conflict dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
-    const isDismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true'
+    const isDismissed = typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, period, siteId])
@@ -1855,11 +2024,17 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return
 
     const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
+    const currentSiteObj = sites.find((s) => String(s.id) === siteId)
     const fieldBreakConfig =
       ((savedConfig as Record<string, unknown> | undefined)?.fieldBreakConfig as
         | Record<string, unknown>
         | undefined) ?? {}
     const savedRosterType = savedConfig?.rosterType as SiteRosterType | undefined
+    const siteTimezone =
+      (savedConfig as { timezone?: string } | undefined)?.timezone ||
+      currentSiteObj?.timezone ||
+      (fieldBreakConfig.timezone as string | undefined) ||
+      'WITA'
     const hasWeekBasedFieldBreak =
       savedRosterType === '13:1' && fieldBreakConfig.fieldBreakUnit === 'weeks'
     const hasIncorrectThirteenOneDefaults =
@@ -1877,6 +2052,7 @@ export function SchedulingTimesheetWorkspace({
               ? 'field-break'
               : 'workday') as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+          timezone: siteTimezone as IndonesiaTimezoneCode,
           defaultShiftType:
             (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
           defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
@@ -1958,7 +2134,7 @@ export function SchedulingTimesheetWorkspace({
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
     setRoster(config.rosterType)
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: config.scheduleType }))
-  }, [siteId, schedulingConfigs])
+  }, [siteId, schedulingConfigs, sites])
 
   useEffect(() => {
     if (!savedPlan) {
@@ -2028,16 +2204,31 @@ export function SchedulingTimesheetWorkspace({
     // Extract from selected site name
     const selectedSiteExtracted = extractSiteNameLocal(selectedSite.location || selectedSite.name)
 
+    const scheduledEmployeeIds = new Set(
+      savedPlan
+        ? [
+            ...(savedPlan.fixedSchedule || []),
+            ...(savedPlan.draftSchedule || []),
+            ...(savedPlan.employeeProfiles || []),
+          ]
+            .map((s: any) => s.employeeId)
+            .filter(Boolean)
+        : []
+    )
+
     const filtered = employees.filter((employee) => {
-      // First priority: exact siteId match
+      // First priority: included in this site's saved/scheduled plan roster
+      if (scheduledEmployeeIds.has(employee.id)) return true
+      // If this site already has a configured roster plan with employees, strictly show only rostered employees
+      if (scheduledEmployeeIds.size > 0) return false
+      // Otherwise fallback to matching site employees
       if (String(employee.siteId) === siteId) return true
-      // Second priority: employee locationName (already extracted) matches extracted site name
       if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
 
     return filtered
-  }, [employees, mode, selectedSite, siteId])
+  }, [employees, mode, savedPlan, selectedSite, siteId])
 
   const rosterSectionByEmployee = useMemo(
     () =>
@@ -2076,23 +2267,63 @@ export function SchedulingTimesheetWorkspace({
     () =>
       visibleEmployees.map((employee, employeeIndex) => {
         const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? 'Crew Office'
-        const persistedSchedule = savedPlan
+        // Find saved plan for this employee: prioritize current site savedPlan, then search any active savedPlan matching employee.siteId or employee.id
+        const employeeSavedPlan =
+          savedPlan?.fixedSchedule?.some((item) => item.employeeId === employee.id) ||
+          savedPlan?.draftSchedule?.some((item) => item.employeeId === employee.id)
+            ? savedPlan
+            : savedPlans.find(
+                (plan) =>
+                  !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
+                  plan.period === period &&
+                  (plan.siteId === employee.siteId ||
+                    plan.fixedSchedule?.some((item) => item.employeeId === employee.id) ||
+                    plan.draftSchedule?.some((item) => item.employeeId === employee.id))
+              )
+
+        const persistedSchedule = employeeSavedPlan
           ? (mode === 'schedule'
-              ? savedPlan.draftSchedule
-              : savedPlan.fixedSchedule.length
-                ? savedPlan.fixedSchedule
-                : savedPlan.draftSchedule
-            ).find((item) => item.employeeId === employee.id)?.schedule
+              ? employeeSavedPlan.draftSchedule
+              : employeeSavedPlan.fixedSchedule?.length
+                ? employeeSavedPlan.fixedSchedule
+                : employeeSavedPlan.draftSchedule
+            )?.find((item) => item.employeeId === employee.id)?.schedule
           : undefined
         const forceDayShift =
           (employeeRosterSection === 'Service Operation' ||
             employeeRosterSection === 'Repair Retread') &&
           (rosterSectionCounts[employeeRosterSection] ?? 0) < 3
         const schedule = days.map((day) => {
-          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
+          // Priority 1: Exact schedule from configured Schedule V2 / Roster Plan
+          if (persistedSchedule && persistedSchedule[day - 1]) {
+            return (persistedSchedule[day - 1] as ScheduleCode)
+          }
+
+          // Priority 2: Manual cell override
+          if (overrides[`${employee.id}-${day}`]) {
+            return overrides[`${employee.id}-${day}`]
+          }
+
           const date = dateKey(period, day)
+          const isFieldBreak = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
+            (plan) =>
+              isDateInRange(
+                date,
+                plan.fieldBreakDate,
+                plan.fieldBreakEndDate || plan.fieldBreakDate
+              )
+          )
+          if (isFieldBreak) return 'FB' as ScheduleCode
+
+          // In attendance and timesheet modes, do NOT invent unconfigured shifts ("jangan nambah nambah sendiri")
+          if (mode === 'attendance' || mode === 'payroll') {
+            return '' as ScheduleCode
+          }
+
+          // In schedule builder draft mode, only generate template if explicitly on schedule page
+          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
           const generatedCode = (
-            savedPlan
+            employeeSavedPlan
               ? forceDayShift
                 ? 'DS'
                 : buildSchedule(
@@ -2108,28 +2339,12 @@ export function SchedulingTimesheetWorkspace({
                   )
               : ''
           ) as ScheduleCode
-          const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
+
+          return applyHolidayPolicy(generatedCode, {
             scheduleType,
             rosterType: siteConfig.rosterType,
             isHoliday: isHoliday(period, day, holidays),
           })
-          const fieldBreakAdjustedCode = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
-            (plan) =>
-              isDateInRange(
-                date,
-                plan.fieldBreakDate,
-                plan.fieldBreakEndDate || plan.fieldBreakDate
-              )
-          )
-            ? 'FB'
-            : holidayAdjustedCode
-
-          // ponytail: attendance/benefit views read the fixed Schedule V2 roster; edit view reads draft.
-          return mode === 'schedule'
-            ? (overrides[`${employee.id}-${day}`] ?? fieldBreakAdjustedCode)
-            : ((persistedSchedule?.[day - 1] as ScheduleCode | undefined) ??
-                overrides[`${employee.id}-${day}`] ??
-                fieldBreakAdjustedCode)
         })
         const workDays = schedule.filter(
           (code) => code === 'IN' || code === 'DS' || code === 'NS' || code === 'FB'
@@ -3402,6 +3617,85 @@ export function SchedulingTimesheetWorkspace({
     reader.readAsDataURL(file)
   }
 
+  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical') {
+    if (siteId === 'all') return
+
+    const siteName = (site?.name || '').trim().toUpperCase()
+    const isCkSite =
+      siteName.startsWith('CK') || (site?.location || '').trim().toUpperCase().startsWith('CK')
+
+    // Find known employees from employees list
+    const arjun =
+      employees.find((e) => e.name.toLowerCase().includes('arjun zahiri'))?.name ??
+      'Arjun Zahiri Nursith'
+    const ary =
+      employees.find((e) => e.name.toLowerCase().includes('ary maulana'))?.name ?? 'Ary Maulana'
+    const romy =
+      employees.find((e) => e.name.toLowerCase().includes('romy hidayat'))?.name ?? 'Romy Hidayat'
+    const kesuma =
+      employees.find((e) => e.name.toLowerCase().includes('kesuma bagaskara'))?.name ??
+      'Kesuma Bagaskara'
+    const fauzan =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes("as'ar fauzan") ||
+          e.name.toLowerCase().includes('asar fauzan')
+      )?.name ?? "Muhammad As'Ar Fauzan"
+    const apriyanto =
+      employees.find((e) => e.name.toLowerCase().includes('apriyanto'))?.name ?? 'Apriyanto'
+    const junaidi =
+      employees.find((e) => e.name.toLowerCase().includes('junaidi'))?.name ?? 'Junaidi'
+    const abian =
+      employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
+      'Muhammad Abian Husain'
+
+    setSiteConfigs((current) => {
+      const currentConfig = current[siteId] ?? defaultSiteConfig
+      let newPdfConfig = { ...currentConfig.pdfConfig }
+
+      if (presetKey === 'repair') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: arjun,
+          pjoLeader: ary,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      } else if (presetKey === 'services') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: fauzan,
+          pjoLeader: isCkSite ? apriyanto : junaidi,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      } else if (presetKey === 'technical') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
+          pjoLeader: abian,
+          approvedBy: romy,
+          hrName: kesuma,
+        }
+      }
+
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: newPdfConfig,
+        },
+      }
+    })
+
+    const presetLabels: Record<string, string> = {
+      repair: 'Repair TTD',
+      services: 'Services TTD',
+      technical: 'Technical TTD',
+    }
+    toast.success(`Preset ${presetLabels[presetKey]} berhasil diterapkan!`)
+  }
+
   function saveAllowanceVariables() {
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
     const sourceSiteId = Number(siteId)
@@ -4319,7 +4613,7 @@ export function SchedulingTimesheetWorkspace({
       const workingCode: ScheduleCode = siteConfig.scheduleType === 'shift' ? 'DS' : 'IN'
       setOverrides((currentOverrides) => {
         const next = { ...currentOverrides }
-        for (const [key, cell] of Object.entries(cellUpdates)) {
+        for (const [key, cell] of Object.entries(cellUpdates || {})) {
           if (cell.status === 'present') {
             const [empId, day] = key.split('-').map(Number)
             const row = rows.find((r) => r.employee.id === empId)
@@ -4422,7 +4716,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Save attendance')) return
     const numericSiteId = Number(siteId)
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
-    const overrides = Object.entries(nextManual).map(([key, cell]) => {
+    const overrides = Object.entries(nextManual || {}).map(([key, cell]) => {
       const [employeeId, day] = key.split('-').map(Number)
       return {
         employeeId,
@@ -4481,7 +4775,7 @@ export function SchedulingTimesheetWorkspace({
           removeWorkspace: false,
         })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== 'excel'))
+          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
         )
         setAttendanceImportPreview(null)
         setClearExcelImportDialogOpen(false)
@@ -4503,7 +4797,7 @@ export function SchedulingTimesheetWorkspace({
       try {
         await rollbackAttendanceImportPreviewAction({ previewId })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== 'excel'))
+          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
         )
         setAttendanceSavedAt(new Date().toISOString())
         await refreshAttendanceImportHistory()
@@ -4728,6 +5022,162 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function getEmployeeSectionCategory(employee?: {
+    section?: string | null
+    role?: string | null
+  }): 'Repair' | 'Services' | 'Technical' | 'Lainnya' {
+    const s = (employee?.section || employee?.role || '').toLowerCase()
+    if (s.includes('repair') || s.includes('retread')) return 'Repair'
+    if (s.includes('service') || s.includes('servis')) return 'Services'
+    if (s.includes('tech') || s.includes('teknis')) return 'Technical'
+    return 'Lainnya'
+  }
+
+  const availableSiteSectionCategories = useMemo(() => {
+    const cats = new Set<'Repair' | 'Services' | 'Technical'>()
+    for (const row of rows) {
+      const cat = getEmployeeSectionCategory(row.employee)
+      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical') {
+        cats.add(cat)
+      }
+    }
+    return cats
+  }, [rows])
+
+  function getSectionSignatures(
+    sectionName?: string | null,
+    employee?: EmployeeOption,
+    customSignatures?: typeof pdfSignatures
+  ): typeof pdfSignatures {
+    const baseSignatures = customSignatures ?? pdfSignatures
+    const normSection = (sectionName || employee?.section || employee?.role || '').toLowerCase()
+    const siteName = (site?.name || '').trim().toUpperCase()
+    const isCkSite =
+      siteName.startsWith('CK') || (site?.location || '').trim().toUpperCase().startsWith('CK')
+
+    const arjun =
+      employees.find((e) => e.name.toLowerCase().includes('arjun zahiri'))?.name ??
+      'Arjun Zahiri Nursith'
+    const ary =
+      employees.find((e) => e.name.toLowerCase().includes('ary maulana'))?.name ?? 'Ary Maulana'
+    const romy =
+      employees.find((e) => e.name.toLowerCase().includes('romy hidayat'))?.name ?? 'Romy Hidayat'
+    const kesuma =
+      employees.find((e) => e.name.toLowerCase().includes('kesuma bagaskara'))?.name ??
+      'Kesuma Bagaskara'
+    const fauzan =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes("as'ar fauzan") ||
+          e.name.toLowerCase().includes('asar fauzan')
+      )?.name ?? "Muhammad As'Ar Fauzan"
+    const apriyanto =
+      employees.find((e) => e.name.toLowerCase().includes('apriyanto'))?.name ?? 'Apriyanto'
+    const junaidi =
+      employees.find((e) => e.name.toLowerCase().includes('junaidi'))?.name ?? 'Junaidi'
+    const abian =
+      employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
+      'Muhammad Abian Husain'
+
+    const cfg = siteConfig.pdfConfig
+
+    if (normSection.includes('repair') || normSection.includes('retread')) {
+      return {
+        ...baseSignatures,
+        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || arjun,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || ary,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    if (normSection.includes('service') || normSection.includes('servis')) {
+      const defaultPjo = isCkSite ? apriyanto : junaidi
+      return {
+        ...baseSignatures,
+        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || fauzan,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || defaultPjo,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    if (normSection.includes('tech') || normSection.includes('teknis')) {
+      return {
+        ...baseSignatures,
+        preparedBy: employee?.name || cfg.preparedBy || baseSignatures.preparedBy,
+        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || abian,
+        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
+        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+      }
+    }
+
+    return {
+      ...baseSignatures,
+      preparedBy: cfg.preparedBy || baseSignatures.preparedBy,
+      pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader,
+      approvedBy: cfg.approvedBy || baseSignatures.approvedBy,
+      hrName: cfg.hrName || baseSignatures.hrName,
+    }
+  }
+
+  function getMajoritySectionSignatures(
+    employeesList: Array<{ section?: string | null; role?: string | null; id?: number; name?: string }>,
+    customSignatures?: typeof pdfSignatures
+  ): typeof pdfSignatures {
+    const counts = { Repair: 0, Services: 0, Technical: 0 }
+    for (const emp of employeesList) {
+      const cat = getEmployeeSectionCategory(emp)
+      if (cat === 'Repair') counts.Repair++
+      else if (cat === 'Services') counts.Services++
+      else if (cat === 'Technical') counts.Technical++
+    }
+
+    let majorityCategory: 'Repair' | 'Services' | 'Technical' = 'Services'
+    let maxCount = -1
+    for (const [cat, count] of Object.entries(counts) as Array<['Repair' | 'Services' | 'Technical', number]>) {
+      if (count > maxCount) {
+        maxCount = count
+        majorityCategory = cat
+      }
+    }
+
+    const firstEmpOfMajority = employeesList.find((e) => getEmployeeSectionCategory(e) === majorityCategory)
+    return getSectionSignatures(majorityCategory, firstEmpOfMajority as EmployeeOption, customSignatures)
+  }
+
+  function getSummaryPdfSignatures(
+    baseSignatures: typeof pdfSignatures
+  ): PdfSignatureNames {
+    const cfg = siteConfig.pdfConfig
+    if (pdfUseExternalSignatures) {
+      const extPrep =
+        cfg.externalPreparedBy?.trim() ||
+        baseSignatures.externalPreparedBy?.trim() ||
+        baseSignatures.preparedBy
+      const extAppr =
+        cfg.externalApprovedBy?.trim() ||
+        baseSignatures.externalApprovedBy?.trim() ||
+        baseSignatures.approvedBy
+      return {
+        ...baseSignatures,
+        preparedBy: extPrep,
+        approvedBy: extAppr,
+        externalPreparedBy: extPrep,
+        externalApprovedBy: extAppr,
+        pjoLeader: '',
+        hrName: '',
+        useExternalOnly: true,
+        omitExternal: false,
+      }
+    }
+    return {
+      ...baseSignatures,
+      useExternalOnly: false,
+      omitExternal: true,
+    }
+  }
+
   async function buildEmployeeOvertimePdf(employee: EmployeeOption, showTotalOvertime = true) {
     const { generateOvertimeRecordPdf, buildAttendanceDayData } =
       await import('@/lib/timesheet/generate-attendance-pdf')
@@ -4764,7 +5214,6 @@ export function SchedulingTimesheetWorkspace({
       const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
       return {
         ...day,
-        // ponytail: keep one shared builder for single and bulk downloads.
         workingTimeFrom: day.isHoliday
           ? ''
           : useDay7WorkingTime
@@ -4794,6 +5243,7 @@ export function SchedulingTimesheetWorkspace({
         configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
       }
     })
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
       period,
       employeeName: employee.name,
@@ -4801,7 +5251,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
@@ -4815,6 +5265,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateEmployeeAllowanceRecordPdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee)
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateEmployeeAllowanceRecordPdf({
       view,
       period,
@@ -4823,7 +5274,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
     })
   }
@@ -4848,7 +5299,7 @@ export function SchedulingTimesheetWorkspace({
         toast.success(`PDF ${label} Record ${employee.name} berhasil di-generate.`)
         return
       }
-      const pdf = await buildEmployeeOvertimePdf(employee)
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -4874,8 +5325,19 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
-    const idSet = employeeIds ? new Set(employeeIds) : null
-    const sourceRows = idSet ? rows.filter((row) => idSet.has(row.employee.id)) : rows
+    let sourceRows = rows
+    if (employeeIds) {
+      const idSet = new Set(employeeIds)
+      sourceRows = rows.filter((row) => idSet.has(row.employee.id))
+    } else if (availableSiteSectionCategories.size > 1) {
+      sourceRows = rows.filter((row) => {
+        const cat = getEmployeeSectionCategory(row.employee)
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        return true
+      })
+    }
     const grouped = new Map<string, Map<string, typeof rows>>()
     for (const row of sourceRows) {
       const dept = row.employee.department || 'Tanpa Departemen'
@@ -4932,7 +5394,11 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt') {
               if (staff) return '-'
               if (cell.status !== 'present') {
-                return ['OFF', 'FB', 'Libur', 'Sakit'].includes(code) ? code : ''
+                return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
+              }
+              // Prioritize manually saved overtime hours (from attendance override)
+              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null && cell.overtimeHours > 0) {
+                return String(roundOvertimeHours(cell.overtimeHours as number))
               }
               const overtime = calculateDayOvertime(
                 row.schedule,
@@ -4980,15 +5446,21 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt' && cell.status !== 'present') continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
-            else if (!staff)
-              total += calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              ).totalHours
+            else if (!staff) {
+              // Prioritize manually saved overtime hours
+              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+                total += Number(cell.overtimeHours)
+              } else {
+                total += calculateDayOvertime(
+                  row.schedule,
+                  day,
+                  cell.clockIn,
+                  cell.clockOut,
+                  staff,
+                  row.employee.id
+                ).totalHours
+              }
+            }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
           const rowLoc =
@@ -5017,9 +5489,14 @@ export function SchedulingTimesheetWorkspace({
     return result
   }
 
-  async function buildSummaryPdf(view: SummaryView, employeeIds?: number[]) {
+  async function buildSummaryPdf(
+    view: SummaryView,
+    employeeIds?: number[],
+    customSignatures?: typeof pdfSignatures
+  ) {
     const { generateSummaryTablePdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
+    const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
     return generateSummaryTablePdf({
       view: view === 'ovt' ? 'ot' : view,
       period,
@@ -5027,14 +5504,38 @@ export function SchedulingTimesheetWorkspace({
       project: rate.project,
       dayCount,
       rows: buildSummaryRows(view, employeeIds),
-      signatures: pdfSignatures,
+      signatures: finalSignatures,
       holidays,
     })
   }
 
   async function downloadSummaryPdf(view: SummaryView) {
     try {
-      const pdf = await buildSummaryPdf(view)
+      if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+        toast.error('Pilih minimal satu section yang tersedia.')
+        return
+      }
+
+      const allEmps = rows.map((r) => r.employee)
+      const selectedEmps = allEmps.filter((emp) => {
+        const cat = getEmployeeSectionCategory(emp)
+        if (availableSiteSectionCategories.size > 1) {
+          if (cat === 'Repair' && !pdfIncludeRepair) return false
+          if (cat === 'Services' && !pdfIncludeServices) return false
+          if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        }
+        return true
+      })
+
+      if (selectedEmps.length === 0) {
+        toast.error('Tidak ada baris karyawan di site ini yang cocok dengan section yang dipilih.')
+        return
+      }
+
+      const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
+      const empIds = selectedEmps.map((e) => e.id)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -5048,7 +5549,15 @@ export function SchedulingTimesheetWorkspace({
             : view === 'meals'
               ? 'MLS'
               : 'TU'
-      a.download = `${label}_Summary_${sitePart}_${period}.pdf`
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join('_')
+      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
+      a.download = `${label}_Summary_${sitePart}_${period}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -5064,7 +5573,7 @@ export function SchedulingTimesheetWorkspace({
 
   async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
-      const pdf = await buildEmployeeOvertimePdf(employee, true)
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
       openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
     } catch (error) {
       console.error('[Preview PDF OT Error]', error)
@@ -5075,59 +5584,138 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function bulkDownloadOvertimePdf(showTotalOvertime: boolean) {
+    if (selectedPdfDocTypes.length === 0) {
+      toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
+      return
+    }
+
     const selected = rows
       .filter((row) => selectedOvertimeEmployeeIds.includes(row.employee.id))
       .map((row) => row.employee)
     if (!selected.length) {
-      toast.error('Pilih minimal satu karyawan untuk bulk download OT PDF.')
+      toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+      toast.error('Pilih minimal satu section yang tersedia.')
+      return
+    }
+
+    const filteredSelected = selected.filter((emp) => {
+      const cat = getEmployeeSectionCategory(emp)
+      if (availableSiteSectionCategories.size > 1) {
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+      }
+      return true
+    })
+
+    if (filteredSelected.length === 0) {
+      toast.error('Tidak ada karyawan yang cocok dengan section yang dipilih.')
+      return
+    }
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
-      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
-        'ovt',
-        'msa',
-        'meals',
-        'lokasi',
-      ]
-      for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(
-          summaryView,
-          selected.map((employee) => employee.id)
-        )
+
+      const majoritySignatures = getMajoritySectionSignatures(filteredSelected)
+      const empIds = filteredSelected.map((e) => e.id)
+
+      // 1. OVERTIME SUMMARY
+      if (selectedPdfDocTypes.includes('overtime_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
-        const summaryPages = await merged.copyPages(
-          summarySource,
-          summarySource.getPageIndices()
-        )
-        summaryPages.forEach((page) => merged.addPage(page))
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
       }
-      for (const employee of selected) {
-        for (const pdf of [
-          await buildEmployeeOvertimePdf(employee, showTotalOvertime),
-          await buildEmployeeAllowancePdf(employee),
-        ]) {
-          const source = await PDFDocument.load(pdf)
-          const pages = await merged.copyPages(source, source.getPageIndices())
-          pages.forEach((page) => merged.addPage(page))
+
+      // 2. MSA summary
+      if (selectedPdfDocTypes.includes('msa_summary')) {
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 3. MLS summary
+      if (selectedPdfDocTypes.includes('mls_summary')) {
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 4. TU summary
+      if (selectedPdfDocTypes.includes('tu_summary')) {
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 5. Overtime Record & 6. Payable Site Allowance per employee
+      const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
+      const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
+
+      if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
+        for (const employee of filteredSelected) {
+          if (shouldIncludeOvertimeRecord) {
+            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime)
+            const otSource = await PDFDocument.load(otPdf)
+            const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
+          if (shouldIncludeSiteAllowance) {
+            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowanceSource = await PDFDocument.load(allowancePdf)
+            const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
         }
       }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada halaman PDF yang dihasilkan.')
+        return
+      }
+
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join('_')
+
+      const selectedDocLabels = selectedPdfDocTypes
+        .map((t) => {
+          if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'msa_summary') return 'MSA-Summary'
+          if (t === 'mls_summary') return 'MLS-Summary'
+          if (t === 'tu_summary') return 'TU-Summary'
+          if (t === 'overtime_record') return 'OT-Record'
+          if (t === 'payable_site_allowance') return 'Site-Allowance'
+          return t
+        })
+        .join('_')
+
       const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `OT_Benefit_Bulk_${period}_${showTotalOvertime ? 'dengan-total' : 'tanpa-total'}.pdf`
+      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
+      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       toast.success(
-        `${selected.length} karyawan: 4 summary (OT/MSA/MLS/TU) di awal, lalu OT dan Benefit digabung.`
+        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`
       )
     } catch (error) {
-      console.error('[Bulk PDF OT Error]', error)
+      console.error('[Bulk PDF Download Error]', error)
       toast.error('Bulk download PDF Overtime gagal', {
         description: error instanceof Error ? error.message : String(error),
       })
@@ -5163,6 +5751,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateSiteAllowancePdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee)
+    const secSigs = getSectionSignatures(employee.section, employee)
     return generateSiteAllowancePdf({
       period,
       employeeName: employee.name,
@@ -5170,7 +5759,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...pdfSignatures, preparedBy: employee.name },
+      signatures: { ...secSigs, preparedBy: employee.name },
       days: dayData,
     })
   }
@@ -5266,46 +5855,107 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function previewAllSiteOvertimePdf() {
+    if (selectedPdfDocTypes.length === 0) {
+      toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
+      return
+    }
+
     const allEmployees = rows.map((row) => row.employee)
     if (allEmployees.length === 0) {
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+      toast.error('Pilih minimal satu section yang tersedia.')
+      return
+    }
+
+    const filteredEmployees = allEmployees.filter((emp) => {
+      const cat = getEmployeeSectionCategory(emp)
+      if (availableSiteSectionCategories.size > 1) {
+        if (cat === 'Repair' && !pdfIncludeRepair) return false
+        if (cat === 'Services' && !pdfIncludeServices) return false
+        if (cat === 'Technical' && !pdfIncludeTechnical) return false
+      }
+      return true
+    })
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
-      // Halaman awal: semua tabel summary (Overtime, MSA, Meals, Tunjangan Khusus)
-      const summaryViews: Array<'ovt' | 'msa' | 'meals' | 'lokasi'> = [
-        'ovt',
-        'msa',
-        'meals',
-        'lokasi',
-      ]
-      for (const summaryView of summaryViews) {
-        const summaryPdf = await buildSummaryPdf(
-          summaryView,
-          allEmployees.map((employee) => employee.id)
-        )
+
+      const majoritySignatures = getMajoritySectionSignatures(filteredEmployees)
+      const empIds = filteredEmployees.map((e) => e.id)
+
+      if (selectedPdfDocTypes.includes('overtime_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
-        const summaryPages = await merged.copyPages(
-          summarySource,
-          summarySource.getPageIndices()
-        )
-        summaryPages.forEach((page) => merged.addPage(page))
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
       }
-      for (const employee of allEmployees) {
-        for (const pdf of [
-          await buildEmployeeOvertimePdf(employee, true),
-          await buildEmployeeAllowancePdf(employee),
-        ]) {
-          const source = await PDFDocument.load(pdf)
-          const pages = await merged.copyPages(source, source.getPageIndices())
-          pages.forEach((page) => merged.addPage(page))
+
+      if (selectedPdfDocTypes.includes('msa_summary')) {
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('mls_summary')) {
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('tu_summary')) {
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
+      const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
+
+      if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
+        for (const employee of filteredEmployees) {
+          if (shouldIncludeOvertimeRecord) {
+            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
+            const otSource = await PDFDocument.load(otPdf)
+            const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
+          if (shouldIncludeSiteAllowance) {
+            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowanceSource = await PDFDocument.load(allowancePdf)
+            const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
+            pages.forEach((page) => merged.addPage(page))
+          }
         }
       }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.')
+        return
+      }
+
+      const activeSections = [
+        pdfIncludeRepair ? 'Repair' : '',
+        pdfIncludeServices ? 'Services' : '',
+        pdfIncludeTechnical ? 'Technical' : '',
+      ]
+        .filter(Boolean)
+        .join(', ')
+
       openPdfPreview(
         await merged.save(),
-        `Priview 4 Summary + OT/Benefit • ${site?.name ?? 'Site'} • ${period} (${allEmployees.length} karyawan)`
+        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
       )
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
@@ -6617,8 +7267,8 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                   {siteApprovalSections.length > 0 ? (
                     <div className="border-border/40 overflow-x-auto rounded-xl border">
-                      <div className="min-w-[920px]">
-                        <div className="bg-surface-container-low text-muted-foreground grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] gap-3 px-4 py-2 text-[11px] font-semibold tracking-wide uppercase">
+                      <div className="min-w-[1000px]">
+                        <div className="bg-surface-container-low text-muted-foreground grid grid-cols-[minmax(340px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)] gap-3 px-4 py-2 text-[11px] font-semibold tracking-wide uppercase">
                           <span>Section</span>
                           <span>PJO Leader</span>
                           <span>Section Head</span>
@@ -6628,15 +7278,15 @@ export function SchedulingTimesheetWorkspace({
                           {siteApprovalSections.map((row) => (
                             <div
                               key={row.id}
-                              className="grid grid-cols-[minmax(180px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)_minmax(210px,1fr)] items-center gap-3 px-4 py-3"
+                              className="grid grid-cols-[minmax(340px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)] items-start gap-3 px-4 py-3"
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold">{row.sectionName}</p>
-                                <p className="text-muted-foreground truncate text-xs">
-                                  {row.departmentName}
+                                <p className="break-words text-sm font-semibold leading-tight">
+                                  {row.sectionName}
+                                  <span className="text-muted-foreground text-xs font-normal"> ({row.departmentName})</span>
                                 </p>
                                 <Badge
-                                  className="mt-1"
+                                  className="mt-1 !whitespace-normal !overflow-visible"
                                   variant={row.matrixId ? 'secondary' : 'outline'}
                                 >
                                   {row.matrixName || 'Belum sync'}
@@ -6699,12 +7349,55 @@ export function SchedulingTimesheetWorkspace({
                   )}
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
-                  <div className="mb-3">
-                    <p className="text-foreground text-sm font-semibold">Working Time</p>
-                    <p className="text-muted-foreground text-xs">
-                      Dipakai mobile attendance dan PDF Overtime. Jam berikut berlaku untuk{' '}
-                      <span className="font-semibold">Regular Day</span>.
-                    </p>
+                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-foreground text-sm font-semibold">Zonasi & Working Time</p>
+                      <p className="text-muted-foreground text-xs">
+                        Dipakai mobile attendance, toleransi presensi, dan PDF Overtime.
+                      </p>
+                    </div>
+                    {site && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                        onClick={() => {
+                          const detected = inferTimezoneFromLocation(site.location || site.name)
+                          updateSiteConfig('timezone', detected)
+                          toast.info(`Zonasi waktu otomatis disesuaikan ke ${detected} berdasarkan lokasi ${site.name}.`)
+                        }}
+                      >
+                        <RefreshCw className="size-3.5" />
+                        Auto Sync dari Lokasi
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="mb-4 rounded-lg bg-blue-50/70 p-3 border border-blue-100">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-xs font-semibold text-blue-950">
+                          Zonasi Waktu Site (Timezone)
+                        </Label>
+                        <p className="text-[11px] text-blue-700">
+                          Presensi, toleransi keterlambatan, dan jam shift otomatis sinkron dengan zona ini.
+                        </p>
+                      </div>
+                      <div className="w-full sm:w-56">
+                        <select
+                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          value={siteConfig.timezone || 'WITA'}
+                          onChange={(e) => updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)}
+                        >
+                          {Object.values(INDONESIA_TIMEZONES).map((tz) => (
+                            <option key={tz.code} value={tz.code}>
+                              {tz.code} ({tz.offsetString}) - {tz.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -7272,56 +7965,172 @@ export function SchedulingTimesheetWorkspace({
                   </div>
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
-                  <div className="mb-3">
-                    <p className="font-display text-foreground text-sm font-semibold">
-                      Konfigurasi PDF &amp; Tanda Tangan
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
-                      Site Allowance.
-                    </p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Dibuat oleh
-                      </Label>
-                      <Input
-                        value={siteConfig.pdfConfig.preparedBy}
-                        onChange={(e) => updatePdfConfig('preparedBy', e.target.value)}
-                        placeholder={currentEmployeeName}
-                      />
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-display text-foreground text-sm font-semibold">
+                        Konfigurasi PDF &amp; Tanda Tangan
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
+                        Site Allowance.
+                      </p>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        PJO / Leader
+                    <div className="flex items-center gap-2">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap">
+                        Preset TTD:
                       </Label>
-                      <SearchableSelect
-                        label="PJO Leader"
-                        value={
-                          employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)?.id
-                            ? String(
-                                employees.find((e) => e.name === siteConfig.pdfConfig.pjoLeader)!.id
-                              )
-                            : ''
-                        }
-                        onValueChange={(v) => {
-                          const e = employees.find((x) => String(x.id) === v)
-                          updatePdfConfig('pjoLeader', e?.name ?? '')
+                      <Select
+                        onValueChange={(val) => {
+                          if (val === 'repair' || val === 'services' || val === 'technical') {
+                            applySignaturePreset(val)
+                          }
                         }}
-                        options={employees.map((e) => ({ value: String(e.id), label: e.name }))}
-                        placeholder="Cari PJO/Leader..."
-                      />
+                      >
+                        <SelectTrigger className="h-8.5 min-w-[190px] border border-border/70 bg-white px-3 text-xs font-medium shadow-none">
+                          <SelectValue placeholder="Pilih Preset TTD..." />
+                        </SelectTrigger>
+                        <SelectContent className="z-50 bg-white shadow-md">
+                          <SelectItem value="repair" className="text-xs font-medium cursor-pointer">
+                            Repair TTD
+                          </SelectItem>
+                          <SelectItem value="services" className="text-xs font-medium cursor-pointer">
+                            Services TTD
+                          </SelectItem>
+                          <SelectItem value="technical" className="text-xs font-medium cursor-pointer">
+                            Technical TTD
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Approved by
-                      </Label>
-                      <Input
-                        value={siteConfig.pdfConfig.approvedBy}
-                        onChange={(e) => updatePdfConfig('approvedBy', e.target.value)}
-                        placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
-                      />
+                  </div>
+                  {/* Alur Tanda Tangan Internal */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700">
+                        Internal
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">
+                        Alur Penandatangan Internal (PT Chitra Paratama)
+                      </span>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Dibuat oleh
+                        </Label>
+                        <SearchableSelect
+                          label="Dibuat oleh"
+                          value={siteConfig.pdfConfig.preparedBy}
+                          onValueChange={(v) => updatePdfConfig('preparedBy', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Approved by
+                        </Label>
+                        <SearchableSelect
+                          label="Approved by"
+                          value={siteConfig.pdfConfig.pjoLeader}
+                          onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder="Pilih atau cari Approved by..."
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Approved by
+                        </Label>
+                        <SearchableSelect
+                          label="Approved by"
+                          value={siteConfig.pdfConfig.approvedBy}
+                          onValueChange={(v) => updatePdfConfig('approvedBy', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Diketahui oleh
+                        </Label>
+                        <SearchableSelect
+                          label="Diketahui oleh"
+                          value={siteConfig.pdfConfig.hrName}
+                          onValueChange={(v) => updatePdfConfig('hrName', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder="Pilih atau ketik nama HR..."
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alur Tanda Tangan Eksternal */}
+                  <div className="mt-4 pt-3.5 border-t border-border/40 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                        Eksternal
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">
+                        Alur Penandatangan Eksternal (Customer / Pihak Luar)
+                      </span>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          1. Dibuat oleh
+                        </Label>
+                        <SearchableSelect
+                          label="Dibuat oleh"
+                          value={siteConfig.pdfConfig.externalPreparedBy || ''}
+                          onValueChange={(v) => updatePdfConfig('externalPreparedBy', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder="Pilih atau ketik nama pembuat eksternal..."
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase flex items-center justify-between">
+                          <span>2. Approved by</span>
+                          <span className="text-[10px] font-normal text-muted-foreground lowercase italic">(nama spv)</span>
+                        </Label>
+                        <SearchableSelect
+                          label="Approved by (Nama SPV)"
+                          value={siteConfig.pdfConfig.externalApprovedBy || ''}
+                          onValueChange={(v) => updatePdfConfig('externalApprovedBy', v)}
+                          options={employees.map((e) => ({
+                            value: e.name,
+                            label: e.role ? `${e.name} (${e.role})` : e.name,
+                          }))}
+                          placeholder="Pilih atau ketik nama SPV Customer..."
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="mt-4">
@@ -7357,10 +8166,17 @@ export function SchedulingTimesheetWorkspace({
                                   />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <Input
+                                  <SearchableSelect
+                                    label="Penandatangan"
                                     value={s.name}
-                                    onChange={(e) => updateCustomSigner(i, 'name', e.target.value)}
-                                    placeholder="Ketik nama penandatangan"
+                                    onValueChange={(v) => updateCustomSigner(i, 'name', v)}
+                                    options={employees.map((e) => ({
+                                      value: e.name,
+                                      label: e.role ? `${e.name} (${e.role})` : e.name,
+                                    }))}
+                                    placeholder="Pilih atau ketik nama..."
+                                    allowCustom={true}
+                                    widthClassName="w-full"
                                   />
                                 </td>
                                 <td className="px-3 py-2">
@@ -7411,6 +8227,15 @@ export function SchedulingTimesheetWorkspace({
                         </div>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="mt-5 flex items-center justify-end gap-3 border-t border-border/40 pt-3">
+                    <Button
+                      size="sm"
+                      onClick={() => void saveSiteConfig()}
+                      className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                    >
+                      <Save className="size-4" /> Simpan Konfigurasi TTD
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -7782,6 +8607,9 @@ export function SchedulingTimesheetWorkspace({
                       <Badge variant="outline">Roster: {siteConfig.rosterType}</Badge>
                       <Badge variant="outline">OT: {siteConfig.overtimeType}</Badge>
                       <Badge variant="outline">MSA: {siteConfig.msaType}</Badge>
+                      <Badge variant="outline" className="bg-blue-50/80 font-medium text-blue-700 border-blue-200">
+                        Zona: {siteConfig.timezone || 'WITA'}
+                      </Badge>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -7955,6 +8783,9 @@ export function SchedulingTimesheetWorkspace({
                           <Badge variant="outline" className="bg-slate-50 font-mono text-xs font-semibold text-slate-700">
                             {formatMonthPeriod(period)}
                           </Badge>
+                          <Badge variant="outline" className="bg-blue-50 font-mono text-xs font-semibold text-blue-700 border-blue-200">
+                            {siteConfig.timezone || site?.timezone || 'WITA'}
+                          </Badge>
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Kelola data kehadiran karyawan untuk site dan bulan yang dipilih.
@@ -8118,34 +8949,192 @@ export function SchedulingTimesheetWorkspace({
                           <span className="font-semibold text-foreground">{selectedOvertimeEmployeeIds.length} karyawan dipilih</span> untuk generate dokumen PDF.
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                          <Switch
+                            id="toggle-total-overtime-bulk"
+                            checked={includeTotalOvertime}
+                            onCheckedChange={setIncludeTotalOvertime}
+                          />
+                          <label
+                            htmlFor="toggle-total-overtime-bulk"
+                            className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                          >
+                            Sertakan Kolom Total Overtime
+                          </label>
+                        </div>
+                        {availableSiteSectionCategories.size > 1 && (
+                          <>
+                            {availableSiteSectionCategories.has('Repair') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-repair-pdf"
+                                  checked={pdfIncludeRepair}
+                                  onCheckedChange={setPdfIncludeRepair}
+                                />
+                                <label
+                                  htmlFor="toggle-repair-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Repair / Retread"
+                                >
+                                  Repair
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('Services') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-services-pdf"
+                                  checked={pdfIncludeServices}
+                                  onCheckedChange={setPdfIncludeServices}
+                                />
+                                <label
+                                  htmlFor="toggle-services-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Services"
+                                >
+                                  Services
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('Technical') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-technical-pdf"
+                                  checked={pdfIncludeTechnical}
+                                  onCheckedChange={setPdfIncludeTechnical}
+                                />
+                                <label
+                                  htmlFor="toggle-technical-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Technical"
+                                >
+                                  Technical
+                                </label>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                          <Switch
+                            id="toggle-external-pdf-bulk"
+                            checked={pdfUseExternalSignatures}
+                            onCheckedChange={setPdfUseExternalSignatures}
+                          />
+                          <label
+                            htmlFor="toggle-external-pdf-bulk"
+                            className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                            title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada 4 dokumen summary"
+                          >
+                            Eksternal
+                          </label>
+                        </div>
+
+                        {/* Multi-select Dropdown Pilihan Dokumen PDF */}
+                        <Popover open={pdfDocTypesPickerOpen} onOpenChange={setPdfDocTypesPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-800 border-border/70 shadow-2xs hover:bg-slate-50"
+                              title="Pilih jenis dokumen PDF yang ingin di-download"
+                            >
+                              <FileText className="mr-1.5 size-3.5 text-indigo-600" />
+                              Pilih PDF ({selectedPdfDocTypes.length}/6)
+                              <ChevronDown className="ml-1.5 size-3 text-slate-400" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 p-3 bg-white shadow-xl rounded-xl border border-slate-200" align="end">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">Pilih Dokumen PDF</p>
+                                <p className="text-[10px] text-slate-500">Pilih format lembar yang akan diunduh</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPdfDocTypes(ATTENDANCE_PDF_OPTIONS.map((o) => o.id))}
+                                  className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                                >
+                                  Pilih Semua
+                                </button>
+                                <span className="text-[10px] text-slate-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPdfDocTypes([])}
+                                  className="text-[10px] text-slate-500 hover:text-red-600 font-semibold hover:underline"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1 pt-2">
+                              {ATTENDANCE_PDF_OPTIONS.map((opt) => {
+                                const isSelected = selectedPdfDocTypes.includes(opt.id)
+                                return (
+                                  <label
+                                    key={opt.id}
+                                    className={cn(
+                                      'flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs select-none',
+                                      isSelected ? 'bg-indigo-50/70 text-slate-900' : 'hover:bg-slate-50 text-slate-700'
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedPdfDocTypes((prev) => [...prev, opt.id])
+                                        } else {
+                                          setSelectedPdfDocTypes((prev) => prev.filter((id) => id !== opt.id))
+                                        }
+                                      }}
+                                      className="mt-0.5 size-4 accent-indigo-600 rounded cursor-pointer"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 font-semibold">
+                                        <span className="text-indigo-600 font-mono text-[11px]">{opt.number}.</span>
+                                        <span>{opt.label}</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{opt.description}</p>
+                                    </div>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={rows.length === 0 || siteId === 'all'}
+                          disabled={rows.length === 0 || siteId === 'all' || selectedPdfDocTypes.length === 0}
                           onClick={() => void previewAllSiteOvertimePdf()}
                           className="h-8 rounded-lg text-xs"
-                          title={`Preview PDF OT + Benefit untuk semua karyawan site ${site?.name ?? ''}`}
+                          title={
+                            selectedPdfDocTypes.length === 0
+                              ? 'Pilih minimal satu jenis dokumen PDF'
+                              : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
+                          }
                         >
-                          <Eye className="mr-1.5 size-3.5" /> Preview Semua PDF
+                          <Eye className="mr-1.5 size-3.5" /> Preview PDF ({selectedPdfDocTypes.length})
                         </Button>
                         <Button
                           size="sm"
-                          variant="outline"
-                          disabled={selectedOvertimeEmployeeIds.length === 0}
-                          onClick={() => void bulkDownloadOvertimePdf(true)}
-                          className="h-8 rounded-lg text-xs"
+                          variant="default"
+                          disabled={selectedOvertimeEmployeeIds.length === 0 || selectedPdfDocTypes.length === 0}
+                          onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
+                          className="h-8 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                          title={
+                            selectedOvertimeEmployeeIds.length === 0
+                              ? 'Pilih minimal satu karyawan'
+                              : selectedPdfDocTypes.length === 0
+                                ? 'Pilih minimal satu jenis dokumen PDF'
+                                : `Download PDF (${selectedPdfDocTypes.length} jenis dokumen, ${selectedOvertimeEmployeeIds.length} karyawan)`
+                          }
                         >
-                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Total Overtime
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={selectedOvertimeEmployeeIds.length === 0}
-                          onClick={() => void bulkDownloadOvertimePdf(false)}
-                          className="h-8 rounded-lg text-xs"
-                        >
-                          <Download className="mr-1.5 size-3.5" /> OT + Benefit · Tanpa Total Overtime
+                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih {selectedOvertimeEmployeeIds.length > 0 ? `(${selectedOvertimeEmployeeIds.length})` : ''}
                         </Button>
                       </div>
                     </div>
@@ -8559,15 +9548,31 @@ export function SchedulingTimesheetWorkspace({
                       attendanceView === 'msa' ||
                       attendanceView === 'meals' ||
                       attendanceView === 'lokasi' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={rows.length === 0 || siteId === 'all'}
-                          onClick={() => void downloadSummaryPdf(attendanceView)}
-                          title="Download PDF Summary sesuai tabel di halaman ini"
-                        >
-                          <Download className="mr-2 size-4" /> Download PDF
-                        </Button>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                            <Switch
+                              id="toggle-external-pdf-summary"
+                              checked={pdfUseExternalSignatures}
+                              onCheckedChange={setPdfUseExternalSignatures}
+                            />
+                            <label
+                              htmlFor="toggle-external-pdf-summary"
+                              className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                              title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada dokumen summary"
+                            >
+                              Eksternal
+                            </label>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={rows.length === 0 || siteId === 'all'}
+                            onClick={() => void downloadSummaryPdf(attendanceView)}
+                            title="Download PDF Summary sesuai tabel di halaman ini"
+                          >
+                            <Download className="mr-2 size-4" /> Download PDF
+                          </Button>
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

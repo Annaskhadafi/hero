@@ -35,6 +35,7 @@ export const sites = pgTable('hero_sites', {
   contractNumber: text('contract_number').notNull(),
   headEmployeeId: integer('head_employee_id'),
   siteType: text('site_type').notNull().default('Site'),
+  timezone: text('timezone').notNull().default('WITA'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
@@ -126,6 +127,9 @@ export const employees = pgTable('hero_employees', {
   // V2 Face Registration via Raray Vision
   faceRarayId: text('face_raray_id'),
   faceRarayRegisteredAt: timestamp('face_raray_registered_at'),
+  // Digital Signature Registry
+  signatureDataUrl: text('signature_data_url'),
+  signatureRegisteredAt: timestamp('signature_registered_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
@@ -477,6 +481,39 @@ export const dailyActivitySessionSignoffs = pgTable(
   (table) => ({
     sessionUnique: uniqueIndex('hero_daily_activity_session_signoffs_session_id_uq').on(
       table.sessionId
+    ),
+  })
+)
+
+export const dailyActivityApprovals = pgTable(
+  'hero_daily_activity_approvals',
+  {
+    id: serial('id').primaryKey(),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => dailyActivitySessions.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''),
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    approverRole: text('approver_role').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionStepUnique: uniqueIndex(
+      'hero_daily_activity_approvals_session_step_uq'
+    ).on(table.sessionId, table.stepOrder),
+    tokenUnique: uniqueIndex('hero_daily_activity_approvals_token_uq').on(
+      table.approvalToken
     ),
   })
 )
@@ -4021,6 +4058,23 @@ export const sopWinDepartments = pgTable('hero_sop_win_departments', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const sopWinDepartmentWorkflows = pgTable('hero_sop_win_department_workflows', {
+  id: serial('id').primaryKey(),
+  departmentCode: text('department_code').notNull().unique(),
+  departmentName: text('department_name').notNull(),
+  steps: jsonb('steps').$type<Array<{
+    stepOrder: number
+    stepLabel: string
+    approverRole: string
+    approverName?: string
+    approverEmail?: string
+    approverEmployeeId?: number | null
+  }>>().notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // SOP / WIN Background RAG Ingestion Queue (FIFO 1-by-1 Worker)
 export const sopWinRagQueue = pgTable('hero_sop_win_rag_queue', {
   id: serial('id').primaryKey(),
@@ -4044,5 +4098,172 @@ export const sopWinRagQueue = pgTable('hero_sop_win_rag_queue', {
 // Quality & CPI (5R Module)
 export * from './five-r'
 
+// ─── Overtime (SPL) Approval Steps ──────────────────────────────────────────
+export const overtimeApprovals = pgTable(
+  'hero_overtime_approvals',
+  {
+    id: serial('id').primaryKey(),
+    overtimeCommandLetterId: integer('overtime_command_letter_id')
+      .notNull()
+      .references(() => overtimeCommandLetters.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''),
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    approverRole: text('approver_role').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    splStepUnique: uniqueIndex(
+      'hero_overtime_approvals_spl_step_uq'
+    ).on(table.overtimeCommandLetterId, table.stepOrder),
+    tokenUnique: uniqueIndex('hero_overtime_approvals_token_uq').on(
+      table.approvalToken
+    ),
+  })
+)
+
+// ─── PTW (Permit to Work) Approval Steps ────────────────────────────────────
+export const ptwApprovals = pgTable(
+  'hero_ptw_approvals',
+  {
+    id: serial('id').primaryKey(),
+    ptwPermitId: integer('ptw_permit_id')
+      .notNull()
+      .references(() => hsePtwPermits.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''),
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    approverRole: text('approver_role').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    ptwStepUnique: uniqueIndex(
+      'hero_ptw_approvals_ptw_step_uq'
+    ).on(table.ptwPermitId, table.stepOrder),
+    tokenUnique: uniqueIndex('hero_ptw_approvals_token_uq').on(
+      table.approvalToken
+    ),
+  })
+)
+
+// ─── SOP / WIN Document Approval Steps ──────────────────────────────────────
+export const sopWinApprovals = pgTable(
+  'hero_sop_win_approvals',
+  {
+    id: serial('id').primaryKey(),
+    documentId: integer('document_id')
+      .notNull()
+      .references(() => sopWinDocuments.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''),
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    approverRole: text('approver_role').notNull().default(''),
+    status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'reverted' | 'rejected'
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sopWinStepUnique: uniqueIndex(
+      'hero_sop_win_approvals_step_uq'
+    ).on(table.documentId, table.stepOrder),
+    tokenUnique: uniqueIndex('hero_sop_win_approvals_token_uq').on(
+      table.approvalToken
+    ),
+  })
+)
+
+// ─── SOP / WIN Document Access Requests & Sequential Approvals ───────────────
+export const sopWinRequests = pgTable(
+  'hero_sop_win_requests',
+  {
+    id: serial('id').primaryKey(),
+    requestNumber: text('request_number').notNull().unique(),
+    requesterEmployeeId: integer('requester_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    requesterName: text('requester_name').notNull(),
+    requesterDepartment: text('requester_department').notNull().default(''),
+    requestedDocType: text('requested_doc_type').notNull().default('SOP'), // 'POL' | 'SOP' | 'WIN'
+    procedureName: text('procedure_name').notNull().default(''),
+    ownDepartment: text('own_department').notNull().default(''),
+    isProcessOwner: boolean('is_process_owner').notNull().default(false),
+    requestDate: date('request_date').notNull().defaultNow(),
+    isExternal: boolean('is_external').notNull().default(false),
+    externalCompany: text('external_company').notNull().default(''),
+    externalName: text('external_name').notNull().default(''),
+    requestReason: text('request_reason').notNull().default(''),
+    requestedDocCount: integer('requested_doc_count').notNull().default(1),
+    requestedDocTitleAndNumber: text('requested_doc_title_and_number').notNull().default(''),
+    fileAttachmentUrl: text('file_attachment_url'),
+    requestType: text('request_type').notNull().default('softcopy'), // 'softcopy' | 'hardcopy'
+    expiryDays: integer('expiry_days').notNull().default(3),
+    accessExpiresAt: timestamp('access_expires_at'),
+    canDownload: boolean('can_download').notNull().default(true),
+    accessToken: text('access_token').notNull().unique(),
+    status: text('status').notNull().default('pending_ria'), // 'pending_ria' | 'pending_bardynia' | 'approved' | 'reverted' | 'rejected'
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  }
+)
+
+export const sopWinRequestApprovals = pgTable(
+  'hero_sop_win_request_approvals',
+  {
+    id: serial('id').primaryKey(),
+    requestId: integer('request_id')
+      .notNull()
+      .references(() => sopWinRequests.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''),
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'reverted' | 'rejected' | 'waiting'
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sopWinReqStepUnique: uniqueIndex(
+      'hero_sop_win_req_approvals_step_uq'
+    ).on(table.requestId, table.stepOrder),
+    tokenUnique: uniqueIndex('hero_sop_win_req_approvals_token_uq').on(
+      table.approvalToken
+    ),
+  })
+)
 
 

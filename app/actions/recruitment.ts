@@ -1330,7 +1330,7 @@ function summarizePanelEvaluations(evaluations: Awaited<ReturnType<typeof getCan
     acc[item.overallRecommendation] = (acc[item.overallRecommendation] || 0) + 1;
     return acc;
   }, {});
-  const recommendation = Object.entries(recommendationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Review";
+  const recommendation = Object.entries(recommendationCounts || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "Review";
 
   return { count: evaluations.length, averageScore, recommendation };
 }

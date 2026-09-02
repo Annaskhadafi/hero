@@ -45,7 +45,10 @@ export function appendApprovalNoteEntry(
   return existingValue.trim() ? `${existingValue.trim()}\n${encodedEntry}` : encodedEntry;
 }
 
-export function parseApprovalNoteEntries(rawValue: string, fallbackActor = "System") {
+export function parseApprovalNoteEntries(rawValue?: string | null, fallbackActor = "System") {
+  if (!rawValue || typeof rawValue !== "string") {
+    return [];
+  }
   return rawValue
     .split("\n")
     .map((line) => line.trim())

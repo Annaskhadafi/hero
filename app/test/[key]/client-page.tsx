@@ -20,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
 const radioQuestionTypes = ["multiple_choice", "true_false", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
@@ -472,16 +473,16 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                   <option value="">Pilih jawaban...</option>{getDisplayOptions(q).map((opt: any) => <option key={opt.id} value={opt.id}>{opt.text}</option>)}
                 </select>
               )}
-              {normalizeQuestionType(q.questionType) === "number" && <input type="number" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
-              {normalizeQuestionType(q.questionType) === "date" && <input type="date" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
-              {normalizeQuestionType(q.questionType) === "file_upload" && <input type="file" className="w-full rounded-lg border bg-background p-3" onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.files?.[0]?.name || "" })} />}
-              {normalizeQuestionType(q.questionType) === "passage" && <Textarea rows={6} placeholder="Tulis jawaban berdasarkan bacaan..." value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
+              {normalizeQuestionType(q.questionType) === "number" && <input type="number" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
+              {normalizeQuestionType(q.questionType) === "date" && <input type="date" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
+              {normalizeQuestionType(q.questionType) === "file_upload" && <input type="file" className="w-full rounded-lg border bg-background p-3" onChange={(event: React.ChangeEvent<HTMLInputElement>) => setAnswers({ ...answers, [q.id]: event.target.files?.[0]?.name || "" })} />}
+              {normalizeQuestionType(q.questionType) === "passage" && <Textarea rows={6} placeholder="Tulis jawaban berdasarkan bacaan..." value={answers[q.id] || ""} onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
               {q.questionType === "essay" && (
                 <Textarea 
                   rows={4} 
                   placeholder="Type your answer here..." 
                   value={answers[q.id] || ""}
-                  onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAnswers({ ...answers, [q.id]: e.target.value })}
                 />
               )}
               {q.questionType === "disc" && (() => {
@@ -572,7 +573,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
           <p className="text-sm text-muted-foreground">
             {test.isApplicationForm 
               ? "Application Form" 
-              : `Answered: ${Object.keys(answers).length} of ${questions.length} · Tab leave: ${tabLeaveCount}`}
+              : `Answered: ${Object.keys(answers || {}).length} of ${questions.length} · Tab leave: ${tabLeaveCount}`}
           </p>
           <Button onClick={() => setIsConfirmSubmitOpen(true)} disabled={isSubmitting} size="lg">
             {isSubmitting ? "Submitting..." : "Submit Assessment"}

@@ -193,7 +193,7 @@ export function LeaderPerformanceClientPage({
       groups[r.leaderName].total += score;
       groups[r.leaderName].count += 1;
     });
-    return Object.entries(groups).map(([name, val]) => ({
+    return Object.entries(groups || {}).map(([name, val]) => ({
       name,
       score: Number((val.total / val.count).toFixed(2)),
     })).sort((a, b) => b.score - a.score);

@@ -1,8 +1,15 @@
 import { db } from '@/db'
-import { attendanceRecords } from '@/db/schema/hero'
-import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
+import { attendanceRecords, sites } from '@/db/schema/hero'
+import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs } from '@/db/schema/timesheet'
 import { and, eq, gte, lt } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import {
+  derivePeriodAndDayInTimezone,
+  formatTimeHHMMInTimezone,
+  getTimezoneDateParts,
+  getTimezoneDayBoundaries,
+  normalizeIndonesiaTimezone,
+} from '@/lib/indonesia-timezone'
 
 export interface SyncResult {
   employeeId: number
@@ -24,62 +31,47 @@ export function isCheckOutEvent(eventType: string): boolean {
   return lower.includes('out') || lower.includes('pulang') || lower.includes('checkout')
 }
 
-const WIB = 'Asia/Jakarta' // UTC+8
-
 /**
- * Returns { year, month (1-based), day, hours, minutes } in WIB (UTC+8).
+ * Resolves the configured timezone code for a site from scheduling configs or sites table.
  */
-function wibParts(date: Date) {
-  const fmt = new Intl.DateTimeFormat('en-GB', {
-    timeZone: WIB,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  })
-  const parts = fmt.formatToParts(date)
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
-  return {
-    year: get('year'),
-    month: get('month'),
-    day: get('day'),
-    hours: get('hour'),
-    minutes: get('minute'),
-  }
+export async function getSiteTimezone(siteId: number): Promise<string> {
+  const [row] = await db
+    .select({
+      siteTz: sites.timezone,
+      configTz: timesheetSchedulingConfigs.timezone,
+      fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
+    })
+    .from(sites)
+    .leftJoin(timesheetSchedulingConfigs, eq(timesheetSchedulingConfigs.siteId, sites.id))
+    .where(eq(sites.id, siteId))
+    .limit(1)
+
+  const fbConfig =
+    row?.fieldBreakConfig && typeof row.fieldBreakConfig === 'object'
+      ? (row.fieldBreakConfig as Record<string, unknown>)
+      : {}
+
+  return row?.configTz || row?.siteTz || (fbConfig.timezone as string | undefined) || 'WITA'
 }
 
 /**
- * Returns [startOfDayWIB, startOfNextDayWIB] as UTC Date objects,
- * so DB queries for "today in WIB" are correct regardless of server TZ.
+ * Backward compatibility helpers
  */
-function wibDayBoundaries(date: Date): { startOfDay: Date; startOfNextDay: Date } {
-  const { year, month, day } = wibParts(date)
-  // Construct WIB midnight as UTC: WIB midnight = UTC midnight - 8h
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const startOfDay = new Date(`${year}-${pad(month)}-${pad(day)}T00:00:00+08:00`)
-  const startOfNextDay = new Date(startOfDay)
-  startOfNextDay.setUTCDate(startOfNextDay.getUTCDate() + 1)
-  return { startOfDay, startOfNextDay }
+export function wibParts(date: Date, timezone = 'WIB') {
+  const { year, month, day, hours, minutes } = getTimezoneDateParts(date, timezone)
+  return { year, month, day, hours, minutes }
 }
 
-
-/**
- * Extracts YYYY-MM period and day number from a Date, in WIB (UTC+8).
- */
-export function derivePeriodAndDay(eventTime: Date): { period: string; day: number } {
-  const { year, month, day } = wibParts(eventTime)
-  const period = `${year}-${String(month).padStart(2, '0')}`
-  return { period, day }
+export function wibDayBoundaries(date: Date, timezone = 'WIB'): { startOfDay: Date; startOfNextDay: Date } {
+  return getTimezoneDayBoundaries(date, timezone)
 }
 
-/**
- * Formats a Date to HH:mm (24-hour) in WIB (UTC+8).
- */
-export function formatTimeHHMM(date: Date): string {
-  const { hours, minutes } = wibParts(date)
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+export function derivePeriodAndDay(eventTime: Date, timezone = 'WIB'): { period: string; day: number } {
+  return derivePeriodAndDayInTimezone(eventTime, timezone)
+}
+
+export function formatTimeHHMM(date: Date, timezone = 'WIB'): string {
+  return formatTimeHHMMInTimezone(date, timezone)
 }
 
 /**
@@ -111,21 +103,26 @@ export function computeWorkMinutes(clockIn: string, clockOut: string): number | 
  * Queries all attendance records for a given employee+site on the given date,
  * partitions into check-ins/check-outs, computes earliest check-in and latest check-out,
  * sets validationFlags, and upserts into timesheetAttendanceRealOverrides with source: 'attendance'.
+ * Automatically respects the site's local timezone (WIB, WITA, or WIT).
  */
 export async function syncFaceAttendanceToTimesheet(
   employeeId: number,
   siteId: number,
-  eventDate: Date
+  eventDate: Date,
+  explicitTimezone?: string
 ): Promise<SyncResult | null> {
   // Ensure timesheet tables exist
   await ensureSchedulingTimesheetTables()
 
+  const siteTimezone = explicitTimezone || (await getSiteTimezone(siteId))
+  const tzInfo = normalizeIndonesiaTimezone(siteTimezone)
+
   console.log(
-    `[face-sync] Syncing attendance: employee=${employeeId}, site=${siteId}, date=${eventDate.toISOString()}`
+    `[face-sync] Syncing attendance: employee=${employeeId}, site=${siteId}, date=${eventDate.toISOString()}, tz=${tzInfo.code}`
   )
 
-  // Compute WIB day boundaries for DB query (eventDate is stored as UTC in DB)
-  const { startOfDay, startOfNextDay } = wibDayBoundaries(eventDate)
+  // Compute site local day boundaries for DB query (eventDate is stored as UTC in DB)
+  const { startOfDay, startOfNextDay } = getTimezoneDayBoundaries(eventDate, tzInfo.code)
 
   // Query all attendance records for this employee+site+day
   const records = await db
@@ -146,14 +143,14 @@ export async function syncFaceAttendanceToTimesheet(
 
   const sortedRecords = [...records].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
 
-  // Check if today's earliest punch is an early-morning checkout (< 09:00 WIB) belonging to yesterday's Night Shift
+  // Check if today's earliest punch is an early-morning checkout (< 09:00 local time) belonging to yesterday's Night Shift
   const firstPunch = sortedRecords[0]
-  const firstPunchWibHours = firstPunch ? wibParts(firstPunch.eventTime).hours : 0
-  const isEarlyMorningPunch = firstPunchWibHours < 9
+  const firstPunchLocalHours = firstPunch ? getTimezoneDateParts(firstPunch.eventTime, tzInfo.code).hours : 0
+  const isEarlyMorningPunch = firstPunchLocalHours < 9
 
   if (isEarlyMorningPunch) {
     const previousDayDate = new Date(startOfDay.getTime() - 12 * 60 * 60 * 1000)
-    const prevBoundaries = wibDayBoundaries(previousDayDate)
+    const prevBoundaries = getTimezoneDayBoundaries(previousDayDate, tzInfo.code)
     const prevRecords = await db
       .select()
       .from(attendanceRecords)
@@ -167,17 +164,21 @@ export async function syncFaceAttendanceToTimesheet(
       )
     const prevSorted = [...prevRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
     const prevFirstPunch = prevSorted[0]
-    const prevFirstPunchHours = prevFirstPunch ? wibParts(prevFirstPunch.eventTime).hours : 0
+    const prevFirstPunchHours = prevFirstPunch
+      ? getTimezoneDateParts(prevFirstPunch.eventTime, tzInfo.code).hours
+      : 0
     const prevHasNightCheckIn = prevFirstPunchHours >= 15
 
     if (prevHasNightCheckIn) {
       // Sync previous day so it gets updated with today's early morning checkout
-      await syncFaceAttendanceToTimesheet(employeeId, siteId, previousDayDate)
+      await syncFaceAttendanceToTimesheet(employeeId, siteId, previousDayDate, tzInfo.code)
 
-      // If today has NO punches at or after 09:00 WIB, all punches today are just yesterday's Night Shift checkout
-      const punchesAfterMorning = sortedRecords.filter((r) => wibParts(r.eventTime).hours >= 9)
+      // If today has NO punches at or after 09:00 local time, all punches today are just yesterday's Night Shift checkout
+      const punchesAfterMorning = sortedRecords.filter(
+        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 9
+      )
       if (punchesAfterMorning.length === 0) {
-        const { period, day } = derivePeriodAndDay(eventDate)
+        const { period, day } = derivePeriodAndDayInTimezone(eventDate, tzInfo.code)
         await db
           .delete(timesheetAttendanceRealOverrides)
           .where(
@@ -198,18 +199,18 @@ export async function syncFaceAttendanceToTimesheet(
   const checkIns = records.filter((r) => !isCheckOutEvent(r.eventType))
   const checkOuts = records.filter((r) => isCheckOutEvent(r.eventType))
 
-  // Timesheet attendance uses earliest punch as clock-in and latest valid punch as clock-out.
-  const clockIn = firstPunch ? formatTimeHHMM(firstPunch.eventTime) : ''
+  // Timesheet attendance uses earliest punch as clock-in and latest valid punch as clock-out in site timezone.
+  const clockIn = firstPunch ? formatTimeHHMMInTimezone(firstPunch.eventTime, tzInfo.code) : ''
 
   // Determine if this punch is a Night Shift candidate (e.g. evening start >= 15:00 or early morning < 05:00)
-  const isNightShift = firstPunchWibHours >= 15 || firstPunchWibHours < 5
+  const isNightShift = firstPunchLocalHours >= 15 || firstPunchLocalHours < 5
 
   let clockOut = ''
 
   // 1. Explicit check-out events on the same day
   if (checkOuts.length > 0) {
     const latestCheckOut = [...checkOuts].sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime())[0]
-    clockOut = formatTimeHHMM(latestCheckOut.eventTime)
+    clockOut = formatTimeHHMMInTimezone(latestCheckOut.eventTime, tzInfo.code)
   }
   // 2. Same-day punches at least 2 hours apart (for Day Shifts)
   else if (!isNightShift) {
@@ -217,13 +218,13 @@ export async function syncFaceAttendanceToTimesheet(
       (r) => r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
     )
     if (punchesLater.length > 0) {
-      clockOut = formatTimeHHMM(punchesLater[punchesLater.length - 1].eventTime)
+      clockOut = formatTimeHHMMInTimezone(punchesLater[punchesLater.length - 1].eventTime, tzInfo.code)
     }
   }
 
-  // 3. Overnight shift handling for Night Shift: look for punches on next day 00:00 - 09:00 WIB
+  // 3. Overnight shift handling for Night Shift: look for punches on next day 00:00 - 09:00 local time
   if (isNightShift || (!clockOut && checkIns.length > 0)) {
-    // 09:00 WIB next day = startOfNextDay + 9h
+    // 09:00 next day = startOfNextDay + 9h
     const nextDayCutoff = new Date(startOfNextDay.getTime() + 9 * 60 * 60 * 1000)
 
     const overnightRecords = await db
@@ -241,7 +242,7 @@ export async function syncFaceAttendanceToTimesheet(
     if (overnightRecords.length > 0) {
       const sortedOvernight = [...overnightRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
       const lastOvernight = sortedOvernight[sortedOvernight.length - 1]
-      clockOut = `${formatTimeHHMM(lastOvernight.eventTime)} (+1d)`
+      clockOut = `${formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)} (+1d)`
     }
   }
 
@@ -267,8 +268,8 @@ export async function syncFaceAttendanceToTimesheet(
     }
   }
 
-  // Derive period and day
-  const { period, day } = derivePeriodAndDay(eventDate)
+  // Derive period and day in site timezone
+  const { period, day } = derivePeriodAndDayInTimezone(eventDate, tzInfo.code)
 
   // Determine status
   const status = 'present'
@@ -309,7 +310,7 @@ export async function syncFaceAttendanceToTimesheet(
     })
 
   console.log(
-    `[face-sync] ✓ Upserted: site=${siteId}, period=${period}, emp=${employeeId}, day=${day}, in=${clockIn}, out=${clockOut}`
+    `[face-sync] ✓ Upserted: site=${siteId}, period=${period}, emp=${employeeId}, day=${day}, in=${clockIn}, out=${clockOut} (${tzInfo.code})`
   )
 
   return {
@@ -322,5 +323,61 @@ export async function syncFaceAttendanceToTimesheet(
     status,
     workMinutes,
     validationFlags,
+  }
+}
+
+/**
+ * Re-evaluates and syncs all attendance records for a site under its configured timezone.
+ * Used when a site's timezone is switched (e.g. from WITA to WIB) to immediately
+ * update all clock-in / clock-out times, day assignments, and timesheet records.
+ */
+export async function resyncSiteAttendanceToTimesheet(
+  siteId: number,
+  period?: string
+): Promise<{ processedDays: number; syncedCount: number }> {
+  await ensureSchedulingTimesheetTables()
+  const siteTimezone = await getSiteTimezone(siteId)
+  const tzInfo = normalizeIndonesiaTimezone(siteTimezone)
+
+  const records = await db
+    .select({
+      employeeId: attendanceRecords.employeeId,
+      eventTime: attendanceRecords.eventTime,
+    })
+    .from(attendanceRecords)
+    .where(eq(attendanceRecords.siteId, siteId))
+    .orderBy(attendanceRecords.eventTime)
+
+  if (records.length === 0) {
+    return { processedDays: 0, syncedCount: 0 }
+  }
+
+  const processedKeys = new Set<string>()
+  let syncedCount = 0
+
+  for (const record of records) {
+    const { period: recPeriod, day } = derivePeriodAndDayInTimezone(record.eventTime, tzInfo.code)
+    if (period && recPeriod !== period) continue
+
+    const key = `${record.employeeId}:${recPeriod}:${day}`
+    if (processedKeys.has(key)) continue
+    processedKeys.add(key)
+
+    const res = await syncFaceAttendanceToTimesheet(
+      record.employeeId,
+      siteId,
+      record.eventTime,
+      tzInfo.code
+    )
+    if (res) syncedCount++
+  }
+
+  console.log(
+    `[face-sync] Re-synced ${syncedCount} attendance day-records for site=${siteId} to timezone ${tzInfo.code}`
+  )
+
+  return {
+    processedDays: processedKeys.size,
+    syncedCount,
   }
 }

@@ -13,7 +13,6 @@ import path from 'path'
 
 
 // --- Constants ---
-const CONFIDENCE_THRESHOLD = 0.65
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out', 'auto'] as const
 type EventType = (typeof ALLOWED_EVENT_TYPES)[number]
 
@@ -35,7 +34,7 @@ async function saveAttendancePhoto(
   const filename = `${clientRequestId}-v2.${ext}`
 
   if (isS3UploadConfigured()) {
-    const file = new File([imageBuffer], filename, { type: mimeType })
+    const file = new File([new Uint8Array(imageBuffer)], filename, { type: mimeType })
     const result = await uploadAttendancePhotoToS3(file)
     return result.key
   }
@@ -210,7 +209,7 @@ export async function POST(request: NextRequest) {
       mimeType,
     }).catch(() => null)
 
-    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+    if (antiSpoofRes && antiSpoofRes.status === 'spoof_detected' && (antiSpoofRes.confidence ?? 0) > 0.85) {
       console.warn('[face-recognition-v2] Anti-Spoofing detected spoof attempt:', antiSpoofRes.verdict, antiSpoofRes.confidence)
       return NextResponse.json(
         {
@@ -230,7 +229,8 @@ export async function POST(request: NextRequest) {
     // 9. Call Raray Vision to verify face using Employee SN / faceRarayId
     const rvResult = await rarayVerifyFace({
       employeeId: empId,
-      employeeSn: employee.employeeSn || employee.faceRarayId || undefined,
+      employeeSn: employee.employeeSn || undefined,
+      faceRarayId: employee.faceRarayId || undefined,
       imageBuffer,
       mimeType,
     })
@@ -267,14 +267,14 @@ export async function POST(request: NextRequest) {
 
     const confidence = rvResult.confidence ?? 0
 
-    // 10. Threshold check
-    if (!rvResult.verified || confidence < CONFIDENCE_THRESHOLD) {
+    // 10. Raray Vision owns the configured identity threshold.
+    if (!rvResult.verified) {
       return NextResponse.json(
         {
           success: false,
           verified: false,
           confidence,
-          threshold: CONFIDENCE_THRESHOLD,
+          threshold: rvResult.threshold,
           resolvedEventType,
           error: {
             code: 'FACE_NOT_MATCHED',

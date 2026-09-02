@@ -40,7 +40,7 @@ export function QuotationPoUpload({ quotationId, poFileUrl }: { quotationId: num
         formData.append("file", file)
         toast.info("Uploading PO file...")
         const res = await uploadFile(formData)
-        if (res.success) {
+        if (res.success && res.url) {
           await uploadQuotationPoFile(quotationId, res.url)
           setCurrentUrl(res.url)
           toast.success("PO uploaded — status changed to PO Release")

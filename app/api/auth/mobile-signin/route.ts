@@ -37,16 +37,17 @@ export async function POST(request: Request) {
     const setCookieHeader = authRes.headers.get("set-cookie") || "";
 
     // Fetch employee data
-    const employee = await db.query.heroEmployees.findFirst({
-      where: eq(heroEmployees.email, email.toLowerCase().trim()),
-      columns: {
-        id: true,
-        employeeSn: true,
-        name: true,
-        email: true,
-        jobTitle: true,
-      },
-    });
+    const [employee] = await db
+      .select({
+        id: heroEmployees.id,
+        employeeSn: heroEmployees.employeeSn,
+        name: heroEmployees.name,
+        email: heroEmployees.email,
+        jobTitle: heroEmployees.jobTitle,
+      })
+      .from(heroEmployees)
+      .where(eq(heroEmployees.email, email.toLowerCase().trim()))
+      .limit(1);
 
     const response = NextResponse.json({
       success: true,

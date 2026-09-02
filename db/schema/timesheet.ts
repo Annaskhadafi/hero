@@ -201,6 +201,7 @@ export const timesheetSchedulingConfigs = pgTable(
     msaType: text('msa_type').notNull().default('staff-nonstaff'),
     mealsType: text('meals_type').notNull().default('field-break'),
     overtimeType: text('overtime_type').notNull().default('five-hour'),
+    timezone: text('timezone').notNull().default('WITA'),
     fieldBreakConfig: jsonb('field_break_config'),
     allowanceVariables: jsonb('allowance_variables').notNull().default([]),
     overtimeVariables: jsonb('overtime_variables').notNull().default([]),

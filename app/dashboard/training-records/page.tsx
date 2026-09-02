@@ -164,7 +164,7 @@ export default async function TrainingRecordsPage({
       trainingCounts[row.trainingName].expired++;
     }
   }
-  const topTrainings = Object.values(trainingCounts)
+  const topTrainings = Object.values(trainingCounts || {})
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
@@ -178,7 +178,7 @@ export default async function TrainingRecordsPage({
     departmentCounts[dept].count++;
     departmentCounts[dept].employees.add(row.employeeId);
   }
-  const departmentStats = Object.values(departmentCounts)
+  const departmentStats = Object.values(departmentCounts || {})
     .sort((a, b) => b.count - a.count);
 
   // 6. Source Distribution: LMS vs External

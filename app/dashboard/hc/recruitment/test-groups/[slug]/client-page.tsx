@@ -34,7 +34,7 @@ function AnswerDisplay({ text }: { text?: string }) {
   }
   return (
     <div className="mt-1 space-y-1 text-sm">
-      {Object.entries(parsed).map(([key, value]) => (
+      {Object.entries(parsed || {}).map(([key, value]) => (
         <div key={key} className="flex items-start gap-2 border-b border-border/40 py-1 last:border-0">
           <span className="min-w-[140px] shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/([A-Z])/g, " $1").trim()}</span>
           <div className="font-medium flex-1">{String(value)}</div>

@@ -2,8 +2,10 @@ import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 
 let schedulingInfrastructurePromise: Promise<void> | null = null
+let tablesEnsured = false
 
 export async function ensureSchedulingTimesheetTables() {
+  if (tablesEnsured) return
   if (schedulingInfrastructurePromise) return schedulingInfrastructurePromise
 
   schedulingInfrastructurePromise = db
@@ -384,6 +386,7 @@ export async function ensureSchedulingTimesheetTables() {
       await tx.execute(
         sql`create index if not exists hero_attendance_permission_requests_status_idx on hero_attendance_permission_requests(status, created_at);`
       )
+      tablesEnsured = true
     })
     .catch((error) => {
       schedulingInfrastructurePromise = null

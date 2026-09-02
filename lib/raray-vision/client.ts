@@ -26,6 +26,7 @@ interface RarayRecognizeResult {
   employee_id?: string
   employee_name?: string
   confidence?: number
+  threshold?: number
   message?: string
 }
 
@@ -74,8 +75,11 @@ function getBaseUrl(): string {
 }
 
 function getCredentials() {
-  const email = process.env.RARAY_VISION_EMAIL || 'mochamad.khadafi@chitraparatama.co.id'
-  const password = process.env.RARAY_VISION_PASSWORD || 'Wusthochq2018-'
+  const email = process.env.RARAY_VISION_EMAIL || ''
+  const password = process.env.RARAY_VISION_PASSWORD || ''
+  if (!email || !password) {
+    console.warn('[raray-vision] Warning: RARAY_VISION_EMAIL or RARAY_VISION_PASSWORD environment variables are not configured.')
+  }
   return { email, password }
 }
 
@@ -203,7 +207,7 @@ export async function rarayRegisterFace(params: {
     if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('employee_name', employeeName)
     formData.append('force', force ? 'true' : 'false')
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
 
     const res = await fetch(`${baseUrl}/api/v1/hero/register`, {
       method: 'POST',
@@ -225,7 +229,7 @@ export async function rarayRegisterFace(params: {
     formData.append('user_id', faceId)
     formData.append('user_name', employeeName)
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
 
     const endpoint = force ? `${baseUrl}/api/v1/faces/${faceId}` : `${baseUrl}/api/v1/faces/live`
     const method = force ? 'PUT' : 'POST'
@@ -279,7 +283,7 @@ export async function rarayRecognizeFace(params: {
   const authHeader = await getAuthHeader()
 
   const formData = new FormData()
-  formData.append('file', new Blob([imageBuffer], { type: mimeType }), 'frame.jpg')
+  formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), 'frame.jpg')
 
   // 1. Try HERO endpoint
   try {
@@ -322,7 +326,9 @@ export async function rarayRecognizeFace(params: {
       employeeId = String(faceId).slice(4)
     }
 
-    const recognized = Boolean((isMatch && normalizedSim >= 0.60) || normalizedSim >= 0.65) && !!employeeId && employeeId !== 'Unknown'
+    // The Vision service owns the configured threshold. Never infer a match
+    // from similarity alone, because that can authenticate a different face.
+    const recognized = isMatch && !!employeeId && employeeId !== 'Unknown'
 
     return {
       status: 'success',
@@ -331,7 +337,7 @@ export async function rarayRecognizeFace(params: {
       employee_id: employeeId,
       employee_name: info.name || data.name,
       confidence: normalizedSim,
-      threshold: 0.65,
+      threshold: 0.45,
     }
   } catch (err) {
     return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }
@@ -369,7 +375,7 @@ export async function rarayVerifyFace(params: {
     const formData = new FormData()
     formData.append('employee_id', String(employeeId))
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
 
     const res = await fetch(`${baseUrl}/api/v1/hero/verify`, {
       method: 'POST',
@@ -380,54 +386,46 @@ export async function rarayVerifyFace(params: {
 
     if (res.ok) {
       const data = await res.json()
-      const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-      const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
-      const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
+      if (data.status === 'success' && data.verified !== undefined) {
+        const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
+        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
+        const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
-        return {
-          status: 'spoofing_detected',
-          verified: false,
-          employee_id: String(employeeId),
-          confidence: data.confidence ?? data.similarity ?? 0,
-          liveness_score: livenessScore ?? 0,
-          is_live: false,
-          message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
+          return {
+            status: 'spoofing_detected',
+            verified: false,
+            employee_id: String(employeeId),
+            confidence: data.confidence ?? data.similarity ?? 0,
+            liveness_score: livenessScore ?? 0,
+            is_live: false,
+            message: 'Terdeteksi foto/layar HP. Harap gunakan wajah asli (Anti-Spoofing Gagal).',
+          }
         }
-      }
 
-      return data as RarayVerifyResult
+        return data as RarayVerifyResult
+      }
     }
   } catch {
     // Fall through
   }
 
-  // 2. Native endpoint fallback: try candidate user_ids (POST /api/v1/faces/compare/live or /api/v1/faces/compare)
+  // 2. Native endpoint fallback: try candidate user_ids directly on POST /api/v1/faces/compare
   let lastErrorMessage = ''
   for (const faceId of candidateIds) {
     try {
       const formData = new FormData()
       formData.append('user_id', faceId)
-      formData.append('file', new Blob([imageBuffer], { type: mimeType }), `verify-${employeeId}.jpg`)
+      formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
 
-      let res = await fetch(`${baseUrl}/api/v1/faces/compare/live`, {
+      const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
         method: 'POST',
         headers: { Authorization: authHeader },
         body: formData,
         cache: 'no-store',
       })
 
-      if (!res.ok) {
-        res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
-          method: 'POST',
-          headers: { Authorization: authHeader },
-          body: formData,
-          cache: 'no-store',
-        })
-      }
-
       if (res.status === 404) {
-        // Try next candidate face ID
         continue
       }
 
@@ -438,14 +436,29 @@ export async function rarayVerifyFace(params: {
       }
 
       const data = await res.json()
+
+      // If user not found on this ID alias, continue trying next candidate ID
+      if (
+        data.status === 'error' &&
+        (String(data.message).toLowerCase().includes('not found') ||
+          String(data.message).toLowerCase().includes('tidak ditemukan'))
+      ) {
+        continue
+      }
+
+      if (data.status === 'error') {
+        lastErrorMessage = data.message || 'Error from Vision API'
+        continue
+      }
+
       const info = data.data || {}
       const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
       const similarity = rawSim > 1 ? rawSim / 100 : rawSim
       const livenessScore = data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
-      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.70 : true)
+      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
       const isSpoof = data.is_spoof ?? info.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.70)) {
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
         return {
           status: 'spoofing_detected',
           verified: false,
@@ -458,16 +471,16 @@ export async function rarayVerifyFace(params: {
       }
 
       const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
-      // Strict verification rule:
-      // Must either have isMatch from Vision engine with similarity >= 0.60, OR similarity >= 0.65
-      const verified = (isMatch && similarity >= 0.60) || similarity >= 0.65
+      // The Vision service applies its configured similarity threshold to match.
+      // Similarity by itself is not an identity assertion.
+      const verified = isMatch
 
       return {
         status: 'success',
         verified,
         employee_id: String(employeeId),
         confidence: similarity,
-        threshold: 0.65,
+        threshold: 0.45,
         liveness_score: livenessScore ?? 1.0,
         is_live: true,
       }
@@ -549,17 +562,18 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
 }): Promise<RarayAntiSpoofResult> {
   const { imageBuffer, mimeType = 'image/jpeg' } = params
   const baseUrl = getBaseUrl()
-  const authHeader = await getAuthHeader()
 
   try {
+    const authHeader = await getAuthHeader()
     const formData = new FormData()
-    formData.append('file', new Blob([imageBuffer], { type: mimeType }), 'face.jpg')
+    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), 'face.jpg')
 
     const res = await fetch(`${baseUrl}/api/v1/anti-spoof/uniface-v2`, {
       method: 'POST',
       headers: { Authorization: authHeader },
       body: formData,
       cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
     })
 
     if (!res.ok) {
@@ -683,7 +697,7 @@ export async function rarayPdfInspectorProcess(params: {
 
   try {
     const formData = new FormData()
-    formData.append('file', new Blob([fileBuffer], { type: mimeType }), fileName)
+    formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
     formData.append('auto_ocr', autoOcr ? 'true' : 'false')
 
     console.log(`[PDF-Inspector] Sending ${fileName} (${fileBuffer.length} bytes, ${mimeType}) to ${baseUrl}/api/v1/pdf-inspector/process...`)

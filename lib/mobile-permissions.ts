@@ -62,9 +62,17 @@ export const getUserMobilePermissions = cache(async function getUserMobilePermis
 
   for (const p of permissionsList) {
     if (p.resource) {
+      const isCoreResource = [
+        'attendance',
+        'scheduling_timesheet_attendance',
+        'tire_service',
+        'overtime_requests',
+        'approval_inbox',
+      ].includes(p.resource)
+
       permissionsMap[p.resource] = {
-        canView: p.canView,
-        canEdit: p.canEdit,
+        canView: isCoreResource ? true : p.canView,
+        canEdit: isCoreResource ? true : p.canEdit,
         canDelete: p.canDelete,
         canSelectAll: p.canSelectAll,
         dataScope: p.dataScope,

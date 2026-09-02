@@ -20,6 +20,7 @@ export type CustomerRecord = {
   businessCategory: string | null
   businessCategorySource?: string | null
   businessCategoryEnrichedAt?: Date | null
+  notes?: string | null
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
 }
@@ -212,10 +213,10 @@ export async function deleteCustomerAction(_id: number) {
   return { success: false, error: "Data customer dikelola di sistem sumber (onechitranewdb). Tidak bisa dihapus dari sini." }
 }
 
-export async function importCustomersCSVAction(_rows: unknown[]) {
-  return { success: false, error: "Import tidak tersedia. Data customer bersumber dari onechitranewdb." }
+export async function importCustomersCSVAction(_rows: unknown[]): Promise<{ success: boolean; count?: number; error?: string }> {
+  return { success: false, count: 0, error: "Import tidak tersedia. Data customer bersumber dari onechitranewdb." }
 }
 
-export async function syncCustomersFromSAPAction() {
+export async function syncCustomersFromSAPAction(): Promise<{ success: boolean; count?: number; message?: string; error?: string }> {
   return { success: true, count: 0, message: "Data customer bersumber langsung dari onechitranewdb (live)." }
 }

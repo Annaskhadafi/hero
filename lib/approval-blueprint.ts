@@ -40,6 +40,7 @@ import {
 } from '@/db/schema/hero'
 import { fiveRMasterAreas } from '@/db/schema/five-r'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
+import { approvalWorkflowPresets } from '@/db/schema'
 import { sendPushNotification, type PushDispatchInput } from '@/lib/push-notifications'
 import { runSplEvidenceReminderTick } from '@/lib/spl-reminders'
 import {
@@ -1680,7 +1681,7 @@ export async function syncActivityWorkflowArtifacts(
       .orderBy(asc(formTemplateFields.sortOrder))
 
     const valueMap = new Map<string, string>(
-      Object.entries(payloadSnapshot).map(([key, value]) => [
+      Object.entries(payloadSnapshot || {}).map(([key, value]) => [
         key,
         Array.isArray(value) ? value.join(', ') : `${value ?? ''}`,
       ])
@@ -2508,6 +2509,81 @@ export async function publishFormTemplateVersion(versionId: number) {
   return published ?? null
 }
 
+export async function scanFormFields(formKey: string) {
+  // ponytail: scan_dynamic_fields - scanner to inspect dynamic form fields schema
+  const [template] = await db
+    .select()
+    .from(formTemplates)
+    .where(eq(formTemplates.templateKey, formKey))
+    .limit(1)
+
+  if (!template) return []
+
+  const [activeVersion] = await db
+    .select()
+    .from(formTemplateVersions)
+    .where(
+      and(
+        eq(formTemplateVersions.templateId, template.id),
+        eq(formTemplateVersions.publishStatus, 'published')
+      )
+    )
+    .orderBy(desc(formTemplateVersions.versionNumber))
+    .limit(1)
+
+  const versionId =
+    activeVersion?.id ??
+    (
+      await db
+        .select({ id: formTemplateVersions.id })
+        .from(formTemplateVersions)
+        .where(eq(formTemplateVersions.templateId, template.id))
+        .orderBy(desc(formTemplateVersions.versionNumber))
+        .limit(1)
+    )[0]?.id
+
+  if (!versionId) return []
+
+  return db
+    .select({
+      id: formTemplateFields.id,
+      fieldKey: formTemplateFields.fieldKey,
+      fieldType: formTemplateFields.fieldType,
+      label: formTemplateFields.label,
+      isRequired: formTemplateFields.isRequired,
+    })
+    .from(formTemplateFields)
+    .where(eq(formTemplateFields.versionId, versionId))
+    .orderBy(formTemplateFields.sortOrder)
+}
+
+export async function getFormSubmissionValuesMap(
+  submissionId: number
+): Promise<Record<string, unknown>> {
+  // ponytail: submission_map - dynamic resolver for submitted values to evaluate conditional routing
+  const values = await db
+    .select({
+      fieldKey: formSubmissionValues.fieldKey,
+      valueText: formSubmissionValues.valueText,
+    })
+    .from(formSubmissionValues)
+    .where(eq(formSubmissionValues.submissionId, submissionId))
+
+  const map: Record<string, unknown> = {}
+  for (const v of values) {
+    const text = v.valueText.trim()
+    if (text === 'true' || text === 'false') {
+      map[v.fieldKey] = text === 'true'
+    } else if (/^\d+(\.\d+)?$/.test(text)) {
+      map[v.fieldKey] = Number.parseFloat(text)
+    } else {
+      map[v.fieldKey] = text
+    }
+  }
+  return map
+}
+
+
 export async function cloneFormTemplateVersion(versionId: number) {
   const [sourceVersion] = await db
     .select()
@@ -2693,14 +2769,15 @@ export function evaluateWorkflowConditionGroups(
     groupLabel: string
   }>
 ) {
-  const groups = conditions.reduce<Record<string, typeof conditions>>((accumulator, condition) => {
+  const groups = (conditions || []).reduce<Record<string, typeof conditions>>((accumulator, condition) => {
+    if (!condition) return accumulator
     const key = condition.groupLabel || 'Default Group'
     accumulator[key] = accumulator[key] ?? []
     accumulator[key].push(condition)
     return accumulator
   }, {})
 
-  return Object.entries(groups).map(([groupLabel, groupConditions]) => {
+  return Object.entries(groups || {}).map(([groupLabel, groupConditions]) => {
     const outcomes = groupConditions.map((condition) => ({
       condition,
       passed: compareConditionValue(
@@ -3342,6 +3419,7 @@ export async function getWorkflowStudioConsoleData() {
     auditRows,
     siteRows,
     employeeRows,
+    presetsRows,
     rfrPendingCounts,
   ] = await Promise.all([
     db.select().from(workflowTemplates).orderBy(asc(workflowTemplates.name)),
@@ -3397,6 +3475,7 @@ export async function getWorkflowStudioConsoleData() {
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
+    db.select().from(approvalWorkflowPresets).orderBy(asc(approvalWorkflowPresets.name)),
     // RFR pending counts by templateKey
     db
       .select({
@@ -3580,6 +3659,14 @@ export async function getWorkflowStudioConsoleData() {
       dueAt: dateIso(dueAt),
       slaStatus: dueAt && dueAt < now && statusBucket(submission.requestStatus) === 'pending' ? 'Overdue' : 'On Track',
       lastAction: dateIso(submission.completedAt ?? submission.cancelledAt ?? lastApproval?.reviewedAt ?? submission.updatedAt),
+      steps: relatedApprovals.map(approval => ({
+        id: approval.id,
+        level: approval.level,
+        approverName: approval.approverName,
+        status: approval.status,
+        reviewedAt: dateIso(approval.reviewedAt),
+        decisionNote: approval.decisionNote || '',
+      })).sort((a, b) => a.level - b.level),
     }
   })
 
@@ -3659,7 +3746,8 @@ export async function getWorkflowStudioConsoleData() {
     counts: Map<number, number> | undefined
   ): number | null => {
     if (!counts || counts.size === 0) return null
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
+    return sorted[0]?.[0] ?? null
   }
 
   const csSectionsWithDefaults = csSectionsForDept.map((section) => {
@@ -3812,6 +3900,17 @@ export async function getWorkflowStudioConsoleData() {
         .where(eq(fiveRMasterAreas.isActive, true))
         .orderBy(asc(fiveRMasterAreas.siteId), asc(fiveRMasterAreas.name)),
     },
+    presets: presetsRows.map((p) => ({
+      id: p.id,
+      presetKey: p.presetKey,
+      name: p.name,
+      description: p.description,
+      category: p.category,
+      stepsJson: p.stepsJson,
+      isSystemPreset: p.isSystemPreset,
+      isActive: p.isActive,
+      updatedAt: dateIso(p.updatedAt),
+    })),
   }
 }
 

@@ -75,7 +75,7 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
   const [savingCc, setSavingCc] = useState(false)
 
   const grouped = groupByEmployee(rows)
-  const groupKeys = Object.keys(grouped)
+  const groupKeys = Object.keys(grouped || {})
 
   function toggleGroup(key: string) {
     setExpanded((prev) => {

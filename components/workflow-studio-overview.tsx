@@ -4,8 +4,21 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { useActionState, useMemo, useState, useTransition, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
-import { Bell, ExternalLink, Plus, X, ArrowUp, ArrowDown, Search } from 'lucide-react'
+import {
+  Bell,
+  ExternalLink,
+  Plus,
+  X,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  Pencil,
+  Copy,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  HelpCircle,
+} from 'lucide-react'
 
 import {
   deleteWorkflowStudioWorkflowAction,
@@ -13,6 +26,8 @@ import {
   saveWorkflowStudioApprovalAction,
   resendWorkflowStudioReminderAction,
   toggleWorkflowStatusAction,
+  saveWorkflowStudioPresetAction,
+  deleteWorkflowStudioPresetAction,
 } from '@/app/dashboard/workflow-studio/actions'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -43,7 +58,7 @@ import type { getWorkflowStudioConsoleData } from '@/lib/approval-blueprint'
 
 type WorkflowStudioData = Awaited<ReturnType<typeof getWorkflowStudioConsoleData>>
 
-const actionInitialState = { status: 'idle' as const, message: '' }
+const actionInitialState: { status: 'idle' | 'success' | 'error'; message: string } = { status: 'idle', message: '' }
 
 function formatDate(value: string) {
   if (!value) return '-'
@@ -101,8 +116,8 @@ function DeleteWorkflowButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive">
-          Hapus
+        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/5" title="Hapus">
+          <Trash2 className="size-4" />
         </Button>
       </DialogTrigger>
       <DialogContent>
@@ -540,10 +555,12 @@ function WorkflowBuilderDialog({
   data,
   initial,
   trigger,
+  isClone,
 }: {
   data: WorkflowStudioData
   initial?: WorkflowInventoryItem
   trigger?: ReactNode
+  isClone?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [state, formAction, isPending] = useActionState(saveWorkflowStudioApprovalAction, actionInitialState)
@@ -664,6 +681,63 @@ function WorkflowBuilderDialog({
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('5r') ||
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('five-r')
   const isFormWoMenu = (selectedMenuKey || initial?.id || '').toLowerCase().includes('wo')
+
+  const WORKFLOW_PRESETS = [
+    {
+      key: "single-supervisor",
+      name: "Single Approval (Direct Supervisor)",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Direct Supervisor", type: "employee" as const, virtualEmployeeId: "990001" }
+      ]
+    },
+    {
+      key: "two-level-hierarchical",
+      name: "2-Level Hierarchical Approval",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Direct Supervisor", type: "employee" as const, virtualEmployeeId: "990001" },
+        { id: "step-2", label: "Department Head", type: "employee" as const, virtualEmployeeId: "990002" }
+      ]
+    },
+    {
+      key: "safety-site-flow",
+      name: "Site & Safety Flow",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Direct Supervisor", type: "employee" as const, virtualEmployeeId: "990001" },
+        { id: "step-2", label: "Site Head", type: "employee" as const, virtualEmployeeId: "990004" },
+        { id: "step-3", label: "Safety Team", type: "employee" as const }
+      ]
+    }
+  ]
+
+  function handleLoadPreset(presetKey: string) {
+    if (!presetKey) return
+    const preset = WORKFLOW_PRESETS.find(p => p.key === presetKey)
+    if (!preset) return
+
+    const newSteps = preset.steps.map(s => ({
+      id: s.id,
+      label: s.label,
+      type: s.type
+    }))
+    setApprovalSteps(newSteps)
+
+    setSiteData(() => {
+      return allSites.map((site, i) => {
+        const values: Record<string, string> = {}
+        for (const s of preset.steps) {
+          if ((s as any).virtualEmployeeId) {
+            values[s.id] = (s as any).virtualEmployeeId
+          } else {
+            values[s.id] = ""
+          }
+        }
+        return { key: `site-${i}`, siteId: site.id.toString(), values }
+      })
+    })
+  }
 
   function isSectionStep(label: string) {
     const norm = label.toLowerCase().replace(/[^a-z]/g, '')
@@ -1290,7 +1364,7 @@ function WorkflowBuilderDialog({
         </DialogHeader>
 
         <form action={formAction} className="space-y-5">
-          {initial?.matrixId ? <input type="hidden" name="matrixId" value={initial.matrixId} /> : null}
+          {initial?.matrixId && !isClone ? <input type="hidden" name="matrixId" value={initial.matrixId} /> : null}
           <input type="hidden" name="templateKey" value={selectedMenu?.templateKey ?? ''} />
           <input type="hidden" name="transactionType" value={selectedMenu?.transactionType ?? ''} />
           <input type="hidden" name="approvalSteps" value={JSON.stringify(approvalSteps)} />
@@ -1382,9 +1456,24 @@ function WorkflowBuilderDialog({
                 ))}
               </select>
             </label>
+            <label className="space-y-1.5 text-sm font-medium text-primary">
+              Load Workflow Preset (Template Instan)
+              <select
+                onChange={(event) => handleLoadPreset(event.target.value)}
+                defaultValue=""
+                className="border-primary/50 bg-primary/5 text-primary h-11 w-full rounded-lg border px-3 text-sm font-semibold outline-none"
+              >
+                <option value="">-- Buat Custom / Alur Kosong --</option>
+                {WORKFLOW_PRESETS.map((preset) => (
+                  <option key={preset.key} value={preset.key}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="space-y-1.5 text-sm font-medium">
               Nama Aktivitas
-              <Input name="activityName" defaultValue={initial?.name ?? selectedMenu?.label ?? ''} required />
+              <Input name="activityName" defaultValue={initial?.name ? (isClone ? `${initial.name} - Salinan` : initial.name) : (selectedMenu?.label ?? '')} required />
             </label>
             <label className="space-y-1.5 text-sm font-medium">
               Mode
@@ -1695,6 +1784,342 @@ function WorkflowBuilderDialog({
   )
 }
 
+function PresetBuilderDialog({
+  initial,
+  trigger,
+}: {
+  initial?: any
+  trigger?: ReactNode
+}) {
+  const [state, formAction, isPending] = useActionState(saveWorkflowStudioPresetAction, actionInitialState)
+  const [steps, setSteps] = useState<Array<{ id: string; label: string; type: string; virtualEmployeeId?: string }>>(() => {
+    if (initial?.stepsJson) {
+      return typeof initial.stepsJson === 'string' ? JSON.parse(initial.stepsJson) : initial.stepsJson
+    }
+    return [
+      { id: 'step-0', label: 'Section', type: 'section' },
+      { id: 'step-1', label: 'Direct Supervisor', type: 'employee', virtualEmployeeId: '990001' }
+    ]
+  })
+
+  function addStep() {
+    setSteps(prev => [...prev, { id: `step-${Date.now()}`, label: '', type: 'employee' }])
+  }
+
+  function removeStep(id: string) {
+    setSteps(prev => {
+      const target = prev.find(s => s.id === id)
+      if (target?.type === 'section') return prev
+      return prev.filter(s => s.id !== id)
+    })
+  }
+
+  function updateStepLabel(id: string, label: string) {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, label } : s))
+  }
+
+  function updateStepVirtualId(id: string, virtualId: string) {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, virtualEmployeeId: virtualId || undefined } : s))
+  }
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        {trigger ?? (
+          <Button size="sm" className="h-8">
+            <Plus className="size-3.5 mr-1" /> Buat Preset
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{initial ? 'Edit Preset Workflow' : 'Buat Preset Workflow Baru'}</DialogTitle>
+          <DialogDescription>
+            Definisikan template alur persetujuan instan yang dapat dipakai saat membuat workflow baru.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form action={formAction} className="space-y-4">
+          {initial?.id ? <input type="hidden" name="id" value={initial.id} /> : null}
+          <input type="hidden" name="stepsJson" value={JSON.stringify(steps)} />
+
+          <div className="grid gap-3 grid-cols-2">
+            <label className="space-y-1.5 text-xs font-semibold">
+              Preset Key (Unique Slug)
+              <Input
+                name="presetKey"
+                placeholder="misal: single-supervisor"
+                defaultValue={initial?.presetKey ?? ''}
+                disabled={Boolean(initial)}
+                required
+              />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold">
+              Nama Preset
+              <Input
+                name="name"
+                placeholder="misal: Approval 1 Tingkat"
+                defaultValue={initial?.name ?? ''}
+                required
+              />
+            </label>
+          </div>
+
+          <label className="space-y-1.5 text-xs font-semibold block">
+            Deskripsi Preset
+            <Textarea
+              name="description"
+              placeholder="Jelaskan alur ini dipakai untuk kondisi apa..."
+              defaultValue={initial?.description ?? ''}
+              rows={2}
+            />
+          </label>
+
+          <div className="border rounded-lg p-3 bg-slate-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold">Langkah-langkah Preset</h4>
+              <Button type="button" size="sm" variant="outline" onClick={addStep} className="h-7 text-[10px]">
+                + Tambah Step
+              </Button>
+            </div>
+
+            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+              {steps.map((step, idx) => (
+                <div key={step.id} className="flex items-center gap-2 bg-white p-2 border rounded-md text-xs">
+                  <span className="font-semibold text-muted-foreground w-4">{idx + 1}.</span>
+                  {step.type === 'section' ? (
+                    <span className="flex-1 font-semibold text-slate-700 p-1">Section (Default)</span>
+                  ) : (
+                    <>
+                      <Input
+                        placeholder="Nama langkah..."
+                        value={step.label}
+                        onChange={e => updateStepLabel(step.id, e.target.value)}
+                        className="h-8 flex-1 text-xs"
+                        required
+                      />
+                      <select
+                        value={step.virtualEmployeeId ?? ''}
+                        onChange={e => updateStepVirtualId(step.id, e.target.value)}
+                        className="border bg-slate-50 h-8 rounded px-2 text-xs"
+                      >
+                        <option value="">Specific User (Manual Mapping)</option>
+                        <option value="990001">Atasan Langsung (Direct Manager)</option>
+                        <option value="990002">Kepala Departemen (Dept Head)</option>
+                        <option value="990003">Kepala Seksi (Sect Head)</option>
+                        <option value="990004">Kepala Site (Site Head)</option>
+                      </select>
+                      <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive">
+                        <X className="size-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {state?.message ? (
+            <p className={state.status === 'success' ? 'text-xs text-emerald-700' : 'text-xs text-red-700'}>
+              {state.message}
+            </p>
+          ) : null}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="submit" disabled={isPending} className="h-9">
+              {isPending ? 'Menyimpan...' : 'Simpan Preset'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DeletePresetButton({ id, name }: { id: string; name: string }) {
+  const [state, formAction, isPending] = useActionState(deleteWorkflowStudioPresetAction, actionInitialState)
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      setOpen(false)
+      router.refresh()
+    }
+  }, [state.status, router])
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/5" title="Hapus">
+          <Trash2 className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Hapus Preset</DialogTitle>
+          <DialogDescription>
+            Hapus preset <strong>{name}</strong>? Template alur ini tidak akan bisa digunakan lagi saat membuat workflow baru.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-3">
+          <input type="hidden" name="id" value={id} />
+          {state.message ? (
+            <p className={state.status === 'success' ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>
+              {state.message}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Batal
+            </Button>
+            <Button type="submit" variant="destructive" disabled={isPending}>
+              {isPending ? 'Menghapus...' : 'Ya, Hapus'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function MonitoringDetailDialog({ item, trigger }: { item: any; trigger: ReactNode }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Detail Request: {item.requestId}</DialogTitle>
+          <DialogDescription>
+            Detail transaksi approval dan riwayat langkah (Audit Trail).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-2">
+          {/* Metadata Grid */}
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-3 bg-muted/20 border p-3 rounded-lg text-sm">
+            <div>
+              <span className="text-muted-foreground text-xs block">Formulir</span>
+              <span className="font-semibold">{item.activityName}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs block">Pengaju (Submitter)</span>
+              <span className="font-semibold">{item.requester}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs block">Site</span>
+              <span className="font-semibold">{item.site}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs block">Status Saat Ini</span>
+              <div className="mt-0.5"><AdminStatusBadge value={item.status} /></div>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs block">Pending Di</span>
+              <span className="font-semibold">{item.pendingWith || '-'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs block">SLA Status</span>
+              <div className="mt-0.5"><AdminStatusBadge value={item.slaStatus} /></div>
+            </div>
+          </div>
+
+          {/* Steps Timeline (Audit Trail) */}
+          <div className="space-y-4">
+            <h4 className="font-display text-sm font-semibold border-b pb-1.5">Riwayat Persetujuan (Audit Trail)</h4>
+            {item.steps && item.steps.length > 0 ? (
+              <div className="relative border-l pl-4 ml-2 space-y-5 py-1">
+                {item.steps.map((step: any, idx: number) => {
+                  const isPending = step.status === 'pending' || step.status === 'Pending';
+                  const isApproved = step.status === 'approved' || step.status === 'Approved' || step.status === 'approved_final';
+                  const isRejected = step.status === 'rejected' || step.status === 'Rejected';
+                  const isReturned = step.status === 'needs_revision' || step.status === 'Needs Revision' || step.status === 'returned';
+
+                  let iconColor = 'text-muted-foreground bg-slate-100';
+                  let statusLabel = 'Menunggu';
+                  let icon = <HelpCircle className="size-4" />;
+
+                  if (isApproved) {
+                    iconColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+                    statusLabel = 'Disetujui';
+                    icon = <CheckCircle2 className="size-4" />;
+                  } else if (isRejected) {
+                    iconColor = 'text-red-700 bg-red-50 border-red-200';
+                    statusLabel = 'Ditolak';
+                    icon = <X className="size-4" />;
+                  } else if (isReturned) {
+                    iconColor = 'text-amber-700 bg-amber-50 border-amber-200';
+                    statusLabel = 'Dikembalikan (Revisi)';
+                    icon = <AlertTriangle className="size-4" />;
+                  } else if (isPending) {
+                    iconColor = 'text-blue-700 bg-blue-50 border-blue-200 animate-pulse';
+                    statusLabel = 'Sedang Ditinjau';
+                    icon = <HelpCircle className="size-4" />;
+                  }
+
+                  return (
+                    <div key={step.id || idx} className="relative">
+                      {/* Dot Icon */}
+                      <div className={`absolute -left-[25px] top-0.5 flex items-center justify-center size-5 rounded-full border text-xs ${iconColor}`}>
+                        {icon}
+                      </div>
+                      {/* Step Details */}
+                      <div className="text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-slate-800">
+                            Langkah {step.level}: {step.approverName}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {step.reviewedAt ? formatDate(step.reviewedAt) : 'Pending'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-muted-foreground">Status:</span>
+                          <span className="font-semibold">{statusLabel}</span>
+                        </div>
+                        {step.decisionNote && (
+                          <div className="mt-1 bg-slate-50 border p-2 rounded text-[11px] text-slate-600 italic">
+                            &ldquo;{step.decisionNote}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground py-2 italic text-center">
+                Belum ada riwayat persetujuan tercatat.
+              </p>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InvestigatedButton({ submissionId, requestId }: { submissionId: number; requestId: string }) {
+  const [state, formAction, isPending] = useActionState(markWorkflowStudioInvestigatedAction, actionInitialState)
+  const router = useRouter()
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      router.refresh()
+    }
+  }, [state.status, router])
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="submissionId" value={submissionId} />
+      <input type="hidden" name="requestId" value={requestId} />
+      <Button size="sm" variant="outline" type="submit" disabled={isPending} className="text-xs h-8 border-emerald-600 text-emerald-600 hover:bg-emerald-50">
+        {isPending ? 'Saving...' : 'Investigated'}
+      </Button>
+    </form>
+  )
+}
+
 export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
   const sourceOptions = useMemo(
     () => Array.from(new Set(data.inventory.map((item) => item.sourceType))),
@@ -1722,12 +2147,16 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <TabsList className="overflow-x-auto">
             <TabsTrigger value="workflows">Workflow List</TabsTrigger>
+            <TabsTrigger value="presets">Workflow Presets</TabsTrigger>
             <TabsTrigger value="monitoring">Monitoring Approval</TabsTrigger>
             <TabsTrigger value="email">Template Email</TabsTrigger>
             <TabsTrigger value="reminders">Reminder Jobs</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
           </TabsList>
-          <WorkflowBuilderDialog data={data} />
+          <div className="flex items-center gap-2">
+            <PresetBuilderDialog />
+            <WorkflowBuilderDialog data={data} />
+          </div>
         </div>
 
         <TabsContent value="workflows">
@@ -1797,7 +2226,21 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                         <WorkflowBuilderDialog
                           data={data}
                           initial={item}
-                          trigger={<Button size="sm" variant="outline">Edit</Button>}
+                          trigger={
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:bg-primary/5" title="Edit">
+                              <Pencil className="size-4" />
+                            </Button>
+                          }
+                        />
+                        <WorkflowBuilderDialog
+                          data={data}
+                          initial={item}
+                          isClone={true}
+                          trigger={
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-indigo-600 hover:bg-indigo-50" title="Duplikat">
+                              <Copy className="size-4" />
+                            </Button>
+                          }
                         />
                         <DeleteWorkflowButton
                           templateKey={item.templateKey}
@@ -1808,6 +2251,98 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                     </TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </MinimalTableShell>
+        </TabsContent>
+
+        <TabsContent value="presets">
+          <MinimalTableShell
+            label="preset"
+            title="Workflow Presets"
+            searchPlaceholder="Cari preset..."
+            showImport={false}
+            columnOptions={[
+              { key: 'Nama Preset', label: 'Nama Preset', required: true },
+              { key: 'Preset Key', label: 'Preset Key' },
+              { key: 'Langkah Preset', label: 'Langkah Preset' },
+              { key: 'Tipe', label: 'Tipe' },
+              { key: 'Tanggal Update', label: 'Tanggal Update' },
+            ]}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nama Preset</TableHead>
+                  <TableHead>Preset Key</TableHead>
+                  <TableHead>Langkah Preset</TableHead>
+                  <TableHead>Tipe</TableHead>
+                  <TableHead>Tanggal Update</TableHead>
+                  <TableHead>Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data as any).presets?.map((preset: any) => {
+                  const stepsList = typeof preset.stepsJson === 'string' ? JSON.parse(preset.stepsJson) : preset.stepsJson;
+                  return (
+                    <TableRow key={preset.id}>
+                      <TableCell>
+                        <div className="font-semibold text-foreground">{preset.name}</div>
+                        <div className="text-muted-foreground text-xs">{preset.description || '-'}</div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded border">{preset.presetKey}</code>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 items-center text-xs">
+                          {stepsList.map((step: any, idx: number) => {
+                            let label = step.label;
+                            if (step.virtualEmployeeId) {
+                              const mapping: Record<string, string> = {
+                                "990001": "Direct Manager",
+                                "990002": "Dept Head",
+                                "990003": "Sect Head",
+                                "990004": "Site Head"
+                              };
+                              label += ` (${mapping[step.virtualEmployeeId] || step.virtualEmployeeId})`;
+                            }
+                            return (
+                              <span key={step.id} className="flex items-center">
+                                {idx > 0 && <span className="mx-1 text-muted-foreground">➔</span>}
+                                <span className="bg-slate-50 border px-2 py-0.5 rounded text-[11px]">
+                                  {label}
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {preset.isSystemPreset ? (
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-200">System</Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Custom</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{formatDate(preset.updatedAt)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <PresetBuilderDialog
+                            initial={preset}
+                            trigger={
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:bg-primary/5" title="Edit">
+                                <Pencil className="size-4" />
+                              </Button>
+                            }
+                          />
+                          {!preset.isSystemPreset && (
+                            <DeletePresetButton id={preset.id} name={preset.name} />
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </MinimalTableShell>
@@ -1845,14 +2380,16 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                     <TableCell>{formatDate(item.dueAt)}</TableCell>
                     <TableCell><AdminStatusBadge value={item.slaStatus} /></TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button asChild size="sm" variant="outline"><Link href="/dashboard/approval">Open</Link></Button>
-                        <Button size="sm" variant="secondary" type="button">Timeline</Button>
-                        <form action={async (formData) => { await markWorkflowStudioInvestigatedAction(formData) }}>
-                          <input type="hidden" name="submissionId" value={item.id} />
-                          <input type="hidden" name="requestId" value={item.requestId} />
-                          <Button size="sm" variant="outline" type="submit">Investigated</Button>
-                        </form>
+                      <div className="flex items-center gap-2">
+                        <MonitoringDetailDialog
+                          item={item}
+                          trigger={<Button size="sm" variant="outline">Open</Button>}
+                        />
+                        <MonitoringDetailDialog
+                          item={item}
+                          trigger={<Button size="sm" variant="secondary">Timeline</Button>}
+                        />
+                        <InvestigatedButton submissionId={item.id} requestId={item.requestId} />
                       </div>
                     </TableCell>
                   </TableRow>

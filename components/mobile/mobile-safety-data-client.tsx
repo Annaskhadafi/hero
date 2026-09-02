@@ -487,7 +487,7 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
   }
 
   const filterOpts = getFilterOptions()
-  const filterKeys = Object.keys(filterOpts) as (keyof typeof filterOpts)[]
+  const filterKeys = Object.keys(filterOpts || {}) as (keyof typeof filterOpts)[]
 
   function renderFilterBar() {
     return (

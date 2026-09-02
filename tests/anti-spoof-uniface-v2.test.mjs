@@ -16,6 +16,7 @@ const faceLoginPath = path.resolve('app/api/auth/face-login/route.ts')
 const faceLoginCode = fs.readFileSync(faceLoginPath, 'utf8')
 assert(faceLoginCode.includes('rarayCheckAntiSpoofUniFaceV2'), 'Face login route must call rarayCheckAntiSpoofUniFaceV2')
 assert(faceLoginCode.includes('spoof_detected'), 'Face login route must reject spoof attempts')
+assert(faceLoginCode.includes('antiSpoof.status === "error"'), 'Face login route must fail closed when anti-spoof is unavailable')
 
 // Test face attendance actions integration
 const attendanceActionPath = path.resolve('app/actions/face-attendance-actions.ts')

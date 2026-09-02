@@ -241,7 +241,7 @@ export default function AttendanceRecordsPage() {
         resolvedEntries.filter((entry): entry is readonly [string, ReverseGeocodeResult] => Boolean(entry)),
       );
 
-      if (Object.keys(nextEntries).length > 0) {
+      if (Object.keys(nextEntries || {}).length > 0) {
         setLocationLabels((current) => ({
           ...current,
           ...nextEntries,

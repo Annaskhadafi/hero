@@ -12,6 +12,7 @@ import {
   hasCandidateApplicationIdentity,
   mergeCandidateApplicationIdentity,
 } from "@/lib/hc-application-form-identity";
+import { getServerSession } from "@/lib/auth-session";
 
 export async function getTestByAccessKey(accessKey: string) {
   const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.accessKey, accessKey)).limit(1);
@@ -117,7 +118,7 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
   const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.id, assignmentId)).limit(1);
   if (!assignment) throw new Error("Assignment not found");
 
-  const questionIds = answers ? Object.keys(answers).map((id) => Number(id)).filter(Boolean) : [];
+  const questionIds = answers ? Object.keys(answers || {}).map((id) => Number(id)).filter(Boolean) : [];
   const questions = questionIds.length
     ? await db.select().from(hcOnlineTestQuestions).where(inArray(hcOnlineTestQuestions.id, questionIds))
     : [];
@@ -125,7 +126,7 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
 
   if (answers) {
     await db.delete(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
-    const answerRows = Object.entries(answers).map(([questionId, answerText]) => {
+    const answerRows = Object.entries(answers || {}).map(([questionId, answerText]) => {
       const question = questionById.get(Number(questionId));
       const normalizedAnswer = answerText.trim().toLowerCase();
       const normalizedCorrect = (question?.correctAnswer || "").trim().toLowerCase();
@@ -159,7 +160,7 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
   if (test?.isApplicationForm && answers) {
     let identity: CandidateApplicationIdentity = {};
     
-    for (const [qIdStr, text] of Object.entries(answers)) {
+    for (const [qIdStr, text] of Object.entries(answers || {})) {
       const questionText = questionById.get(Number(qIdStr))?.questionText ?? "";
       identity = mergeCandidateApplicationIdentity(identity, extractCandidateIdentityFromAnswer(questionText, text));
     }
@@ -241,6 +242,11 @@ export async function registerForPublicTest(testId: number, data: { fullName: st
 }
 
 export async function getCandidateTestResults(candidateId: number) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    throw new Error("Unauthorized: Sesi login diperlukan.");
+  }
+
   const assignments = await db
     .select({
       id: hcOnlineTestAssignments.id,

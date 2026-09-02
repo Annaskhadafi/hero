@@ -1,14 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-session";
 import { resolveRagDocumentUrl, getRagApiKey } from "@/lib/hero-genius/client";
 import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
 import { existsSync, promises as fs } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 
 export const dynamic = "force-dynamic";
+
+function isPrivateIpOrHost(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "169.254.169.254" ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 function extractLocalUploadPath(targetUrl: string): string | null {
   try {
     let clean = targetUrl.trim();
+    try {
+      clean = decodeURIComponent(clean);
+    } catch (_) {}
+
     if (clean.startsWith("http://") || clean.startsWith("https://")) {
       try {
         const parsed = new URL(clean);
@@ -41,17 +67,35 @@ function extractLocalUploadPath(targetUrl: string): string | null {
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
-    const targetUrl = searchParams.get("url") || searchParams.get("file");
-    const requestedFilename = searchParams.get("filename") || "document.pdf";
+    let targetUrl = searchParams.get("url") || searchParams.get("file") || "";
+    try {
+      targetUrl = decodeURIComponent(targetUrl);
+    } catch (_) {}
+    let requestedFilename = searchParams.get("filename") || "document.pdf";
+    try {
+      requestedFilename = decodeURIComponent(requestedFilename);
+    } catch (_) {}
     const requestedFormat = searchParams.get("format") || "";
 
     if (!targetUrl) {
       return NextResponse.json({ error: "Missing document url parameter" }, { status: 400 });
     }
 
+    if (isPrivateIpOrHost(targetUrl)) {
+      return NextResponse.json({ error: "Access to private/internal network addresses is forbidden" }, { status: 403 });
+    }
+
     let buffer: Buffer | null = null;
-    const filename = targetUrl.split("/").pop() || requestedFilename;
+    let filename = targetUrl.split("/").pop() || requestedFilename;
+    try {
+      filename = decodeURIComponent(filename);
+    } catch (_) {}
 
     // 1. Try S3 storage proxy first if configured
     if (isS3UploadConfigured()) {
@@ -79,10 +123,12 @@ export async function GET(req: NextRequest) {
 
     // 2. Try local filesystem (public/uploads and public/)
     if (!buffer) {
+      const uploadDir = resolve(process.cwd(), "public", "uploads");
+      const publicDir = resolve(process.cwd(), "public");
       const localRelPath = extractLocalUploadPath(targetUrl);
       if (localRelPath) {
-        const uploadFilePath = join(process.cwd(), "public", "uploads", localRelPath);
-        if (existsSync(uploadFilePath)) {
+        const uploadFilePath = join(uploadDir, localRelPath);
+        if (resolve(uploadFilePath).startsWith(uploadDir) && existsSync(uploadFilePath)) {
           try {
             buffer = await fs.readFile(uploadFilePath);
           } catch (err) {
@@ -91,8 +137,8 @@ export async function GET(req: NextRequest) {
         }
 
         if (!buffer) {
-          const publicFilePath = join(process.cwd(), "public", localRelPath);
-          if (existsSync(publicFilePath)) {
+          const publicFilePath = join(publicDir, localRelPath);
+          if (resolve(publicFilePath).startsWith(publicDir) && existsSync(publicFilePath)) {
             try {
               buffer = await fs.readFile(publicFilePath);
             } catch (err) {
@@ -103,8 +149,8 @@ export async function GET(req: NextRequest) {
       }
 
       if (!buffer && filename) {
-        const filenamePath = join(process.cwd(), "public", "uploads", filename);
-        if (existsSync(filenamePath)) {
+        const filenamePath = join(uploadDir, filename);
+        if (resolve(filenamePath).startsWith(uploadDir) && existsSync(filenamePath)) {
           try {
             buffer = await fs.readFile(filenamePath);
           } catch (err) {
@@ -147,11 +193,15 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Fallback: Try fetching direct targetUrl if it's an http URL
+      // Fallback: Try fetching direct targetUrl if it's an http URL (never forward internal API keys to untrusted hosts)
       if (!buffer && isExternalUrl && targetUrl !== resolved) {
+        if (isPrivateIpOrHost(targetUrl)) {
+          return NextResponse.json({ error: "Access to private/internal network addresses is forbidden" }, { status: 403 });
+        }
         try {
+          const isVisionHost = targetUrl.includes("vision.chitraparatama.com");
           const directRes = await fetch(targetUrl, {
-            headers: headersInit,
+            headers: isVisionHost ? headersInit : {},
             cache: "no-store",
           });
           if (directRes.ok) {
@@ -168,7 +218,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Fallback: If targetUrl is an internal relative URL, try fetching via Next.js host
-      if (!buffer && targetUrl.startsWith("/")) {
+      // Skip loopback fetches for known upload paths if local resolution already failed
+      if (!buffer && targetUrl.startsWith("/") && !targetUrl.startsWith("/api/uploads/") && !targetUrl.startsWith("/uploads/")) {
         try {
           const fullInternalUrl = new URL(targetUrl, req.url).toString();
           const internalRes = await fetch(fullInternalUrl, {
@@ -234,16 +285,38 @@ export async function GET(req: NextRequest) {
 
     const headers = new Headers();
     headers.set("Content-Type", contentType);
-    headers.set("Content-Length", buffer.length.toString());
-    // Inline disposition so browser renders it in preview instead of downloading
+    headers.set("Accept-Ranges", "bytes");
     headers.set(
       "Content-Disposition",
       `inline; filename="${encodeURIComponent(requestedFilename)}"`
     );
-    headers.set("Cache-Control", "public, max-age=3600, immutable");
+    headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
     headers.set("X-Content-Type-Options", "nosniff");
 
-    return new NextResponse(buffer, {
+    // Handle HTTP Range header for streaming large PDFs and partial rendering
+    const rangeHeader = req.headers.get("range");
+    if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+      const parts = rangeHeader.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : buffer.length - 1;
+
+      if (!isNaN(start) && start < buffer.length) {
+        const safeEnd = Math.min(isNaN(end) ? buffer.length - 1 : end, buffer.length - 1);
+        const chunk = buffer.subarray(start, safeEnd + 1);
+
+        headers.set("Content-Range", `bytes ${start}-${safeEnd}/${buffer.length}`);
+        headers.set("Content-Length", chunk.length.toString());
+
+        return new NextResponse(new Uint8Array(chunk), {
+          status: 206,
+          headers,
+        });
+      }
+    }
+
+    headers.set("Content-Length", buffer.length.toString());
+
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers,
     });

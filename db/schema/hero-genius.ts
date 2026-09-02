@@ -123,3 +123,48 @@ export const heroGeniusWebCrawlHistoryRelations = relations(heroGeniusWebCrawlHi
   }),
 }));
 
+/**
+ * 6. Hero Genius SOP / WIN Approval Systems Generator
+ */
+export const heroGeniusSopApprovalSystems = pgTable("hero_genius_sop_approval_systems", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  documentNumber: varchar("document_number", { length: 100 }),
+  documentType: varchar("document_type", { length: 50 }).default("SOP"),
+  departmentCode: varchar("department_code", { length: 50 }),
+  sopDocumentId: integer("sop_document_id"),
+  transactionType: varchar("transaction_type", { length: 100 }).notNull().default("activity"),
+  approvalMode: varchar("approval_mode", { length: 50 }).notNull().default("sequential"),
+  approvalSteps: jsonb("approval_steps").$type<Array<{
+    stepOrder: number;
+    label: string;
+    assignedRole: string;
+    slaHours: number;
+    isRequired: boolean;
+    condition?: string;
+  }>>().default([]),
+  siteApprovals: jsonb("site_approvals").$type<Array<{
+    siteId: number;
+    siteName: string;
+    siteCode: string;
+    values: Record<string, any>;
+  }>>().default([]),
+  summary: text("summary"),
+  rawSopContent: text("raw_sop_content"),
+  aiConfidenceScore: real("ai_confidence_score").default(0.95),
+  complianceAuditScore: integer("compliance_audit_score").default(95),
+  status: varchar("status", { length: 50 }).notNull().default("draft"),
+  publishedMatrixId: integer("published_matrix_id"),
+  createdById: text("created_by_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const heroGeniusSopApprovalSystemsRelations = relations(heroGeniusSopApprovalSystems, ({ one }) => ({
+  user: one(user, {
+    fields: [heroGeniusSopApprovalSystems.createdById],
+    references: [user.id],
+  }),
+}));
+
+

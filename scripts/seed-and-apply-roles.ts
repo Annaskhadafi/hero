@@ -154,11 +154,18 @@ async function main() {
         canEdit = ["tire_service", "overtime_requests", "hse"].includes(menu.resource);
       }
 
-      permissions.push(`(${roleId}, ${menu.id}, ${canView}, ${canEdit}, ${canDelete}, ${canSelectAll})`);
+      let dataScope = 'site';
+      if (roleName === "Super Admin" || roleName === "HC Manager") {
+        dataScope = 'global';
+      } else if (roleName === "Field Team") {
+        dataScope = 'own';
+      }
+
+      permissions.push(`(${roleId}, ${menu.id}, ${canView}, ${canEdit}, ${canDelete}, ${canSelectAll}, '${dataScope}')`);
     }
 
     if (permissions.length > 0) {
-      const query = `insert into hero_role_menu_permissions (role_id, menu_item_id, can_view, can_edit, can_delete, can_select_all) values ${permissions.join(", ")}`;
+      const query = `insert into hero_role_menu_permissions (role_id, menu_item_id, can_view, can_edit, can_delete, can_select_all, data_scope) values ${permissions.join(", ")}`;
       await client.query(query);
     }
   }

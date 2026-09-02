@@ -80,7 +80,7 @@ test('SPL checklist submits without activity library or GPS and uses time-only i
     /selectedLibraries\.length === 0 && checklistContext && hasCheckedChecklist/
   )
   assert.doesNotMatch(activity, /if \(!geo\.latitude && !manualLocation\.trim\(\)\)/)
-  assert.match(activity, /Lokasi Manual \(Opsional\)/)
+  assert.match(activity, /GpsLocationPreviewCard/)
   assert.match(activity, /type="time"/)
   assert.match(action, /!library && !isChecklistOnlySubmission/)
   assert.match(action, /'SPL-CHECKLIST'/)

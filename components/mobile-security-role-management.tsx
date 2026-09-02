@@ -413,6 +413,7 @@ export function MobileSecurityRoleManagement({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="global">Global - Lihat semua data</SelectItem>
+                              <SelectItem value="site">Site Only - Hanya lokasi tugas</SelectItem>
                               <SelectItem value="own">Own Only - Hanya data sendiri</SelectItem>
                             </SelectContent>
                           </Select>

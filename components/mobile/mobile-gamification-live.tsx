@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
+import React, { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
 import { Medal, Sparkles, Trophy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +63,7 @@ export function MobileGamificationLive({
   const [isFlashing, setIsFlashing] = useState(false);
   const previousPointsRef = useRef(initialData.context.employee.totalPoints);
 
-  const refreshData = useEffectEvent(async () => {
+  const refreshData = React.useCallback(async () => {
     const response = await fetch("/api/mobile/gamification", { cache: "no-store" });
     if (!response.ok) {
       return;
@@ -71,7 +71,7 @@ export function MobileGamificationLive({
 
     const next = (await response.json()) as GamificationPayload;
     startTransition(() => setData(next));
-  });
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {

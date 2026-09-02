@@ -1112,49 +1112,123 @@ Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
     },
   },
   {
-    name: 'Daily Activity Pending Approval',
-    templateCode: 'daily_activity_pending_approval',
+    name: 'Daily Activity Sequential Approval Assignment',
+    templateCode: 'daily_activity_approval_notification',
     templateType: 'Notification',
     deliveryChannel: 'email,bell',
     recipientScope: 'approver',
     ccEmail: '',
-    subject: 'Daily Activity menunggu approval',
-    htmlContent:
-      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
-<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
-<table cellpadding="0" cellspacing="0" width="100%"><tr>
-<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
-<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
-<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
-</tr></table>
+    subject: '[Daily Activity] Menunggu Persetujuan Anda: {{sessionCode}} - {{employeeName}} ({{approvalStep}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#0d9488);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#ccfbf1;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Daily Activity Hub • Sequential Approval</p>
 </div>
-<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Aktivitas</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Aktivitas</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{activityTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{activityType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu Submit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{submissionTime}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.</p>
-<table cellpadding="0" cellspacing="0" width="100%"><tr>
-<td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
-<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
-</td>
-</tr></table>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan aktivitas harian berikut membutuhkan persetujuan dan tanda tangan digital Anda pada tahap <strong>{{approvalStep}}</strong>:
+  </p>
+  <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #0d9488">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#64748b">Kode Aktivitas:</td><td style="font-weight:600;color:#0f172a">{{sessionCode}}</td></tr>
+      <tr><td style="color:#64748b">Nama Karyawan:</td><td><strong>{{employeeName}}</strong></td></tr>
+      <tr><td style="color:#64748b">Tanggal Kerja:</td><td>{{workDate}}</td></tr>
+      <tr><td style="color:#64748b">Lokasi / Site:</td><td>{{siteName}}</td></tr>
+      <tr><td style="color:#64748b">Tahap Approval:</td><td style="color:#0f766e;font-weight:bold">{{approvalStep}}</td></tr>
+    </table>
+  </div>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{approvalLink}}" style="background:#0d9488;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau & Tanda Tangani Laporan</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
+  </p>
 </div>
 </div>`,
-    textContent:
-      `Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.
+    textContent: `Yth. {{approverName}},
 
-Detail Aktivitas:
-Karyawan: {{employeeName}}
-Aktivitas: {{activityTitle}}
-Kategori: {{activityType}}
-Waktu Submit: {{submissionTime}}
+Laporan aktivitas harian berikut membutuhkan persetujuan Anda pada tahap {{approvalStep}}:
 
-Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.`,
-    description: 'Notifikasi approver saat daily activity perlu review.',
-    variables: ['employeeName', 'activityTitle', 'activityType', 'submissionTime', 'notes'],
+Kode Aktivitas: {{sessionCode}}
+Nama Karyawan: {{employeeName}}
+Tanggal Kerja: {{workDate}}
+Lokasi: {{siteName}}
+
+Tanda tangani di: {{approvalLink}}
+
+Hormat kami,
+PT Chitra Paratama`,
+    description: 'Notifikasi penugasan persetujuan berurutan (sequential) untuk laporan aktivitas harian.',
+    variables: ['approverName', 'employeeName', 'sessionCode', 'workDate', 'siteName', 'approvalStep', 'approvalLink'],
     sampleValues: {
-      employeeName: 'Rudi Hidayat',
-      activityTitle: 'Pemeriksaan panel listrik',
-      activityType: 'Inspection',
-      submissionTime: '18 Juni 2026, 14:35',
-      notes: 'Catatan: ditemukan kabel longgar di area panel 3.',
+      approverName: 'Apriyanto',
+      employeeName: 'Faizal Zidan',
+      sessionCode: 'ACT-2026-001',
+      workDate: '20 Agustus 2026',
+      siteName: 'Site Lahat',
+      approvalStep: 'Leader / Pengawas',
+      approvalLink: 'https://hero.chitraparatama.co.id/dashboard/activity-hub/document/18/approval',
+    },
+  },
+  {
+    name: 'Overtime Request (SPL) Sequential Approval Assignment',
+    templateCode: 'overtime_approval_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[SPL Lembur] Menunggu Persetujuan Anda: {{splNumber}} - {{title}} ({{approvalStep}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#2563eb);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#93c5fd;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Surat Perintah Lembur (SPL) • Sequential Approval</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Pengajuan Surat Perintah Lembur (SPL) berikut membutuhkan persetujuan dan tanda tangan digital Anda pada tahap <strong>{{approvalStep}}</strong>:
+  </p>
+  <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #2563eb">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#64748b">No. SPL:</td><td style="font-weight:600;color:#0f172a">{{splNumber}}</td></tr>
+      <tr><td style="color:#64748b">Pekerjaan:</td><td><strong>{{title}}</strong></td></tr>
+      <tr><td style="color:#64748b">Pemohon:</td><td>{{requesterName}}</td></tr>
+      <tr><td style="color:#64748b">Tanggal Lembur:</td><td>{{workDate}}</td></tr>
+      <tr><td style="color:#64748b">Tahap Approval:</td><td style="color:#1d4ed8;font-weight:bold">{{approvalStep}}</td></tr>
+    </table>
+  </div>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{approvalLink}}" style="background:#2563eb;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau & Tanda Tangani SPL</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{approverName}},
+
+Pengajuan SPL berikut membutuhkan persetujuan Anda pada tahap {{approvalStep}}:
+
+No. SPL: {{splNumber}}
+Pekerjaan: {{title}}
+Pemohon: {{requesterName}}
+Tanggal Lembur: {{workDate}}
+
+Tanda tangani di: {{approvalLink}}
+
+Hormat kami,
+PT Chitra Paratama`,
+    description: 'Notifikasi penugasan persetujuan berurutan (sequential) untuk Surat Perintah Lembur.',
+    variables: ['approverName', 'splNumber', 'title', 'requesterName', 'workDate', 'approvalStep', 'approvalLink'],
+    sampleValues: {
+      approverName: 'Apriyanto',
+      splNumber: 'SPL/001/08/2026',
+      title: 'Pekerjaan Lembur Tambahan',
+      requesterName: 'Faizal Zidan',
+      workDate: '20 Agustus 2026',
+      approvalStep: 'Leader / Pengawas',
+      approvalLink: 'https://hero.chitraparatama.co.id/dashboard/overtime-requests/11/approval',
     },
   },
   {
@@ -1723,6 +1797,118 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
       projectName: 'Hot work di workshop',
       status: 'Approved',
       riskLevel: 'High',
+    },
+  },
+  {
+    name: 'PTW Approval Notification',
+    templateCode: 'ptw_approval_notification',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: 'raihanaraya36@gmail.com',
+    subject: '[Izin Kerja PTW] Menunggu Persetujuan Anda: {{permitNumber}} - {{projectName}} ({{approvalStep}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
+  <div style="background:linear-gradient(135deg,#0f172a,#0891b2);padding:24px;border-radius:10px 10px 0 0">
+    <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+    <p style="color:#cffafe;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Permit to Work (PTW) • Sequential Approval</p>
+  </div>
+  <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+    <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+    <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+      Dokumen Izin Kerja Aman (PTW) berikut membutuhkan persetujuan dan tanda tangan digital Anda pada tahap <strong>{{approvalStep}}</strong>:
+    </p>
+    <div style="background:#f1f5f9;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #0891b2">
+      <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+        <tr><td width="140" style="color:#64748b">No. PTW:</td><td style="font-weight:600;color:#0f172a">{{permitNumber}}</td></tr>
+        <tr><td style="color:#64748b">Pekerjaan:</td><td><strong>{{projectName}}</strong></td></tr>
+        <tr><td style="color:#64748b">Tipe Izin:</td><td>{{permitType}}</td></tr>
+        <tr><td style="color:#64748b">Lokasi:</td><td>{{location}}</td></tr>
+        <tr><td style="color:#64748b">Pemohon:</td><td>{{applicantName}}</td></tr>
+        <tr><td style="color:#64748b">Tahap Approval:</td><td style="color:#0e7490;font-weight:bold">{{approvalStep}}</td></tr>
+      </table>
+    </div>
+    <div style="text-align:center;margin:28px 0">
+      <a href="{{approvalLink}}" style="background:#0891b2;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau & Tanda Tangani PTW</a>
+    </div>
+    <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+      Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
+    </p>
+  </div>
+</div>`,
+    textContent: `Yth. {{approverName}},
+
+Dokumen PTW berikut membutuhkan persetujuan Anda pada tahap {{approvalStep}}:
+
+No. PTW: {{permitNumber}}
+Pekerjaan: {{projectName}}
+Tipe: {{permitType}}
+Lokasi: {{location}}
+Pemohon: {{applicantName}}
+
+Tanda tangani PTW di:
+{{approvalLink}}
+
+Hormat kami,
+PT Chitra Paratama`,
+    description: 'Notifikasi email untuk persetujuan berjenjang PTW.',
+    variables: ['approverName', 'permitNumber', 'projectName', 'permitType', 'location', 'applicantName', 'approvalStep', 'approvalLink'],
+    sampleValues: {
+      approverName: 'Budi Santoso',
+      permitNumber: 'PTW-2026-0001',
+      projectName: 'Perbaikan Pipa Hidrolik Bay 4',
+      permitType: 'Hot Work',
+      location: 'Workshop Sector Utara',
+      applicantName: 'Raihan Raya',
+      approvalStep: 'Safety Dept',
+      approvalLink: 'http://localhost:3000/review/ptw/sample-token',
+    },
+  },
+  {
+    name: 'PTW Completed Notification',
+    templateCode: 'ptw_completed_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'applicant',
+    ccEmail: 'raihanaraya36@gmail.com',
+    subject: '[PTW Disetujui Penuh] {{permitNumber}} - {{projectName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
+  <div style="background:linear-gradient(135deg,#059669,#10b981);padding:24px;border-radius:10px 10px 0 0">
+    <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+    <p style="color:#d1fae5;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Permit to Work (PTW) • Approved Status</p>
+  </div>
+  <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+    <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Halo <strong>{{applicantName}}</strong>,</p>
+    <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+      Selamat! Dokumen Izin Kerja Aman (PTW) Anda telah <strong>disetujui lengkap</strong> oleh seluruh tim approver & Safety Dept.
+    </p>
+    <div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #10b981">
+      <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+        <tr><td width="140" style="color:#64748b">No. PTW:</td><td style="font-weight:600;color:#065f46">{{permitNumber}}</td></tr>
+        <tr><td style="color:#64748b">Pekerjaan:</td><td><strong>{{projectName}}</strong></td></tr>
+        <tr><td style="color:#64748b">Status:</td><td style="color:#047857;font-weight:bold">APPROVED (Siap Dilaksanakan)</td></tr>
+      </table>
+    </div>
+    <div style="text-align:center;margin:28px 0">
+      <a href="{{viewLink}}" style="background:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Dokumen PTW & Cetak PDF</a>
+    </div>
+  </div>
+</div>`,
+    textContent: `Halo {{applicantName}},
+
+Dokumen PTW {{permitNumber}} ({{projectName}}) telah disetujui lengkap oleh seluruh pihak.
+
+Lihat dokumen di:
+{{viewLink}}
+
+Hormat kami,
+PT Chitra Paratama`,
+    description: 'Notifikasi email saat seluruh persetujuan PTW selesai disetujui.',
+    variables: ['applicantName', 'permitNumber', 'projectName', 'viewLink'],
+    sampleValues: {
+      applicantName: 'Raihan Raya',
+      permitNumber: 'PTW-2026-0001',
+      projectName: 'Perbaikan Pipa Hidrolik Bay 4',
+      viewLink: 'http://localhost:3000/dashboard/hse/izin-kerja-ptw/1/approval',
     },
   },
   {
@@ -3698,6 +3884,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["apd_summary_", "HSE Safety"],
   ["rfr_", "HC Recruitment (RFR)"],
   ["form_wo_", "Central Services (Form WO)"],
+  ["sop_win_request_", "SOP / WIN / POL"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

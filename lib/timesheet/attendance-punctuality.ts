@@ -1,11 +1,19 @@
+import {
+  IndonesiaTimezoneCode,
+  normalizeIndonesiaTimezone,
+  resolveTimezoneIana,
+} from '@/lib/indonesia-timezone'
+
 export const DEFAULT_SITE_ATTENDANCE_CLOCKS = {
   dayShiftClockIn: '08:00',
   nightShiftClockIn: '18:00',
+  timezone: 'WITA' as IndonesiaTimezoneCode,
 } as const
 
 export type SiteAttendanceClockConfig = {
   dayShiftClockIn: string
   nightShiftClockIn: string
+  timezone: IndonesiaTimezoneCode
 }
 
 export type AttendancePunctuality = {
@@ -17,7 +25,6 @@ export type AttendancePunctuality = {
 }
 
 const CLOCK_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
-const APP_TIME_ZONE = 'Asia/Makassar'
 
 export function isClockTime(value: unknown): value is string {
   return typeof value === 'string' && CLOCK_TIME_PATTERN.test(value)
@@ -26,6 +33,7 @@ export function isClockTime(value: unknown): value is string {
 export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendanceClockConfig {
   const config = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const legacyDayClock = isClockTime(config.defaultClockIn) ? config.defaultClockIn : null
+  const timezone = normalizeIndonesiaTimezone(config.timezone).code
 
   return {
     dayShiftClockIn: isClockTime(config.dayShiftClockIn)
@@ -34,6 +42,7 @@ export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendan
     nightShiftClockIn: isClockTime(config.nightShiftClockIn)
       ? config.nightShiftClockIn
       : DEFAULT_SITE_ATTENDANCE_CLOCKS.nightShiftClockIn,
+    timezone,
   }
 }
 
@@ -54,9 +63,10 @@ function clockMinutes(value: string) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null
 }
 
-function eventClockMinutes(eventTime: Date, timeZone = APP_TIME_ZONE) {
+function eventClockMinutes(eventTime: Date, timeZone?: string) {
+  const iana = resolveTimezoneIana(timeZone)
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone,
+    timeZone: iana,
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
@@ -69,9 +79,10 @@ function eventClockMinutes(eventTime: Date, timeZone = APP_TIME_ZONE) {
 export function inferShiftCodeForEvent(
   eventTime: Date,
   config: SiteAttendanceClockConfig,
-  timeZone = APP_TIME_ZONE
+  timeZone?: string
 ) {
-  const actual = eventClockMinutes(eventTime, timeZone)
+  const targetTz = timeZone || config.timezone
+  const actual = eventClockMinutes(eventTime, targetTz)
   const dayStart = clockMinutes(config.dayShiftClockIn) ?? 0
   const nightStart = clockMinutes(config.nightShiftClockIn) ?? 0
   const circularDistance = (start: number) => {
