@@ -1,12 +1,19 @@
+import { redirect } from 'next/navigation'
 import { SchedulingTimesheetWorkspace } from '@/components/scheduling-timesheet-workspace'
 import { getSchedulingTimesheetFieldBreakOptions } from '@/lib/hero-admin'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { getCurrentMenuPermission, getPermittedSchedulingTabs } from '@/lib/hero-access'
 
 export default async function SchedulingTimesheetFieldBreakPage() {
   const [options, permission] = await Promise.all([
     getSchedulingTimesheetFieldBreakOptions(),
     getCurrentMenuPermission('scheduling_timesheet_field_break'),
   ])
+
+  if (!permission.canView) {
+    const permittedTabs = await getPermittedSchedulingTabs()
+    const fallback = permittedTabs[0]?.href ?? '/dashboard'
+    redirect(fallback)
+  }
 
   return (
     <SchedulingTimesheetWorkspace

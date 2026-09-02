@@ -51,8 +51,12 @@ const tabs = [
   },
 ]
 
-export function SchedulingTabs() {
+export function SchedulingTabs({ permittedHrefs }: { permittedHrefs?: string[] }) {
   const pathname = usePathname()
+
+  const visibleTabs = permittedHrefs
+    ? tabs.filter((tab) => permittedHrefs.includes(tab.href))
+    : tabs
 
   const isActive = (href: string) => {
     if (href === '/dashboard/scheduling-timesheet') {
@@ -63,7 +67,7 @@ export function SchedulingTabs() {
 
   return (
     <nav className="mt-4 flex flex-wrap gap-1.5">
-      {tabs.map((tab) => {
+      {visibleTabs.map((tab) => {
         const active = isActive(tab.href)
         const Icon = tab.icon
         return (

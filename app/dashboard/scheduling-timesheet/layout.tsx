@@ -1,6 +1,14 @@
+import { getPermittedSchedulingTabs } from '@/lib/hero-access'
 import { SchedulingTabs } from './tabs-nav'
 
-export default function SchedulingTimesheetLayout({ children }: { children: React.ReactNode }) {
+export default async function SchedulingTimesheetLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const permittedTabs = await getPermittedSchedulingTabs()
+  const permittedHrefs = permittedTabs.map((tab) => tab.href)
+
   return (
     <div className="space-y-4 p-4 lg:p-5">
       <header className="admin-daily-card overflow-hidden rounded-[1.1rem] px-5 py-4">
@@ -11,7 +19,7 @@ export default function SchedulingTimesheetLayout({ children }: { children: Reac
             </h1>
           </div>
         </div>
-        <SchedulingTabs />
+        <SchedulingTabs permittedHrefs={permittedHrefs} />
       </header>
       <div className="space-y-4">{children}</div>
     </div>

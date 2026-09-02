@@ -222,6 +222,7 @@ import { appendApprovalNoteEntry } from '@/lib/approval-notes'
 import {
   getCurrentEmployeeAccessContext,
   getCurrentMenuPermission,
+  getUserAccessibleSiteIds,
   hasGlobalDataAccess,
 } from '@/lib/hero-access'
 
@@ -240,8 +241,16 @@ async function assertSchedulingSiteScope(siteId: number, permission: 'edit' | 'f
     requireSchedulingTimesheetAccess(permission),
     getCurrentEmployeeAccessContext(),
   ])
-  if (!hasGlobalDataAccess(access) && context?.siteId !== siteId) {
-    throw new Error('Anda hanya dapat mengelola scheduling untuk site sendiri.')
+  if (!hasGlobalDataAccess(access)) {
+    const allowedSiteIds = context?.employeeId
+      ? await getUserAccessibleSiteIds(context.employeeId)
+      : context?.siteId != null
+        ? [context.siteId]
+        : []
+
+    if (!allowedSiteIds.includes(siteId)) {
+      throw new Error('Anda hanya dapat mengelola scheduling untuk site yang ditugaskan kepada Anda.')
+    }
   }
   return { access, context }
 }

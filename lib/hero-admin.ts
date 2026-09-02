@@ -75,6 +75,7 @@ import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
 import {
   getCurrentEmployeeAccessContext,
   getCurrentMenuPermission,
+  getUserAccessibleSiteIds,
   hasGlobalDataAccess,
 } from '@/lib/hero-access'
 import {
@@ -6462,9 +6463,14 @@ export async function getSchedulingTimesheetOptions() {
     : null
   const schedulingAccess = await getCurrentMenuPermission('scheduling_timesheet')
   const hasGlobalSchedulingScope = hasGlobalDataAccess(schedulingAccess)
+  const userAssignedSiteIds = currentEmployee?.id
+    ? await getUserAccessibleSiteIds(currentEmployee.id)
+    : currentEmployee?.siteId != null
+      ? [currentEmployee.siteId]
+      : []
   const canSeeSchedulingSite = (siteId: number | null) =>
     hasGlobalSchedulingScope ||
-    (currentEmployee?.siteId != null && siteId === currentEmployee.siteId)
+    (siteId != null && userAssignedSiteIds.includes(siteId))
 
   const serializedV1Plans = savedPlans.map((plan) => ({
     siteId: plan.siteId,
@@ -6949,7 +6955,7 @@ export async function getSchedulingTimesheetScheduleOptions() {
 export async function getSchedulingTimesheetScheduleV2Options() {
   const [options, access] = await Promise.all([
     getSchedulingTimesheetOptions(),
-    getCurrentMenuPermission('scheduling_timesheet'),
+    getCurrentMenuPermission('scheduling_timesheet_schedule_v2'),
   ])
   return { ...options, access }
 }
