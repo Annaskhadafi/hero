@@ -6595,8 +6595,8 @@ export async function getSchedulingTimesheetOptions() {
   )
 
   return {
-    currentEmployeeSiteId: currentEmployee?.siteId ?? null,
-    currentEmployeeName: currentEmployee?.name ?? authSession?.user?.name ?? 'User Management',
+    currentEmployeeSiteId: currentEmployeeCtx?.siteId ?? null,
+    currentEmployeeName: authSession?.user?.name ?? 'User Management',
     approvalEmployees: employeeRows.map((employee) => ({
       id: employee.id,
       name: employee.name,
