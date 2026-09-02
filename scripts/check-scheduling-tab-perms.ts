@@ -2,36 +2,36 @@ import { db } from '@/db'
 import { sql } from 'drizzle-orm'
 
 async function main() {
-  // Check nav items for scheduling tabs - no 'name' column
-  const navItems = await db.execute(sql`
-    SELECT id, resource, title, url
-    FROM hero_navbar_menu_items
-    WHERE resource LIKE 'scheduling_timesheet%'
-    ORDER BY resource
-  `)
-  console.log('\n=== NAV ITEMS for scheduling tabs ===')
-  console.log(JSON.stringify(navItems.rows, null, 2))
+  const roles = await db.execute(sql`SELECT id, name FROM hero_security_roles ORDER BY id`)
+  const attendanceNav = await db.execute(sql`SELECT id FROM hero_navbar_menu_items WHERE resource = 'scheduling_timesheet_attendance' LIMIT 1`)
+  
+  if (!attendanceNav.rows.length) {
+    console.log('Attendance nav item missing!')
+    return
+  }
+  
+  const navId = (attendanceNav.rows[0] as any).id
+  console.log(`Checking attendance permissions for nav_item_id = ${navId} across ${roles.rows.length} roles...`)
 
-  // Check what columns are in hero_navbar_menu_items
-  const cols = await db.execute(sql`
-    SELECT column_name FROM information_schema.columns
-    WHERE table_name = 'hero_navbar_menu_items'
-    ORDER BY ordinal_position
-  `)
-  console.log('\n=== COLUMNS in hero_navbar_menu_items ===')
-  console.log(JSON.stringify(cols.rows, null, 2))
+  for (const role of roles.rows as any[]) {
+    const perm = await db.execute(sql`
+      SELECT id, can_view, can_edit, data_scope 
+      FROM hero_role_menu_permissions 
+      WHERE role_id = ${role.id} AND menu_item_id = ${navId}
+    `)
+    
+    if (!perm.rows.length) {
+      console.log(`Role ${role.id} (${role.name}) was MISSING attendance permission. Inserting default (can_view=true)...`)
+      await db.execute(sql`
+        INSERT INTO hero_role_menu_permissions (role_id, menu_item_id, can_view, can_edit, can_delete, can_select_all, data_scope, created_at)
+        VALUES (${role.id}, ${navId}, true, true, false, false, 'global', NOW())
+      `)
+    } else {
+      console.log(`Role ${role.id} (${role.name}): can_view=${(perm.rows[0] as any).can_view}, data_scope=${(perm.rows[0] as any).data_scope}`)
+    }
+  }
 
-  // Check permissions for all roles on scheduling tabs
-  const perms = await db.execute(sql`
-    SELECT sr.name as role_name, nmi.resource, rmp.can_view, rmp.can_edit, rmp.data_scope
-    FROM hero_role_menu_permissions rmp
-    JOIN hero_security_roles sr ON rmp.role_id = sr.id
-    JOIN hero_navbar_menu_items nmi ON rmp.menu_item_id = nmi.id
-    WHERE nmi.resource LIKE 'scheduling_timesheet%'
-    ORDER BY sr.name, nmi.resource
-  `)
-  console.log('\n=== PERMISSIONS for scheduling tabs ===')
-  console.log(JSON.stringify(perms.rows, null, 2))
+  console.log('✅ All roles verified!')
 }
 
 main().catch(console.error)

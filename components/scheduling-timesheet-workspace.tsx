@@ -5356,6 +5356,10 @@ export function SchedulingTimesheetWorkspace({
               if (cell.status !== 'present') {
                 return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
               }
+              // Prioritize manually saved overtime hours (from attendance override)
+              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null && cell.overtimeHours > 0) {
+                return String(roundOvertimeHours(cell.overtimeHours as number))
+              }
               const overtime = calculateDayOvertime(
                 row.schedule,
                 day,
@@ -5402,15 +5406,21 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt' && cell.status !== 'present') continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
-            else if (!staff)
-              total += calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              ).totalHours
+            else if (!staff) {
+              // Prioritize manually saved overtime hours
+              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+                total += Number(cell.overtimeHours)
+              } else {
+                total += calculateDayOvertime(
+                  row.schedule,
+                  day,
+                  cell.clockIn,
+                  cell.clockOut,
+                  staff,
+                  row.employee.id
+                ).totalHours
+              }
+            }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
           const rowLoc =
