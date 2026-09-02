@@ -77,6 +77,7 @@ import {
   getCurrentMenuPermission,
   getUserAccessibleSiteIds,
   hasGlobalDataAccess,
+  hasSiteDataAccess,
 } from '@/lib/hero-access'
 import {
   ensureMasterCategoryTables,
@@ -6456,21 +6457,24 @@ export async function getSchedulingTimesheetOptions() {
     kimperMap.set(record.employeeId, state)
   }
 
-  const currentEmployee = authSession?.user?.email
-    ? employeeRows.find(
-        (employee) => employee.email?.toLowerCase() === authSession.user.email.toLowerCase()
-      )
-    : null
+  // Use the dedicated access context helper — not employeeRows.find() — because
+  // employeeRows only contains employees from queried sites and may not include
+  // the logged-in user (especially for a user whose site is unrepresented in data).
+  const currentEmployeeCtx = await getCurrentEmployeeAccessContext()
   const schedulingAccess = await getCurrentMenuPermission('scheduling_timesheet')
   const hasGlobalSchedulingScope = hasGlobalDataAccess(schedulingAccess)
-  const userAssignedSiteIds = currentEmployee?.id
-    ? await getUserAccessibleSiteIds(currentEmployee.id)
-    : currentEmployee?.siteId != null
-      ? [currentEmployee.siteId]
+  const hasSiteOnlyScope = hasSiteDataAccess(schedulingAccess)
+  const userAssignedSiteIds = currentEmployeeCtx?.employeeId
+    ? await getUserAccessibleSiteIds(currentEmployeeCtx.employeeId)
+    : currentEmployeeCtx?.siteId != null
+      ? [currentEmployeeCtx.siteId]
       : []
-  const canSeeSchedulingSite = (siteId: number | null) =>
-    hasGlobalSchedulingScope ||
-    (siteId != null && userAssignedSiteIds.includes(siteId))
+  const canSeeSchedulingSite = (siteId: number | null) => {
+    if (hasGlobalSchedulingScope) return true
+    if (siteId == null) return false
+    // For 'site' and 'own' scopes, only show sites assigned to the current user
+    return userAssignedSiteIds.includes(siteId)
+  }
 
   const serializedV1Plans = savedPlans.map((plan) => ({
     siteId: plan.siteId,
