@@ -616,7 +616,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     section: 'Aktivitas Harian',
     groupLabel: 'Lembur & Timesheet',
     title: 'Timesheet Realisasi',
-    url: '/dashboard/scheduling-timesheet/attendance',
+    url: '/dashboard/timesheet',
     iconName: 'folder',
     resource: 'tire_engineer',
     sortOrder: 7,
