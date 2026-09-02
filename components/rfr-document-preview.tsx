@@ -102,34 +102,59 @@ export function RfrDocumentPreview({
         </table>
       </div>
 
-      {/* Section E */}
+      {/* Section E: Approval Matrix */}
       <div className="mb-4">
         <div className="font-bold border-b border-gray-400 pb-1 mb-2 text-xs text-slate-800">E. Approval Matrix</div>
-        <div className="grid border border-gray-400 divide-x divide-gray-400 text-center" style={{ gridTemplateColumns: `repeat(${approvals.length}, minmax(0, 1fr))` }}>
-          {approvals.map((step: any) => {
-            const isActiveStep = step.stepOrder === currentStepOrder
+        <div
+          className="grid border border-gray-400 divide-x divide-gray-400 text-center bg-white"
+          style={{ gridTemplateColumns: `repeat(${approvals.length}, minmax(0, 1fr))` }}
+        >
+          {approvals.map((step: any, idx: number) => {
+            const effectiveCurrentStep = currentStepOrder || rfr?.currentStepOrder || 1
+            const isActiveStep = step.stepOrder === effectiveCurrentStep
+            const isFirstStep = step.stepOrder === 1 || idx === 0
+            const hasSig = Boolean(step.signatureDataUrl)
+            const isApproved = step.status === 'approved' || (isFirstStep && hasSig)
+            const cleanRemark =
+              step.remarks &&
+              !['Resubmitted after revision', 'Submitted', 'Reverted', 'Approved', 'approved'].includes(step.remarks.trim())
+                ? step.remarks.trim()
+                : ''
+
             return (
-              <div key={step.id} className="p-1.5 flex flex-col items-center min-h-[110px]">
-                {/* Step label */}
-                <div className="font-bold text-[7pt] border-b border-gray-300 pb-0.5 mb-1 text-gray-800 w-full truncate">{step.roleLabel}</div>
-                {/* Signature area — fixed height */}
-                <div className="flex items-center justify-center h-[40px] w-full">
-                  {step.status === 'approved' && step.signatureDataUrl ? (
-                    <img src={step.signatureDataUrl} alt="TTD" className="max-h-8 max-w-full object-contain" />
-                  ) : isActiveStep && liveSignatureUrl ? (
-                    <img src={liveSignatureUrl} alt="Live TTD" className="max-h-8 max-w-full object-contain opacity-70" />
+              <div key={step.id || step.stepOrder} className="flex flex-col justify-between p-1 bg-white">
+                {/* 1. Header Role (No cutoff, word wrap cleanly) */}
+                <div className="h-[28px] border-b border-gray-300 pb-0.5 flex items-center justify-center text-center font-bold text-[6.5pt] leading-[1.1] text-gray-800 px-0.5 break-words w-full">
+                  {step.roleLabel}
+                </div>
+
+                {/* 2. Signature Box (Strictly Aligned Height & Centered) */}
+                <div className="flex items-center justify-center h-[46px] w-full px-0.5 my-1">
+                  {isActiveStep && liveSignatureUrl ? (
+                    <img src={liveSignatureUrl} alt="Live TTD" className="max-h-[42px] max-w-full object-contain" />
+                  ) : hasSig ? (
+                    <img src={step.signatureDataUrl} alt="TTD" className="max-h-[42px] max-w-full object-contain" />
                   ) : (
                     <span className="text-[6.5pt] italic text-gray-400">
-                      {step.status === 'approved' ? '[Signed]' : 'Pending'}
+                      {isApproved ? '[Signed]' : 'Pending TTD'}
                     </span>
                   )}
                 </div>
-                {/* Approver info */}
-                <div className="w-full">
-                  <div className="font-bold text-[6.5pt] underline truncate">{step.approverName || '-'}</div>
-                  <div className="text-[5.5pt] text-gray-600 truncate">{step.approverTitle || '-'}</div>
-                  {/* Timestamp or empty placeholder for alignment */}
-                  <div className="text-[5pt] text-gray-500 mt-0.5 h-[12px] truncate">
+
+                {/* 3. Bottom Info Section (Grounded snugly to bottom border) */}
+                <div className="w-full pb-0.5 space-y-0.5">
+                  {/* Nama */}
+                  <div className="font-bold text-[6.5pt] underline text-gray-900 leading-tight text-center truncate px-0.5">
+                    {step.approverName || '-'}
+                  </div>
+
+                  {/* Jabatan */}
+                  <div className="text-[5.5pt] text-gray-600 leading-tight text-center truncate px-0.5">
+                    {step.approverTitle || '-'}
+                  </div>
+
+                  {/* Jam - Tanggal */}
+                  <div className="text-[5pt] text-gray-500 font-medium leading-tight text-center truncate px-0.5">
                     {step.signedAt ? (
                       <span>
                         {new Date(step.signedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} —{' '}
@@ -137,6 +162,17 @@ export function RfrDocumentPreview({
                       </span>
                     ) : (
                       <span className="text-gray-300">-</span>
+                    )}
+                  </div>
+
+                  {/* Catatan Approver */}
+                  <div className="text-[5pt] text-gray-500 leading-tight text-center truncate px-0.5 min-h-[11px] flex items-center justify-center">
+                    {cleanRemark ? (
+                      <span className="truncate max-w-full" title={cleanRemark}>
+                        Catatan: {cleanRemark}
+                      </span>
+                    ) : (
+                      <span className="text-transparent">-</span>
                     )}
                   </div>
                 </div>

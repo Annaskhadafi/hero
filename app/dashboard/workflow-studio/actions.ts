@@ -27,6 +27,7 @@ import {
   workflowTemplateVersions,
   workflowTemplates,
 } from '@/db/schema/hero'
+import { fiveRMasterAreas } from '@/db/schema/five-r'
 import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
@@ -158,11 +159,14 @@ export async function saveWorkflowStudioApprovalAction(
       return { status: 'error', message: 'Minimal satu langkah approval dan satu site wajib diisi.' }
     }
 
-    // Langkah bertipe Section menyimpan id section (bukan id karyawan) di values,
+    // Langkah bertipe Section / Master Area menyimpan ID section/area (bukan ID karyawan),
     // jadi harus dikeluarkan dari validasi & pembuatan approver.
     const sectionStepIds = new Set(
       parsedSteps
-        .filter((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'section')
+        .filter((s) => {
+          const l = s.label.toLowerCase().replace(/[^a-z]/g, '')
+          return (s as any).type === 'section' || l === 'section' || l === 'masterarea' || l === 'area'
+        })
         .map((s) => s.id)
     )
 
@@ -337,13 +341,38 @@ export async function saveWorkflowStudioApprovalAction(
 
         if (allApprovers.length === 0) continue
 
-        const sectionStep = parsedSteps.find((s) => s.label.toLowerCase().replace(/[^a-z]/g, '') === 'section')
-        const sectionId = sectionStep ? entry.values[sectionStep.id] ?? null : null
+        const isFiveR = payload.transactionType === 'five_r_report' || (payload.templateKey || '').includes('5r')
+
+        const sectionStep = parsedSteps.find((s) => {
+          const l = s.label.toLowerCase().replace(/[^a-z]/g, '')
+          return (s as any).type === 'section' || l === 'section' || l === 'masterarea' || l === 'area'
+        })
+        const areaOrSectionId = sectionStep ? entry.values[sectionStep.id] ?? null : null
+        const sectionId = isFiveR ? null : areaOrSectionId
+
+        let matrixName = payload.activityName
+        let matrixDesc = payload.notes ?? ''
+
+        if (isFiveR && areaOrSectionId) {
+          const [area] = await tx
+            .select({ name: fiveRMasterAreas.name, siteId: fiveRMasterAreas.siteId })
+            .from(fiveRMasterAreas)
+            .where(eq(fiveRMasterAreas.id, areaOrSectionId))
+            .limit(1)
+
+          if (area) {
+            matrixName = `Laporan Audit 5R - ${area.name}`
+            matrixDesc = `Matrix approval otomatis untuk Master Area ${area.name} (Area ID: ${areaOrSectionId})`
+            if (!entry.siteId && area.siteId) {
+              entry.siteId = area.siteId
+            }
+          }
+        }
 
         const [matrix] = await tx
           .insert(approvalMatrices)
           .values({
-            name: payload.activityName,
+            name: matrixName,
             structureId: structure.id,
             transactionType: payload.transactionType,
             siteId: entry.departmentId ? null : (entry.siteId === 0 ? null : entry.siteId),
@@ -351,7 +380,7 @@ export async function saveWorkflowStudioApprovalAction(
             sectionId: sectionId,
             activityType: '',
             priority: 'any',
-            description: payload.notes ?? '',
+            description: matrixDesc,
             effectiveFrom,
             effectiveTo,
             isActive: payload.isActive === 'true',

@@ -1,9 +1,27 @@
 'use client'
 
 import React, { useState } from 'react'
-import { CheckCircle2, Eye, Printer } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Eye, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { useReactToPrint } from 'react-to-print'
+
+function formatDateTimeLabel(dateVal: Date | string | null | undefined): string {
+  if (!dateVal) return '-'
+  const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
+  if (isNaN(d.getTime())) return String(dateVal)
+  const dateStr = d.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+  const timeStr = d.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return `${dateStr}, ${timeStr}`
+}
 
 interface FiveRDocumentPreviewProps {
   report: any
@@ -23,6 +41,56 @@ export function FiveRDocumentPreview({
   liveSignatureUrl,
 }: FiveRDocumentPreviewProps) {
   const [zoomPhoto, setZoomPhoto] = useState<{ url: string; title: string } | null>(null)
+
+  const printableSheetRef = React.useRef<HTMLDivElement>(null)
+
+  const handlePrint = useReactToPrint({
+    contentRef: printableSheetRef,
+    documentTitle: `Laporan-Audit-5R-${report?.reportNumber || 'Doc'}`,
+    pageStyle: `
+      @page {
+        size: A4 portrait !important;
+        margin: 8mm !important;
+      }
+      @page :left {
+        size: A4 portrait !important;
+      }
+      @page :right {
+        size: A4 portrait !important;
+      }
+      html, body {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        .pdf-wrapper, .pdf-wrapper * {
+          visibility: visible;
+        }
+        .pdf-wrapper {
+          position: fixed !important;
+          inset: 0 !important;
+          margin: 0 auto !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          box-shadow: none !important;
+          border: none !important;
+          background: #ffffff !important;
+          padding: 8mm 12mm !important;
+          page-break-after: avoid !important;
+          page-break-inside: avoid !important;
+        }
+      }
+    `,
+  })
 
   if (!report) {
     return (
@@ -57,83 +125,6 @@ export function FiveRDocumentPreview({
     }
   }
 
-  const printableSheetRef = React.useRef<HTMLDivElement>(null)
-
-  const handlePrintDirectly = () => {
-    const sheetElement = printableSheetRef.current
-    if (!sheetElement) return
-
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    document.body.appendChild(iframe)
-
-    const doc = iframe.contentWindow?.document
-    if (!doc) return
-
-    // Clone all stylesheets from current document
-    const styleElements = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((el) => el.outerHTML)
-      .join('\n')
-
-    doc.open()
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Laporan Audit 5R - ${report?.reportNumber || 'Print'}</title>
-          ${styleElements}
-          <style>
-            @page {
-              size: A4 portrait;
-              margin: 8mm;
-            }
-            body {
-              background-color: #ffffff !important;
-              color: #000000 !important;
-              padding: 0 !important;
-              margin: 0 !important;
-              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            .print-container {
-              width: 100% !important;
-              max-width: 100% !important;
-              box-shadow: none !important;
-              border: none !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            button {
-              display: none !important;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-container">
-            ${sheetElement.innerHTML}
-          </div>
-        </body>
-      </html>
-    `)
-    doc.close()
-
-    iframe.contentWindow?.focus()
-    setTimeout(() => {
-      iframe.contentWindow?.print()
-      setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe)
-        }
-      }, 1500)
-    }, 450)
-  }
-
   return (
     <div className="w-full bg-slate-100/60 p-1.5 sm:p-4 rounded-lg overflow-x-auto">
       {/* Top Action Toolbar */}
@@ -144,7 +135,7 @@ export function FiveRDocumentPreview({
         <Button
           type="button"
           size="sm"
-          onClick={handlePrintDirectly}
+          onClick={() => handlePrint()}
           className="h-7 px-3 bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-bold tracking-wide uppercase shadow-xs flex items-center gap-1.5 cursor-pointer"
           title="Cetak langsung atau simpan sebagai PDF tanpa pindah halaman"
         >
@@ -156,42 +147,42 @@ export function FiveRDocumentPreview({
       {/* Official A4 Sheet Container */}
       <div
         ref={printableSheetRef}
-        className="min-w-[600px] sm:min-w-0 mx-auto w-[210mm] max-w-[820px] min-h-[297mm] bg-white p-4 sm:p-9 shadow-md border border-slate-300 text-slate-900 rounded-md font-sans text-xs flex flex-col justify-between box-border"
+        className="pdf-wrapper relative min-w-[600px] sm:min-w-0 mx-auto w-[210mm] max-w-[820px] min-h-[297mm] bg-white p-6 sm:p-9 shadow-md border border-slate-300 text-slate-900 rounded-md font-sans text-xs flex flex-col justify-between box-border"
       >
         <div>
           {/* Corporate Header with Chitra Paratama Logo */}
           <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
-          <div className="flex items-center gap-3.5">
-            <img
-              src="/cp_logo-removebg-preview.png"
-              alt="PT Chitra Paratama"
-              className="h-11 w-auto object-contain"
-            />
-            <div className="border-l-2 border-slate-300 pl-3">
-              <div className="text-[13px] font-black uppercase tracking-wider text-slate-900">
-                PT CHITRA PARATAMA
-              </div>
-              <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wide">
-                Continuous Process Improvement (CPI) & Quality Management
-              </div>
-              <div className="text-[9px] text-slate-500 font-medium italic">
-                Sistem Tata Graha & Standarisasi Kerja 5R / 5S
+            <div className="flex items-center gap-3.5">
+              <img
+                src="/cp_logo-removebg-preview.png"
+                alt="PT Chitra Paratama"
+                className="h-11 w-auto object-contain"
+              />
+              <div className="border-l-2 border-slate-300 pl-3">
+                <div className="text-[13px] font-black uppercase tracking-wider text-slate-900">
+                  PT CHITRA PARATAMA
+                </div>
+                <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wide">
+                  Continuous Process Improvement (CPI) &amp; Quality Management
+                </div>
+                <div className="text-[9px] text-slate-500 font-medium italic">
+                  Sistem Tata Graha &amp; Standarisasi Kerja 5R / 5S
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="text-right">
-            <div className="text-[13px] font-extrabold uppercase tracking-tight text-slate-900">
-              LAPORAN AUDIT 5R
-            </div>
-            <div className="text-[11px] font-bold text-emerald-800 font-mono tracking-tight">
-              {report.reportNumber}
-            </div>
-            <div className="text-[9px] text-slate-500 font-medium mt-0.5">
-              Ref Doc: CP/QMS/5R/F-01
+            <div className="text-right">
+              <div className="text-[13px] font-extrabold uppercase tracking-tight text-slate-900">
+                LAPORAN AUDIT 5R
+              </div>
+              <div className="text-[11px] font-bold text-emerald-800 font-mono tracking-tight">
+                {report.reportNumber}
+              </div>
+              <div className="text-[9px] text-slate-500 font-medium mt-0.5">
+                Ref Doc: CP/QMS/5R/F-01
+              </div>
             </div>
           </div>
-        </div>
 
         {/* Metadata Grid (Informasi Audit & Lokasi) */}
         <div className="mt-4 rounded-md border border-slate-300 bg-slate-50/70 p-3.5">
@@ -425,24 +416,24 @@ export function FiveRDocumentPreview({
         {/* Authorization & 3-Step Approval Sign-off Matrices */}
         <div className="mt-7 pt-4 border-t-2 border-slate-800">
           <div className="grid grid-cols-3 gap-3.5 text-center text-[11px]">
-            {/* Step 1: Diajukan Oleh */}
-            <div className="rounded border border-slate-300 p-2.5 flex flex-col justify-between h-40 bg-slate-50/60 shadow-xs">
+            {/* Step 1: Diajukan Oleh (Auditor Pembuat Laporan) */}
+            <div className="rounded border border-slate-300/80 p-2.5 flex flex-col justify-between h-44 bg-white/80 backdrop-blur-xs shadow-xs">
               <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
                 Diajukan Oleh,
               </div>
 
               <div className="my-auto py-1 flex items-center justify-center min-h-[50px]">
-                {currentStepLevel === 1 && liveSignatureUrl ? (
+                {report.auditorSignatureUrl ? (
                   <div className="flex flex-col items-center">
                     <img
-                      src={liveSignatureUrl}
-                      alt="Signature"
+                      src={report.auditorSignatureUrl}
+                      alt="Tanda Tangan Auditor"
                       className="h-12 w-auto object-contain max-w-[130px]"
                     />
                   </div>
                 ) : report.currentApprovalLevel > 1 || report.status === 'approved' ? (
                   <div className="flex flex-col items-center">
-                    <div className="font-bold text-slate-900">Ria Annisa Putri</div>
+                    <div className="font-bold text-slate-900">{report.auditorName || 'Mochamad Annas Khadafi'}</div>
                     <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
                       <CheckCircle2 className="size-3" /> Terverifikasi
                     </div>
@@ -453,83 +444,169 @@ export function FiveRDocumentPreview({
               </div>
 
               <div className="border-t border-slate-200 pt-1 text-[10px]">
-                <div className="font-bold text-slate-900">Ria Annisa Putri</div>
+                <div className="font-bold text-slate-900">{report.auditorName || 'Mochamad Annas Khadafi'}</div>
                 <div className="text-[9px] text-slate-500">Quality Management Officer</div>
-              </div>
-            </div>
-
-            {/* Step 2: Diperiksa Oleh */}
-            <div className="rounded border border-slate-300 p-2.5 flex flex-col justify-between h-40 bg-slate-50/60 shadow-xs">
-              <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
-                Diperiksa Oleh,
-              </div>
-
-              <div className="my-auto py-1 flex items-center justify-center min-h-[50px]">
-                {currentStepLevel === 2 && liveSignatureUrl ? (
-                  <div className="flex flex-col items-center">
-                    <img
-                      src={liveSignatureUrl}
-                      alt="Signature"
-                      className="h-12 w-auto object-contain max-w-[130px]"
-                    />
-                  </div>
-                ) : report.currentApprovalLevel > 2 || report.status === 'approved' ? (
-                  <div className="flex flex-col items-center">
-                    <div className="font-bold text-slate-900">
-                      {approvalRoute[1]?.approverName || 'PJO Site'}
-                    </div>
-                    <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
-                      <CheckCircle2 className="size-3" /> Disetujui
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-slate-400 italic text-[10px]">Menunggu Persetujuan Site</div>
-                )}
-              </div>
-
-              <div className="border-t border-slate-200 pt-1 text-[10px]">
-                <div className="font-bold text-slate-900">
-                  {approvalRoute[1]?.approverName || 'PJO Site'}
+                <div className="text-[8.5px] text-slate-500 font-mono mt-0.5">
+                  {formatDateTimeLabel(report.createdAt || report.auditDate)}
                 </div>
-                <div className="text-[9px] text-slate-500">Kepala Teknik / PJO Site</div>
               </div>
             </div>
 
-            {/* Step 3: Disetujui Oleh */}
-            <div className="rounded border border-slate-300 p-2.5 flex flex-col justify-between h-40 bg-slate-50/60 shadow-xs">
-              <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
-                Disetujui Oleh,
-              </div>
+            {/* Step 2: Diperiksa Oleh (PJO Site / Atasan Langsung) */}
+            {(() => {
+              const step1 = approvalRoute?.find((s: any) => s.level === 1) || approvalRoute?.[0]
+              const step2 = approvalRoute?.find((s: any) => s.level === 2) || approvalRoute?.[1]
+              const isStep1Approved =
+                step1?.status === 'approved' ||
+                approvalLogs?.some((l: any) => l.level === 1 && (l.action === 'approved' || l.status === 'approved')) ||
+                report.currentApprovalLevel > 1 ||
+                report.revertedFromLevel === 2 ||
+                report.status === 'approved'
+              const step1Signature =
+                step1?.signatureUrl ||
+                approvalLogs?.find((l: any) => l.level === 1 && l.signatureUrl)?.signatureUrl
+              const step1ApprovedAt =
+                step1?.reviewedAt ||
+                approvalLogs?.find((l: any) => l.level === 1 && (l.action === 'approved' || l.status === 'approved'))?.actedAt
 
-              <div className="my-auto py-1 flex items-center justify-center min-h-[50px]">
-                {currentStepLevel === 3 && liveSignatureUrl ? (
-                  <div className="flex flex-col items-center">
-                    <img
-                      src={liveSignatureUrl}
-                      alt="Signature"
-                      className="h-12 w-auto object-contain max-w-[130px]"
-                    />
-                  </div>
-                ) : report.status === 'approved' ? (
-                  <div className="flex flex-col items-center">
-                    <div className="font-bold text-slate-900">Bardinia Susi Ekawaty</div>
-                    <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
-                      <CheckCircle2 className="size-3" /> Disetujui
+              const isStep2Approved =
+                step2?.status === 'approved' ||
+                approvalLogs?.some((l: any) => l.level === 2 && (l.action === 'approved' || l.status === 'approved')) ||
+                report.status === 'approved'
+              const step2Signature =
+                step2?.signatureUrl ||
+                approvalLogs?.find((l: any) => l.level === 2 && l.signatureUrl)?.signatureUrl
+              const step2ApprovedAt =
+                step2?.reviewedAt ||
+                approvalLogs?.find((l: any) => l.level === 2 && (l.action === 'approved' || l.status === 'approved'))?.actedAt
+
+              return (
+                <>
+                  <div className="rounded border border-slate-300/80 p-2.5 flex flex-col justify-between h-44 bg-white/80 backdrop-blur-xs shadow-xs">
+                    <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
+                      Diperiksa Oleh,
+                    </div>
+
+                    <div className="my-auto py-1 flex items-center justify-center min-h-[50px]">
+                      {currentStepLevel === 1 && liveSignatureUrl ? (
+                        <div className="flex flex-col items-center">
+                          <img
+                            src={liveSignatureUrl}
+                            alt="Signature"
+                            className="h-12 w-auto object-contain max-w-[130px]"
+                          />
+                        </div>
+                      ) : isStep1Approved ? (
+                        <div className="flex flex-col items-center">
+                          {step1Signature ? (
+                            <img
+                              src={step1Signature}
+                              alt="Signature"
+                              className="h-12 w-auto object-contain max-w-[130px]"
+                            />
+                          ) : (
+                            <div className="font-bold text-slate-900">
+                              {step1?.approverName || 'PJO Site'}
+                            </div>
+                          )}
+                          <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+                            <CheckCircle2 className="size-3" /> Disetujui
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 italic text-[10px]">Menunggu Persetujuan Site</div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-1 text-[10px]">
+                      <div className="font-bold text-slate-900">
+                        {step1?.approverName || 'PJO Site'}
+                      </div>
+                      <div className="text-[9px] text-slate-500">PJO Site / Atasan Langsung</div>
+                      {isStep1Approved && step1ApprovedAt ? (
+                        <div className="text-[8.5px] text-emerald-700 font-medium font-mono mt-0.5">
+                          {formatDateTimeLabel(step1ApprovedAt)}
+                        </div>
+                      ) : currentStepLevel === 1 && liveSignatureUrl ? (
+                        <div className="text-[8.5px] text-emerald-600 font-medium font-mono mt-0.5">
+                          {formatDateTimeLabel(new Date())}
+                        </div>
+                      ) : (
+                        <div className="text-[8.5px] text-slate-400 italic mt-0.5">-</div>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <div className="text-slate-400 italic text-[10px]">Menunggu Otorisasi Final</div>
-                )}
-              </div>
 
-              <div className="border-t border-slate-200 pt-1 text-[10px]">
-                <div className="font-bold text-slate-900">Bardinia Susi Ekawaty</div>
-                <div className="text-[9px] text-slate-500">Head of CPI Department</div>
-              </div>
-            </div>
+                  {/* Step 3: Disetujui Oleh (Head of CPI) */}
+                  <div className="rounded border border-slate-300/80 p-2.5 flex flex-col justify-between h-44 bg-white/80 backdrop-blur-xs shadow-xs">
+                    <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px] pb-1 border-b border-slate-200">
+                      Disetujui Oleh,
+                    </div>
+
+                    <div className="my-auto py-1 flex items-center justify-center min-h-[50px]">
+                      {currentStepLevel === 2 && liveSignatureUrl ? (
+                        <div className="flex flex-col items-center">
+                          <img
+                            src={liveSignatureUrl}
+                            alt="Signature"
+                            className="h-12 w-auto object-contain max-w-[130px]"
+                          />
+                        </div>
+                      ) : isStep2Approved ? (
+                        <div className="flex flex-col items-center">
+                          {step2Signature ? (
+                            <img
+                              src={step2Signature}
+                              alt="Signature"
+                              className="h-12 w-auto object-contain max-w-[130px]"
+                            />
+                          ) : (
+                            <div className="font-bold text-slate-900">
+                              {step2?.approverName || 'Bardinia Susi Ekawaty'}
+                            </div>
+                          )}
+                          <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+                            <CheckCircle2 className="size-3" /> Disetujui
+                          </div>
+                        </div>
+                      ) : report.status === 'needs_revision' ? (
+                        <div className="flex flex-col items-center">
+                          <div className="font-bold text-slate-900">
+                            {step2?.approverName || 'Bardinia Susi Ekawaty'}
+                          </div>
+                          <div className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                            <AlertCircle className="size-3 text-amber-600" /> Perlu Revisi
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 italic text-[10px]">Menunggu Otorisasi Final</div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-1 text-[10px]">
+                      <div className="font-bold text-slate-900">
+                        {step2?.approverName || 'Bardinia Susi Ekawaty'}
+                      </div>
+                      <div className="text-[9px] text-slate-500">Head of CPI Department</div>
+                      {isStep2Approved && step2ApprovedAt ? (
+                        <div className="text-[8.5px] text-emerald-700 font-medium font-mono mt-0.5">
+                          {formatDateTimeLabel(step2ApprovedAt)}
+                        </div>
+                      ) : currentStepLevel === 2 && liveSignatureUrl ? (
+                        <div className="text-[8.5px] text-emerald-600 font-medium font-mono mt-0.5">
+                          {formatDateTimeLabel(new Date())}
+                        </div>
+                      ) : (
+                        <div className="text-[8.5px] text-slate-400 italic mt-0.5">-</div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
-      </div>
+        </div>
 
         {/* Formal Footer Disclaimer at Bottom of Page */}
         <div className="mt-auto pt-3 border-t border-slate-200 flex items-center justify-between text-[9px] text-slate-500">

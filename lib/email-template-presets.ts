@@ -92,56 +92,261 @@ Quality Management / CPI - PT Chitra Paratama`,
     },
   },
   {
-    name: '5R Audit Status Notification',
-    templateCode: 'five_r_status_update',
-    templateType: 'Notification',
-    deliveryChannel: 'email,bell',
+    name: '5R Audit Disetujui (Approved)',
+    templateCode: 'workflow_five_r_report_approved',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
     recipientScope: 'requester',
     ccEmail: '',
-    subject: '[HERO 5R] Update Status Laporan 5R {{reportNumber}}: {{status}}',
+    subject: '[HERO 5R] Laporan Audit 5R Disetujui: {{reportNumber}} - {{picAreaName}}',
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
-<div style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:24px;border-radius:10px 10px 0 0">
+<div style="background:linear-gradient(135deg,#064e3b,#059669);padding:24px;border-radius:10px 10px 0 0">
   <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
-  <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – Status Update</p>
+  <p style="color:#a7f3d0;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – 5R Audit Disetujui</p>
 </div>
 <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
-  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{auditorName}}</strong>,</p>
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. Rekan Kerja,</p>
   <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
-    Laporan 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) telah diperbarui dengan status: <strong style="color:#059669">{{status}}</strong>.
+    Laporan audit 5R untuk area <strong>{{picAreaName}}</strong> telah <strong>DISETUJUI PENUH (FINAL APPROVED)</strong> oleh seluruh jajaran approver.
   </p>
-  <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:24px;border:1px solid #e2e8f0">
+  <div style="background:#f0fdf4;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #059669">
     <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
-      <tr><td width="140" style="color:#64748b">No. Laporan:</td><td style="font-weight:600">{{reportNumber}}</td></tr>
-      <tr><td style="color:#64748b">Area:</td><td>{{picAreaName}}</td></tr>
-      <tr><td style="color:#64748b">Ditinjau Oleh:</td><td>{{approvedBy}}</td></tr>
+      <tr><td width="140" style="color:#64748b">No. Laporan:</td><td style="font-weight:600;color:#0f172a">{{reportNumber}}</td></tr>
+      <tr><td style="color:#64748b">Area:</td><td style="font-weight:600;color:#0f172a">{{picAreaName}}</td></tr>
+      <tr><td style="color:#64748b">Auditor:</td><td>{{auditorName}}</td></tr>
+      <tr><td style="color:#64748b">Nilai Akhir:</td><td><strong style="color:#059669;font-size:15px">{{totalScore}}</strong> / 100</td></tr>
+      <tr><td style="color:#64748b">Disetujui Oleh:</td><td>{{approvedBy}}</td></tr>
       <tr><td style="color:#64748b">Catatan:</td><td>{{notes}}</td></tr>
     </table>
   </div>
   <div style="text-align:center;margin:28px 0">
-    <a href="{{viewLink}}" style="background:#0f172a;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Laporan 5R</a>
+    <a href="{{viewLink}}" style="background:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Dokumen Laporan 5R</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Continuous Process Improvement (CPI) & Quality Management • PT Chitra Paratama
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. Rekan Kerja,
+
+Laporan audit 5R untuk area {{picAreaName}} telah DISETUJUI PENUH (FINAL APPROVED).
+
+No. Laporan: {{reportNumber}}
+Area: {{picAreaName}}
+Auditor: {{auditorName}}
+Nilai Akhir: {{totalScore}} / 100
+Disetujui Oleh: {{approvedBy}}
+Catatan: {{notes}}
+
+Lihat dokumen: {{viewLink}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Notifikasi email saat Laporan Audit 5R telah disetujui final oleh seluruh approver.',
+    variables: ['auditorName', 'reportNumber', 'picAreaName', 'totalScore', 'approvedBy', 'notes', 'viewLink'],
+    sampleValues: {
+      auditorName: 'Ria Annisa Putri',
+      reportNumber: '5R-202609-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      totalScore: '92.00',
+      approvedBy: 'Bardinia Susi Ekawaty (Head of CPI)',
+      notes: 'Area memenuhi seluruh kriteria 5R dengan predikat Sangat Baik.',
+      viewLink: 'https://hero.chitraparatama.co.id/dashboard/quality/5r',
+    },
+  },
+  {
+    name: '5R Audit Dikembalikan untuk Revisi (Needs Revision)',
+    templateCode: 'workflow_five_r_report_returned_rejected',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[HERO 5R] Laporan 5R Memerlukan Revisi: {{reportNumber}} - {{picAreaName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#92400e,#d97706);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fef3c7;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – Catatan Revisi 5R</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{auditorName}}</strong> & PIC Area,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan audit 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) <strong style="color:#b45309">DIKEMBALIKAN UNTUK REVISI / PERBAIKAN</strong>.
+  </p>
+  <div style="background:#fffbeb;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #d97706">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#78350f">No. Laporan:</td><td style="font-weight:600;color:#0f172a">{{reportNumber}}</td></tr>
+      <tr><td style="color:#78350f">Area:</td><td style="font-weight:600;color:#0f172a">{{picAreaName}}</td></tr>
+      <tr><td style="color:#78350f">Direvisi Oleh:</td><td>{{rejectedBy}}</td></tr>
+      <tr><td style="color:#78350f">Catatan Revisi:</td><td><strong style="color:#b45309">{{decisionNote}}</strong></td></tr>
+    </table>
+  </div>
+  <p style="color:#475569;font-size:13px;line-height:1.5">
+    Silakan perbaiki temuan/foto yang diminta pada laporan, lalu lakukan <strong>Ajukan Ulang</strong>. Dokumen akan langsung menuju kembali ke tahap approver yang meminta revisi.
+  </p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{actionUrl}}" style="background:#d97706;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Buka & Perbaiki Laporan</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Continuous Process Improvement (CPI) & Quality Management • PT Chitra Paratama
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{auditorName}} & PIC Area,
+
+Laporan audit 5R {{reportNumber}} (Area: {{picAreaName}}) DIKEMBALIKAN UNTUK REVISI.
+
+No. Laporan: {{reportNumber}}
+Area: {{picAreaName}}
+Direvisi Oleh: {{rejectedBy}}
+Catatan Revisi: {{decisionNote}}
+
+Silakan perbaiki temuan/foto yang diminta pada laporan:
+{{actionUrl}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Notifikasi email saat Laporan Audit 5R dikembalikan oleh approver untuk perbaikan temuan/skor.',
+    variables: ['auditorName', 'reportNumber', 'picAreaName', 'rejectedBy', 'decisionNote', 'actionUrl'],
+    sampleValues: {
+      auditorName: 'Ria Annisa Putri',
+      reportNumber: '5R-202609-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      rejectedBy: 'Bardinia Susi Ekawaty (Head of CPI)',
+      decisionNote: 'Foto temuan pilar Resik buram, mohon perbaiki.',
+      actionUrl: 'https://hero.chitraparatama.co.id/dashboard/quality/5r',
+    },
+  },
+  {
+    name: '5R Audit Ditolak Permanen (Rejected)',
+    templateCode: 'workflow_five_r_report_rejected',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[HERO 5R] Laporan 5R Ditolak: {{reportNumber}} - {{picAreaName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#991b1b,#dc2626);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fecaca;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – Laporan 5R Ditolak</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{auditorName}}</strong> & PIC Area,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan audit 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) dinyatakan <strong style="color:#dc2626">DITOLAK PERMANEN</strong> oleh approver.
+  </p>
+  <div style="background:#fef2f2;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #dc2626">
+    <table cellpadding="4" cellspacing="0" width="100%" style="font-size:13px;color:#334155">
+      <tr><td width="140" style="color:#991b1b">No. Laporan:</td><td style="font-weight:600;color:#0f172a">{{reportNumber}}</td></tr>
+      <tr><td style="color:#991b1b">Area:</td><td style="font-weight:600;color:#0f172a">{{picAreaName}}</td></tr>
+      <tr><td style="color:#991b1b">Ditolak Oleh:</td><td>{{rejectedBy}}</td></tr>
+      <tr><td style="color:#991b1b">Alasan Penolakan:</td><td><strong style="color:#dc2626">{{decisionNote}}</strong></td></tr>
+    </table>
+  </div>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{actionUrl}}" style="background:#dc2626;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Arsip Laporan</a>
+  </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Continuous Process Improvement (CPI) & Quality Management • PT Chitra Paratama
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{auditorName}} & PIC Area,
+
+Laporan audit 5R {{reportNumber}} (Area: {{picAreaName}}) dinyatakan DITOLAK PERMANEN.
+
+No. Laporan: {{reportNumber}}
+Area: {{picAreaName}}
+Ditolak Oleh: {{rejectedBy}}
+Alasan Penolakan: {{decisionNote}}
+
+Lihat arsip laporan: {{actionUrl}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Notifikasi email saat Laporan Audit 5R ditolak permanen oleh approver.',
+    variables: ['auditorName', 'reportNumber', 'picAreaName', 'rejectedBy', 'decisionNote', 'actionUrl'],
+    sampleValues: {
+      auditorName: 'Ria Annisa Putri',
+      reportNumber: '5R-202609-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      rejectedBy: 'Ary Maulana (SPV Repair)',
+      decisionNote: 'Laporan tidak valid untuk periode ini.',
+      actionUrl: 'https://hero.chitraparatama.co.id/dashboard/quality/5r',
+    },
+  },
+  {
+    name: '5R Audit Pengingat Approval (Reminder)',
+    templateCode: 'workflow_five_r_report_reminder',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO 5R] Pengingat Approval Laporan 5R: {{reportNumber}} - {{picAreaName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#1e293b,#334155);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – Pengingat Approval</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Mengingatkan kembali bahwa laporan audit 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) masih menunggu verifikasi/persetujuan Anda.
+  </p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{actionUrl}}" style="background:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau Laporan Sekarang</a>
   </div>
 </div>
 </div>`,
-    textContent: `Yth. {{auditorName}},
+    textContent: `Yth. {{approverName}},
 
-Laporan 5R {{reportNumber}} (Area: {{picAreaName}}) telah diperbarui dengan status: {{status}}.
+Mengingatkan kembali bahwa laporan audit 5R {{reportNumber}} (Area: {{picAreaName}}) masih menunggu verifikasi/persetujuan Anda.
 
-Ditinjau Oleh: {{approvedBy}}
-Catatan: {{notes}}
-
-Lihat detail: {{viewLink}}
+Silakan tinjau via link: {{actionUrl}}
 
 Quality Management / CPI - PT Chitra Paratama`,
-    description: 'Notifikasi status approval / revisi laporan 5R kepada auditor dan PIC area.',
-    variables: ['auditorName', 'reportNumber', 'picAreaName', 'status', 'approvedBy', 'notes', 'viewLink'],
+    description: 'Pengingat otomatis kepada approver yang belum memproses verifikasi laporan 5R.',
+    variables: ['approverName', 'reportNumber', 'picAreaName', 'actionUrl'],
     sampleValues: {
-      auditorName: 'Mochamad Annas Khadafi',
-      reportNumber: '5R-202608-0001',
+      approverName: 'Ary Maulana',
+      reportNumber: '5R-202609-0001',
       picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
-      status: 'Approved (Disetujui Final)',
-      approvedBy: 'Bardinia Susi Ekawaty (Head of CPI)',
-      notes: 'Laporan telah lengkap dan sesuai standar 5R.',
-      viewLink: 'https://hero.chitraparatama.co.id/dashboard/quality/5r',
+      actionUrl: 'https://hero.chitraparatama.co.id/dashboard/approval',
+    },
+  },
+  {
+    name: '5R Audit Jatuh Tempo (Overdue)',
+    templateCode: 'workflow_five_r_report_overdue',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO 5R] Batas Waktu Approval 5R Terlewati: {{reportNumber}} - {{picAreaName}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#7f1d1d,#b91c1c);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fca5a5;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Quality Management System – SLA Overdue</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Laporan audit 5R <strong>{{reportNumber}}</strong> (Area: {{picAreaName}}) telah melewati batas waktu SLA verifikasi. Mohon segera melakukan tindak lanjut.
+  </p>
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{actionUrl}}" style="background:#b91c1c;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau Laporan Segera</a>
+  </div>
+</div>
+</div>`,
+    textContent: `Yth. {{approverName}},
+
+Laporan audit 5R {{reportNumber}} (Area: {{picAreaName}}) telah melewati batas waktu SLA verifikasi. Mohon segera melakukan tindak lanjut.
+
+Silakan tinjau via link: {{actionUrl}}
+
+Quality Management / CPI - PT Chitra Paratama`,
+    description: 'Pemberitahuan saat batas waktu SLA persetujuan laporan 5R telah terlewati.',
+    variables: ['approverName', 'reportNumber', 'picAreaName', 'actionUrl'],
+    sampleValues: {
+      approverName: 'Ary Maulana',
+      reportNumber: '5R-202609-0001',
+      picAreaName: 'Balikpapan – Workshop Repair – Dedi Irawan',
+      actionUrl: 'https://hero.chitraparatama.co.id/dashboard/approval',
     },
   },
   {
@@ -193,10 +398,7 @@ Jumlah Kebutuhan: {{numberOfPersons}} Person(s)
 Estimasi Tgl Masuk: {{joinDateEstimation}}
 
 Silakan tinjau lampiran PDF RFR pada email ini dan lakukan tanda tangan digital via link:
-{{approvalLink}}
-
-Hormat kami,
-HR Department - PT Chitra Paratama`,
+{{approvalLink}}`,
     description: 'Notifikasi penugasan persetujuan RFR ke approver beserta attachment PDF RFR.',
     variables: ['approverName', 'approvalStep', 'rfrNumber', 'requestorName', 'sectionDepartment', 'positionTitle', 'numberOfPersons', 'joinDateEstimation', 'approvalLink'],
     sampleValues: {
@@ -236,12 +438,8 @@ HR Department - PT Chitra Paratama`,
   <p style="color:#475569;font-size:13px;line-height:1.6">
     Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.
   </p>
-  <div style="background:#ecfdf5;padding:16px;border-radius:8px;margin-bottom:24px;border-left:4px solid #10b981">
-    <p style="margin:0;font-size:13px;color:#065f46"><strong>Posisi:</strong> {{positionTitle}} ({{numberOfPersons}} Person(s))</p>
-    <p style="margin:4px 0 0;font-size:13px;color:#065f46"><strong>Sistem telah membuat Lowongan Pekerjaan otomatis untuk proses Sourcing Recruitment.</strong></p>
-  </div>
-  <p style="color:#475569;font-size:13px;line-height:1.6">
-    Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
   </p>
 </div>
 </div>`,
@@ -282,6 +480,9 @@ HR Department - PT Chitra Paratama`,
   <div style="text-align:center;margin:28px 0">
     <a href="{{approvalLink}}" style="background:#d97706;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Tinjau Ulang RFR</a>
   </div>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
+  </p>
 </div>
 </div>`,
     textContent: `Yth. {{approverName}}, RFR {{rfrNumber}} ({{positionTitle}}) dikembalikan ke Anda oleh {{revertedByName}}. Alasan: "{{remarks}}". Link: {{approvalLink}}`,
@@ -320,6 +521,9 @@ HR Department - PT Chitra Paratama`,
   </div>
   <p style="color:#475569;font-size:13px;line-height:1.6">
     Detail permohonan dapat dilihat pada dashboard RFR Anda.
+  </p>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama.
   </p>
 </div>
 </div>`,
@@ -3357,6 +3561,8 @@ function formatEmailBody(value: string) {
 
 function inferTemplateFeature(templateCode: string) {
   const prefixes: [string, string][] = [
+    ['workflow_five_r_report_', 'Quality Management (5R)'],
+    ['five_r_', 'Quality Management (5R)'],
     ['chitralearning_', 'ChitraLearning LMS'],
     ['hc_leader_performance_', 'HC Management'],
     ['approval_', 'Approval'],
@@ -3459,6 +3665,8 @@ export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
 ) satisfies Record<string, EmailTemplatePreset>
 
 const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
+  ["workflow_five_r_report_", "Quality Management (5R)"],
+  ["five_r_", "Quality Management (5R)"],
   ["chitralearning_", "ChitraLearning LMS"],
   ["hc_leader_performance_", "HC Management"],
   ["approval_", "Approval"],
@@ -3488,6 +3696,8 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["hr_counseling_", "HR Counseling"],
   ["apd_request_", "HSE Safety"],
   ["apd_summary_", "HSE Safety"],
+  ["rfr_", "HC Recruitment (RFR)"],
+  ["form_wo_", "Central Services (Form WO)"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

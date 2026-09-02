@@ -24,6 +24,7 @@ import {
   Package,
   Wrench,
   Files,
+  Users,
 } from "lucide-react";
 import {
   IconBook,
@@ -207,6 +208,12 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       resource: "central-service-assets",
       icon: Package,
       bg: "bg-indigo-500/10 text-indigo-600",
+    },
+    {
+      title: "Request RFR",
+      href: "/mobile/rfr",
+      icon: Users,
+      bg: "bg-sky-500/10 text-sky-600",
     },
     {
       title: "Audit 5R",

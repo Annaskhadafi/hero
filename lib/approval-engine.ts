@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   approvalMatrices,
@@ -77,6 +77,10 @@ type ResolveApprovalRouteInput = {
   overtimeMinutes: number
   transactionType?: string
   customerName?: string
+  siteId?: number | null
+  siteName?: string | null
+  sectionId?: number | null
+  departmentId?: number | null
   at?: Date
 }
 
@@ -125,7 +129,12 @@ function getMatrixSpecificityScore(
 ) {
   let score = 0
 
-  if (matrix.transactionType && normalizeValue(matrix.transactionType) === normalizeValue(context.transactionType)) {
+  if (
+    matrix.transactionType &&
+    (normalizeValue(matrix.transactionType) === normalizeValue(context.transactionType) ||
+      (normalizeValue(matrix.transactionType).startsWith('apd-request') &&
+        normalizeValue(context.transactionType).startsWith('apd-request')))
+  ) {
     score += 128
   }
 
@@ -224,22 +233,70 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
     throw new Error('Employee approval context tidak ditemukan.')
   }
 
+  let finalSiteId = employee.siteId
+  let finalSiteName = employee.siteName ?? ''
+  let finalSiteLocation = employee.siteLocation ?? ''
+  let finalSiteHeadEmployeeId = employee.siteHeadEmployeeId ?? null
+
+  if (input.siteId) {
+    const [s] = await db
+      .select({ id: sites.id, name: sites.name, location: sites.location, headEmployeeId: sites.headEmployeeId })
+      .from(sites)
+      .where(eq(sites.id, input.siteId))
+      .limit(1)
+    if (s) {
+      finalSiteId = s.id
+      finalSiteName = s.name
+      finalSiteLocation = s.location ?? ''
+      finalSiteHeadEmployeeId = s.headEmployeeId ?? null
+    }
+  } else if (input.siteName && input.siteName.trim() && input.siteName !== '-') {
+    const trimmed = input.siteName.trim()
+    const [s] = await db
+      .select({ id: sites.id, name: sites.name, location: sites.location, headEmployeeId: sites.headEmployeeId })
+      .from(sites)
+      .where(or(ilike(sites.name, `%${trimmed}%`), ilike(sites.location, `%${trimmed}%`)))
+      .limit(1)
+    if (s) {
+      finalSiteId = s.id
+      finalSiteName = s.name
+      finalSiteLocation = s.location ?? ''
+      finalSiteHeadEmployeeId = s.headEmployeeId ?? null
+    }
+  }
+
   return {
     employeeId: employee.id,
     employeeName: employee.name,
-    siteId: employee.siteId,
-    siteName: employee.siteName ?? '',
-    siteLocation: employee.siteLocation ?? '',
-    siteHeadEmployeeId: employee.siteHeadEmployeeId ?? null,
-    departmentId: employee.departmentId ?? null,
+    siteId: finalSiteId,
+    siteName: finalSiteName,
+    siteLocation: finalSiteLocation,
+    siteHeadEmployeeId: finalSiteHeadEmployeeId,
+    departmentId: input.departmentId !== undefined ? input.departmentId : (employee.departmentId ?? null),
     departmentName: employee.departmentName ?? null,
-    sectionId: employee.sectionId ?? null,
+    sectionId: input.sectionId !== undefined ? input.sectionId : (employee.sectionId ?? null),
     positionId: employee.positionId ?? null,
     directManagerId: employee.directManagerId ?? null,
     activityType: input.activityType,
     priority: input.priority,
     overtimeMinutes: input.overtimeMinutes,
-    transactionType: input.transactionType ?? 'activity',
+    transactionType: (() => {
+      const custLower = (input.customerName || '').toLowerCase()
+      const isMvc =
+        custLower.includes('trakindo') ||
+        custLower.includes('cipta kridatama') ||
+        custLower.includes('ckb') ||
+        custLower.trim() === 'ck'
+      const baseType = input.transactionType ?? 'activity'
+      if (
+        baseType === 'form_wo_service' ||
+        baseType === 'form_wo_service_other' ||
+        baseType === 'form_wo_service_mvc'
+      ) {
+        return isMvc ? 'form_wo_service_mvc' : 'form_wo_service_other'
+      }
+      return baseType
+    })(),
     at: input.at ?? new Date(),
   }
 }
@@ -604,38 +661,130 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
   const steps: ResolvedApprovalStep[] = []
   let stepOrder = 1
 
-  // For APD requests: 1-step routing (User -> PJO / Atasan Site)
+  // For APD requests: 1-step routing (Admin CP / HSE / PJO)
   if (context.transactionType === 'apd-request-apd' || context.transactionType === 'apd-request') {
-    // Step 1: PJO / Atasan Site
-    let pjoEmpId: number | null = context.siteHeadEmployeeId ?? null
-    if (!pjoEmpId && context.siteId) {
-      const [siteRow] = await db.select({ headEmployeeId: sites.headEmployeeId }).from(sites).where(eq(sites.id, context.siteId)).limit(1)
-      pjoEmpId = siteRow?.headEmployeeId ?? null
-    }
-    if (!pjoEmpId) pjoEmpId = context.requesterDirectManagerId ?? 955 // Apriyanto / Direct Manager fallback
+    // 1. Kategori Admin CP (13 Site)
+    const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
+    // 2. Kategori HSE (5 Site)
+    const hseSiteIds = [133, 131, 129, 128, 140]
 
-    const pjoApprover = await db
-      .select({ id: employees.id, name: employees.name })
-      .from(employees)
-      .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
-      .limit(1)
+    const siteId = context.siteId ?? 0
 
-    if (pjoApprover[0]) {
-      steps.push({
-        stepOrder: stepOrder++,
-        label: 'PJO / Atasan Site',
-        approverName: pjoApprover[0].name,
-        approverEmployeeId: pjoApprover[0].id,
-        approverNodeId: null,
-        approvalMatrixStepId: null,
-        approvalMode: 'sequential',
-        resolutionSource: 'apd_site_pjo',
-        canDelegate: true,
-        slaHours: 24,
-        nodeLabel: null,
-        fallbackLabel: null,
-        escalationLabel: null,
-      })
+    if (adminCpSiteIds.includes(siteId)) {
+      // Admin CP logic:
+      // - Service MVC (33) & Others (34) -> Muhammad As'ar Fauzan (1099, Serviceman)
+      // - Repair / Retread (29) -> Arjun Zahiri Mursith (1039, Repairman)
+      // - Technical Operation / TE (37) -> Muhammad Abian Husain (1094, Technical Engineer)
+      let approverEmpId = 1099
+      if (context.sectionId === 29) {
+        approverEmpId = 1039
+      } else if (context.sectionId === 37) {
+        approverEmpId = 1094
+      }
+
+      const [approver] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+        .from(employees)
+        .where(and(eq(employees.id, approverEmpId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (approver) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: approver.jobTitle || 'Serviceman',
+          approverName: approver.name,
+          approverEmployeeId: approver.id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_admin_cp',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: approver.jobTitle,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    } else if (hseSiteIds.includes(siteId)) {
+      // 5 HSE Sites
+      const hseMap: Record<number, number> = {
+        133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
+        131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
+        129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
+        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
+      }
+      const hseEmpId = hseMap[siteId]
+      const [hseApprover] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+        .from(employees)
+        .where(and(eq(employees.id, hseEmpId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (hseApprover) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: hseApprover.jobTitle || 'HSE Officer',
+          approverName: hseApprover.name,
+          approverEmployeeId: hseApprover.id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_hse_site',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: hseApprover.jobTitle,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    } else {
+      // 13 PJO Sites
+      const pjoMap: Record<number, number> = {
+        138: 454,  // AMM Mifa Holing -> Adit Prasetyo (Technical Engineer)
+        144: 1057, // AMM Tabang -> Singgih Wiyono (Technical Engineer)
+        210: 1212, // BUMA Tanjung -> Dowy Pratama Sita (Technical Engineer)
+        150: 1250, // CDE - Bengkulu -> Rakha Dwi Saputra (Repairman)
+        145: 1189, // CK MIFA -> Fachri Husein (Serviceman)
+        125: 1375, // Jakarta -> Ade Saharu (HSE Officer)
+        151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
+        134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
+        136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
+        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+        127: 1164, // Sangatta -> Saipudin (HSE Leader)
+        139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
+        130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
+      }
+      let pjoEmpId: number | null = pjoMap[siteId] ?? context.siteHeadEmployeeId ?? null
+      if (!pjoEmpId && siteId) {
+        const [siteRow] = await db.select({ headEmployeeId: sites.headEmployeeId }).from(sites).where(eq(sites.id, siteId)).limit(1)
+        pjoEmpId = siteRow?.headEmployeeId ?? null
+      }
+      if (!pjoEmpId) pjoEmpId = context.requesterDirectManagerId ?? 955
+
+      const [pjoApprover] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+        .from(employees)
+        .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (pjoApprover) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: pjoApprover.jobTitle || 'PJO Leader',
+          approverName: pjoApprover.name,
+          approverEmployeeId: pjoApprover.id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'sequential',
+          resolutionSource: 'apd_site_pjo',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: pjoApprover.jobTitle,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
     }
   } else {
     // For Material/Tools: PJO → Section Head
@@ -783,6 +932,8 @@ type NodeRow = {
   slaHours: number
   employeeId: number | null
   employeeName: string | null
+  employeeJobTitle?: string | null
+  employeeEmail?: string | null
 }
 
 type AssignmentRow = {
@@ -1023,7 +1174,23 @@ export async function resolveApprovalRouteForActivity(
     .filter((matrix) => {
       const matType = normalizeValue(matrix.transactionType)
       const ctxType = normalizeValue(context.transactionType)
+      const matName = (matrix.name || '').toLowerCase()
       if (matType === ctxType) return true
+      if (ctxType === 'form_wo_service_mvc') {
+        return (
+          matType === 'form_wo_service_mvc' ||
+          (matType === 'form_wo_service' &&
+            !matName.includes('other') &&
+            !matName.includes('non-mvc'))
+        )
+      }
+      if (ctxType === 'form_wo_service_other') {
+        return (
+          matType === 'form_wo_service_other' ||
+          (matType === 'form_wo_service' &&
+            (matName.includes('other') || matName.includes('non-mvc')))
+        )
+      }
       if (ctxType === 'form_wo_service') {
         return (
           matType === 'form_wo_service_other' ||
@@ -1031,14 +1198,17 @@ export async function resolveApprovalRouteForActivity(
           matType === 'form_wo_service'
         )
       }
-      if (ctxType === 'form_wo_service_other' || ctxType === 'form_wo_service_mvc') {
-        return matType === ctxType || matType === 'form_wo_service'
-      }
       if (ctxType === 'form_wo_repair_retread') {
         return (
           matType === 'form_wo_repair_retread' ||
           matType === 'form_wo_repair' ||
           matType === 'form_wo_retread'
+        )
+      }
+      if (ctxType.startsWith('apd-request') || matType.startsWith('apd-request')) {
+        return (
+          matType === ctxType ||
+          (ctxType.startsWith('apd-request') && matType.startsWith('apd-request'))
         )
       }
       return false
@@ -1153,6 +1323,8 @@ export async function resolveApprovalRouteForActivity(
             slaHours: orgChartNodes.slaHours,
             employeeId: orgChartNodes.employeeId,
             employeeName: employees.name,
+            employeeJobTitle: employees.jobTitle,
+            employeeEmail: employees.email,
           })
           .from(orgChartNodes)
           .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
@@ -1191,8 +1363,8 @@ export async function resolveApprovalRouteForActivity(
     assignmentsByNodeId.set(assignment.nodeId, list)
   }
 
-  const steps: ResolvedApprovalStep[] = matrixSteps.map((step) =>
-    resolveNodeStep(
+  const steps: ResolvedApprovalStep[] = matrixSteps.map((step) => {
+    const resolved = resolveNodeStep(
       step.nodeId,
       step.stepOrder,
       step.label,
@@ -1208,7 +1380,14 @@ export async function resolveApprovalRouteForActivity(
         escalationNodeId: step.escalationNodeId ?? null,
       }
     )
-  )
+    if (context.transactionType.startsWith('apd-request') && step.nodeId) {
+      const n = nodeById.get(step.nodeId)
+      if (n?.employeeJobTitle) {
+        resolved.label = n.employeeJobTitle
+      }
+    }
+    return resolved
+  })
 
 
   // For Material/Tools: if only 1 step from matrix, append dynamic Head Section step

@@ -7,15 +7,14 @@ import {
   employees,
   masterDepartments,
 } from '@/db/schema/hero'
-import { eq, and, asc, ilike } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
+import { eq, and, ilike } from 'drizzle-orm'
 
 async function main() {
   console.log('=== Setup RFR Department Matrices ===\n')
 
   // 1. Find the named approvers
   const allEmployees = await db
-    .select({ id: employees.id, name: employees.name, email: employees.email })
+    .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle, department: employees.department })
     .from(employees)
     .where(eq(employees.isActive, true))
 
@@ -52,11 +51,8 @@ async function main() {
     .where(eq(masterDepartments.isActive, true))
 
   console.log(`\nDepartments found: ${departments.length}`)
-  for (const dept of departments) {
-    console.log(`  - ${dept.name} (ID: ${dept.id}, Head: ${dept.headEmployeeId ?? 'N/A'})`)
-  }
 
-  // 3. Delete existing RFR matrices (all of them, we'll recreate)
+  // 3. Delete existing RFR matrices
   const existingMatrices = await db
     .select({ id: approvalMatrices.id })
     .from(approvalMatrices)
@@ -69,14 +65,13 @@ async function main() {
     .delete(approvalMatrices)
     .where(eq(approvalMatrices.transactionType, 'rfr_approval'))
 
-  console.log(`\nDeleted ${existingMatrices.length} existing RFR matrices`)
+  console.log(`Deleted ${existingMatrices.length} existing RFR matrices`)
 
   // 4. Create matrix for each department
   const now = new Date()
 
-  // Approval steps template (excluding requestor step - that's auto-approved at submit time)
   const stepTemplate = [
-    { stepOrder: 1, label: 'HC Verification (HR Recruitment Staff)', approverId: hrRecruitment.id },
+    { stepOrder: 1, label: 'HC Verification', approverId: hrRecruitment.id },
     { stepOrder: 2, label: 'Leader HR-GA', approverId: leaderHR.id },
     { stepOrder: 3, label: 'Human Capital Spv', approverId: hrSpv.id },
   ]
@@ -84,28 +79,44 @@ async function main() {
   let createdCount = 0
 
   for (const dept of departments) {
-    // Get department head for Manager Departemen step
     let deptHeadId = dept.headEmployeeId
 
-    // If no head configured in masterDepartments, try to find from employees
+    // Intelligent fallback resolution per department
     if (!deptHeadId) {
-      const headResult = await db
-        .select({ id: employees.id })
-        .from(employees)
-        .where(
-          and(
-            eq(employees.isActive, true),
-            ilike(employees.department, `%${dept.name}%`),
-            ilike(employees.jobTitle, '%manager%')
-          )
-        )
-        .limit(1)
-      deptHeadId = headResult[0]?.id ?? null
+      const deptUpper = dept.name.toUpperCase()
+      if (deptUpper.includes('FINANCE') || deptUpper.includes('BI & MARKETING')) {
+        deptHeadId = findEmployee('Febrian Dani')?.id ?? null
+      } else if (deptUpper.includes('OPERATION') || deptUpper.includes('SALES')) {
+        deptHeadId = findEmployee('Yean Alan Fabian')?.id ?? null
+      } else if (deptUpper.includes('TECHNICAL') || deptUpper.includes('CENTRAL')) {
+        deptHeadId = findEmployee('Romy Hidayat')?.id ?? null
+      } else if (deptUpper.includes('QHSE') || deptUpper.includes('CPI')) {
+        deptHeadId = findEmployee('Bardinia Susi')?.id ?? null
+      } else if (deptUpper.includes('HUMAN CAPITAL')) {
+        deptHeadId = findEmployee('Rendra Rachman')?.id ?? null
+      } else if (deptUpper.includes('LEGAL')) {
+        deptHeadId = findEmployee('Paulus Stupa')?.id ?? null
+      } else if (deptUpper.includes('SUPPLY CHAIN')) {
+        deptHeadId = findEmployee('Bekti Widyasmoro')?.id ?? null
+      } else if (deptUpper.includes('SUPPORT FACILITIES')) {
+        deptHeadId = findEmployee('Susanto')?.id ?? null
+      } else if (deptUpper.includes('OFFICE STRATEGIC')) {
+        deptHeadId = findEmployee('Asep Firdaus')?.id ?? null
+      } else if (deptUpper.includes('BOD') || deptUpper.includes('EXECUTIVE')) {
+        deptHeadId = findEmployee('Hidayat Rahman')?.id ?? null
+      } else if (deptUpper.includes('GENERAL MANAGER')) {
+        deptHeadId = gm.id
+      }
+    }
+
+    // Default to Romy Hidayat if still unassigned
+    if (!deptHeadId) {
+      deptHeadId = findEmployee('Romy Hidayat')?.id ?? null
     }
 
     const matrixName = `RFR - ${dept.name}`
 
-    // Create matrix
+    // Create matrix in approvalMatrices
     const [matrix] = await db
       .insert(approvalMatrices)
       .values({
@@ -126,7 +137,7 @@ async function main() {
       continue
     }
 
-    // Create org chart structure for this matrix
+    // Create org chart structure for Workflow Studio
     const [structure] = await db
       .insert(orgChartStructures)
       .values({
@@ -141,17 +152,14 @@ async function main() {
       })
       .returning({ id: orgChartStructures.id })
 
-    // Create steps
+    // Build all steps
     const allSteps = [
       ...stepTemplate,
-      // Manager Departemen (dynamic per department)
       { stepOrder: 4, label: 'Manager Departemen', approverId: deptHeadId ?? 0 },
-      // GM is always the same
       { stepOrder: 5, label: 'General Manager', approverId: gm.id },
     ]
 
     for (const step of allSteps) {
-      // Create org chart node for this step
       const [node] = await db
         .insert(orgChartNodes)
         .values({
@@ -192,7 +200,7 @@ async function main() {
     createdCount++
   }
 
-  console.log(`\n=== Done! Created ${createdCount} RFR matrices ===`)
+  console.log(`\n=== Done! Successfully synced ${createdCount} RFR matrices in Approval Workflow Builder ===`)
   process.exit(0)
 }
 

@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 
 interface SignaturePadProps {
-  onSignatureChange: (file: File | null) => void
+  onSignatureChange?: (file: File | null) => void
   onDataUrlChange?: (dataUrl: string | null) => void
+  height?: number
 }
 
 function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
@@ -215,7 +216,7 @@ export function SignaturePad({ onSignatureChange, onDataUrlChange }: SignaturePa
             file = blob as any
             ;(file as any).name = 'signature.png'
           }
-          onSignatureChange(file)
+          onSignatureChange?.(file)
         }
       }, 'image/png')
     }
@@ -234,7 +235,7 @@ export function SignaturePad({ onSignatureChange, onDataUrlChange }: SignaturePa
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     hasDrawnRef.current = false
     setHasSignature(false)
-    onSignatureChange(null)
+    onSignatureChange?.(null)
     onDataUrlChange?.(null)
   }
 

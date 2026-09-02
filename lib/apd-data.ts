@@ -85,8 +85,21 @@ export async function fetchApdRequestById(id: number) {
     .where(eq(apdRequestItems.requestId, id));
 
   const approvalHistory = await db
-    .select()
+    .select({
+      id: approvals.id,
+      apdRequestId: approvals.apdRequestId,
+      level: approvals.level,
+      status: approvals.status,
+      approverName: approvals.approverName,
+      approverEmployeeId: approvals.approverEmployeeId,
+      approverJobTitle: employees.jobTitle,
+      decisionNote: approvals.decisionNote,
+      signatureUrl: approvals.signatureUrl,
+      reviewedAt: approvals.reviewedAt,
+      createdAt: approvals.createdAt,
+    })
     .from(approvals)
+    .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
     .where(eq(approvals.apdRequestId, id))
     .orderBy(asc(approvals.level));
 

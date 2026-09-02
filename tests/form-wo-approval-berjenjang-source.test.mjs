@@ -92,7 +92,10 @@ test("form-wo.ts enforces submitter digital signature upon creation", () => {
 test("form-wo.ts distinguishes transactionType for service vs repair_retread", () => {
   const source = read("app/actions/form-wo.ts")
 
-  assert.match(source, /const transactionType = isService \? 'form_wo_service' : 'form_wo_repair_retread'/)
+  assert.match(source, /const transactionType = isService/)
+  assert.match(source, /form_wo_service_mvc/)
+  assert.match(source, /form_wo_service_other/)
+  assert.match(source, /form_wo_repair_retread/)
 })
 
 test("form-wo PDF generator and preview dialog use matching 4-stage and 5-stage headers", () => {

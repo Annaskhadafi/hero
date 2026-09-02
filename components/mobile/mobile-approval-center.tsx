@@ -4,7 +4,11 @@ import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboar
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
 import { FiveRApprovalDialog } from '@/components/admin/five-r-approval-dialog'
+import { MobileFiveRApprovalCard } from '@/components/admin/mobile-five-r-approval-card'
+import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
+import { MobileRfrApprovalCard } from '@/components/admin/mobile-rfr-approval-card'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
+import { ApprovalReviewDrawerForm } from '@/components/approval-review-drawer-form'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SpeechTextarea as Textarea } from '@/components/ui/speech-textarea'
@@ -52,6 +56,10 @@ function MobileInbox({
 
   return (
     <div className="space-y-3">
+      {rfrItems.map((item) => (
+        <MobileRfrApprovalCard key={`rfr-${item.id}`} item={item} />
+      ))}
+
       {contractReviewItems.map((item) => (
         <div
           key={item.id}
@@ -146,15 +154,32 @@ function MobileInbox({
           </summary>
 
           <div className="divide-y divide-[#e6f0f7]">
-            {group.items.map((item) => (
-              <article key={item.approvalId} className="space-y-4 px-4 py-5">
-                {item.activityType === '5R Audit Report' || item.fiveRReport || item.title?.toLowerCase().includes('5r') ? (
-                  <FiveRApprovalDialog item={item} group={group} />
-                ) : (item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (
-                  <ApdApprovalDialog item={item} group={group} />
-                ) : (
-                  <>
-                    <ApprovalRequestDetails item={item} />
+            {group.items.map((item) => {
+              const isFormWo = Boolean(
+                item.repairFormWo ||
+                  item.activityType === 'Work Order' ||
+                  item.activityType === 'Form WO' ||
+                  item.activityType === 'Repair / Retread' ||
+                  item.activityType === 'Service WO' ||
+                  item.requestKindLabel?.toLowerCase().includes('work order') ||
+                  item.requestKindLabel?.toLowerCase().includes('wo') ||
+                  item.requestKindLabel?.toLowerCase().includes('repair') ||
+                  item.requestKindLabel?.toLowerCase().includes('retread') ||
+                  item.title?.toLowerCase().includes('wo') ||
+                  item.title?.toLowerCase().includes('frmwo')
+              )
+
+              return (
+                <article key={item.approvalId} className="space-y-4 px-4 py-5">
+                  {item.activityType === '5R Audit Report' || item.fiveRReport || item.title?.toLowerCase().includes('5r') ? (
+                    <MobileFiveRApprovalCard item={item} group={group} />
+                  ) : (item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (
+                    <ApdApprovalDialog item={item} group={group} />
+                  ) : isFormWo ? (
+                    <ApprovalReviewDrawerForm item={item} group={group} />
+                  ) : (
+                    <>
+                      <ApprovalRequestDetails item={item} />
                     <section className="rounded-2xl bg-[#f7fbfe] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#486275]">
                         <span>{item.currentStepLabel}</span>
@@ -212,8 +237,9 @@ function MobileInbox({
                   </>
                 )}
               </article>
-            ))}
-          </div>
+            )
+          })}
+        </div>
         </details>
       ))}
     </div>
@@ -394,14 +420,12 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         </div>
       </section>
 
-      <Tabs defaultValue="inbox" className="space-y-4">          <TabsList className="grid h-auto w-full grid-cols-3 rounded-[1rem] bg-[#dcebf6] p-1">
-          <TabsTrigger value="inbox" className="rounded-[0.8rem]">
-            Inbox
+      <Tabs defaultValue="inbox" className="space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-2 rounded-[1rem] bg-[#dcebf6] p-1">
+          <TabsTrigger value="inbox" className="rounded-[0.8rem] font-bold">
+            Inbox {(data.inboxMetrics.pendingActivities ?? 0) > 0 ? `(${data.inboxMetrics.pendingActivities})` : ''}
           </TabsTrigger>
-          <TabsTrigger value="rfr" className="rounded-[0.8rem]">
-            RFR {(data.rfrInboxItems?.length ?? 0) > 0 ? `(${data.rfrInboxItems.length})` : ''}
-          </TabsTrigger>
-          <TabsTrigger value="history" className="rounded-[0.8rem]">
+          <TabsTrigger value="history" className="rounded-[0.8rem] font-bold">
             Riwayat
           </TabsTrigger>
         </TabsList>
@@ -412,10 +436,6 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
             contractReviewItems={data.contractReviewInboxItems}
             rfrItems={data.rfrInboxItems ?? []}
           />
-        </TabsContent>
-
-        <TabsContent value="rfr" className="space-y-3">
-          <MobileRfrInbox items={data.rfrInboxItems ?? []} />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-3">

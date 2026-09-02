@@ -4,22 +4,46 @@ import { approvals, approvalMatrices, approvalMatrixSteps, employees, orgChartNo
 import { desc, eq } from 'drizzle-orm';
 
 async function main() {
-  const latestWos = await db
-    .select()
+  const allWos = await db
+    .select({
+      id: repairFormWo.id,
+      noPengajuan: repairFormWo.noPengajuan,
+      jenis: repairFormWo.jenisPengajuan,
+      pemohon: repairFormWo.pemohon,
+      customer: repairFormWo.customer,
+      site: repairFormWo.site,
+      status: repairFormWo.statusPengajuan,
+    })
     .from(repairFormWo)
     .orderBy(desc(repairFormWo.id))
-    .limit(2);
 
-  console.log('Latest WOs in DB:');
-  for (const w of latestWos) {
-    console.log(`WO #${w.id} (${w.noPengajuan}): jenis=${w.jenisPengajuan}, customer=${w.customer}, site=${w.site}, createdBy=${w.createdBy}`);
-    const appvs = await db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.repairFormWoId, w.id));
-    console.log('Approvals count:', appvs.length);
-    for (const a of appvs) {
-      console.log(`  Level ${a.level}: status=${a.status}, approver=${a.approverName} (empId=${a.approverEmployeeId}, matrixId=${a.approvalMatrixId})`);
+  console.log(`=== TOTAL WOs IN DB: ${allWos.length} ===`)
+  console.table(allWos)
+
+  console.log('\n=== ALL FORM WO MATRICES IN DB ===');
+  const mats = await db
+    .select()
+    .from(approvalMatrices)
+    .where(eq(approvalMatrices.activityType, 'Form WO'))
+    .orderBy(desc(approvalMatrices.id));
+  
+  for (const m of mats) {
+    console.log(`\nMatrix #${m.id}: name="${m.name}", siteId=${m.siteId}, type="${m.transactionType}", isActive=${m.isActive}`);
+    const steps = await db
+      .select({
+        stepOrder: approvalMatrixSteps.stepOrder,
+        label: approvalMatrixSteps.label,
+        nodeId: approvalMatrixSteps.nodeId,
+        empId: orgChartNodes.employeeId,
+        empName: employees.name,
+      })
+      .from(approvalMatrixSteps)
+      .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+      .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
+      .where(eq(approvalMatrixSteps.matrixId, m.id))
+      .orderBy(approvalMatrixSteps.stepOrder);
+    for (const s of steps) {
+      console.log(`  Step ${s.stepOrder}: ${s.label} -> ${s.empName} (empId=${s.empId}, nodeId=${s.nodeId})`);
     }
   }
 }

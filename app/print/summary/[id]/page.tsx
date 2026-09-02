@@ -155,7 +155,7 @@ export default async function PrintSummaryPage({ params }: { params: Promise<{ i
           <div>
             <div style={{ fontSize: '8pt', fontWeight: 'bold', marginBottom: '4px' }}>Diperiksa Oleh,</div>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '40px' }}>
-              <div style={{ width: '140px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '3px' }}>
+              <div id="approver-cell-1" data-resolved={secHead?.signatureUrl ? 'true' : 'false'} style={{ width: '140px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '3px', position: 'relative' }}>
                 {secHead?.signatureUrl && <img src={secHead.signatureUrl} alt="TTD" style={{ maxHeight: '35px', maxWidth: '120px' }} />}
               </div>
             </div>
@@ -172,12 +172,13 @@ export default async function PrintSummaryPage({ params }: { params: Promise<{ i
           <div>
             <div style={{ fontSize: '8pt', fontWeight: 'bold', marginBottom: '4px' }}>Disetujui Oleh,</div>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '40px' }}>
-              <div style={{ width: '140px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '3px' }}>
+              <div id="approver-cell-2" data-resolved={deptHead?.signatureUrl ? 'true' : 'false'} style={{ width: '140px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '3px', position: 'relative' }}>
                 {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: '35px', maxWidth: '120px' }} />}
               </div>
             </div>
             <div style={{ fontSize: '7pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
-            <div style={{ fontSize: '6pt', color: '#666' }}>(Department Head — {data.departmentName})</div>            {deptHead?.reviewedAt && (
+            <div style={{ fontSize: '6pt', color: '#666' }}>(Department Head — {data.departmentName})</div>
+            {deptHead?.reviewedAt && (
               <div style={{ fontSize: '5.5pt', color: '#999', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
             )}
             {deptHead?.decisionNote && (
@@ -186,6 +187,37 @@ export default async function PrintSummaryPage({ params }: { params: Promise<{ i
           </div>
 
         </div>
+
+        <script dangerouslySetInnerHTML={{__html: `
+          window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'previewSignature') {
+              const dataUrl = event.data.dataUrl;
+              let targetCell = null;
+              for (let i = 1; i <= 2; i++) {
+                const cell = document.getElementById('approver-cell-' + i);
+                if (cell && cell.getAttribute('data-resolved') !== 'true') {
+                  targetCell = cell;
+                  break;
+                }
+              }
+              if (targetCell) {
+                const existingPreview = targetCell.querySelector('.live-preview-sig');
+                if (existingPreview) {
+                  existingPreview.remove();
+                }
+                if (dataUrl) {
+                  const img = document.createElement('img');
+                  img.src = dataUrl;
+                  img.alt = 'Live Preview';
+                  img.className = 'live-preview-sig';
+                  img.style.maxHeight = '35px';
+                  img.style.maxWidth = '120px';
+                  targetCell.appendChild(img);
+                }
+              }
+            }
+          });
+        `}} />
     </div>
   );
 }

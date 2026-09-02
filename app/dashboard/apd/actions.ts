@@ -94,6 +94,9 @@ export async function submitApdRequest(formData: FormData) {
     // 3. Resolve approval route
     const route = await resolveApprovalRouteForActivity({
       employeeId: currentEmployee.id,
+      siteId: currentEmployee.siteId ?? undefined,
+      departmentId: currentEmployee.departmentId ?? undefined,
+      sectionId: currentEmployee.sectionId ?? undefined,
       activityType: 'apd-request',
       priority: 'Normal',
       overtimeMinutes: 0,

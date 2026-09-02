@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import Image from "next/image";
 import { parseApprovalNoteEntries } from "@/lib/approval-notes";
-import { getS3ObjectReadUrl } from "@/lib/s3-client";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 
 function parsePhotoUrls(raw: string | null | undefined): string[] {
   if (!raw || !raw.trim()) return [];
@@ -195,7 +195,12 @@ export default async function ApdRequestDetailPage({ params }: { params: { id: s
                     
                     <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2rem)] p-4 rounded-lg border bg-card shadow-sm">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2">
-                        <div className="font-semibold text-foreground">{step.approverName || "Approver"}</div>
+                        <div className="font-semibold text-foreground flex items-center gap-2">
+                          <span>{step.approverName || "Approver"}</span>
+                          {(step as any).approverJobTitle && (
+                            <span className="text-xs font-normal text-muted-foreground">({(step as any).approverJobTitle})</span>
+                          )}
+                        </div>
                         <time className="text-xs text-muted-foreground">
                           {step.resolvedAt ? step.resolvedAt.toLocaleString("id-ID") : "Menunggu"}
                         </time>

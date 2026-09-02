@@ -61,7 +61,9 @@ export const fiveRReports = pgTable('hero_five_r_reports', {
   // Status Approval & Lifecycle
   status: text('status').notNull().default('pending_approval'), // 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'revision'
   currentApprovalLevel: integer('current_approval_level').notNull().default(1), // 1: Ria Annisa, 2: PJO, 3: Bardinia
+  revertedFromLevel: integer('reverted_from_level'),
   approvalNotes: text('approval_notes').notNull().default(''),
+  auditorSignatureUrl: text('auditor_signature_url'),
   
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

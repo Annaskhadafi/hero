@@ -368,13 +368,24 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
         noPengajuan,
         statusPengajuan: 'pending',
         sortOrder: 0,
-        createdBy: employee.id,
+        createdBy: String(employee.id),
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning({ id: repairFormWo.id })
 
-    const transactionType = isService ? 'form_wo_service' : 'form_wo_repair_retread'
+    const customerLower = (parsed.customer || '').toLowerCase()
+    const isMvc =
+      customerLower.includes('trakindo') ||
+      customerLower.includes('cipta kridatama') ||
+      customerLower.includes('ckb') ||
+      customerLower.trim() === 'ck'
+
+    const transactionType = isService
+      ? isMvc
+        ? 'form_wo_service_mvc'
+        : 'form_wo_service_other'
+      : 'form_wo_repair_retread'
 
     const route = await resolveApprovalRouteForActivity({
       employeeId: employee.id,
@@ -383,6 +394,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       overtimeMinutes: 0,
       transactionType,
       customerName: parsed.customer || '',
+      siteName: parsed.site || '',
     })
 
     const approvalIds: number[] = []
@@ -425,6 +437,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
         const activePendingStep =
           route.steps.find((s) => s.stepOrder === 1) || route.steps[0]
 
+        let approverEmail: string | undefined
         if (activePendingStep && activePendingStep.approverEmployeeId) {
           const [approverEmp] = await db
             .select({ email: employees.email })
@@ -432,8 +445,9 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
             .where(eq(employees.id, activePendingStep.approverEmployeeId))
             .limit(1)
           if (approverEmp?.email) {
+            approverEmail = approverEmp.email
             notifyWorkflowBellRecipients({
-              recipientEmails: [approverEmp.email],
+              recipientEmails: [approverEmail],
               eventType: 'form_wo_review',
               category: 'approval',
               title: 'Review Form WO',
@@ -444,25 +458,23 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
           }
         }
 
-        try {
-          await sendFormWoApprovalRequestEmail({
-            approverEmail: approverEmp?.email,
-            approverName: activePendingStep?.approverName || 'Approver',
-            pemohon: finalPemohon,
-            noPengajuan,
-            customer: parsed.customer,
-            site: parsed.site,
-            jobType: parsed.jobType,
-            tireSn: parsed.tireSn,
-            brand: parsed.brand,
-            size: parsed.size,
-            totalAmount: parsed.totalAmount,
-            catatanPengajuan: parsed.catatanPengajuan,
-            tier: 1,
-          })
-        } catch (error) {
+        sendFormWoApprovalRequestEmail({
+          approverEmail,
+          approverName: activePendingStep?.approverName || 'Approver',
+          pemohon: finalPemohon,
+          noPengajuan,
+          customer: parsed.customer,
+          site: parsed.site,
+          jobType: parsed.jobType,
+          tireSn: parsed.tireSn,
+          brand: parsed.brand,
+          size: parsed.size,
+          totalAmount: parsed.totalAmount,
+          catatanPengajuan: parsed.catatanPengajuan,
+          tier: 1,
+        }).catch((error) => {
           console.error('Gagal mengirim email approval Form WO', error)
-        }
+        })
       }
     }
 
@@ -470,7 +482,10 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     return { success: true, noPengajuan }
   } catch (error) {
     console.error('Create Form WO Error:', error)
-    return { success: false, error: 'Gagal membuat pengajuan WO' }
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Gagal membuat pengajuan WO',
+    }
   }
 }
 
@@ -676,19 +691,47 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       dynamicRecipients.push({ email: creatorEmail, roleName: 'Pemohon' })
     }
 
-    for (const s of stepRows) {
-      if (s.approverEmployeeId) {
+    if (isService) {
+      // Untuk WO Service: kirim HANYA ke Service Operation SPV (Step 1: MVC untuk CK/CKB/Trakindo atau Others untuk yang lain)
+      const serviceSpvStep = stepRows.find((s) => s.level === 1)
+      if (serviceSpvStep?.approverEmployeeId) {
         const emp = await db
           .select({ email: employees.email, name: employees.name })
           .from(employees)
-          .where(eq(employees.id, s.approverEmployeeId))
+          .where(eq(employees.id, serviceSpvStep.approverEmployeeId))
           .limit(1)
           .then((r) => r[0])
-        if (emp?.email) {
-          let roleName = 'Approver'
-          if (s.routeSnapshot) {
+        if (emp?.email && !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())) {
+          let roleName = 'Service Operation Coord. SPV'
+          if (serviceSpvStep.routeSnapshot) {
             try {
-              const snap = JSON.parse(s.routeSnapshot)
+              const snap = JSON.parse(serviceSpvStep.routeSnapshot)
+              roleName = snap.label || snap.nodeLabel || roleName
+            } catch {}
+          }
+          dynamicRecipients.push({ email: emp.email, roleName })
+        }
+      }
+    } else {
+      // Untuk WO Repair: kirim HANYA ke QC / Leader (Step 1)
+      const qcStep = stepRows.find(
+        (s) =>
+          (s.routeSnapshot && s.routeSnapshot.toLowerCase().includes('qc')) ||
+          (s.approverName && s.approverName.toLowerCase().includes('qc')) ||
+          s.level === 1
+      )
+      if (qcStep?.approverEmployeeId) {
+        const emp = await db
+          .select({ email: employees.email, name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, qcStep.approverEmployeeId))
+          .limit(1)
+          .then((r) => r[0])
+        if (emp?.email && !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())) {
+          let roleName = 'QC / Leader'
+          if (qcStep.routeSnapshot) {
+            try {
+              const snap = JSON.parse(qcStep.routeSnapshot)
               roleName = snap.label || snap.nodeLabel || roleName
             } catch {}
           }

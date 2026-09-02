@@ -22,9 +22,13 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/activity/input',
   '/mobile/hero-genius',
   '/mobile/sop-win',
+  '/mobile/rfr',
+  '/mobile/rfr/new',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/hc/rfr', mobile: '/mobile/rfr' },
+  { desktop: '/dashboard/recruitment', mobile: '/mobile/rfr' },
   { desktop: '/dashboard/sop-win', mobile: '/mobile/sop-win' },
   { desktop: '/dashboard/hero-genius', mobile: '/mobile/hero-genius' },
   { desktop: '/dashboard/apd', mobile: '/mobile/apd' },
@@ -105,6 +109,7 @@ const fallbackMobileSegments = new Set([
   'lms',
   'notifications',
   'overtime',
+  'rfr',
   'profile',
   'reports',
   'road-condition',

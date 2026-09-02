@@ -288,27 +288,24 @@ export function FiveRApprovalDialog({ item, group }: FiveRApprovalDialogProps) {
                 <p className="font-bold text-slate-800 uppercase tracking-wider text-[10px] sm:text-[11px]">
                   Informasi Tahapan Anda
                 </p>
-                <div className="bg-slate-900 text-white p-3 rounded-lg flex items-center justify-between text-xs font-semibold">
-                  <div>
-                    <div className="font-bold">
-                      {currentLevel === 1
-                        ? 'Verifikator Quality Management'
-                        : currentLevel === 2
-                        ? 'Atasan Langsung Site (PJO)'
-                        : 'Head of CPI Approval'}
+                {(() => {
+                  const currentStep = approvalRoute?.find((s: any) => s.level === currentLevel)
+                  const totalSteps = approvalRoute?.length || 2
+                  const stepLabel = currentStep?.roleLabel || (currentLevel === 1 ? 'PJO Site / Atasan Langsung' : 'Head of CPI Approval')
+                  const stepApprover = currentStep?.approverName || (currentLevel === 1 ? 'PJO Site / Head Lokasi' : 'Bardinia Susi Ekawaty')
+
+                  return (
+                    <div className="bg-slate-900 text-white p-3 rounded-lg flex items-center justify-between text-xs font-semibold">
+                      <div>
+                        <div className="font-bold">{stepLabel}</div>
+                        <div className="text-slate-300 text-[10px]">{stepApprover}</div>
+                      </div>
+                      <Badge className="bg-white text-slate-900 font-bold px-2 py-0.5 text-[10px]">
+                        Langkah {currentLevel} / {totalSteps}
+                      </Badge>
                     </div>
-                    <div className="text-slate-300 text-[10px]">
-                      {currentLevel === 1
-                        ? 'Ria Annisa Putri'
-                        : currentLevel === 2
-                        ? 'PJO Site / Head Lokasi'
-                        : 'Bardinia Susi Ekawaty'}
-                    </div>
-                  </div>
-                  <Badge className="bg-white text-slate-900 font-bold px-2 py-0.5 text-[10px]">
-                    Langkah {currentLevel} / 3
-                  </Badge>
-                </div>
+                  )
+                })()}
 
                 <div className="grid grid-cols-[85px_1fr] gap-1 text-slate-600 pt-1 text-[11px] sm:text-xs">
                   <span className="font-semibold text-slate-700">Area PIC:</span>

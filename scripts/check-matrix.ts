@@ -1,45 +1,34 @@
 import { db } from '../db'
-import { navbarMenuItems } from '../db/schema/hero'
-import { eq, or, asc } from 'drizzle-orm'
+import { approvalMatrices, approvalMatrixSteps, orgChartNodes, employees, sites } from '../db/schema/hero'
+import { ilike, desc, eq } from 'drizzle-orm'
 
-async function moveSopWinToQualityCpi() {
-  console.log('🔄 Moving SOP/WIN to Quality & CPI section in database...')
-
-  await db
-    .update(navbarMenuItems)
-    .set({
-      section: 'Quality & CPI',
-      groupLabel: 'Quality & Continuous Improvement',
-      sortOrder: 1,
+async function main() {
+  const annasSteps = await db
+    .select({
+      matrixId: approvalMatrixSteps.matrixId,
+      matrixName: approvalMatrices.name,
+      siteId: approvalMatrices.siteId,
+      siteName: sites.name,
+      type: approvalMatrices.transactionType,
+      stepOrder: approvalMatrixSteps.stepOrder,
+      label: approvalMatrixSteps.label,
+      empId: orgChartNodes.employeeId,
+      empName: employees.name,
     })
-    .where(or(eq(navbarMenuItems.resource, 'sop-win'), eq(navbarMenuItems.url, '/dashboard/sop-win')))
+    .from(approvalMatrixSteps)
+    .innerJoin(approvalMatrices, eq(approvalMatrixSteps.matrixId, approvalMatrices.id))
+    .leftJoin(sites, eq(approvalMatrices.siteId, sites.id))
+    .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+    .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
+    .where(eq(orgChartNodes.employeeId, 5))
 
-  await db
-    .update(navbarMenuItems)
-    .set({ sortOrder: 2 })
-    .where(eq(navbarMenuItems.resource, 'five_r_report'))
-
-  await db
-    .update(navbarMenuItems)
-    .set({ sortOrder: 3 })
-    .where(eq(navbarMenuItems.resource, 'five_r_create'))
-
-  await db
-    .update(navbarMenuItems)
-    .set({ sortOrder: 4 })
-    .where(eq(navbarMenuItems.resource, 'five_r_master_area'))
-
-  const qualityItems = await db
-    .select()
-    .from(navbarMenuItems)
-    .where(eq(navbarMenuItems.section, 'Quality & CPI'))
-    .orderBy(asc(navbarMenuItems.sortOrder))
-
-  console.table(qualityItems)
-  console.log('✅ Successfully moved SOP/WIN to Quality & CPI!')
+  console.log(`=== MATRICES CONTAINING ANNAS KHADAFI (COUNT: ${annasSteps.length}) ===`)
+  for (const s of annasSteps) {
+    console.log(`Matrix #${s.matrixId} [${s.matrixName}] (Site: ${s.siteName || 'Global'}, type: ${s.type}) -> Step ${s.stepOrder}: ${s.label}`)
+  }
 }
 
-moveSopWinToQualityCpi().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); })
+main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); })
 
 
 

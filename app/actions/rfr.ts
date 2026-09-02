@@ -72,10 +72,11 @@ export type RfrMatrixStep = {
 
 const DEFAULT_RFR_MATRIX: RfrMatrixStep[] = [
   { stepOrder: 1, stepKey: 'requestor_initiated', roleLabel: 'Submitted', approverName: '', approverEmail: '', approverTitle: 'Requestor', approverEmployeeId: null },
-  { stepOrder: 2, stepKey: 'hc_verification', roleLabel: 'Adila Tri Arizona (HC Recruitment)', approverName: 'Adila Tri Arizona', approverEmail: 'adila.arizona@chitraparatama.co.id', approverTitle: 'HR Recruitment & GA', approverEmployeeId: 1064 },
+  { stepOrder: 2, stepKey: 'hc_verification', roleLabel: 'Adila Tri Arizona (HC Recruitment)', approverName: 'Adila Tri Arizona', approverEmail: 'adila.arizona@chitraparatama.co.id', approverTitle: 'HR Recruitment Staff', approverEmployeeId: 1064 },
   { stepOrder: 3, stepKey: 'acknowledge_hr_leader', roleLabel: 'Kesuma Bagas (Leader HR-GA)', approverName: 'Kesuma Bagaskara', approverEmail: 'kesuma.bagaskara@chitraparatama.co.id', approverTitle: 'Leader HR-GA', approverEmployeeId: 1253 },
-  { stepOrder: 4, stepKey: 'acknowledge_dept_head', roleLabel: 'Manager Departemen Pemohon', approverName: 'Romy Hidayat', approverEmail: 'romy.hidayat@chitraparatama.co.id', approverTitle: 'Central Services Manager', approverEmployeeId: 972 },
-  { stepOrder: 5, stepKey: 'approval_gm', roleLabel: 'Person Sihaloho (General Manager)', approverName: 'Person Sihaloho', approverEmail: 'person.sihaloho@chitraparatama.co.id', approverTitle: 'General Manager', approverEmployeeId: 940 },
+  { stepOrder: 4, stepKey: 'acknowledge_hr_spv', roleLabel: 'Muhammad Iqbal (Human Capital Spv)', approverName: 'Muhammad Iqbal', approverEmail: 'muhammad.iqbal@chitraparatama.co.id', approverTitle: 'Human Capital Spv', approverEmployeeId: 970 },
+  { stepOrder: 5, stepKey: 'acknowledge_dept_head', roleLabel: 'Manager Departemen Pemohon', approverName: 'Romy Hidayat', approverEmail: 'romy.hidayat@chitraparatama.co.id', approverTitle: 'Central Services Manager', approverEmployeeId: 972 },
+  { stepOrder: 6, stepKey: 'approval_gm', roleLabel: 'Person Sihaloho (General Manager)', approverName: 'Person Sihaloho', approverEmail: 'person.sihaloho@chitraparatama.co.id', approverTitle: 'General Manager', approverEmployeeId: 940 },
 ]
 
 async function resolveSectionHeadBySection(sectionDepartmentStr: string) {
@@ -130,86 +131,142 @@ async function resolveSectionHeadBySection(sectionDepartmentStr: string) {
   return { name: 'Junaidi', title: 'Service operation Others Coord', email: '' }
 }
 
+async function findMasterDepartmentByKeyword(term: string) {
+  const clean = term.trim()
+  if (!clean) return null
+
+  // 1. Direct case-insensitive match
+  const directMatch = await db
+    .select()
+    .from(masterDepartments)
+    .where(ilike(masterDepartments.name, `%${clean}%`))
+    .limit(1)
+  if (directMatch[0]) return directMatch[0]
+
+  // 2. Token / keyword heuristic mapping
+  const lower = clean.toLowerCase()
+  let keyword = ''
+  if (lower.includes('finance') || lower.includes('keuangan') || lower.includes('fbp')) {
+    keyword = 'Finance Business Partner'
+  } else if (lower.includes('marketing') || lower.includes('bi')) {
+    keyword = 'BI & MARKETING'
+  } else if (lower.includes('cpi') || lower.includes('continuous') || lower.includes('ia')) {
+    keyword = 'Continuous Process Improvement'
+  } else if (lower.includes('human capital') || lower.includes('hc') || lower.includes('hr')) {
+    keyword = 'Human Capital'
+  } else if (lower.includes('supply') || lower.includes('sc') || lower.includes('logistic') || lower.includes('purchasing')) {
+    keyword = 'Supply Chain'
+  } else if (lower.includes('sales')) {
+    keyword = 'Sales Operation'
+  } else if (lower.includes('operation') || lower.includes('ops') || lower.includes('service')) {
+    keyword = 'OPERATION'
+  } else if (lower.includes('technical') || lower.includes('teknikal')) {
+    keyword = 'TECHNICAL'
+  } else if (lower.includes('qhse') || lower.includes('hse') || lower.includes('k3')) {
+    keyword = 'QHSE'
+  } else if (lower.includes('legal') || lower.includes('erm') || lower.includes('hukum')) {
+    keyword = 'Legal & ERM'
+  } else if (lower.includes('facility') || lower.includes('sfm') || lower.includes('support')) {
+    keyword = 'Support Facilities Management'
+  } else if (lower.includes('strategic') || lower.includes('osm')) {
+    keyword = 'Office Strategic Management'
+  } else if (lower.includes('central')) {
+    keyword = 'Central Services'
+  } else if (lower.includes('bod') || lower.includes('executive') || lower.includes('direksi') || lower.includes('director')) {
+    keyword = 'BoD/Executive'
+  }
+
+  if (keyword) {
+    const kwMatch = await db
+      .select()
+      .from(masterDepartments)
+      .where(ilike(masterDepartments.name, `%${keyword}%`))
+      .limit(1)
+    if (kwMatch[0]) return kwMatch[0]
+  }
+
+  // 3. Fallback: try individual words > 3 chars
+  const words = clean.split(/\s+/).filter((w) => w.length > 3)
+  for (const w of words) {
+    const wMatch = await db
+      .select()
+      .from(masterDepartments)
+      .where(ilike(masterDepartments.name, `%${w}%`))
+      .limit(1)
+    if (wMatch[0]) return wMatch[0]
+  }
+
+  return null
+}
+
 async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
   const norm = (sectionDepartmentStr || '').trim()
   if (!norm) {
-    return { name: 'Romy Hidayat', title: 'Central Services Manager', email: 'romy.hidayat@chitraparatama.co.id' }
+    return { name: 'Romy Hidayat', title: 'Central Services Manager', email: 'romy.hidayat@chitraparatama.co.id', employeeId: 972 }
   }
 
-  // Parse "Section / Department" if formatted as split
   const parts = norm.split('/')
   const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
-  const deptTermLower = deptTerm.toLowerCase()
+  const deptRow = (await findMasterDepartmentByKeyword(deptTerm)) || (await findMasterDepartmentByKeyword(parts[0].trim()))
 
-  if (deptTermLower.includes('central')) {
-    return { name: 'Romy Hidayat', title: 'Central Services Manager', email: 'romy.hidayat@chitraparatama.co.id' }
-  }
-
-  try {
-    // 1. Check masterDepartments headEmployeeId
-    const deptRows = await db
-      .select({
-        headEmployeeId: masterDepartments.headEmployeeId,
-        deptName: masterDepartments.name,
-      })
-      .from(masterDepartments)
-      .where(ilike(masterDepartments.name, `%${deptTerm}%`))
-      .limit(1)
-
-    if (deptRows.length > 0 && deptRows[0].headEmployeeId) {
-      const headEmp = await db
-        .select({
-          name: employees.name,
-          jobTitle: employees.jobTitle,
-          email: employees.email,
-        })
-        .from(employees)
-        .where(eq(employees.id, deptRows[0].headEmployeeId))
-        .limit(1)
-
-      if (headEmp.length > 0 && headEmp[0].name) {
-        return {
-          name: headEmp[0].name,
-          title: headEmp[0].jobTitle || `${deptRows[0].deptName} Manager`,
-          email: headEmp[0].email || '',
-        }
-      }
-    }
-
-    // 2. Search employees in department with Manager/Head in jobTitle
-    const managerRows = await db
-      .select({
-        name: employees.name,
-        jobTitle: employees.jobTitle,
-        email: employees.email,
-        deptName: masterDepartments.name,
-      })
+  if (deptRow && deptRow.headEmployeeId) {
+    const [headEmp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
       .from(employees)
-      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-      .where(
-        and(
-          ilike(masterDepartments.name, `%${deptTerm}%`),
-          or(
-            ilike(employees.jobTitle, '%manager%'),
-            ilike(employees.jobTitle, '%head%'),
-            ilike(employees.employmentStatus, '%manager%')
-          )
-        )
-      )
+      .where(eq(employees.id, deptRow.headEmployeeId))
       .limit(1)
-
-    if (managerRows.length > 0 && managerRows[0].name) {
+    if (headEmp && headEmp.name) {
       return {
-        name: managerRows[0].name,
-        title: managerRows[0].jobTitle || `${managerRows[0].deptName || deptTerm} Manager`,
-        email: managerRows[0].email || '',
+        name: headEmp.name,
+        title: headEmp.jobTitle || `${deptRow.name} Manager`,
+        email: headEmp.email || '',
+        employeeId: headEmp.id,
       }
     }
-  } catch (err) {
-    console.error('Error resolving dept head:', err)
   }
 
-  return { name: 'Romy Hidayat', title: 'Central Services Manager', email: 'romy.hidayat@chitraparatama.co.id' }
+  // Fallback defaults if no head in DB
+  const lower = norm.toLowerCase()
+  if (lower.includes('finance') || lower.includes('keuangan') || lower.includes('fbp')) {
+    return { name: 'Febrian Dani', title: 'Finance Manager', email: 'febrian.dani@chitraparatama.co.id', employeeId: 960 }
+  }
+  if (lower.includes('human capital') || lower.includes('hc') || lower.includes('hr')) {
+    return { name: 'Rendra Rachman', title: 'Human Capital Manager', email: 'rendra.rachman@chitraparatama.co.id', employeeId: 966 }
+  }
+  if (lower.includes('sales')) {
+    return { name: 'Yean Alan Fabian Antonio M', title: 'Sales Operation Manager', email: 'yean.fabian@chitraparatama.co.id', employeeId: 947 }
+  }
+  if (lower.includes('supply') || lower.includes('logistic')) {
+    return { name: 'Bekti Widyasmoro', title: 'Supply Chain Manager', email: 'bekti.widyasmoro@chitraparatama.co.id', employeeId: 943 }
+  }
+  if (lower.includes('cpi') || lower.includes('ia')) {
+    return { name: 'Bardinia Susi Ekawaty', title: 'CPI & IA Reps Manager', email: 'bardynia.susi@chitraparatama.co.id', employeeId: 944 }
+  }
+  if (lower.includes('legal') || lower.includes('erm')) {
+    return { name: 'Paulus Stupa Gumilang', title: 'Legal & ERM Lead', email: 'stupa.gumilang@chitraparatama.co.id', employeeId: 1009 }
+  }
+  if (lower.includes('facility') || lower.includes('sfm')) {
+    return { name: 'Susanto', title: 'Support Facilities Manager', email: 'santo.susanto@chitraparatama.co.id', employeeId: 941 }
+  }
+  if (lower.includes('strategic') || lower.includes('osm')) {
+    return { name: 'Asep Firdaus', title: 'OSM Manager', email: 'asep.firdaus@chitraparatama.co.id', employeeId: 1115 }
+  }
+
+  return { name: 'Romy Hidayat', title: 'Central Services Manager', email: 'romy.hidayat@chitraparatama.co.id', employeeId: 972 }
+}
+
+export async function getEmployeeJobTitleAction(name: string): Promise<string> {
+  if (!name || !name.trim()) return 'Staff'
+  try {
+    const [emp] = await db
+      .select({ jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(ilike(employees.name, `%${name.trim()}%`))
+      .limit(1)
+    return emp?.jobTitle || 'Staff'
+  } catch {
+    return 'Staff'
+  }
 }
 
 export async function resolveRfrMatrixAction(sectionDepartment: string): Promise<RfrMatrixStep[]> {
@@ -222,17 +279,9 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
   const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
 
   // 1. Check workflow builder matrix (approvalMatrices where transactionType = 'rfr_approval')
-  //    Match by departmentId if sectionDepartment is provided
   try {
-    let resolvedDeptId: number | null = null
-    if (deptTerm) {
-      const [deptRow] = await db
-        .select({ id: masterDepartments.id })
-        .from(masterDepartments)
-        .where(ilike(masterDepartments.name, `%${deptTerm}%`))
-        .limit(1)
-      resolvedDeptId = deptRow?.id ?? null
-    }
+    const deptRow = (await findMasterDepartmentByKeyword(deptTerm)) || (await findMasterDepartmentByKeyword(parts[0].trim()))
+    const resolvedDeptId = deptRow?.id ?? null
 
     let targetMatrixId: number | null = null
 
@@ -255,7 +304,7 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
       }
     }
 
-    // Fallback: get any active rfr matrix
+    // Fallback: get any active rfr matrix (prefer Central Services or non-BoD)
     if (!targetMatrixId) {
       const [wbMatrix] = await db
         .select({ id: approvalMatrices.id })
@@ -305,32 +354,38 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
           let approverName = s.empName || ''
           let approverEmail = s.empEmail || ''
           let approverTitle = s.empJob || s.label
+          let approverEmployeeId = s.empId || null
 
           if (labelNorm.includes('recruitment') || labelNorm.includes('hc verification')) {
             stepKey = 'hc_verification'
             if (!approverName) approverName = 'Adila Tri Arizona'
             if (!approverEmail) approverEmail = 'adila.arizona@chitraparatama.co.id'
-            if (!approverTitle || approverTitle === s.label) approverTitle = 'HR Recruitment & GA'
+            approverTitle = 'HR Recruitment Staff'
+            if (!approverEmployeeId) approverEmployeeId = 1064
           } else if (labelNorm.includes('leader')) {
             stepKey = 'acknowledge_hr_leader'
             if (!approverName) approverName = 'Kesuma Bagaskara'
             if (!approverEmail) approverEmail = 'kesuma.bagaskara@chitraparatama.co.id'
-            if (!approverTitle || approverTitle === s.label) approverTitle = 'Leader HR-GA'
+            approverTitle = 'Leader HR-GA'
+            if (!approverEmployeeId) approverEmployeeId = 1253
           } else if (labelNorm.includes('spv') || labelNorm.includes('supervisor')) {
             stepKey = 'acknowledge_hr_spv'
             if (!approverName) approverName = 'Muhammad Iqbal'
             if (!approverEmail) approverEmail = 'muhammad.iqbal@chitraparatama.co.id'
-            if (!approverTitle || approverTitle === s.label) approverTitle = 'Human Capital Spv'
+            approverTitle = 'Human Capital Spv'
+            if (!approverEmployeeId) approverEmployeeId = 970
           } else if (labelNorm.includes('manager departemen') || labelNorm.includes('dept head') || labelNorm.includes('manager department')) {
             stepKey = 'acknowledge_dept_head'
-            if (!approverName) approverName = dh.name
-            if (!approverEmail) approverEmail = dh.email
-            if (!approverTitle || approverTitle === s.label) approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
+            approverName = dh.name
+            approverEmail = dh.email
+            approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
+            approverEmployeeId = dh.employeeId || s.empId || null
           } else if (labelNorm.includes('general manager') || labelNorm.includes('gm')) {
             stepKey = 'approval_gm'
             if (!approverName) approverName = 'Person Sihaloho'
             if (!approverEmail) approverEmail = 'person.sihaloho@chitraparatama.co.id'
-            if (!approverTitle || approverTitle === s.label) approverTitle = 'General Manager'
+            approverTitle = 'General Manager'
+            if (!approverEmployeeId) approverEmployeeId = 940
           }
 
           return {
@@ -340,7 +395,7 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
             approverName,
             approverEmail,
             approverTitle,
-            approverEmployeeId: s.empId || null,
+            approverEmployeeId,
           }
         })
 
@@ -380,14 +435,15 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
     // fallback to default
   }
 
-  // 3. Final fallback: hardcoded standard 5 steps
+  // 3. Final fallback: hardcoded standard 6 steps
   const dh = await resolveDeptHeadByDepartment(sectionDepartment || '')
   return [
     { stepOrder: 1, stepKey: 'requestor_initiated', roleLabel: 'Submitted', approverName: '', approverEmail: '', approverTitle: 'Requestor' },
-    { stepOrder: 2, stepKey: 'hc_verification', roleLabel: 'Adila Tri Arizona (HC Recruitment)', approverName: 'Adila Tri Arizona', approverEmail: 'adila.arizona@chitraparatama.co.id', approverTitle: 'HR Recruitment & GA', approverEmployeeId: 1064 },
-    { stepOrder: 3, stepKey: 'acknowledge_hr_leader', roleLabel: 'Kesuma Bagas (Leader HR-GA)', approverName: 'Kesuma Bagaskara', approverEmail: 'kesuma.bagaskara@chitraparatama.co.id', approverTitle: 'Leader HR-GA', approverEmployeeId: 1253 },
-    { stepOrder: 4, stepKey: 'acknowledge_dept_head', roleLabel: 'Manager Departemen Pemohon', approverName: dh.name, approverEmail: dh.email, approverTitle: dh.title || 'Manager Departemen', approverEmployeeId: 972 },
-    { stepOrder: 5, stepKey: 'approval_gm', roleLabel: 'Person Sihaloho (General Manager)', approverName: 'Person Sihaloho', approverEmail: 'person.sihaloho@chitraparatama.co.id', approverTitle: 'General Manager', approverEmployeeId: 940 },
+    { stepOrder: 2, stepKey: 'hc_verification', roleLabel: 'HC Verification', approverName: 'Adila Tri Arizona', approverEmail: 'adila.arizona@chitraparatama.co.id', approverTitle: 'HR Recruitment & GA', approverEmployeeId: 1064 },
+    { stepOrder: 3, stepKey: 'acknowledge_hr_leader', roleLabel: 'Leader HR-GA', approverName: 'Kesuma Bagaskara', approverEmail: 'kesuma.bagaskara@chitraparatama.co.id', approverTitle: 'Leader HR-GA', approverEmployeeId: 1253 },
+    { stepOrder: 4, stepKey: 'acknowledge_hr_spv', roleLabel: 'Human Capital Spv', approverName: 'Muhammad Iqbal', approverEmail: 'muhammad.iqbal@chitraparatama.co.id', approverTitle: 'HR-GA Supervisor', approverEmployeeId: 970 },
+    { stepOrder: 5, stepKey: 'acknowledge_dept_head', roleLabel: 'Manager Departemen', approverName: dh.name, approverEmail: dh.email, approverTitle: dh.title || 'Manager Departemen', approverEmployeeId: dh.employeeId || 972 },
+    { stepOrder: 6, stepKey: 'approval_gm', roleLabel: 'General Manager', approverName: 'Person Sihaloho', approverEmail: 'person.sihaloho@chitraparatama.co.id', approverTitle: 'General Manager', approverEmployeeId: 940 },
   ]
 }
 
@@ -398,6 +454,8 @@ async function sendRfrApprovalEmail(params: {
   rfr: any
   approvals: any[]
   approvalToken: string
+  additionalCc?: string[]
+  isResubmit?: boolean
 }) {
   const smtpSettings = await getSmtpSettings()
   if (!smtpSettings) {
@@ -439,9 +497,10 @@ async function sendRfrApprovalEmail(params: {
 
   try {
     const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+    const allCc = Array.from(new Set([...(hcPolicyCc || []), ...(params.additionalCc || [])].filter(Boolean)))
     const resolvedTemplate = await resolveWorkflowTemplateContent({
       templateCode: 'rfr_approver_notification',
-      cc: hcPolicyCc,
+      cc: allCc,
       variables: {
         approverName: params.approverName,
         approvalStep: params.approvalStep,
@@ -453,8 +512,10 @@ async function sendRfrApprovalEmail(params: {
         joinDateEstimation: params.rfr.joinDateEstimation,
         approvalLink,
       },
-      fallbackSubject: `[RFR] Menunggu Persetujuan Anda: ${params.rfr.rfrNumber} - ${params.rfr.positionTitle} (${params.rfr.numberOfPersons} Orang)`,
-      fallbackHtml: `<p>Yth. ${params.approverName},</p><p>Permohonan Rekrutmen (RFR) <strong>${params.rfr.rfrNumber}</strong> (${params.rfr.positionTitle}) memerlukan persetujuan/verifikasi Anda pada tahap <strong>${params.approvalStep}</strong>.</p><p><a href="${approvalLink}">Buka &amp; Tanda Tangan RFR</a></p><p>Dokumen lengkap RFR dalam format PDF dilampirkan pada email ini.</p>`,
+      fallbackSubject: params.isResubmit
+        ? `[RFR Telah Di-Resubmit] Menunggu Persetujuan Anda: ${params.rfr.rfrNumber} - ${params.rfr.positionTitle}`
+        : `[RFR] Menunggu Persetujuan Anda: ${params.rfr.rfrNumber} - ${params.rfr.positionTitle} (${params.rfr.numberOfPersons} Orang)`,
+      fallbackHtml: `<p>Yth. ${params.approverName},</p><p>Permohonan Rekrutmen (RFR) <strong>${params.rfr.rfrNumber}</strong> (${params.rfr.positionTitle}) ${params.isResubmit ? 'telah selesai direvisi dan di-resubmit oleh pemohon.' : ''} Memerlukan persetujuan/verifikasi Anda pada tahap <strong>${params.approvalStep}</strong>.</p><p><a href="${approvalLink}">Buka &amp; Tanda Tangan RFR</a></p><p>Dokumen lengkap RFR dalam format PDF dilampirkan pada email ini.</p>`,
       fallbackText: `Yth. ${params.approverName},\n\nPermohonan RFR ${params.rfr.rfrNumber} (${params.rfr.positionTitle}) memerlukan persetujuan Anda.\nLink: ${approvalLink}`,
     })
 
@@ -488,6 +549,7 @@ async function sendRfrRevertedEmail(params: {
   remarks: string
   rfr: any
   approvalToken: string
+  additionalCc?: string[]
 }) {
   const smtpSettings = await getSmtpSettings()
   if (!smtpSettings) {
@@ -500,9 +562,10 @@ async function sendRfrRevertedEmail(params: {
 
   try {
     const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+    const allCc = Array.from(new Set([...(hcPolicyCc || []), ...(params.additionalCc || [])].filter(Boolean)))
     const resolvedTemplate = await resolveWorkflowTemplateContent({
       templateCode: 'rfr_reverted_notification',
-      cc: hcPolicyCc,
+      cc: allCc,
       variables: {
         approverName: params.approverName,
         rfrNumber: params.rfr.rfrNumber,
@@ -576,6 +639,102 @@ async function sendRfrRejectedEmail(params: {
     }
   } catch (error) {
     console.error('[RFR] Reject email send failed:', error)
+  }
+}
+
+async function sendRfrCompletedEmail(params: {
+  to: string
+  requestorName: string
+  rfr: any
+  approvals: any[]
+}) {
+  const smtpSettings = await getSmtpSettings()
+  if (!smtpSettings) {
+    console.warn('[RFR] SMTP settings active not found, skipping email')
+    return
+  }
+
+  let pdfBuffer: Buffer | null = null
+  try {
+    const rawPdf = await generateRfrPdf({
+      rfrNumber: params.rfr.rfrNumber,
+      requestDate: params.rfr.requestDate ? new Date(params.rfr.requestDate).toISOString().slice(0, 10) : '',
+      joinDateEstimation: params.rfr.joinDateEstimation ? new Date(params.rfr.joinDateEstimation).toISOString().slice(0, 10) : '',
+      requestorName: params.rfr.requestorName,
+      sectionDepartment: params.rfr.sectionDepartment,
+      receivedByHr: params.rfr.receivedByHr,
+      positionTitle: params.rfr.positionTitle,
+      numberOfPersons: params.rfr.numberOfPersons || 1,
+      briefJobDescription: params.rfr.briefJobDescription || '',
+      level: params.rfr.level || 'staff',
+      reasonForRequest: params.rfr.reasonForRequest || 'new_headcount',
+      mppStatus: params.rfr.mppStatus || 'budgeted',
+      employmentStatus: params.rfr.employmentStatus || 'contract',
+      contractDurationMonths: params.rfr.contractDurationMonths,
+      attachmentMpp: params.rfr.attachmentMpp,
+      attachmentJd: params.rfr.attachmentJd,
+      sexPreference: params.rfr.sexPreference || 'any',
+      agePreference: params.rfr.agePreference || 'any',
+      educationDegree: params.rfr.educationDegree || 'any',
+      educationBackground: Array.isArray(params.rfr.educationBackground) ? params.rfr.educationBackground : [],
+      yearsOfExperience: params.rfr.yearsOfExperience || 'any',
+      fieldOfJobExperience: params.rfr.fieldOfJobExperience || '',
+      functionalCompetencies: Array.isArray(params.rfr.functionalCompetencies) ? params.rfr.functionalCompetencies : [],
+      approvals: params.approvals.map((a: any) => ({
+        stepOrder: a.stepOrder,
+        roleLabel: a.roleLabel,
+        approverName: a.approverName || '-',
+        approverTitle: a.approverTitle || '-',
+        status: a.status || 'pending',
+        signatureDataUrl: a.signatureDataUrl,
+        signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : undefined,
+        remarks: a.remarks,
+      })),
+    })
+    pdfBuffer = rawPdf
+  } catch (e) {
+    console.error('[RFR] Failed to generate completed PDF for email:', e)
+  }
+
+  try {
+    const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+    const resolvedTemplate = await resolveWorkflowTemplateContent({
+      templateCode: 'rfr_completed_notification',
+      cc: hcPolicyCc,
+      variables: {
+        rfrNumber: params.rfr.rfrNumber,
+        positionTitle: params.rfr.positionTitle,
+        numberOfPersons: String(params.rfr.numberOfPersons || 1),
+        requestorName: params.requestorName,
+        sectionDepartment: params.rfr.sectionDepartment,
+      },
+      fallbackSubject: `[RFR Disetujui] ${params.rfr.rfrNumber} - ${params.rfr.positionTitle} (Lowongan Pekerjaan Telah Dibuat)`,
+      fallbackHtml: `<p>Yth. <strong>${params.requestorName}</strong>,</p><p>Permohonan Rekrutmen (RFR) dengan nomor <strong>${params.rfr.rfrNumber}</strong> untuk posisi <strong>${params.rfr.positionTitle}</strong> (${params.rfr.numberOfPersons} orang) telah <strong>selesai disetujui sepenuhnya oleh General Manager</strong>.</p><p>Sistem telah membuat Lowongan Pekerjaan otomatis untuk proses recruitment.</p><p>Dokumen PDF RFR versi final lengkap dengan 6 tanda tangan digital telah dilampirkan pada email ini.</p>`,
+      fallbackText: `Yth. ${params.requestorName},\n\nRequest For Recruitment (RFR) ${params.rfr.rfrNumber} (${params.rfr.positionTitle}) telah selesai disetujui sepenuhnya oleh General Manager.\nLowongan pekerjaan baru telah berhasil dibuat secara otomatis.\nDokumen PDF final dilampirkan pada email ini.`,
+    })
+
+    if (params.to && params.to.trim()) {
+      await sendEmailViaSmtp(smtpSettings, {
+        to: params.to.trim(),
+        cc: resolvedTemplate.ccList,
+        subject: resolvedTemplate.subject,
+        text: resolvedTemplate.text,
+        html: resolvedTemplate.html,
+        templateCode: 'rfr_completed_notification',
+        templateName: `RFR Completed #${params.rfr.rfrNumber}`,
+        attachments: pdfBuffer
+          ? [
+              {
+                filename: `${params.rfr.rfrNumber}_RFR_Approved_Final.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+              },
+            ]
+          : [],
+      })
+    }
+  } catch (error) {
+    console.error('[RFR] Completed email send failed:', error)
   }
 }
 
@@ -708,10 +867,11 @@ export async function createRfrRequest(data: {
 
     // Fill step 1 with requestor info and auto-approve (requestor initiates by submitting)
     const requestorEmp = data.requestorEmployeeId
-      ? await db.select({ name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(employees.id, data.requestorEmployeeId)).limit(1)
-      : await db.select({ name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(employees.name, data.requestorName)).limit(1)
+      ? await db.select({ id: employees.id, name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(employees.id, data.requestorEmployeeId)).limit(1)
+      : await db.select({ id: employees.id, name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(sql`lower(trim(${employees.name}))`, data.requestorName.trim().toLowerCase())).limit(1)
     const requestorInfo = requestorEmp?.[0]
     const requestorEmail = requestorInfo?.email || ''
+    const requestorPosition = requestorInfo?.position || 'Staff'
 
     const approvalsToInsert = matrix.map((step) => {
       const isRequestorStep = step.stepKey === 'requestor_initiated'
@@ -723,8 +883,8 @@ export async function createRfrRequest(data: {
         roleLabel: step.roleLabel,
         approverName: isRequestorStep ? (requestorInfo?.name || data.requestorName) : (step.approverName || step.approverTitle),
         approverEmail: isRequestorStep ? requestorEmail : (step.approverEmail || ''),
-        approverTitle: isRequestorStep ? (requestorInfo?.position || 'Requestor') : step.approverTitle,
-        approverEmployeeId: isRequestorStep ? (data.requestorEmployeeId || null) : (step.approverEmployeeId || null),
+        approverTitle: isRequestorStep ? requestorPosition : step.approverTitle,
+        approverEmployeeId: isRequestorStep ? (data.requestorEmployeeId || requestorInfo ? (requestorEmp?.[0] as any)?.id : null) : (step.approverEmployeeId || null),
         approvalToken: randomUUID(),
         // Requestor step is auto-approved since the requestor submits it themselves
         status: isRequestorStep ? ('approved' as const) : ('pending' as const),
@@ -777,18 +937,36 @@ export async function createRfrRequest(data: {
 }
 
 export async function approveRfrStep(
-  token: string,
-  payload: {
-    signatureDataUrl: string
-    remarks?: string
-  }
+  tokenOrId: string | number,
+  payloadOrSig: { signatureDataUrl?: string; remarks?: string } | string,
+  maybeRemarks?: string
 ) {
   try {
-    const [approval] = await db
-      .select()
-      .from(hcRfrApprovals)
-      .where(eq(hcRfrApprovals.approvalToken, token))
-      .limit(1)
+    const signatureDataUrl = typeof payloadOrSig === 'string' ? payloadOrSig : payloadOrSig?.signatureDataUrl || ''
+    const remarks = typeof payloadOrSig === 'string' ? (maybeRemarks || '') : (payloadOrSig?.remarks || '')
+
+    if (!signatureDataUrl) {
+      return { success: false, error: 'Tanda tangan digital wajib disertakan.' }
+    }
+
+    let approval: typeof hcRfrApprovals.$inferSelect | undefined
+    if (typeof tokenOrId === 'number' || (!isNaN(Number(tokenOrId)) && !String(tokenOrId).includes('-'))) {
+      const [appById] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.id, Number(tokenOrId)))
+        .limit(1)
+      approval = appById
+    }
+
+    if (!approval) {
+      const [appByToken] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.approvalToken, String(tokenOrId)))
+        .limit(1)
+      approval = appByToken
+    }
 
     if (!approval) {
       return { success: false, error: 'Token approval RFR tidak ditemukan.' }
@@ -813,8 +991,8 @@ export async function approveRfrStep(
       .update(hcRfrApprovals)
       .set({
         status: 'approved',
-        signatureDataUrl: payload.signatureDataUrl,
-        remarks: payload.remarks || '',
+        signatureDataUrl,
+        remarks: remarks || '',
         signedAt: new Date(),
       })
       .where(eq(hcRfrApprovals.id, approval.id))
@@ -873,31 +1051,61 @@ export async function approveRfrStep(
       // Auto-generate Lowongan Pekerjaan (hcRecruitments)
       await autoCreateRecruitmentFromRfr(rfr)
 
-      // Bell notification to requestor that RFR is fully approved
-      if (rfr.requestorName) {
-        const requestorEmp = await db
+      // Fetch fresh approvals for email attachment
+      const updatedApprovals = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.rfrId, rfr.id))
+        .orderBy(asc(hcRfrApprovals.stepOrder))
+
+      // Resolve requestor email from DB (by exact ID or exact full name)
+      let requestorEmail = ''
+      if (rfr.requestorEmployeeId) {
+        const [emp] = await db
           .select({ email: employees.email })
           .from(employees)
-          .where(eq(employees.id, rfr.requestorEmployeeId || 0))
+          .where(eq(employees.id, rfr.requestorEmployeeId))
           .limit(1)
-        if (requestorEmp[0]?.email) {
-          const baseUrl = await getBaseUrl()
-          notifyWorkflowBellRecipients({
-            recipientEmails: [requestorEmp[0].email],
-            eventType: 'rfr_approved',
-            category: 'approval_requests',
-            title: `RFR ${rfr.rfrNumber} Disetujui!`,
-            body: `RFR ${rfr.rfrNumber} (${rfr.positionTitle}) telah disetujui sepenuhnya oleh General Manager. Lowongan pekerjaan telah dibuat otomatis.`,
-            url: `${baseUrl}/dashboard/hc/rfr`,
-            tagPrefix: 'rfr',
-            metadata: { rfrNumber: rfr.rfrNumber, positionTitle: rfr.positionTitle, status: 'approved' },
-          })
-        }
+        requestorEmail = emp?.email || ''
+      }
+      if (!requestorEmail && rfr.requestorName) {
+        const [emp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(sql`lower(trim(${employees.name}))`, rfr.requestorName.trim().toLowerCase()))
+          .limit(1)
+        requestorEmail = emp?.email || ''
+      }
+
+      // 1. Send Completed Email with attached PDF & templateCode: rfr_completed_notification
+      if (requestorEmail) {
+        await sendRfrCompletedEmail({
+          to: requestorEmail,
+          requestorName: rfr.requestorName || 'Requestor',
+          rfr,
+          approvals: updatedApprovals,
+        })
+      }
+
+      // 2. Bell notification to requestor that RFR is fully approved
+      if (requestorEmail) {
+        const baseUrl = await getBaseUrl()
+        notifyWorkflowBellRecipients({
+          recipientEmails: [requestorEmail],
+          eventType: 'rfr_completed_notification',
+          category: 'approval_requests',
+          title: `RFR ${rfr.rfrNumber} Disetujui!`,
+          body: `RFR ${rfr.rfrNumber} (${rfr.positionTitle}) telah disetujui sepenuhnya oleh General Manager. Lowongan pekerjaan telah dibuat otomatis.`,
+          url: `${baseUrl}/dashboard/hc/rfr`,
+          tagPrefix: 'rfr',
+          metadata: { rfrNumber: rfr.rfrNumber, positionTitle: rfr.positionTitle, status: 'approved' },
+        })
       }
     }
 
     try {
       revalidatePath('/dashboard/hc/rfr')
+      revalidatePath('/dashboard/hc/recruitment')
       revalidatePath('/dashboard/approval')
     } catch (e) {}
 
@@ -908,13 +1116,30 @@ export async function approveRfrStep(
   }
 }
 
-export async function rejectRfrStep(token: string, remarks: string) {
+export async function rejectRfrStep(tokenOrId: string | number, remarks: string) {
   try {
-    const [approval] = await db
-      .select()
-      .from(hcRfrApprovals)
-      .where(eq(hcRfrApprovals.approvalToken, token))
-      .limit(1)
+    if (!remarks || remarks.trim().length < 3) {
+      return { success: false, error: 'Catatan alasan penolakan (reject) wajib diisi minimal 3 karakter.' }
+    }
+
+    let approval: typeof hcRfrApprovals.$inferSelect | undefined
+    if (typeof tokenOrId === 'number' || (!isNaN(Number(tokenOrId)) && !String(tokenOrId).includes('-'))) {
+      const [appById] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.id, Number(tokenOrId)))
+        .limit(1)
+      approval = appById
+    }
+
+    if (!approval) {
+      const [appByToken] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.approvalToken, String(tokenOrId)))
+        .limit(1)
+      approval = appByToken
+    }
 
     if (!approval) return { success: false, error: 'Token approval tidak valid.' }
 
@@ -943,7 +1168,7 @@ export async function rejectRfrStep(token: string, remarks: string) {
     if (rfrDetail) {
       const requestorEmp = rfrDetail.requestorEmployeeId
         ? await db.select({ email: employees.email }).from(employees).where(eq(employees.id, rfrDetail.requestorEmployeeId)).limit(1)
-        : await db.select({ email: employees.email }).from(employees).where(eq(employees.name, rfrDetail.requestorName || '')).limit(1)
+        : await db.select({ email: employees.email }).from(employees).where(eq(sql`lower(trim(${employees.name}))`, (rfrDetail.requestorName || '').trim().toLowerCase())).limit(1)
       
       const targetEmail = requestorEmp[0]?.email || ''
       
@@ -981,13 +1206,30 @@ export async function rejectRfrStep(token: string, remarks: string) {
   }
 }
 
-export async function revertRfrStep(token: string, remarks: string) {
+export async function revertRfrStep(tokenOrId: string | number, remarks: string) {
   try {
-    const [approval] = await db
-      .select()
-      .from(hcRfrApprovals)
-      .where(eq(hcRfrApprovals.approvalToken, token))
-      .limit(1)
+    if (!remarks || remarks.trim().length < 3) {
+      return { success: false, error: 'Catatan alasan revisi (revert) wajib diisi minimal 3 karakter.' }
+    }
+
+    let approval: typeof hcRfrApprovals.$inferSelect | undefined
+    if (typeof tokenOrId === 'number' || (!isNaN(Number(tokenOrId)) && !String(tokenOrId).includes('-'))) {
+      const [appById] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.id, Number(tokenOrId)))
+        .limit(1)
+      approval = appById
+    }
+
+    if (!approval) {
+      const [appByToken] = await db
+        .select()
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.approvalToken, String(tokenOrId)))
+        .limit(1)
+      approval = appByToken
+    }
 
     if (!approval) return { success: false, error: 'Token approval tidak valid.' }
 
@@ -1004,7 +1246,7 @@ export async function revertRfrStep(token: string, remarks: string) {
 
     if (!rfr) return { success: false, error: 'Data RFR tidak ditemukan.' }
 
-    // Set current reverting step back to pending
+    // 1. Set only the reverting step back to pending (while preserving previous approved steps & signatures)
     await db
       .update(hcRfrApprovals)
       .set({
@@ -1015,23 +1257,13 @@ export async function revertRfrStep(token: string, remarks: string) {
       })
       .where(eq(hcRfrApprovals.id, approval.id))
 
-    // Set Step 1 (Requestor) back to pending so they can revise the form
-    await db
-      .update(hcRfrApprovals)
-      .set({
-        status: 'pending',
-        signatureDataUrl: null,
-        remarks: remarks || 'Reverted to requestor for revision',
-        signedAt: null,
-      })
-      .where(and(eq(hcRfrApprovals.rfrId, rfr.id), eq(hcRfrApprovals.stepOrder, 1)))
-
-    // Update request's currentStepOrder to 1
+    // 2. Mark request as in_progress and return control to Step 1 (Requestor) to edit
     await db
       .update(hcRfrRequests)
       .set({
         currentStepOrder: 1,
         status: 'in_progress',
+        rejectionReason: `Revert dari ${approval.roleLabel} (${approval.approverName}): ${remarks}`,
       })
       .where(eq(hcRfrRequests.id, rfr.id))
 
@@ -1040,6 +1272,11 @@ export async function revertRfrStep(token: string, remarks: string) {
       .from(hcRfrApprovals)
       .where(eq(hcRfrApprovals.rfrId, rfr.id))
       .orderBy(asc(hcRfrApprovals.stepOrder))
+
+    // Collect emails of all prior approvers (steps between Step 1 and reverting step) who already approved
+    const priorApprovedEmails = allApprovals
+      .filter((a) => a.stepOrder > 1 && a.stepOrder < approval.stepOrder && a.status === 'approved' && a.approverEmail)
+      .map((a) => a.approverEmail.trim())
 
     // Find Step 1 (Requestor) to send email and notification
     const prevApproval = allApprovals.find((a) => a.stepOrder === 1)
@@ -1051,6 +1288,7 @@ export async function revertRfrStep(token: string, remarks: string) {
         remarks: remarks || 'Tidak ada catatan',
         rfr,
         approvalToken: prevApproval.approvalToken,
+        additionalCc: priorApprovedEmails,
       })
 
       // Bell notification to requestor
@@ -1062,6 +1300,21 @@ export async function revertRfrStep(token: string, remarks: string) {
           category: 'approval_requests',
           title: `RFR ${rfr.rfrNumber} Dikembalikan ke Anda`,
           body: `RFR ${rfr.rfrNumber} (${rfr.positionTitle}) telah di-revert/dikembalikan ke Anda untuk revisi oleh ${approval.approverName}. Catatan: "${remarks || 'Tidak ada catatan'}".`,
+          url: `${baseUrl}/dashboard/hc/rfr`,
+          tagPrefix: 'rfr',
+          metadata: { rfrNumber: rfr.rfrNumber, positionTitle: rfr.positionTitle, sectionDepartment: rfr.sectionDepartment },
+        })
+      }
+
+      // Bell notification to prior approvers
+      if (priorApprovedEmails.length > 0) {
+        const baseUrl = await getBaseUrl()
+        notifyWorkflowBellRecipients({
+          recipientEmails: priorApprovedEmails,
+          eventType: 'rfr_approval_request',
+          category: 'approval_requests',
+          title: `RFR ${rfr.rfrNumber} Dikembalikan (Revert)`,
+          body: `RFR ${rfr.rfrNumber} (${rfr.positionTitle}) telah dikembalikan oleh ${approval.approverName} ke pemohon untuk revisi. Catatan: "${remarks || 'Tidak ada catatan'}".`,
           url: `${baseUrl}/dashboard/hc/rfr`,
           tagPrefix: 'rfr',
           metadata: { rfrNumber: rfr.rfrNumber, positionTitle: rfr.positionTitle, sectionDepartment: rfr.sectionDepartment },
@@ -1159,13 +1412,19 @@ export async function resubmitRfrRequest(
     const totalSteps = allApprovals.length
     const requestorApproval = allApprovals.find((a) => a.stepKey === 'requestor_initiated' || a.stepOrder === 1)
 
+    const requestorEmp = updatedRfr.requestorEmployeeId
+      ? await db.select({ name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(employees.id, updatedRfr.requestorEmployeeId)).limit(1)
+      : await db.select({ name: employees.name, email: employees.email, position: employees.jobTitle }).from(employees).where(eq(sql`lower(trim(${employees.name}))`, data.requestorName.trim().toLowerCase())).limit(1)
+    const requestorPosition = requestorEmp?.[0]?.position || 'Staff'
+
     if (requestorApproval) {
       await db
         .update(hcRfrApprovals)
         .set({
           status: 'approved',
-          signatureDataUrl: data.requestorSignatureDataUrl || null,
+          signatureDataUrl: data.requestorSignatureDataUrl || requestorApproval.signatureDataUrl || null,
           signedAt: new Date(),
+          approverTitle: requestorPosition,
           remarks: 'Resubmitted after revision',
         })
         .where(eq(hcRfrApprovals.id, requestorApproval.id))
@@ -1173,20 +1432,28 @@ export async function resubmitRfrRequest(
 
     const requestorStepOrder = requestorApproval?.stepOrder ?? 1
 
-    // 3. Find the first pending step after the requestor step
+    // 3. Find the first pending step after the requestor step (e.g. Step 3 that reverted, jumping over already approved Step 2)
     const nextPendingApproval = allApprovals.find(
       (a) => a.stepOrder > requestorStepOrder && a.status === 'pending'
     )
 
     if (nextPendingApproval) {
       const targetStepOrder = nextPendingApproval.stepOrder
-      // Update request currentStepOrder
+      // Update request currentStepOrder and clear rejection reason
       await db
         .update(hcRfrRequests)
-        .set({ currentStepOrder: targetStepOrder })
+        .set({
+          currentStepOrder: targetStepOrder,
+          rejectionReason: '',
+        })
         .where(eq(hcRfrRequests.id, id))
 
-      // Trigger notification & email to that pending step
+      // Collect emails of all prior approvers (steps between Step 1 and targetStepOrder) who already approved
+      const priorApprovedEmails = allApprovals
+        .filter((a) => a.stepOrder > 1 && a.stepOrder < targetStepOrder && a.status === 'approved' && a.approverEmail)
+        .map((a) => a.approverEmail.trim())
+
+      // Trigger notification & email to that pending step with CC to all prior approvers
       await sendRfrApprovalEmail({
         to: nextPendingApproval.approverEmail,
         approverName: nextPendingApproval.approverName,
@@ -1194,6 +1461,8 @@ export async function resubmitRfrRequest(
         rfr: updatedRfr,
         approvals: allApprovals,
         approvalToken: nextPendingApproval.approvalToken,
+        additionalCc: priorApprovedEmails,
+        isResubmit: true,
       })
 
       // Bell notification to next step approver
@@ -1210,6 +1479,21 @@ export async function resubmitRfrRequest(
           metadata: { rfrNumber: updatedRfr.rfrNumber, positionTitle: updatedRfr.positionTitle, sectionDepartment: updatedRfr.sectionDepartment },
         })
       }
+
+      // Bell notification to prior approvers
+      if (priorApprovedEmails.length > 0) {
+        const baseUrl = await getBaseUrl()
+        notifyWorkflowBellRecipients({
+          recipientEmails: priorApprovedEmails,
+          eventType: 'rfr_approval_request',
+          category: 'approval_requests',
+          title: `RFR ${updatedRfr.rfrNumber} Telah Diresubmit`,
+          body: `RFR ${updatedRfr.rfrNumber} (${updatedRfr.positionTitle}) telah selesai direvisi dan diresubmit oleh pemohon ke tahap ${nextPendingApproval.roleLabel}.`,
+          url: `${baseUrl}/dashboard/hc/rfr`,
+          tagPrefix: 'rfr',
+          metadata: { rfrNumber: updatedRfr.rfrNumber, positionTitle: updatedRfr.positionTitle, sectionDepartment: updatedRfr.sectionDepartment },
+        })
+      }
     } else {
       // In case there are no pending steps (should not happen normally)
       await db
@@ -1222,6 +1506,7 @@ export async function resubmitRfrRequest(
 
     try {
       revalidatePath('/dashboard/hc/rfr')
+      revalidatePath('/dashboard/hc/recruitment')
       revalidatePath('/dashboard/approval')
     } catch (e) {}
 
@@ -1278,19 +1563,46 @@ export async function listRfrRequests(params?: { search?: string; status?: strin
   }
 }
 
-export async function getRfrDetail(id: number) {
-  const [rfr] = await db
+export async function getRfrDetail(id: number | string) {
+  let numericId: number
+  if (typeof id === 'number') {
+    numericId = id
+  } else {
+    const cleaned = String(id).replace(/^rfr-/, '')
+    numericId = parseInt(cleaned, 10)
+    if (isNaN(numericId)) return null
+  }
+
+  let [rfr] = await db
     .select()
     .from(hcRfrRequests)
-    .where(eq(hcRfrRequests.id, id))
+    .where(eq(hcRfrRequests.id, numericId))
     .limit(1)
+
+  // Fallback: in case approval ID was passed instead of rfr ID
+  if (!rfr) {
+    const [approval] = await db
+      .select({ rfrId: hcRfrApprovals.rfrId })
+      .from(hcRfrApprovals)
+      .where(eq(hcRfrApprovals.id, numericId))
+      .limit(1)
+    if (approval?.rfrId) {
+      const [rfrByApp] = await db
+        .select()
+        .from(hcRfrRequests)
+        .where(eq(hcRfrRequests.id, approval.rfrId))
+        .limit(1)
+      rfr = rfrByApp
+      numericId = approval.rfrId
+    }
+  }
 
   if (!rfr) return null
 
   const approvals = await db
     .select()
     .from(hcRfrApprovals)
-    .where(eq(hcRfrApprovals.rfrId, id))
+    .where(eq(hcRfrApprovals.rfrId, numericId))
     .orderBy(asc(hcRfrApprovals.stepOrder))
 
   return { rfr, approvals }

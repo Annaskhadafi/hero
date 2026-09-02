@@ -13,11 +13,45 @@ import { Download, ExternalLink } from "lucide-react"
 export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [note, setNote] = useState('')
   const sigCanvas = useRef<SignatureCanvas>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  
+  const [note, setNote] = useState('')
+  const throttleTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const sendLiveSignature = () => {
+    if (!sigCanvas.current || sigCanvas.current.isEmpty()) {
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: '' }, '*')
+      }
+      return
+    }
+    const dataUrl = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png')
+    if (iframeRef.current?.contentWindow && dataUrl) {
+      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl }, '*')
+    }
+  }
+
+  const handleStroke = () => {
+    if (throttleTimer.current) return
+    throttleTimer.current = setTimeout(() => {
+      throttleTimer.current = null
+      sendLiveSignature()
+    }, 40)
+  }
+
+  const handleEnd = () => {
+    if (throttleTimer.current) {
+      clearTimeout(throttleTimer.current)
+      throttleTimer.current = null
+    }
+    sendLiveSignature()
+  }
+
   const clearSignature = () => {
+    if (throttleTimer.current) {
+      clearTimeout(throttleTimer.current)
+      throttleTimer.current = null
+    }
     sigCanvas.current?.clear()
     
     // Also clear from preview
@@ -31,11 +65,8 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
       toast.error("Kanvas masih kosong, silakan tanda tangan terlebih dahulu.")
       return
     }
-    const dataUrl = sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png')
-    if (iframeRef.current && iframeRef.current.contentWindow && dataUrl) {
-      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl }, '*')
-      toast.success("Tanda tangan berhasil dipratinjau di dokumen!")
-    }
+    sendLiveSignature()
+    toast.success("Tanda tangan berhasil dipratinjau di dokumen!")
   }
 
   const handleDecision = async (selectedDecision: string) => {
@@ -149,6 +180,7 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
               <iframe 
                 ref={iframeRef}
                 src={printUrl}
+                onLoad={sendLiveSignature}
                 className="w-full flex-1 min-h-[200px] bg-white border-0"
                 title="Preview Dokumen"
               />
@@ -180,9 +212,15 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
                     </Button>
                   </div>
                 </div>
-                <div className="flex-1 relative cursor-crosshair">
+                <div 
+                  className="flex-1 relative cursor-crosshair"
+                  onMouseMove={handleStroke}
+                  onTouchMove={handleStroke}
+                  onPointerMove={handleStroke}
+                >
                   <SignatureCanvas 
                     ref={sigCanvas}
+                    onEnd={handleEnd}
                     canvasProps={{ className: "absolute inset-0 w-full h-full" }}
                   />
                 </div>

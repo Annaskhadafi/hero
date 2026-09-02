@@ -3193,7 +3193,6 @@ export const hcCandidatePanelEvaluations = pgTable('hero_hc_candidate_panel_eval
   technicalScore: integer('technical_score').notNull().default(0),
   communicationScore: integer('communication_score').notNull().default(0),
   cultureScore: integer('culture_score').notNull().default(0),
-  problemSolvingScoreLegacy: integer('problem_solving_score_legacy').notNull().default(0),
   attitudeScore: integer('attitude_score').notNull().default(0),
 
   // Decision & Recommendations

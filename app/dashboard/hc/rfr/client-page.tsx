@@ -1,43 +1,35 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import React, { useState, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   FileText,
   Plus,
-  Search,
   Download,
   Printer,
   CheckCircle2,
   Clock,
   XCircle,
-  ExternalLink,
   Eye,
   Briefcase,
   FileCheck,
-  Paperclip,
-  Edit3,
+  Users,
+  Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { AdminPageShell } from '@/components/admin-page-shell'
+import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName } from '@/components/hc/hc-workspace-banner'
+import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { getRfrDetail } from '@/app/actions/rfr'
 import { RfrDocumentPreview } from '@/components/rfr-document-preview'
 
@@ -64,60 +56,76 @@ type RfrClientPageProps = {
   totalPages: number
 }
 
+function formatIndoDate(dateStr: string | Date | null | undefined): string {
+  if (!dateStr) return '-'
+  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr
+  if (isNaN(d.getTime())) return String(dateStr)
+  return d.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 function getStatusBadge(status: string, currentStepOrder: number) {
   if (status === 'in_progress' && currentStepOrder === 1) {
     return (
-      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 flex items-center gap-1">
-        <Clock className="w-3.5 h-3.5 text-amber-600" /> Reverted / Butuh Revisi
+      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit">
+        <Clock className="w-3 h-3 text-amber-600" />
+        <span>Butuh Revisi (Step 1)</span>
       </Badge>
     )
   }
   switch (status) {
     case 'approved':
       return (
-        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 flex items-center gap-1">
-          <CheckCircle2 className="w-3.5 h-3.5" /> Approved
+        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit">
+          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+          <span>Disetujui</span>
         </Badge>
       )
     case 'rejected':
       return (
-        <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 flex items-center gap-1">
-          <XCircle className="w-3.5 h-3.5" /> Rejected
+        <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit">
+          <XCircle className="w-3 h-3 text-rose-600" />
+          <span>Ditolak</span>
         </Badge>
       )
     case 'in_progress':
       return (
-        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 flex items-center gap-1">
-          <Clock className="w-3.5 h-3.5" /> Approval ({currentStepOrder}/6)
+        <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit">
+          <Clock className="w-3 h-3 text-sky-600" />
+          <span>Approval ({currentStepOrder}/6)</span>
         </Badge>
       )
     default:
       return (
-        <Badge variant="outline" className="flex items-center gap-1">
+        <Badge variant="outline" className="text-xs py-0.5 px-2 w-fit">
           Draft
         </Badge>
       )
   }
 }
 
-import { useReactToPrint } from 'react-to-print'
-import { useRef } from 'react'
-
 export function RfrClientPage({ initialData, total, page, totalPages }: RfrClientPageProps) {
   const router = useRouter()
   const printRef = useRef<HTMLDivElement>(null)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
   const [previewDetail, setPreviewDetail] = useState<{ rfr: any; approvals: any[] } | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const params = new URLSearchParams()
-    if (search) params.set('search', search)
-    if (statusFilter !== 'all') params.set('status', statusFilter)
-    router.push(`/dashboard/hc/rfr?${params.toString()}`)
+  // Calculate stats
+  const totalRfr = total
+  const pendingCount = initialData.filter((r) => r.status === 'in_progress' && r.currentStepOrder > 1).length
+  const approvedCount = initialData.filter((r) => r.status === 'approved').length
+  const rejectedCount = initialData.filter((r) => r.status === 'rejected' || (r.status === 'in_progress' && r.currentStepOrder === 1)).length
+
+  const handlePrint = () => {
+    if (previewDetail?.rfr?.id) {
+      window.open(`/api/hc/rfr/${previewDetail.rfr.id}/pdf`, '_blank')
+    } else {
+      window.print()
+    }
   }
 
   function openPreview(id: number) {
@@ -126,187 +134,218 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
       if (res) {
         setPreviewDetail(res)
         setIsDetailOpen(true)
+      } else {
+        toast.error('Gagal memuat detail dokumen RFR.')
       }
     })
   }
 
-  function exportCsv() {
-    if (initialData.length === 0) return
-    const headers = ['No RFR', 'Posisi', 'Jumlah', 'Requestor', 'Section/Dept', 'Tgl Request', 'Status']
-    const rows = initialData.map((d) => [
-      d.rfrNumber,
-      `"${d.positionTitle}"`,
-      d.numberOfPersons,
-      `"${d.requestorName}"`,
-      `"${d.sectionDepartment}"`,
-      d.requestDate,
-      d.status,
-    ])
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `RFR_List_${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <FileCheck className="w-7 h-7 text-primary" /> Request For Recruitment (RFR)
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Kelola formulir permohonan rekrutmen karyawan baru, alur persetujuan 6 tingkat, dan auto-generate lowongan pekerjaan.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={exportCsv} className="gap-1.5">
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
+    <AdminPageShell
+      eyebrow="HC • Recruitment Management"
+      title="Request For Recruitment"
+      description="Kelola formulir permohonan rekrutmen karyawan baru, alur persetujuan berjenjang, dan auto-generate lowongan pekerjaan."
+    >
+      {/* 1. HERO WORKSPACE BANNER */}
+      <HcWorkspaceBanner
+        eyebrow="Recruitment Desk"
+        title="Permohonan Rekrutmen (RFR)"
+        description="Pantau dan kelola seluruh pengajuan kebutuhan tenaga kerja baru lintas departemen dengan alur persetujuan berjenjang."
+        items={[
+          { label: 'Total RFR', value: totalRfr, tone: 'slate' },
+          { label: 'Menunggu Approval', value: pendingCount, tone: 'amber' },
+          { label: 'Telah Disetujui', value: approvedCount, tone: 'emerald' },
+          { label: 'Revisi / Ditolak', value: rejectedCount, tone: 'rose' },
+        ]}
+      />
+
+      {/* 2. MINIMAL TABLE SHELL */}
+      <MinimalTableShell
+        label="permohonan rfr"
+        title="Daftar Dokumen RFR"
+        description="Daftar pengajuan permohonan penambahan atau penggantian tenaga kerja."
+        fileName="rfr-requests-hc"
+        searchPlaceholder="Cari nomor RFR, posisi, requestor, dept..."
+        access={{ canView: true, canEdit: true, canDelete: true }}
+        primaryAction={
           <Link href="/dashboard/hc/rfr/form">
-            <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="w-4 h-4" /> Buat Form RFR
+            <Button className={hcPrimaryActionClassName}>
+              <Plus className="size-4" />
+              <span>Buat Pengajuan RFR</span>
             </Button>
           </Link>
-        </div>
-      </div>
+        }
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-semibold">No. RFR</TableHead>
+              <TableHead className="font-semibold">Posisi Jabatan</TableHead>
+              <TableHead className="font-semibold text-center">Jumlah</TableHead>
+              <TableHead className="font-semibold">Requestor & Dept</TableHead>
+              <TableHead className="font-semibold">Tgl Request</TableHead>
+              <TableHead className="font-semibold">Estimasi Masuk</TableHead>
+              <TableHead className="font-semibold">Status Approval</TableHead>
+              <TableHead className="font-semibold text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {initialData.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-10 text-center text-slate-400">
+                  <FileText className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                  <p className="font-medium text-slate-600">Belum ada pengajuan RFR</p>
+                </TableCell>
+              </TableRow>
+            ) : (
+              initialData.map((item) => (
+                <TableRow key={item.id} className={hcTableRowClassName}>
+                  {/* No. RFR */}
+                  <TableCell className="font-mono font-bold text-slate-900 whitespace-nowrap">
+                    {item.rfrNumber}
+                  </TableCell>
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-xl border bg-card text-card-foreground shadow-sm">
-        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari Nomor RFR, Posisi, Requestor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <div className="w-full sm:w-48">
-            <Select value={statusFilter} onValueChange={(val) => setStatusFilter(val)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Status Approval" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Semua Status</SelectItem>
-                <SelectItem value="in_progress">In Progress Approval</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button type="submit" variant="secondary" size="default">
-            Filter
-          </Button>
-        </form>
-      </div>
+                  {/* Posisi Jabatan */}
+                  <TableCell>
+                    <p className="font-semibold text-slate-900 leading-snug">{item.positionTitle}</p>
+                    <span className="text-xs text-slate-500 uppercase">
+                      {item.level?.replace('_', ' ')}
+                    </span>
+                  </TableCell>
 
-      {/* Table */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/50 text-muted-foreground font-medium text-xs uppercase border-b">
-              <tr>
-                <th className="px-4 py-3">No. RFR</th>
-                <th className="px-4 py-3">Posisi Jabatan</th>
-                <th className="px-4 py-3">Jumlah</th>
-                <th className="px-4 py-3">Requestor & Dept</th>
-                <th className="px-4 py-3">Tgl Request</th>
-                <th className="px-4 py-3">Estimasi Masuk</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {initialData.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
-                    <FileText className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                    Belum ada dokumen Request For Recruitment (RFR).
-                  </td>
-                </tr>
-              ) : (
-                initialData.map((item) => (
-                  <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-foreground">{item.rfrNumber}</td>
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {item.positionTitle}
-                      <span className="block text-xs text-muted-foreground capitalize">{item.level.replace('_', ' ')}</span>
-                    </td>
-                    <td className="px-4 py-3 font-bold text-primary">{item.numberOfPersons} Orang</td>
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-foreground">{item.requestorName}</span>
-                      <span className="block text-xs text-muted-foreground">{item.sectionDepartment}</span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.requestDate}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.joinDateEstimation}</td>
-                    <td className="px-4 py-3">{getStatusBadge(item.status, item.currentStepOrder)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {item.status === 'in_progress' && item.currentStepOrder === 1 && (
-                          <Link href={`/dashboard/hc/rfr/form?id=${item.id}`}>
-                            <Button variant="ghost" size="icon" title="Edit / Revisi Form RFR">
-                              <Edit3 className="w-4 h-4 text-amber-600 hover:text-amber-700" />
-                            </Button>
-                          </Link>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Preview Document RFR"
-                          onClick={() => openPreview(item.id)}
-                        >
-                          <Eye className="w-4 h-4 text-muted-foreground" />
-                        </Button>
-                        <a href={`/api/hc/rfr/${item.id}/pdf`} target="_blank" rel="noreferrer">
-                          <Button variant="ghost" size="icon" title="Download PDF">
-                            <Download className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  {/* Jumlah */}
+                  <TableCell className="text-center">
+                    <Badge variant="outline" className="font-semibold text-slate-800 text-xs px-2 py-0.5">
+                      <Users className="h-3 w-3 mr-1 text-slate-500 inline" />
+                      {item.numberOfPersons} Orang
+                    </Badge>
+                  </TableCell>
+
+                  {/* Requestor & Dept */}
+                  <TableCell>
+                    <p className="font-semibold text-slate-900">{item.requestorName}</p>
+                    <p className="text-xs text-slate-500 truncate max-w-[220px]">
+                      {item.sectionDepartment}
+                    </p>
+                  </TableCell>
+
+                  {/* Tgl Request */}
+                  <TableCell className="text-slate-700 whitespace-nowrap text-xs">
+                    {formatIndoDate(item.requestDate)}
+                  </TableCell>
+
+                  {/* Estimasi Masuk */}
+                  <TableCell className="text-slate-700 whitespace-nowrap text-xs">
+                    {formatIndoDate(item.joinDateEstimation)}
+                  </TableCell>
+
+                  {/* Status Approval */}
+                  <TableCell className="whitespace-nowrap">
+                    {getStatusBadge(item.status, item.currentStepOrder)}
+                  </TableCell>
+
+                  {/* Aksi */}
+                  <TableCell className="text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {item.status === 'approved' && item.generatedRecruitmentId && (
+                        <Link href={`/dashboard/hc/recruitment?recruitmentId=${item.generatedRecruitmentId}`}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 rounded-lg border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold text-xs gap-1"
+                            title="Buka Lowongan Kerja Terkait"
+                          >
+                            <Briefcase className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Lowongan</span>
                           </Button>
-                        </a>
-                        {item.status === 'approved' && item.generatedRecruitmentId && (
-                          <Link href="/dashboard/hc/recruitment">
-                            <Button variant="outline" size="sm" className="gap-1 text-xs text-emerald-600 border-emerald-500/40">
-                              <Briefcase className="w-3.5 h-3.5" /> Lowongan
-                            </Button>
-                          </Link>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                        </Link>
+                      )}
 
-      {/* Large Document Preview Modal (A4 WYSIWYG) */}
+                      {(item.status === 'reverted' || (item.status === 'in_progress' && item.currentStepOrder === 1)) && (
+                        <Link href={`/dashboard/hc/rfr/form?id=${item.id}`}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 rounded-lg border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs gap-1"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span>Revisi</span>
+                          </Button>
+                        </Link>
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openPreview(item.id)}
+                        disabled={isPending}
+                        className="h-8 px-2.5 rounded-lg border-slate-300 font-semibold text-xs gap-1"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        <span>Preview</span>
+                      </Button>
+
+                      <a
+                        href={`/api/hc/rfr/${item.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Unduh PDF Resmi"
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </MinimalTableShell>
+
+      {/* 3. MODAL PREVIEW DOKUMEN RESMI (A4 WYSIWYG) */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="sm:max-w-7xl max-h-[92vh] overflow-y-auto p-0 gap-0">
-          <DialogHeader className="p-4 border-b bg-muted/30 sticky top-0 bg-background z-10 flex flex-row items-center justify-between">
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-primary" /> Preview Document: {previewDetail?.rfr?.rfrNumber}
+        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0 rounded-[1.25rem]">
+          <DialogHeader className="p-4 border-b border-slate-200 bg-slate-50 sticky top-0 bg-background z-10 flex flex-row items-center justify-between">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-slate-900">
+              <FileCheck className="w-5 h-5 text-slate-700" />
+              <span>Preview Dokumen: {previewDetail?.rfr?.rfrNumber}</span>
             </DialogTitle>
             <div className="flex items-center gap-2 pr-6">
-              {previewDetail?.rfr?.status === 'approved' && (
-                <Link href="/dashboard/hc/recruitment">
-                  <Button size="sm" variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
-                    <Briefcase className="w-4 h-4" /> Lihat Lowongan Pekerjaan
+              {previewDetail?.rfr?.status !== 'approved' && (
+                <Link href={`/dashboard/hc/rfr/form?id=${previewDetail?.rfr?.id}`}>
+                  <Button size="sm" variant="outline" className="h-8 border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs gap-1.5 rounded-lg">
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit / Revisi Form</span>
                   </Button>
                 </Link>
               )}
-              <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5">
-                <Printer className="w-4 h-4" /> Print PDF
+              {previewDetail?.rfr?.status === 'approved' && (
+                <Link href="/dashboard/hc/recruitment">
+                  <Button size="sm" variant="default" className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 rounded-lg">
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>Lihat Lowongan Kerja</span>
+                  </Button>
+                </Link>
+              )}
+              <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 rounded-lg border-slate-300 font-semibold text-xs gap-1.5">
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print PDF</span>
               </Button>
               {previewDetail?.rfr?.id && (
                 <a href={`/api/hc/rfr/${previewDetail.rfr.id}/pdf`} target="_blank" rel="noreferrer">
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <Download className="w-4 h-4" /> Download PDF
+                  <Button variant="outline" size="sm" className="h-8 rounded-lg border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100 font-semibold text-xs gap-1.5">
+                    <Download className="w-3.5 h-3.5 text-slate-700" />
+                    <span>Download PDF</span>
                   </Button>
                 </a>
               )}
@@ -314,19 +353,15 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
           </DialogHeader>
 
           {previewDetail && (
-            <div className="p-6 bg-slate-100 dark:bg-slate-900 flex justify-center">
+            <div className="p-6 bg-slate-100 flex justify-center">
               <RfrDocumentPreview
                 rfr={previewDetail.rfr}
                 approvals={previewDetail.approvals}
-                containerRef={printRef}
-                currentStepOrder={previewDetail.rfr.currentStepOrder}
               />
             </div>
           )}
         </DialogContent>
       </Dialog>
-
-    </div>
+    </AdminPageShell>
   )
 }
-

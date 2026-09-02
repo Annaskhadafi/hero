@@ -40,7 +40,9 @@ export default async function RfrCreateFormPage({ searchParams }: PageProps) {
   }
 
   const session = await getServerSession()
+  let defaultRequestorEmployeeId: number | undefined = undefined
   let defaultRequestorName = session?.user?.name || ''
+  let defaultRequestorJobTitle = ''
   let defaultSectionDepartment = ''
 
   if (session?.user?.email || session?.user?.employeeSn) {
@@ -50,7 +52,9 @@ export default async function RfrCreateFormPage({ searchParams }: PageProps) {
     try {
       const rows = await db
         .select({
+          id: employees.id,
           name: employees.name,
+          jobTitle: employees.jobTitle,
           departmentName: sql<string | null>`coalesce(${masterDepartments.name}, ${employees.department})`,
           sectionName: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`,
         })
@@ -67,7 +71,9 @@ export default async function RfrCreateFormPage({ searchParams }: PageProps) {
 
       if (rows.length > 0) {
         const emp = rows[0]
+        if (emp.id) defaultRequestorEmployeeId = emp.id
         if (emp.name) defaultRequestorName = emp.name
+        if (emp.jobTitle) defaultRequestorJobTitle = emp.jobTitle
         const sec = emp.sectionName?.trim()
         const dept = emp.departmentName?.trim()
         if (sec && dept) {
@@ -85,7 +91,9 @@ export default async function RfrCreateFormPage({ searchParams }: PageProps) {
 
   return (
     <RfrClientForm
+      defaultRequestorEmployeeId={defaultRequestorEmployeeId}
       defaultRequestorName={defaultRequestorName}
+      defaultRequestorJobTitle={defaultRequestorJobTitle}
       defaultSectionDepartment={defaultSectionDepartment}
       initialData={initialData}
       initialApprovals={initialApprovals}

@@ -41,12 +41,19 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
   const wo = item.repairFormWo
   let parsedWoItems: Array<{
     sn?: string
+    serialNo?: string
+    description?: string
     size?: string
     brand?: string
+    category?: string
+    job?: string
     pattern?: string
+    noUnit?: string
+    pos?: string
     kondisi?: string
     workType?: string
-    harga?: number
+    harga?: number | string
+    price?: number | string
     qty?: number
     keterangan?: string
   }> = []
@@ -59,50 +66,44 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
     }
   }
 
-  if (isFormWo && wo) {
+  if (isFormWo) {
     return (
       <div className="space-y-4">
         <section className="rounded-2xl bg-[#eef6fb] p-4 text-[#082033]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-bold tracking-[0.16em] text-[#486275] uppercase">
-                FORM WORK ORDER • {wo.jenisPengajuan || 'REPAIR'}
+                FORM WORK ORDER • {wo?.jenisPengajuan?.toUpperCase() || 'SERVICE / REPAIR'}
               </p>
-              <h3 className="mt-1 text-lg font-black tracking-tight">{wo.noPengajuan}</h3>
+              <h3 className="mt-1 text-lg font-black tracking-tight">{wo?.noPengajuan || item.requestNumber || item.title}</h3>
             </div>
-            <AdminStatusBadge value={wo.status || 'Pending'} />
+            <AdminStatusBadge value={wo?.status || 'Pending'} />
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-xs font-semibold text-[#60788a]">Customer</dt>
-              <dd className="mt-0.5 font-bold text-slate-800">{wo.customer || '-'}</dd>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo?.customer || '-'}</dd>
             </div>
             <div>
               <dt className="text-xs font-semibold text-[#60788a]">Site</dt>
-              <dd className="mt-0.5 font-bold text-slate-800">{wo.site || item.siteName || '-'}</dd>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo?.site || item.siteName || '-'}</dd>
             </div>
             <div>
               <dt className="text-xs font-semibold text-[#60788a]">Pemohon</dt>
-              <dd className="mt-0.5 font-bold text-slate-800">{wo.pemohon || item.requesterName || '-'}</dd>
+              <dd className="mt-0.5 font-bold text-slate-800">{wo?.pemohon || item.requesterName || '-'}</dd>
             </div>
             <div>
               <dt className="text-xs font-semibold text-[#60788a]">Total Amount</dt>
               <dd className="mt-0.5 font-bold text-emerald-700 tabular-nums">
-                {wo.totalAmount
+                {wo?.totalAmount
                   ? `Rp ${Number(wo.totalAmount).toLocaleString('id-ID')}`
                   : '-'}
-              </dd>
-            </div>
-            <div className="col-span-2 border-t border-[#d5e5ef] pt-3">
-              <dt className="text-xs font-semibold text-[#60788a]">Tanggal Pengajuan</dt>
-              <dd className="mt-1 text-base font-black">
-                {wo.hari ? `${wo.hari}, ` : ''}{wo.tanggal ? formatDate(new Date(wo.tanggal)) : formatDate(item.startTime)}
               </dd>
             </div>
           </dl>
         </section>
 
-        {wo.catatanPengajuan && (
+        {wo?.catatanPengajuan && (
           <section>
             <h4 className="text-sm font-black text-[#082033]">Catatan Pengajuan</h4>
             <p className="mt-2 text-sm leading-6 whitespace-pre-wrap text-[#486275] bg-white rounded-xl p-3 border border-slate-200">
@@ -117,27 +118,39 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
               <h4 className="text-sm font-black text-[#082033]">Daftar Item ({parsedWoItems.length})</h4>
             </div>
             <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white text-xs">
-              {parsedWoItems.map((it, idx) => (
-                <div key={idx} className="p-3 flex items-start justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <p className="font-bold text-slate-800">
-                      {idx + 1}. {it.sn ? `SN: ${it.sn}` : `Item ${idx + 1}`}
-                      {it.brand ? ` • ${it.brand}` : ''}
-                      {it.size ? ` (${it.size})` : ''}
-                    </p>
-                    <p className="text-slate-500">
-                      {it.workType ? `Pekerjaan: ${it.workType}` : it.pattern ? `Pattern: ${it.pattern}` : ''}
-                      {it.kondisi ? ` • Kondisi: ${it.kondisi}` : ''}
-                      {it.keterangan ? ` • Ket: ${it.keterangan}` : ''}
-                    </p>
-                  </div>
-                  {it.harga ? (
-                    <div className="text-right font-bold text-slate-800 tabular-nums">
-                      Rp {Number(it.harga).toLocaleString('id-ID')}
+              {parsedWoItems.map((it, idx) => {
+                const title = it.serialNo || it.description || it.sn || `Item ${idx + 1}`
+                const subtitle = [
+                  it.noUnit ? `Unit: ${it.noUnit}` : null,
+                  it.pos ? `Pos: ${it.pos}` : null,
+                  it.size ? `Size: ${it.size}` : null,
+                  it.category || it.job || it.workType ? `Kategori: ${it.category || it.job || it.workType}` : null,
+                  it.kondisi ? `Kondisi: ${it.kondisi}` : null,
+                  it.keterangan ? `Ket: ${it.keterangan}` : null,
+                ].filter(Boolean).join(' • ')
+                const rawPrice = it.price || it.harga
+                const numPrice = typeof rawPrice === 'string' ? parseFloat(rawPrice.replace(/[^0-9.-]+/g, '')) : rawPrice
+
+                return (
+                  <div key={idx} className="p-3 flex items-start justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-800">
+                        {idx + 1}. {title}
+                      </p>
+                      {subtitle ? (
+                        <p className="text-slate-500 text-[11px] leading-relaxed">
+                          {subtitle}
+                        </p>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              ))}
+                    {numPrice ? (
+                      <div className="text-right font-bold text-emerald-700 tabular-nums shrink-0">
+                        Rp {Number(numPrice).toLocaleString('id-ID')}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}

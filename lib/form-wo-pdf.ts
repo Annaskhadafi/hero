@@ -342,31 +342,44 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     borderWidth: 1,
   })
 
-  // Column definitions matching UI table with crisp boundaries:
-  // No | Customer | Site | Tire Size | SN Tire | Brand | Cat. Injury | Price | WO CP | Number PO | Date PO | POS
-  const columns = [
-    { label: 'NO', w: 18, align: 'center' },
-    { label: 'CUSTOMER', w: 70 },
-    { label: 'SITE', w: 42 },
-    { label: 'TIRE SIZE', w: 42 },
-    { label: 'SN TIRE', w: 54 },
-    { label: 'BRAND', w: 42 },
-    { label: 'CAT. INJURY', w: 50 },
-    { label: 'PRICE', w: 50, align: 'right' },
-    { label: 'WO CP', w: 48 },
-    { label: 'NUMBER PO', w: 48 },
-    { label: 'DATE PO', w: 38 },
-    { label: 'POS', w: 21.28, align: 'center' },
-  ]
+  const isService = data.jenisPengajuan === 'service'
+
+  // Dynamic Column definitions for Landscape A4 (tableW = 769.89 pt)
+  // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO WO CP, PRICE / AMOUNT
+  // Repair: NO, DESCRIPTION (TIRE SN), NO UNIT, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO WO CP, PRICE / AMOUNT
+  const columns = isService
+    ? [
+        { label: 'NO', w: 24, align: 'center' },
+        { label: 'DESCRIPTION', w: 115 },
+        { label: 'JOB', w: 65 },
+        { label: 'CUSTOMER', w: 105 },
+        { label: 'SITE', w: 75 },
+        { label: 'SERIAL NO', w: 80 },
+        { label: 'REF NO', w: 75 },
+        { label: 'NO WO CP', w: 75 },
+        { label: 'PRICE / AMOUNT', w: 155.89, align: 'right' },
+      ]
+    : [
+        { label: 'NO', w: 22, align: 'center' },
+        { label: 'DESCRIPTION (TIRE SN)', w: 110 },
+        { label: 'NO UNIT', w: 55 },
+        { label: 'POS', w: 40, align: 'center' },
+        { label: 'SIZE', w: 65 },
+        { label: 'SITE', w: 75 },
+        { label: 'CUSTOMER', w: 110 },
+        { label: 'CATEGORY', w: 85 },
+        { label: 'NO WO CP', w: 85 },
+        { label: 'PRICE / AMOUNT', w: 122.89, align: 'right' },
+      ]
 
   let curColX = tableX
   for (let cIdx = 0; cIdx < columns.length; cIdx++) {
     const col = columns[cIdx]
-    const textX = col.align === 'right' ? curColX + col.w - 3 - fontBold.widthOfTextAtSize(col.label, 6) : col.align === 'center' ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6)) / 2 : curColX + 3
+    const textX = col.align === 'right' ? curColX + col.w - 4 - fontBold.widthOfTextAtSize(col.label, 6.5) : col.align === 'center' ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6.5)) / 2 : curColX + 4
     page.drawText(col.label, {
       x: textX,
       y: curY - 13,
-      size: 6,
+      size: 6.5,
       font: fontBold,
       color: rgb(0.2, 0.25, 0.3),
     })
@@ -393,13 +406,17 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     site: data.site || '-',
     size: '-',
     description: '-',
+    job: '-',
+    serialNo: '-',
+    refNo: '-',
     brand: '-',
-    category: data.jenisPengajuan === 'service' ? 'Service' : 'R1',
+    category: isService ? 'Service' : 'R1',
     price: data.totalAmount || 0,
     noWoCp: data.noWoTerbit || '-',
     noPo: data.noPo || '-',
     tanggalPo: data.tanggalPo || '-',
     pos: '-',
+    noUnit: '-',
   }]
 
   for (let idx = 0; idx < renderRows.length; idx++) {
@@ -418,33 +435,43 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
       borderWidth: 1,
     })
 
-    const rowValues = [
-      String(idx + 1),
-      row.customer || data.customer || '-',
-      row.site || data.site || '-',
-      row.size || '-',
-      row.description || row.tireSn || '-',
-      row.brand || '-',
-      row.category || (data.jenisPengajuan === 'service' ? 'Service' : 'R1'),
-      priceNum > 0 ? formatCurrency(priceNum) : '-',
-      row.noWoCp || data.noWoTerbit || '-',
-      row.noPo || data.noPo || '-',
-      row.tanggalPo ? (String(row.tanggalPo).length > 10 ? formatIndoDate(row.tanggalPo) : String(row.tanggalPo)) : '-',
-      row.pos || '-',
-    ]
+    const rowValues = isService
+      ? [
+          String(idx + 1),
+          row.description || '-',
+          row.job || '-',
+          row.customer || data.customer || '-',
+          row.site || data.site || '-',
+          row.serialNo || '-',
+          row.refNo || '-',
+          row.noWoCp || data.noWoTerbit || '-',
+          priceNum > 0 ? formatCurrency(priceNum) : '-',
+        ]
+      : [
+          String(idx + 1),
+          row.description || row.tireSn || '-',
+          row.noUnit || '-',
+          row.pos || '-',
+          row.size || '-',
+          row.site || data.site || '-',
+          row.customer || data.customer || '-',
+          row.category || 'R1',
+          row.noWoCp || data.noWoTerbit || '-',
+          priceNum > 0 ? formatCurrency(priceNum) : '-',
+        ]
 
     let rowColX = tableX
     for (let cIdx = 0; cIdx < columns.length; cIdx++) {
       const col = columns[cIdx]
       const rawVal = rowValues[cIdx] || '-'
-      const displayVal = fitText(rawVal, col.w - 6, fontRegular, 6)
-      const textW = fontRegular.widthOfTextAtSize(displayVal, 6)
-      const textX = col.align === 'right' ? rowColX + col.w - 3 - textW : col.align === 'center' ? rowColX + (col.w - textW) / 2 : rowColX + 3
+      const displayVal = fitText(rawVal, col.w - 8, fontRegular, 6.5)
+      const textW = fontRegular.widthOfTextAtSize(displayVal, 6.5)
+      const textX = col.align === 'right' ? rowColX + col.w - 4 - textW : col.align === 'center' ? rowColX + (col.w - textW) / 2 : rowColX + 4
 
       page.drawText(displayVal, {
         x: textX,
         y: curY - 12,
-        size: 6,
+        size: 6.5,
         font: fontRegular,
         color: rgb(0.15, 0.2, 0.25),
       })
@@ -486,7 +513,8 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   })
 
   // Vertical border line before price in total row
-  const priceColX = tableX + columns.slice(0, 7).reduce((sum, c) => sum + c.w, 0)
+  const priceColIndex = columns.length - 1
+  const priceColX = tableX + columns.slice(0, priceColIndex).reduce((sum, c) => sum + c.w, 0)
   page.drawLine({
     start: { x: priceColX, y: curY },
     end: { x: priceColX, y: curY - totalRowH },
@@ -497,7 +525,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const finalTotalText = formatCurrency(totalAmountCalculated > 0 ? totalAmountCalculated : data.totalAmount)
   const totalTextW = fontBold.widthOfTextAtSize(finalTotalText, 8.5)
   page.drawText(finalTotalText, {
-    x: priceColX + columns[7].w - 3 - totalTextW,
+    x: priceColX + columns[priceColIndex].w - 4 - totalTextW,
     y: curY - 14,
     size: 8.5,
     font: fontBold,
@@ -517,7 +545,6 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     note: string | null
   }> = []
 
-  const isService = data.jenisPengajuan === 'service'
   const submitterCol = {
     header: 'DIAJUKAN OLEH',
     name: data.pemohon || 'Pemohon',

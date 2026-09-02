@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { createRfrRequest, resolveRfrMatrixAction, resubmitRfrRequest } from '@/app/actions/rfr'
+import { createRfrRequest, resolveRfrMatrixAction, resubmitRfrRequest, getEmployeeJobTitleAction } from '@/app/actions/rfr'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 import { SignaturePad } from '@/components/signature-pad'
@@ -30,14 +30,18 @@ const DEFAULT_COMPETENCIES: CompetencyRow[] = [
 ]
 
 type RfrClientFormProps = {
+  defaultRequestorEmployeeId?: number
   defaultRequestorName?: string
+  defaultRequestorJobTitle?: string
   defaultSectionDepartment?: string
   initialData?: any
   initialApprovals?: any[]
 }
 
 export function RfrClientForm({
+  defaultRequestorEmployeeId,
   defaultRequestorName = '',
+  defaultRequestorJobTitle = '',
   defaultSectionDepartment = '',
   initialData,
   initialApprovals,
@@ -54,6 +58,11 @@ export function RfrClientForm({
     initialData?.joinDateEstimation ? new Date(initialData.joinDateEstimation).toISOString().slice(0, 10) : ''
   )
   const [requestorName, setRequestorName] = useState(initialData?.requestorName || defaultRequestorName)
+  const [requestorJobTitle, setRequestorJobTitle] = useState(
+    initialApprovals?.[0]?.approverTitle && initialApprovals[0].approverTitle !== 'Requestor'
+      ? initialApprovals[0].approverTitle
+      : (defaultRequestorJobTitle || 'Staff')
+  )
   const [sectionDepartment, setSectionDepartment] = useState(
     initialData?.sectionDepartment || defaultSectionDepartment || 'Service Operation Others / Central Services'
   )
@@ -64,35 +73,71 @@ export function RfrClientForm({
     if (defaultRequestorName && !requestorName) {
       setRequestorName(defaultRequestorName)
     }
-  }, [defaultRequestorName])
+    if (defaultRequestorJobTitle && !requestorJobTitle) {
+      setRequestorJobTitle(defaultRequestorJobTitle)
+    }
+  }, [defaultRequestorName, defaultRequestorJobTitle])
 
-  const [resolvedApprovers, setResolvedApprovers] = useState([
-    { label: 'Submitted', name: requestorName || '-', title: 'Requestor' },
-    { label: 'HC Verification (HR Recruitment Staff)', name: 'Adila Tri Arizona', title: 'HR Recruitment & GA' },
-    { label: 'Leader HR-GA', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
-    { label: 'Human Capital Spv', name: 'Muhammad Iqbal', title: 'Human Capital Spv' },
-    { label: 'Manager Departemen', name: 'Romy Hidayat', title: 'Central Services Manager' },
-    { label: 'General Manager', name: 'Person Sihaloho', title: 'General Manager' },
-  ])
+  // Lookup requestor position dynamically from DB when name changes
+  useEffect(() => {
+    if (requestorName) {
+      getEmployeeJobTitleAction(requestorName).then((title) => {
+        if (title && title !== 'Requestor') {
+          setRequestorJobTitle(title)
+        }
+      })
+    }
+  }, [requestorName])
+
+  const [resolvedApprovers, setResolvedApprovers] = useState<any[]>(() => {
+    if (initialApprovals && initialApprovals.length > 0) {
+      return initialApprovals.map((a, idx) => ({
+        label: a.roleLabel,
+        name: a.approverName || '-',
+        title: idx === 0 ? (requestorJobTitle || a.approverTitle || 'Staff') : (a.approverTitle || '-'),
+        stepOrder: a.stepOrder,
+        signatureDataUrl: a.signatureDataUrl || null,
+        signedAt: a.signedAt || null,
+        remarks: a.remarks || '',
+        status: a.status || 'pending',
+      }))
+    }
+    return [
+      { label: 'Submitted', name: requestorName || '-', title: requestorJobTitle || 'Staff', stepOrder: 1 },
+      { label: 'HC Verification', name: 'Adila Tri Arizona', title: 'HR Recruitment Staff', stepOrder: 2 },
+      { label: 'Leader HR-GA', name: 'Kesuma Bagaskara', title: 'Leader HR-GA', stepOrder: 3 },
+      { label: 'Human Capital Spv', name: 'Muhammad Iqbal', title: 'Human Capital Spv', stepOrder: 4 },
+      { label: 'Manager Departemen', name: 'Romy Hidayat', title: 'Central Services Manager', stepOrder: 5 },
+      { label: 'General Manager', name: 'Person Sihaloho', title: 'General Manager', stepOrder: 6 },
+    ]
+  })
 
   useEffect(() => {
     if (sectionDepartment) {
       resolveRfrMatrixAction(sectionDepartment).then((matrix) => {
         if (matrix && matrix.length >= 2) {
+          const approvalMap = new Map((initialApprovals || []).map((a) => [a.stepOrder, a]))
           setResolvedApprovers(
             matrix.map((m) => {
               const isReq = m.stepKey === 'requestor_initiated' || m.stepOrder === 1
+              const existingApp = approvalMap.get(m.stepOrder)
+              const dynamicReqTitle = requestorJobTitle || (existingApp?.approverTitle !== 'Requestor' ? existingApp?.approverTitle : '') || 'Staff'
               return {
                 label: m.roleLabel,
-                name: isReq ? (requestorName || '-') : (m.approverName || m.approverTitle || '-'),
-                title: isReq ? 'Requestor' : m.approverTitle,
+                name: isReq ? (requestorName || '-') : (existingApp?.approverName || m.approverName || m.approverTitle || '-'),
+                title: isReq ? dynamicReqTitle : (existingApp?.approverTitle || m.approverTitle),
+                stepOrder: m.stepOrder,
+                signatureDataUrl: existingApp?.signatureDataUrl || null,
+                signedAt: existingApp?.signedAt || null,
+                remarks: existingApp?.remarks || '',
+                status: existingApp?.status || 'pending',
               }
             })
           )
         }
       })
     }
-  }, [sectionDepartment, requestorName])
+  }, [sectionDepartment, requestorName, requestorJobTitle, initialApprovals])
 
   // Section B
   const [positionTitle, setPositionTitle] = useState(initialData?.positionTitle || '')
@@ -193,6 +238,7 @@ export function RfrClientForm({
       const payload = {
         requestDate,
         joinDateEstimation,
+        requestorEmployeeId: defaultRequestorEmployeeId || initialData?.requestorEmployeeId,
         requestorName,
         sectionDepartment,
         receivedByHr,
@@ -735,23 +781,77 @@ export function RfrClientForm({
               {/* E. Approval Grid matching official document layout */}
               <div className="space-y-0.5 pt-0.5">
                 <div className="font-bold text-slate-900 border-b border-slate-300 pb-0.5 text-[9px]">E. Approval</div>
-                <div className="grid border border-slate-400 divide-x divide-slate-400 text-center bg-white/95 rounded-sm" style={{ gridTemplateColumns: `repeat(${resolvedApprovers.length}, minmax(0, 1fr))` }}>
-                  {resolvedApprovers.map((step, idx) => (
-                    <div key={idx} className="p-0.5 flex flex-col justify-between min-h-[72px]">
-                      <div className="font-bold text-[7.5px] text-slate-900 border-b border-slate-300 pb-0.5">{step.label}</div>
-                      <div className="flex-1 my-0.5 flex items-center justify-center min-h-[22px]">
-                        {idx === 0 && liveSignatureUrl ? (
-                          <img src={liveSignatureUrl} alt="Live TTD" className="max-h-5 max-w-full object-contain" />
-                        ) : (
-                          <span className="text-[6.5px] italic text-slate-400">Pending TTD</span>
-                        )}
+                <div
+                  className="grid border border-slate-400 divide-x divide-slate-400 text-center bg-white/95 rounded-sm"
+                  style={{ gridTemplateColumns: `repeat(${resolvedApprovers.length}, minmax(0, 1fr))` }}
+                >
+                  {resolvedApprovers.map((step, idx) => {
+                    const isFirstStep = idx === 0 || step.stepOrder === 1
+                    const hasSig = Boolean(step.signatureDataUrl)
+                    const cleanRemark =
+                      step.remarks &&
+                      !['Resubmitted after revision', 'Submitted', 'Reverted', 'Approved', 'approved'].includes(step.remarks.trim())
+                        ? step.remarks.trim()
+                        : ''
+
+                    return (
+                      <div key={idx} className="p-0.5 flex flex-col justify-between bg-white/95">
+                        {/* 1. Header Role (Wrap word cleanly, no cutoff) */}
+                        <div className="font-bold text-[6.5px] text-slate-900 border-b border-slate-300 pb-0.5 h-[24px] flex items-center justify-center text-center leading-[1.1] break-words px-0.5 w-full">
+                          {step.label}
+                        </div>
+
+                        {/* 2. Signature Area (Fixed Height for Alignment) */}
+                        <div className="flex items-center justify-center h-[34px] w-full px-0.5 my-0.5">
+                          {isFirstStep && liveSignatureUrl ? (
+                            <img src={liveSignatureUrl} alt="Live TTD" className="max-h-[30px] max-w-full object-contain" />
+                          ) : hasSig ? (
+                            <img src={step.signatureDataUrl} alt="TTD" className="max-h-[30px] max-w-full object-contain" />
+                          ) : (
+                            <span className="text-[6.5px] italic text-slate-400">
+                              {step.status === 'approved' ? '[Signed]' : 'Pending TTD'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 3. Approver Bottom Info Section */}
+                        <div className="w-full pb-0.5 space-y-0.5">
+                          {/* Nama */}
+                          <div className="font-bold text-[7px] underline text-slate-900 truncate leading-tight text-center px-0.5">
+                            {step.name}
+                          </div>
+
+                          {/* Jabatan */}
+                          <div className="text-[6px] text-slate-600 truncate leading-tight text-center px-0.5">
+                            {step.title}
+                          </div>
+
+                          {/* Jam - Tanggal */}
+                          <div className="text-[5.5px] text-slate-500 font-medium truncate leading-tight text-center px-0.5">
+                            {step.signedAt ? (
+                              <span>
+                                {new Date(step.signedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} —{' '}
+                                {new Date(step.signedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </div>
+
+                          {/* Catatan Approver */}
+                          <div className="text-[5.5px] text-slate-500 truncate leading-tight text-center px-0.5 min-h-[10px] flex items-center justify-center">
+                            {cleanRemark ? (
+                              <span className="truncate max-w-full" title={cleanRemark}>
+                                Catatan: {cleanRemark}
+                              </span>
+                            ) : (
+                              <span className="text-transparent">-</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-bold text-[7px] underline text-slate-900 truncate leading-tight">{step.name}</div>
-                        <div className="text-[6px] text-slate-600 truncate leading-tight">{step.title}</div>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>

@@ -13,7 +13,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { fiveRMasterAreas } from '@/db/schema/five-r'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getAppUrl, sendWorkflowEmail } from '@/lib/workflow-email'
 
 export type FiveRApprovalStep = {
@@ -42,9 +42,32 @@ export async function resolveFiveRApprovalRoute(params: {
 }): Promise<FiveRApprovalRoute> {
   // 1. Query Dynamic Approval Matrix from Database (configured via Workflow Studio)
   try {
+    let areaName = ''
+    let effectiveSiteId = params.siteId ?? null
+
+    if (params.areaId) {
+      const [area] = await db
+        .select({
+          name: fiveRMasterAreas.name,
+          siteId: fiveRMasterAreas.siteId,
+        })
+        .from(fiveRMasterAreas)
+        .where(eq(fiveRMasterAreas.id, params.areaId))
+        .limit(1)
+
+      if (area) {
+        areaName = area.name
+        if (!effectiveSiteId && area.siteId) {
+          effectiveSiteId = area.siteId
+        }
+      }
+    }
+
     const matrixRows = await db
       .select({
         matrixId: approvalMatrices.id,
+        matrixName: approvalMatrices.name,
+        matrixDesc: approvalMatrices.description,
         siteId: approvalMatrices.siteId,
         stepId: approvalMatrixSteps.id,
         stepOrder: approvalMatrixSteps.stepOrder,
@@ -61,11 +84,17 @@ export async function resolveFiveRApprovalRoute(params: {
       .where(
         and(
           sql`${approvalMatrices.transactionType} IN ('five_r_report', 'five-r-report', 'quality-report-5r')`,
-          eq(approvalMatrices.isActive, true),
-          params.siteId ? eq(approvalMatrices.siteId, params.siteId) : sql`TRUE`
+          eq(approvalMatrices.isActive, true)
         )
       )
-      .orderBy(sql`CASE WHEN ${approvalMatrices.siteId} = ${params.siteId ?? -1} THEN 0 ELSE 1 END`, approvalMatrixSteps.stepOrder)
+      .orderBy(
+        sql`CASE 
+          WHEN ${params.areaId ? sql`${approvalMatrices.description} ILIKE ${'%Area ID: ' + params.areaId + ')'} OR ${approvalMatrices.description} ILIKE ${'%Area ID: ' + params.areaId + ' %'} OR ${approvalMatrices.name} = ${'Laporan Audit 5R - ' + areaName}` : sql`FALSE`} THEN 0
+          WHEN ${effectiveSiteId ? sql`${approvalMatrices.siteId} = ${effectiveSiteId}` : sql`FALSE`} THEN 1
+          ELSE 2 
+        END`,
+        approvalMatrixSteps.stepOrder
+      )
 
     // Filter to first matching matrix
     if (matrixRows.length > 0) {
@@ -102,9 +131,11 @@ export async function resolveFiveRApprovalRoute(params: {
   let step2ApproverName = 'PJO Site / Atasan Langsung'
   let step2ApproverEmail: string | null = null
 
-  // 2a. Tentukan PIC Employee ID dari params atau master area
+  // 2a. Tentukan Site ID dari params atau master area
+  let effectiveSiteId = params.siteId ?? null
   let targetPicEmployeeId = params.picEmployeeId ?? null
-  if (!targetPicEmployeeId && params.areaId) {
+
+  if (params.areaId && (!effectiveSiteId || !targetPicEmployeeId)) {
     const [areaRow] = await db
       .select({
         siteId: fiveRMasterAreas.siteId,
@@ -115,15 +146,46 @@ export async function resolveFiveRApprovalRoute(params: {
       .limit(1)
 
     if (areaRow) {
-      if (!params.siteId && areaRow.siteId) {
-        params.siteId = areaRow.siteId
+      if (!effectiveSiteId && areaRow.siteId) {
+        effectiveSiteId = areaRow.siteId
       }
-      targetPicEmployeeId = areaRow.picEmployeeId
+      if (!targetPicEmployeeId && areaRow.picEmployeeId) {
+        targetPicEmployeeId = areaRow.picEmployeeId
+      }
     }
   }
 
-  // 2b. Cari Atasan Langsung PIC dari Struktur Organisasi (dashboard/hc/org-chart-v2 / orgChartNodes)
-  if (targetPicEmployeeId) {
+  // 2b. PRIORITAS 1: PJO Site / Head Site dari hero_sites.head_employee_id
+  if (effectiveSiteId) {
+    const [siteRow] = await db
+      .select({
+        headEmployeeId: sites.headEmployeeId,
+      })
+      .from(sites)
+      .where(eq(sites.id, effectiveSiteId))
+      .limit(1)
+
+    if (siteRow?.headEmployeeId) {
+      const [headEmp] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+        })
+        .from(employees)
+        .where(eq(employees.id, siteRow.headEmployeeId))
+        .limit(1)
+
+      if (headEmp) {
+        step2ApproverId = headEmp.id
+        step2ApproverName = headEmp.name
+        step2ApproverEmail = headEmp.email
+      }
+    }
+  }
+
+  // 2c. PRIORITAS 2 (Fallback jika Site tidak ada PJO): Cari Atasan Langsung PIC dari Struktur Organisasi
+  if (!step2ApproverId && targetPicEmployeeId) {
     try {
       const [picOrgNode] = await db
         .select({
@@ -165,7 +227,7 @@ export async function resolveFiveRApprovalRoute(params: {
       console.error('Error resolving PIC direct manager from orgChartNodes:', err)
     }
 
-    // 2c. Fallback Atasan Langsung dari employees.directManagerId
+    // 2d. Fallback Atasan Langsung dari employees.directManagerId
     if (!step2ApproverId) {
       const [picEmp] = await db
         .select({
@@ -194,36 +256,7 @@ export async function resolveFiveRApprovalRoute(params: {
     }
   }
 
-  // 2d. Fallback PJO Site / Head Site dari hero_sites.head_employee_id
-  if (!step2ApproverId && params.siteId) {
-    const [siteRow] = await db
-      .select({
-        headEmployeeId: sites.headEmployeeId,
-      })
-      .from(sites)
-      .where(eq(sites.id, params.siteId))
-      .limit(1)
-
-    if (siteRow?.headEmployeeId) {
-      const [headEmp] = await db
-        .select({
-          id: employees.id,
-          name: employees.name,
-          email: employees.email,
-        })
-        .from(employees)
-        .where(eq(employees.id, siteRow.headEmployeeId))
-        .limit(1)
-
-      if (headEmp) {
-        step2ApproverId = headEmp.id
-        step2ApproverName = headEmp.name
-        step2ApproverEmail = headEmp.email
-      }
-    }
-  }
-
-  // 2e. Fallback ke directManagerId auditor
+  // 2e. Fallback ke directManagerId auditor atau Head of Service (Apriyanto)
   if (!step2ApproverId && params.auditorId) {
     const [auditor] = await db
       .select({
@@ -252,6 +285,20 @@ export async function resolveFiveRApprovalRoute(params: {
     }
   }
 
+  // 2f. Final Fallback ke Apriyanto (Head of Service MVC - ID 955)
+  if (!step2ApproverId) {
+    const [apriyanto] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, 955))
+      .limit(1)
+    if (apriyanto) {
+      step2ApproverId = apriyanto.id
+      step2ApproverName = apriyanto.name
+      step2ApproverEmail = apriyanto.email
+    }
+  }
+
   const [bardinia] = await db
     .select({
       id: employees.id,
@@ -265,24 +312,17 @@ export async function resolveFiveRApprovalRoute(params: {
   const steps: FiveRApprovalStep[] = [
     {
       level: 1,
-      roleLabel: 'Quality Management Verifier',
-      approverEmployeeId: ria?.id ?? 1181,
-      approverName: ria?.name ?? 'Ria Annisa Putri',
-      approverEmail: ria?.email ?? 'ria.annisa@chitraparatama.co.id',
-    },
-    {
-      level: 2,
-      roleLabel: 'PJO / Atasan Langsung Site',
+      roleLabel: 'PJO Site / Atasan Langsung',
       approverEmployeeId: step2ApproverId,
       approverName: step2ApproverName,
       approverEmail: step2ApproverEmail,
     },
     {
-      level: 3,
+      level: 2,
       roleLabel: 'Head of CPI Approval',
       approverEmployeeId: bardinia?.id ?? 944,
       approverName: bardinia?.name ?? 'Bardinia Susi Ekawaty',
-      approverEmail: bardinia?.email ?? 'bardinia.susi@chitraparatama.co.id',
+      approverEmail: bardinia?.email ?? 'bardynia.susi@chitraparatama.co.id',
     },
   ]
 
@@ -357,15 +397,44 @@ export async function sendFiveREmailNotification(params: {
   variables: Record<string, string>
 }) {
   try {
+    if (!params.recipientEmail || !params.recipientEmail.includes('@')) {
+      console.warn('[5R] Recipient email is invalid or empty:', params.recipientEmail)
+      return { success: false, error: 'Recipient email kosong atau tidak valid' }
+    }
+
+    const templateAliases = [
+      params.templateCode,
+      params.templateCode === 'five_r_approval_request' ? 'workflow_five_r_report_submitted' : null,
+      params.templateCode === 'workflow_five_r_report_approved' ? 'five_r_status_update' : null,
+      params.templateCode === 'workflow_five_r_report_returned_rejected' ? 'five_r_status_update' : null,
+      params.templateCode === 'five_r_status_update' ? 'workflow_five_r_report_approved' : null,
+      `workflow_${params.templateCode}`,
+    ].filter((t): t is string => !!t)
+
     const [tpl] = await db
       .select()
       .from(emailTemplates)
-      .where(and(eq(emailTemplates.templateCode, params.templateCode), eq(emailTemplates.isActive, true)))
+      .where(and(inArray(emailTemplates.templateCode, templateAliases), eq(emailTemplates.isActive, true)))
+      .orderBy(sql`CASE WHEN ${emailTemplates.templateCode} = ${params.templateCode} THEN 0 ELSE 1 END`)
       .limit(1)
 
-    let subject = `[HERO 5R] Pemberitahuan Laporan 5R: ${params.variables.reportNumber || ''}`
-    let htmlContent = `<p>Pemberitahuan Laporan 5R ${params.variables.reportNumber || ''}</p>`
-    let textContent = `Pemberitahuan Laporan 5R ${params.variables.reportNumber || ''}`
+    const unifiedVars: Record<string, string> = {
+      ...params.variables,
+      requestNumber: params.variables.reportNumber || params.variables.requestNumber || '',
+      reportNumber: params.variables.reportNumber || params.variables.requestNumber || '',
+      recipientName: params.variables.approverName || params.variables.recipientName || '',
+      approverName: params.variables.approverName || params.variables.recipientName || '',
+      requesterName: params.variables.auditorName || params.variables.requesterName || '',
+      auditorName: params.variables.auditorName || params.variables.requesterName || '',
+      stepName: params.variables.approvalLevel || params.variables.stepName || '',
+      approvalLevel: params.variables.approvalLevel || params.variables.stepName || '',
+      actionUrl: params.variables.approvalLink || params.variables.actionUrl || '',
+      approvalLink: params.variables.approvalLink || params.variables.actionUrl || '',
+    }
+
+    let subject = `[HERO 5R] Pemberitahuan Laporan 5R: ${unifiedVars.reportNumber || ''}`
+    let htmlContent = `<p>Pemberitahuan Laporan 5R ${unifiedVars.reportNumber || ''}</p>`
+    let textContent = `Pemberitahuan Laporan 5R ${unifiedVars.reportNumber || ''}`
 
     if (tpl) {
       subject = tpl.subject
@@ -373,7 +442,7 @@ export async function sendFiveREmailNotification(params: {
       textContent = tpl.textContent
 
       // Interpolate placeholders {{key}}
-      for (const [k, v] of Object.entries(params.variables)) {
+      for (const [k, v] of Object.entries(unifiedVars)) {
         const regex = new RegExp(`{{\\s*${k}\\s*}}`, 'g')
         subject = subject.replace(regex, v || '')
         htmlContent = htmlContent.replace(regex, v || '')
@@ -381,7 +450,7 @@ export async function sendFiveREmailNotification(params: {
       }
     }
 
-    // Insert Notification Event for central Email Delivery Log
+    // 1. Insert Notification Event for central Email Delivery Log
     const [eventRow] = await db
       .insert(notificationEvents)
       .values({
@@ -390,44 +459,62 @@ export async function sendFiveREmailNotification(params: {
         recipient: params.recipientEmail,
         payloadSnapshot: JSON.stringify({
           subject,
-          variables: params.variables,
+          variables: unifiedVars,
         }),
         deliveryStatus: 'pending',
         deliveredAt: new Date(),
       })
       .returning()
 
-    // Send email through SMTP transport in background so user action is never blocked
-    void sendWorkflowEmail({
+    // 2. Send email through central workflow email helper with await to ensure delivery completes
+    const emailResult = await sendWorkflowEmail({
       to: params.recipientEmail,
-      subject,
-      html: htmlContent,
-      text: textContent,
+      templateCode: tpl?.templateCode ?? params.templateCode,
+      templateName: tpl?.name ?? 'Notifikasi Persetujuan Laporan 5R',
+      variables: unifiedVars,
+      fallbackSubject: subject,
+      fallbackHtml: htmlContent,
+      fallbackText: textContent,
     })
-      .then(async (emailResult) => {
-        if (eventRow?.id) {
-          await db.insert(notificationDeliveries).values({
-            notificationEventId: eventRow.id,
-            deliveryChannel: 'email',
-            recipient: params.recipientEmail,
-            status: emailResult.success ? 'delivered' : 'failed',
-            errorMessage: emailResult.error || null,
-            sentAt: new Date(),
-          })
-          await db
-            .update(notificationEvents)
-            .set({
-              deliveryStatus: emailResult.success ? 'delivered' : 'failed',
-              deliveredAt: new Date(),
-            })
-            .where(eq(notificationEvents.id, eventRow.id))
-        }
-      })
-      .catch((err) => {
-        console.error('[5R] Background email send error:', err)
+
+    const isDelivered = emailResult.status === 'sent'
+
+    // 3. Record in notificationDeliveries & update notificationEvents
+    if (eventRow?.id) {
+      await db.insert(notificationDeliveries).values({
+        notificationEventId: eventRow.id,
+        deliveryChannel: 'email',
+        recipient: params.recipientEmail,
+        status: isDelivered ? 'delivered' : 'failed',
+        errorMessage: isDelivered ? null : (emailResult as any).reason || 'Gagal mengirim email via SMTP',
+        sentAt: isDelivered ? new Date() : null,
       })
 
-    return { success: true }
+      await db
+        .update(notificationEvents)
+        .set({
+          deliveryStatus: isDelivered ? 'delivered' : 'failed',
+          deliveredAt: isDelivered ? new Date() : null,
+        })
+        .where(eq(notificationEvents.id, eventRow.id))
+    }
+
+    // 4. Insert in_app notification event for header notification bell
+    await db.insert(notificationEvents).values({
+      channel: 'in_app',
+      eventType: params.templateCode,
+      recipient: params.recipientEmail,
+      payloadSnapshot: JSON.stringify({
+        category: 'approval_requests',
+        title: subject,
+        body: `Laporan 5R ${unifiedVars.reportNumber} (${unifiedVars.picAreaName || ''}) memerlukan tindakan Anda (${unifiedVars.approvalLevel || ''}).`,
+        url: '/dashboard/approval',
+      }),
+      deliveryStatus: 'delivered',
+      deliveredAt: new Date(),
+    })
+
+    return { success: isDelivered }
   } catch (error: any) {
     console.error('[5R] Failed to send email notification:', error)
     return { success: false, error: error?.message }

@@ -69,6 +69,7 @@ const createFiveRReportSchema = z.object({
   scoreResik: z.coerce.number().int().min(20).max(100).default(100),
   scoreRawat: z.coerce.number().int().min(20).max(100).default(100),
   scoreRajin: z.coerce.number().int().min(20).max(100).default(100),
+  auditorSignatureUrl: z.string().trim().optional(),
   findings: z.array(findingRowSchema).default([]),
 })
 
@@ -131,6 +132,7 @@ export async function createFiveRReportAction(payload: z.infer<typeof createFive
         scoreRawat: data.scoreRawat,
         scoreRajin: data.scoreRajin,
         totalScore: avgScore,
+        auditorSignatureUrl: data.auditorSignatureUrl || null,
         status: 'pending_approval',
         currentApprovalLevel: 1, // Step 1: Ria Annisa Putri
       })
@@ -316,7 +318,9 @@ export async function getFiveRReportDetailAction(reportIdentifier: number | stri
         totalScore: fiveRReports.totalScore,
         status: fiveRReports.status,
         currentApprovalLevel: fiveRReports.currentApprovalLevel,
+        revertedFromLevel: fiveRReports.revertedFromLevel,
         approvalNotes: fiveRReports.approvalNotes,
+        auditorSignatureUrl: fiveRReports.auditorSignatureUrl,
         createdAt: fiveRReports.createdAt,
       })
       .from(fiveRReports)
@@ -340,10 +344,36 @@ export async function getFiveRReportDetailAction(reportIdentifier: number | stri
       .where(eq(fiveRApprovalLogs.reportId, report.id))
       .orderBy(fiveRApprovalLogs.actedAt)
 
+    const approvalRows = await db
+      .select({
+        id: approvals.id,
+        level: approvals.level,
+        status: approvals.status,
+        approverEmployeeId: approvals.approverEmployeeId,
+        approverName: approvals.approverName,
+        signatureUrl: approvals.signatureUrl,
+        decisionNote: approvals.decisionNote,
+        reviewedAt: approvals.reviewedAt,
+      })
+      .from(approvals)
+      .where(eq(approvals.fiveRReportId, report.id))
+      .orderBy(approvals.level)
+
     const route = await resolveFiveRApprovalRoute({
       auditorId: report.auditorId,
       siteId: report.siteId,
       areaId: report.masterAreaId,
+    })
+
+    const mappedRoute = route.steps.map((step) => {
+      const dbAppr = approvalRows.find((a) => a.level === step.level)
+      return {
+        ...step,
+        status: dbAppr?.status || (step.level < report.currentApprovalLevel ? 'approved' : 'waiting'),
+        signatureUrl: dbAppr?.signatureUrl || null,
+        decisionNote: dbAppr?.decisionNote || null,
+        reviewedAt: dbAppr?.reviewedAt || null,
+      }
     })
 
     return {
@@ -351,7 +381,8 @@ export async function getFiveRReportDetailAction(reportIdentifier: number | stri
       report,
       findings,
       approvalLogs,
-      approvalRoute: route.steps,
+      approvals: approvalRows,
+      approvalRoute: mappedRoute,
     }
   } catch (error: any) {
     console.error('[5R] Get detail error:', error)
@@ -455,10 +486,12 @@ export async function approveFiveRReportAction(reportId: number, notes?: string,
     let nextStatus = 'pending_approval'
     let nextLevel = currentLevel + 1
 
-    if (currentLevel >= 3) {
-      // Step 3 (Bardinia Susi) selesai -> Final Approved
+    const maxLevel = route.steps.length > 0 ? route.steps.length : 2
+
+    if (currentLevel >= maxLevel) {
+      // Final Step (Bardinia Susi Ekawaty) selesai -> Final Approved
       nextStatus = 'approved'
-      nextLevel = 3
+      nextLevel = maxLevel
     }
 
     await db
@@ -513,22 +546,51 @@ export async function approveFiveRReportAction(reportId: number, notes?: string,
           },
         })
       }
-    } else if (nextStatus === 'approved' && report.auditorEmail) {
-      // Notifikasi email final ke Auditor
+    } else if (nextStatus === 'approved') {
+      // Cari email PIC Area jika ada
+      let picEmail: string | null = null
+      if (report.masterAreaId) {
+        const [areaRow] = await db
+          .select({ picEmployeeId: fiveRMasterAreas.picEmployeeId })
+          .from(fiveRMasterAreas)
+          .where(eq(fiveRMasterAreas.id, report.masterAreaId))
+          .limit(1)
+
+        if (areaRow?.picEmployeeId) {
+          const [picEmp] = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, areaRow.picEmployeeId))
+            .limit(1)
+          picEmail = picEmp?.email ?? null
+        }
+      }
+
+      const recipients = [report.auditorEmail, picEmail].filter(
+        (e): e is string => !!e && e.includes('@')
+      )
       const appUrl = getAppUrl()
-      await sendFiveREmailNotification({
-        templateCode: 'five_r_status_update',
-        recipientEmail: report.auditorEmail,
-        variables: {
-          auditorName: report.auditorName,
-          reportNumber: report.reportNumber,
-          picAreaName: report.picAreaName,
-          status: 'Approved (Disetujui Final)',
-          approvedBy: session?.user?.name || currentStepConfig?.approverName || 'Bardinia Susi Ekawaty',
-          notes: notes || 'Laporan 5R telah disetujui sepenuhnya oleh seluruh jajaran approver.',
-          viewLink: `${appUrl}/dashboard/quality/5r`,
-        },
-      })
+
+      for (const recEmail of recipients) {
+        await sendFiveREmailNotification({
+          templateCode: 'workflow_five_r_report_approved',
+          recipientEmail: recEmail,
+          variables: {
+            requestNumber: report.reportNumber,
+            reportNumber: report.reportNumber,
+            recipientName: report.auditorName,
+            requesterName: report.auditorName,
+            auditorName: report.auditorName,
+            picAreaName: report.picAreaName,
+            status: 'Approved (Disetujui Final)',
+            approvedBy: session?.user?.name || currentStepConfig?.approverName || 'Bardinia Susi Ekawaty',
+            notes: notes || 'Laporan 5R telah disetujui sepenuhnya oleh seluruh jajaran approver.',
+            totalScore: String(report.totalScore),
+            actionUrl: `${appUrl}/dashboard/quality/5r`,
+            viewLink: `${appUrl}/dashboard/quality/5r`,
+          },
+        })
+      }
     }
 
     safeRevalidatePath('/dashboard/quality/5r')
@@ -595,18 +657,47 @@ export async function rejectFiveRReportAction(reportId: number, notes: string) {
       })
       .where(eq(fiveRReports.id, reportId))
 
-    if (report.auditorEmail) {
-      const appUrl = getAppUrl()
+    // Cari email PIC Area jika ada
+    let picEmail: string | null = null
+    if (report.masterAreaId) {
+      const [areaRow] = await db
+        .select({ picEmployeeId: fiveRMasterAreas.picEmployeeId })
+        .from(fiveRMasterAreas)
+        .where(eq(fiveRMasterAreas.id, report.masterAreaId))
+        .limit(1)
+
+      if (areaRow?.picEmployeeId) {
+        const [picEmp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, areaRow.picEmployeeId))
+          .limit(1)
+        picEmail = picEmp?.email ?? null
+      }
+    }
+
+    const recipients = [report.auditorEmail, picEmail].filter(
+      (e): e is string => !!e && e.includes('@')
+    )
+    const appUrl = getAppUrl()
+
+    for (const recEmail of recipients) {
       await sendFiveREmailNotification({
-        templateCode: 'five_r_status_update',
-        recipientEmail: report.auditorEmail,
+        templateCode: 'workflow_five_r_report_rejected',
+        recipientEmail: recEmail,
         variables: {
-          auditorName: report.auditorName,
+          requestNumber: report.reportNumber,
           reportNumber: report.reportNumber,
+          recipientName: report.auditorName,
+          requesterName: report.auditorName,
+          auditorName: report.auditorName,
           picAreaName: report.picAreaName,
-          status: 'Rejected / Perlu Revisi',
-          approvedBy: session?.user?.name || 'Approver',
-          notes: notes || 'Laporan memerlukan perbaikan/revisi.',
+          status: 'Rejected (Ditolak Permanen)',
+          rejectedBy: session?.user?.name || 'Approver',
+          decisionNote: notes || 'Laporan ditolak permanen oleh approver.',
+          rejectionReason: notes || 'Laporan ditolak permanen oleh approver.',
+          notes: notes || 'Laporan ditolak permanen oleh approver.',
+          actionUrl: `${appUrl}/dashboard/quality/5r`,
           viewLink: `${appUrl}/dashboard/quality/5r`,
         },
       })
@@ -650,7 +741,8 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
       notes: notes || 'Dikembalikan untuk revisi / perbaikan',
     })
 
-    // Update all central hero_approvals table rows for this report to needs_revision
+    // Update ONLY the reverting level in hero_approvals:
+    // PENTING: Jangan ubah status approval tahap sebelumnya (tanda tangan tahap sebelumnya tetap utuh!)
     await db
       .update(approvals)
       .set({
@@ -659,30 +751,64 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
         decisionNote: notes,
         rejectionReason: notes,
       })
-      .where(eq(approvals.fiveRReportId, reportId))
+      .where(
+        and(
+          eq(approvals.fiveRReportId, reportId),
+          eq(approvals.level, report.currentApprovalLevel)
+        )
+      )
 
     await db
       .update(fiveRReports)
       .set({
         status: 'needs_revision',
-        currentApprovalLevel: 1, // Revert to Step 1
+        revertedFromLevel: report.currentApprovalLevel,
         approvalNotes: notes,
         updatedAt: new Date(),
       })
       .where(eq(fiveRReports.id, reportId))
 
-    if (report.auditorEmail) {
-      const appUrl = getAppUrl()
+    // Cari email PIC Area jika ada
+    let picEmail: string | null = null
+    if (report.masterAreaId) {
+      const [areaRow] = await db
+        .select({ picEmployeeId: fiveRMasterAreas.picEmployeeId })
+        .from(fiveRMasterAreas)
+        .where(eq(fiveRMasterAreas.id, report.masterAreaId))
+        .limit(1)
+
+      if (areaRow?.picEmployeeId) {
+        const [picEmp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, areaRow.picEmployeeId))
+          .limit(1)
+        picEmail = picEmp?.email ?? null
+      }
+    }
+
+    const recipients = [report.auditorEmail, picEmail].filter(
+      (e): e is string => !!e && e.includes('@')
+    )
+    const appUrl = getAppUrl()
+
+    for (const recEmail of recipients) {
       await sendFiveREmailNotification({
-        templateCode: 'five_r_status_update',
-        recipientEmail: report.auditorEmail,
+        templateCode: 'workflow_five_r_report_returned_rejected',
+        recipientEmail: recEmail,
         variables: {
-          auditorName: report.auditorName,
+          requestNumber: report.reportNumber,
           reportNumber: report.reportNumber,
+          recipientName: report.auditorName,
+          requesterName: report.auditorName,
+          auditorName: report.auditorName,
           picAreaName: report.picAreaName,
           status: 'Needs Revision (Dikembalikan untuk Perbaikan)',
-          approvedBy: session?.user?.name || 'Approver',
+          rejectedBy: session?.user?.name || 'Approver',
+          decisionNote: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
+          rejectionReason: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
           notes: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
+          actionUrl: `${appUrl}/dashboard/quality/5r`,
           viewLink: `${appUrl}/dashboard/quality/5r`,
         },
       })
@@ -696,6 +822,113 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
   } catch (error: any) {
     console.error('[5R] Revert error:', error)
     return { success: false, message: error?.message ?? 'Gagal mengembalikan laporan.' }
+  }
+}
+
+/**
+ * Ajukan Ulang Laporan 5R setelah Revisi:
+ * Langsung menuju tahap yang memberi revisi (revertedFromLevel)!
+ * Tanda tangan tahap sebelumnya tetap aman dan tidak hilang.
+ */
+export async function resubmitFiveRReportAction(reportId: number, notes?: string) {
+  try {
+    let session = null
+    try {
+      session = await getServerSession()
+    } catch {}
+
+    const [report] = await db
+      .select()
+      .from(fiveRReports)
+      .where(eq(fiveRReports.id, reportId))
+      .limit(1)
+
+    if (!report) return { success: false, message: 'Laporan tidak ditemukan.' }
+
+    // Tentukan level tujuan: langsung ke level yang meminta revisi!
+    const targetLevel = report.revertedFromLevel || report.currentApprovalLevel || 1
+
+    // Aktifkan kembali status pending HANYA untuk tahap yang memberi revisi
+    await db
+      .update(approvals)
+      .set({
+        status: 'pending',
+        submittedAt: new Date(),
+        decisionNote: notes ? `Diajukan ulang: ${notes}` : null,
+      })
+      .where(
+        and(
+          eq(approvals.fiveRReportId, reportId),
+          eq(approvals.level, targetLevel)
+        )
+      )
+
+    // Update status report kembali ke pending_approval pada level target
+    await db
+      .update(fiveRReports)
+      .set({
+        status: 'pending_approval',
+        currentApprovalLevel: targetLevel,
+        approvalNotes: notes || `Telah direvisi oleh ${report.auditorName}. Menunggu review ulang Tahap ${targetLevel}.`,
+        updatedAt: new Date(),
+      })
+      .where(eq(fiveRReports.id, reportId))
+
+    // Catat ke log
+    await db.insert(fiveRApprovalLogs).values({
+      reportId: report.id,
+      level: targetLevel,
+      roleLabel: `Step ${targetLevel}`,
+      approverEmployeeId: null,
+      approverName: session?.user?.name || report.auditorName,
+      action: 'resubmitted',
+      notes: notes || 'Laporan telah direvisi dan diajukan ulang langsung ke tahap yang meminta revisi.',
+    })
+
+    // Kirim notifikasi email langsung ke approver tahap target
+    const route = await resolveFiveRApprovalRoute({
+      auditorId: report.auditorId,
+      siteId: report.siteId,
+      areaId: report.masterAreaId,
+    })
+    const targetStep = route.steps.find((s) => s.level === targetLevel)
+
+    if (targetStep?.approverEmail) {
+      const appUrl = getAppUrl()
+      await sendFiveREmailNotification({
+        templateCode: 'five_r_approval_request',
+        recipientEmail: targetStep.approverEmail,
+        variables: {
+          approverName: targetStep.approverName,
+          recipientName: targetStep.approverName,
+          reportNumber: report.reportNumber,
+          requestNumber: report.reportNumber,
+          approvalLevel: `Tahap ${targetLevel} (Review Hasil Revisi)`,
+          stepName: targetStep.roleLabel,
+          picAreaName: report.picAreaName,
+          auditorName: report.auditorName,
+          requesterName: report.auditorName,
+          auditPeriod: report.auditPeriod,
+          auditDate: String(report.auditDate),
+          reportType: report.reportType,
+          totalScore: String(report.totalScore),
+          approvalLink: `${appUrl}/dashboard/approval`,
+          actionUrl: `${appUrl}/dashboard/approval`,
+        },
+      })
+    }
+
+    safeRevalidatePath('/dashboard/quality/5r')
+    safeRevalidatePath('/mobile/quality/5r')
+    safeRevalidatePath('/dashboard/approval')
+
+    return {
+      success: true,
+      message: `Laporan ${report.reportNumber} berhasil diajukan ulang langsung ke Tahap ${targetLevel} (${targetStep?.approverName || 'Approver'}). Tanda tangan tahap sebelumnya tetap terjaga.`,
+    }
+  } catch (error: any) {
+    console.error('[5R] Resubmit error:', error)
+    return { success: false, message: error?.message ?? 'Gagal mengajukan ulang laporan.' }
   }
 }
 

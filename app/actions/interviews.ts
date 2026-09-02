@@ -440,7 +440,6 @@ export async function submitInterviewEvaluation(data: {
     technicalScore: data.technicalSkillScore || 0,
     communicationScore: data.communicationSkillScore || 0,
     cultureScore: data.adaptabilityScore || 0,
-    problemSolvingScoreLegacy: data.problemSolvingScore || 0,
     attitudeScore: data.interpersonalSkillsScore || 0,
 
     overallRecommendation: data.overallRecommendation || "RECOMMENDED",

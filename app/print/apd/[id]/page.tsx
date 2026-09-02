@@ -324,14 +324,19 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                         const lastNote = stepNotes[stepNotes.length - 1];
                         const isResolved = step.status === 'approved' || step.status === 'proses_order';
                         return (
-                          <td key={step.id} className="border border-black p-1.5 h-[105px] relative align-bottom" id={`approver-cell-${i + 1}`}>
+                          <td 
+                            key={step.id} 
+                            className="border border-black p-1.5 h-[105px] relative align-bottom" 
+                            id={`approver-cell-${i + 1}`}
+                            data-resolved={isResolved ? 'true' : 'false'}
+                          >
                             {isResolved && (
                               step.signatureUrl ? (
-                                <div className="absolute inset-x-0 top-1.5 flex justify-center">
+                                <div className="absolute inset-x-0 top-1.5 flex justify-center approved-signature">
                                   <img src={step.signatureUrl} alt="Signature" className="object-contain h-[45px] w-auto max-w-[85%]" />
                                 </div>
                               ) : (
-                                <div className="absolute inset-x-0 top-3 flex justify-center">
+                                <div className="absolute inset-x-0 top-3 flex justify-center approved-badge">
                                   <span className="text-emerald-700/30 text-base font-bold -rotate-12 border border-emerald-700/30 rounded px-2 py-0.5">APPROVED</span>
                                 </div>
                               )
@@ -340,13 +345,13 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                               <div className="font-bold underline text-[8pt] text-gray-900 leading-tight">
                                 {step.approverName || "_______________________"}
                               </div>
-                              <div className="text-[6.5pt] text-gray-600 font-medium">{isApd ? 'PJO / HSE Site / Atasan Site' : getStepLabel(step.level)}</div>
+                              <div className="text-[6.5pt] text-gray-600 font-medium">{(step as any).approverJobTitle || (isApd ? 'Pemeriksa / Atasan' : getStepLabel(step.level))}</div>
                               {step.reviewedAt ? (
                                 <div className="text-[6pt] text-gray-500 font-mono mt-0.5">
                                   {step.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {step.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                 </div>
                               ) : (
-                                <div className="text-[6pt] text-gray-400 italic mt-0.5">(Menunggu Persetujuan)</div>
+                                <div className="text-[6pt] text-gray-400 italic mt-0.5 waiting-label">(Menunggu Persetujuan)</div>
                               )}
                               {lastNote?.message && (
                                 <div className="text-[5.5pt] text-gray-600 italic truncate max-w-[180px] mx-auto">Catatan: {lastNote.message}</div>
@@ -376,9 +381,18 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
             let targetCell = null;
             for (let i = 1; i <= 10; i++) {
               const cell = document.getElementById('approver-cell-' + i);
-              if (cell && !cell.innerHTML.includes('APPROVED') && !cell.querySelector('img')) {
+              if (cell && cell.getAttribute('data-resolved') !== 'true') {
                 targetCell = cell;
                 break;
+              }
+            }
+            if (!targetCell) {
+              for (let i = 1; i <= 10; i++) {
+                const cell = document.getElementById('approver-cell-' + i);
+                if (cell && !cell.innerHTML.includes('APPROVED')) {
+                  targetCell = cell;
+                  break;
+                }
               }
             }
             
@@ -387,11 +401,15 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
               if (existingPreview) {
                 existingPreview.remove();
               }
+              const waitingLabel = targetCell.querySelector('.waiting-label');
               if (dataUrl) {
+                if (waitingLabel) waitingLabel.style.visibility = 'hidden';
                 const imgDiv = document.createElement('div');
-                imgDiv.className = 'absolute inset-0 flex items-center justify-center p-2 live-preview-sig';
-                imgDiv.innerHTML = '<img src="' + dataUrl + '" alt="Live Preview" class="object-contain w-28 h-16" />';
+                imgDiv.className = 'absolute inset-x-0 top-1.5 flex justify-center pointer-events-none live-preview-sig';
+                imgDiv.innerHTML = '<img src="' + dataUrl + '" alt="Live Preview" class="object-contain h-[45px] w-auto max-w-[85%] live-preview-img" />';
                 targetCell.appendChild(imgDiv);
+              } else {
+                if (waitingLabel) waitingLabel.style.visibility = 'visible';
               }
             }
           }

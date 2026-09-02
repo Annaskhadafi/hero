@@ -58,6 +58,7 @@ import {
   INITIAL_OTHER_CAI,
 } from "@/lib/constants/master-cai-initial"
 import type { CustomerRecord } from "@/app/actions/customer-management"
+import { FormWoDocumentPreviewDialog } from "@/components/form-wo-document-preview-dialog"
 import { SignaturePad } from "@/components/signature-pad"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -250,8 +251,17 @@ function nv(v: string | null | undefined) {
 function formatDate(v: string | Date | null | undefined) {
   if (!v) return "-"
   const d = typeof v === "string" ? new Date(v) : v
-  if (isNaN(d.getTime())) return String(v)
+  if (isNaN(d.getTime())) return String(v).substring(0, 10)
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(d)
+}
+
+function formatHari(v: string | Date | null | undefined, fallbackHari?: string | null) {
+  if (fallbackHari && fallbackHari.trim() && fallbackHari !== "-") return fallbackHari.trim()
+  if (!v) return "-"
+  const d = typeof v === "string" ? new Date(v) : v
+  if (isNaN(d.getTime())) return "-"
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+  return days[d.getDay()] || "-"
 }
 
 function formatCurrency(val: string | number | null | undefined): string {
@@ -2714,8 +2724,8 @@ function DaftarPengajuanTab({
                           </Badge>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
-                          <div className="font-semibold text-slate-900">{item.hari || "-"}</div>
-                          <div className="text-slate-500">{item.tanggal || formatDate(item.tanggalPengajuan)}</div>
+                          <div className="font-semibold text-slate-900">{formatHari(item.tanggal || item.tanggalPengajuan, item.hari)}</div>
+                          <div className="text-slate-500 font-mono text-[11px]">{formatDate(item.tanggal || item.tanggalPengajuan)}</div>
                         </TableCell>
 
                         {/* INLINE EDIT STATUS BADGE */}
@@ -2748,8 +2758,8 @@ function DaftarPengajuanTab({
                         <TableCell className="px-4 py-3 font-mono text-xs font-semibold text-violet-700">
                           <HighlightText value={item.noPo} query={query} />
                         </TableCell>
-                        <TableCell className="px-4 py-3 font-mono text-xs text-slate-600">
-                          <HighlightText value={item.tanggalPo} query={query} />
+                        <TableCell className="px-4 py-3 font-mono text-xs text-slate-600 whitespace-nowrap">
+                          <HighlightText value={formatDate(item.tanggalPo)} query={query} />
                         </TableCell>
                         <TableCell className="px-4 py-3 text-xs">
                           <HighlightText value={item.pemohon} query={query} />
@@ -5163,11 +5173,11 @@ export function FormWoClient({
         onSuccess={refreshList}
       />
 
-      {/* WYSIWYG Document Detail & Print View Dialog */}
-      <ViewDetailDialog
+      {/* WYSIWYG Document Detail & Print View Dialog (Strict A4 Landscape) */}
+      <FormWoDocumentPreviewDialog
         open={viewDialogOpen}
         onOpenChange={setViewDialogOpen}
-        item={selectedFormWo}
+        doc={selectedFormWo as any}
         onEdit={() => handleEdit(selectedFormWo!)}
         canEdit={canEdit}
       />

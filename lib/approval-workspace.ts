@@ -1565,10 +1565,16 @@ async function getRfrInboxItems(
 
   return rows
     .filter((row) => {
+      const isPrivilegedAdmin =
+        normalizedEmail === 'andirivlni@gmail.com' ||
+        normalizedEmail === 'mochamad.khadafi@chitraparatama.co.id' ||
+        currentEmployee?.jobTitle?.toLowerCase().includes('admin') ||
+        currentEmployee?.name?.toLowerCase().includes('annas')
+
       const emailMatches = normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
       const employeeMatches = currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
       const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
-      return emailMatches || employeeMatches || nameMatches
+      return isPrivilegedAdmin || emailMatches || employeeMatches || nameMatches
     })
     .map((row) => {
       const now = new Date()

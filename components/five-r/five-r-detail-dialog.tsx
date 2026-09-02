@@ -6,8 +6,10 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  FileText,
   Loader2,
   Printer,
+  Send,
   ShieldAlert,
   ShieldCheck,
   X,
@@ -16,12 +18,11 @@ import {
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
-  approveFiveRReportAction,
   getFiveRReportDetailAction,
-  rejectFiveRReportAction,
+  resubmitFiveRReportAction,
 } from '@/app/dashboard/quality/5r/actions'
+import { FiveRDocumentPreview } from './five-r-document-preview'
 
 export function FiveRDetailDialog({
   reportId,
@@ -35,9 +36,8 @@ export function FiveRDetailDialog({
   const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [rejectNotes, setRejectNotes] = useState('')
-  const [isRejectOpen, setIsRejectOpen] = useState(false)
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'document' | 'summary'>('document')
 
   useEffect(() => {
     setIsLoading(true)
@@ -52,10 +52,10 @@ export function FiveRDetailDialog({
       .finally(() => setIsLoading(false))
   }, [reportId])
 
-  async function handleApprove() {
+  async function handleResubmit() {
     setIsProcessing(true)
     try {
-      const res = await approveFiveRReportAction(reportId)
+      const res = await resubmitFiveRReportAction(reportId)
       if (res.success) {
         toast.success(res.message)
         onActionComplete?.()
@@ -64,29 +64,7 @@ export function FiveRDetailDialog({
         toast.error(res.message)
       }
     } catch (err: any) {
-      toast.error(err?.message ?? 'Gagal menyetujui laporan.')
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  async function handleReject() {
-    if (!rejectNotes.trim()) {
-      toast.error('Catatan penolakan / revisi wajib diisi.')
-      return
-    }
-    setIsProcessing(true)
-    try {
-      const res = await rejectFiveRReportAction(reportId, rejectNotes)
-      if (res.success) {
-        toast.success(res.message)
-        onActionComplete?.()
-        onClose()
-      } else {
-        toast.error(res.message)
-      }
-    } catch (err: any) {
-      toast.error(err?.message ?? 'Gagal menolak laporan.')
+      toast.error(err?.message ?? 'Gagal mengajukan ulang laporan.')
     } finally {
       setIsProcessing(false)
     }
@@ -139,46 +117,114 @@ export function FiveRDetailDialog({
   const { report, findings, approvalLogs, approvalRoute } = data
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4">
+      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="size-5 text-emerald-600" />
-            <div>
-              <h2 className="font-display text-lg font-bold text-slate-900">
-                {report.reportNumber}
-              </h2>
-              <div className="text-xs text-slate-500">
-                Periode {report.auditPeriod} • {report.auditDate}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 px-4 sm:px-6 py-3 gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="size-5 text-emerald-600 shrink-0" />
+              <div>
+                <h2 className="font-display text-base font-bold text-slate-900 leading-tight">
+                  {report.reportNumber}
+                </h2>
+                <div className="text-[11px] text-slate-500">
+                  Periode {report.auditPeriod} &bull; {report.auditDate}
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handlePrintInPlace}
-              className="h-8 text-xs border-slate-300 cursor-pointer"
-            >
-              <Printer className="mr-1.5 size-3.5" />
-              Cetak PDF
-            </Button>
 
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="sm:hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Tutup"
             >
               <X className="size-5" />
             </button>
           </div>
+
+          {/* Tab Switcher: Dokumen A4 vs Rincian */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab('document')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition-colors ${
+                  activeTab === 'document'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="size-3.5 text-blue-600" />
+                Dokumen A4
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('summary')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-semibold transition-colors ${
+                  activeTab === 'summary'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="size-3.5 text-emerald-600" />
+                Rincian Mobile
+              </button>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePrintInPlace}
+                className="h-8 text-xs border-slate-300 cursor-pointer"
+              >
+                <Printer className="mr-1.5 size-3.5" />
+                Cetak PDF
+              </Button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-6 bg-slate-50">
+          {activeTab === 'document' ? (
+            <div className="space-y-2">
+              <div className="sm:hidden flex items-center justify-between bg-blue-50/80 border border-blue-200/60 px-3 py-1.5 rounded-xl text-[11px] text-blue-900">
+                <span>Dokumen A4 standar (geser ke samping untuk melihat penuh).</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handlePrintInPlace}
+                  className="h-6 text-[11px] text-[#003461] font-bold p-0 hover:bg-transparent"
+                >
+                  <Printer className="mr-1 size-3" /> Cetak
+                </Button>
+              </div>
+              <div className="overflow-x-auto flex justify-center pb-4">
+                <div className="min-w-[700px] max-w-[850px] shadow-sm rounded-xl bg-white border border-slate-200">
+                  <FiveRDocumentPreview
+                    report={report}
+                    findings={findings}
+                    approvalLogs={approvalLogs}
+                    approvalRoute={approvalRoute}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
           {/* Header Info Grid */}
           <div className="grid gap-4 sm:grid-cols-3 rounded-xl bg-slate-50 border border-slate-200 p-4 text-xs">
             <div>
@@ -391,6 +437,8 @@ export function FiveRDetailDialog({
               </table>
             </div>
           </div>
+            </div>
+          )}
         </div>
 
         {/* Modal Footer / Approval Actions */}
@@ -407,63 +455,46 @@ export function FiveRDetailDialog({
 
           {report.status === 'pending_approval' && (
             <div className="flex items-center gap-2">
-              {isRejectOpen ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Alasan penolakan / revisi..."
-                    value={rejectNotes}
-                    onChange={(e) => setRejectNotes(e.target.value)}
-                    className="h-8 text-xs w-64 bg-white"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleReject}
-                    disabled={isProcessing}
-                    className="h-8 text-xs font-semibold"
-                  >
-                    Konfirmasi Tolak
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsRejectOpen(false)}
-                    className="h-8 text-xs"
-                  >
-                    Batal
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsRejectOpen(true)}
-                    className="h-9 border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-semibold"
-                  >
-                    <XCircle className="mr-1.5 size-3.5" />
-                    Tolak / Revisi
-                  </Button>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 border border-amber-200">
+                <Clock className="size-3.5 text-amber-600 animate-pulse" />
+                Menunggu Verifikasi Tahap {report.currentApprovalLevel}: {approvalRoute?.find((s: any) => s.level === report.currentApprovalLevel)?.approverName || 'Approver'}
+              </span>
+            </div>
+          )}
 
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleApprove}
-                    disabled={isProcessing}
-                    className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-5 shadow-sm"
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-1.5 size-3.5" />
-                    )}
-                    Setujui (Level {report.currentApprovalLevel})
-                  </Button>
-                </>
-              )}
+          {report.status === 'approved' && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200">
+              <CheckCircle2 className="size-3.5 text-emerald-600" />
+              Laporan Selesai & Disetujui Penuh
+            </span>
+          )}
+
+          {report.status === 'rejected' && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800 border border-rose-200">
+              <XCircle className="size-3.5 text-rose-600" />
+              Laporan Ditolak
+            </span>
+          )}
+
+          {report.status === 'needs_revision' && (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1 rounded border border-amber-200 max-w-md truncate">
+                Catatan Revisi: {report.approvalNotes || 'Perlu perbaikan'}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleResubmit}
+                disabled={isProcessing}
+                className="h-9 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 shadow-sm"
+              >
+                {isProcessing ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <Send className="mr-1.5 size-3.5" />
+                )}
+                Ajukan Ulang Langsung ke Tahap {report.revertedFromLevel || report.currentApprovalLevel}
+              </Button>
             </div>
           )}
         </div>

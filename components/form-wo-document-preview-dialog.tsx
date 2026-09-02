@@ -390,7 +390,7 @@ export function FormWoDocumentView({
   return (
     <div
       ref={containerRef}
-      className="print-area relative mx-auto bg-white w-[297mm] min-h-[210mm] max-w-full p-8 space-y-3.5 text-slate-900 font-sans border border-slate-300 rounded-sm shadow-2xl overflow-hidden flex flex-col justify-between"
+      className="print-area relative mx-auto bg-white w-[297mm] min-w-[297mm] min-h-[210mm] p-6 sm:p-8 space-y-3 text-slate-900 font-sans border border-slate-300 rounded-sm shadow-2xl overflow-hidden flex flex-col justify-between"
     >
       <div className="space-y-3.5">
         {/* Top Header: Logo on left, Title on far right */}
@@ -550,6 +550,11 @@ export function FormWoDocumentView({
                       src={col.signatureUrl}
                       alt={`Tanda Tangan ${col.jobTitle}`}
                       className="h-12 sm:h-16 w-auto max-w-[95%] mx-auto object-contain"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null
+                        e.currentTarget.src =
+                          'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 50" width="160" height="50"><path d="M 15 35 C 30 10, 45 40, 65 20 C 85 5, 95 38, 115 18 C 130 5, 140 30, 150 25" fill="none" stroke="%231e3a8a" stroke-width="2.5" stroke-linecap="round"/></svg>'
+                      }}
                     />
                   ) : col.isApproved ? (
                     <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>

@@ -3423,7 +3423,18 @@ export async function getWorkflowStudioConsoleData() {
   const inventory = APPROVAL_WORKFLOW_REGISTRY.map((item) => {
     const workflow = workflowByKey.get(item.templateKey) ?? workflowByKey.get(`${item.templateKey}-workflow`)
     const latestVersion = workflow ? latestVersionByWorkflowId.get(workflow.id) : null
-    const relatedMatrices = activeMatrixByTransaction.get(normalizeStatus(item.transactionType)) ?? []
+    const relatedMatrices = (() => {
+      const direct = activeMatrixByTransaction.get(normalizeStatus(item.transactionType)) ?? []
+      if (direct.length > 0) return direct
+      if (item.transactionType.startsWith('apd-request')) {
+        return (
+          activeMatrixByTransaction.get('apd-request-apd') ??
+          activeMatrixByTransaction.get('apd-request') ??
+          []
+        )
+      }
+      return []
+    })()
     const primaryMatrix = relatedMatrices[0] ?? null
     const primaryMatrixSteps = primaryMatrix
       ? matrixSteps.filter((step) => step.matrixId === primaryMatrix.id)
@@ -3490,10 +3501,18 @@ export async function getWorkflowStudioConsoleData() {
           const node = nodeRows.find((n) => n.id === step.nodeId)
           approversByRole[normalizeStatus(step.label)] = node?.employeeId ?? null
         }
+
+        let areaId: number | null = matrix.sectionId ?? null
+        if (!areaId && matrix.description && matrix.description.includes('Area ID:')) {
+          const match = matrix.description.match(/Area ID:\s*(\d+)/i)
+          if (match) areaId = parseInt(match[1], 10)
+        }
+
         return {
           siteId: matrix.siteId,
           departmentId: matrix.departmentId ?? null,
-          sectionId: matrix.sectionId ?? null,
+          sectionId: areaId,
+          areaId: areaId,
           leaderId: approversByRole.leader ?? null,
           pjoId: approversByRole.pjo ?? null,
           sectionHeadId: approversByRole.section_head ?? null,

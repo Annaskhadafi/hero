@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { SignaturePad } from '@/components/signature-pad'
 import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { reviewApprovalAction } from '@/app/dashboard/admin-actions'
-import { Printer, PenLine, CheckCircle2, AlertCircle, XCircle, Loader2 } from 'lucide-react'
+import { Printer, PenLine, CheckCircle2, AlertCircle, XCircle, Loader2, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
 
@@ -82,8 +82,45 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
     contentRef: printDocRef,
     documentTitle: doc?.noPengajuan || 'Form WO',
     pageStyle: `
-      @page { size: A4 portrait; margin: 10mm; }
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @page { 
+        size: A4 landscape !important; 
+        margin: 0 !important; 
+      }
+      @page :left {
+        size: A4 landscape !important;
+      }
+      @page :right {
+        size: A4 landscape !important;
+      }
+      html, body { 
+        margin: 0 !important; 
+        padding: 0 !important;
+        width: 297mm !important;
+        height: 210mm !important;
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important; 
+      }
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        .print-area, .print-area * {
+          visibility: visible;
+        }
+        .print-area {
+          position: fixed !important;
+          inset: 0 !important;
+          margin: 0 !important;
+          padding: 8mm 12mm 8mm 12mm !important;
+          width: 297mm !important;
+          height: 210mm !important;
+          max-width: 297mm !important;
+          max-height: 210mm !important;
+          box-shadow: none !important;
+          border: none !important;
+          overflow: hidden !important;
+        }
+      }
     `
   })
 
@@ -106,6 +143,23 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {doc?.id ? (
+              <a
+                href={`/api/form-wo/${doc.id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs"
+                >
+                  <Download className="mr-1.5 h-4 w-4 text-sky-600" />
+                  Download PDF Lanskap
+                </Button>
+              </a>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -114,7 +168,7 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
               className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Printer className="mr-1.5 h-4 w-4" />
-              Cetak / Unduh PDF
+              Cetak Lanskap
             </Button>
           </div>
         </DialogHeader>

@@ -144,7 +144,7 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
     switch (status) {
       case 'approved':
         return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
             <CheckCircle2 className="size-3" />
             Approved
           </span>
@@ -152,14 +152,14 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
       case 'pending_approval':
       case 'in_review':
         return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
             <Clock className="size-3" />
-            Review
+            In Review
           </span>
         )
       case 'rejected':
         return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 border border-rose-200">
             <XCircle className="size-3" />
             Rejected
           </span>
@@ -167,7 +167,7 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
       case 'draft':
       default:
         return (
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 border border-slate-200">
             Draft
           </span>
         )
@@ -200,116 +200,86 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
   }
 
   return (
-    <div className="space-y-4 pb-6">
-      {/* Header Banner */}
-      <section className="rounded-xl bg-gradient-to-br from-[#003461] to-[#044e85] p-5 text-white shadow-md">
+    <div className="space-y-4 pb-10">
+      {/* Header Banner HERO Style */}
+      <section className="rounded-2xl bg-gradient-to-br from-[#003461] to-[#044e85] p-5 text-white shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-teal-200">QUALITY &bull; AUDIT 5R</p>
-            <h1 className="mt-1 text-xl font-black tracking-tight">Audit 5R</h1>
-            <p className="mt-1 text-xs text-teal-100/80 leading-relaxed">
-              Ringkas, Rapi, Resik, Rawat, Rajin di seluruh area operasional.
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-200">
+              QUALITY &bull; AUDIT 5R
+            </p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">Audit 5R</h1>
+            <p className="mt-1 text-xs text-blue-100/80 leading-relaxed">
+              Penerapan Ringkas, Rapi, Resik, Rawat, dan Rajin.
             </p>
           </div>
           <Link
             href="/mobile/quality/5r/create"
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#003461] shadow-sm active:scale-95 transition-transform"
-            aria-label="Input Audit 5R"
+            className="flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-2.5 text-xs font-bold text-[#003461] shadow-sm active:scale-95 transition-transform shrink-0"
           >
-            <Plus className="size-5" />
+            <Plus className="size-4" />
+            <span>Audit Baru</span>
           </Link>
         </div>
 
-        <div className="mt-4 rounded-xl bg-white/10 p-3.5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-teal-100">
-                <Sparkles className="size-3" /> Continuous Improvement
-              </span>
-              <p className="mt-2 text-2xl font-black">{totalAudits} Laporan</p>
-              <p className="text-xs text-teal-200 mt-0.5">Rata-rata Skor: <strong className="text-white font-bold">{avgScore}</strong></p>
-            </div>
-            <Link
-              href="/mobile/quality/5r/create"
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3.5 text-xs font-bold text-[#003461] active:scale-95 transition-transform"
-            >
-              + Audit Baru <ArrowRight className="size-3.5" />
-            </Link>
+        {/* Quick Stats Grid */}
+        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/10 pt-3.5">
+          <div className="rounded-xl bg-white/10 p-2.5 text-center">
+            <p className="text-[10px] font-medium text-blue-200">Total Audit</p>
+            <p className="mt-0.5 text-lg font-bold text-white leading-none">{totalAudits}</p>
           </div>
-
-          <div className="mt-3.5 grid grid-cols-3 gap-2">
-            <div className="rounded-lg bg-white/10 p-2 text-center">
-              <p className="text-[10px] font-medium text-teal-200">Approved</p>
-              <p className="mt-0.5 text-sm font-bold text-emerald-300">{approvedAudits}</p>
-            </div>
-            <div className="rounded-lg bg-white/10 p-2 text-center">
-              <p className="text-[10px] font-medium text-teal-200">Review</p>
-              <p className="mt-0.5 text-sm font-bold text-amber-300">{pendingAudits}</p>
-            </div>
-            <div className="rounded-lg bg-white/10 p-2 text-center">
-              <p className="text-[10px] font-medium text-teal-200">Avg Score</p>
-              <p className="mt-0.5 text-sm font-bold text-sky-300">{avgScore}</p>
-            </div>
+          <div className="rounded-xl bg-white/10 p-2.5 text-center">
+            <p className="text-[10px] font-medium text-blue-200">Menunggu</p>
+            <p className="mt-0.5 text-lg font-bold text-amber-300 leading-none">{pendingAudits}</p>
+          </div>
+          <div className="rounded-xl bg-white/10 p-2.5 text-center">
+            <p className="text-[10px] font-medium text-blue-200">Rata-rata</p>
+            <p className="mt-0.5 text-lg font-bold text-sky-200 leading-none">{avgScore}</p>
           </div>
         </div>
       </section>
 
-      {/* Filter & Search */}
+      {/* Filter & Search Bar */}
       <section className="space-y-2.5">
+        {/* Search Input, Month Dropdown, & Excel */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 size-4 text-slate-400" />
             <Input
-              placeholder="Cari area, auditor, tiket..."
+              placeholder="Cari area, auditor, nomor..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-10 rounded-xl bg-white border-slate-200 text-xs shadow-xs"
+              className="pl-9 h-10 rounded-xl bg-white border-slate-200 text-xs shadow-2xs"
             />
           </div>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 shadow-2xs focus:outline-none focus:border-[#003461] shrink-0"
+            aria-label="Pilih Bulan Periode"
+          >
+            <option value="all">Semua Bulan</option>
+            {MONTHS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
           <Button
             onClick={exportToExcel}
             variant="outline"
             size="sm"
-            className="h-10 rounded-xl border-slate-200 bg-white text-xs text-slate-700 px-3 shadow-xs shrink-0 active:scale-95"
+            className="h-10 rounded-xl border-slate-200 bg-white text-xs text-slate-700 px-3 shadow-2xs shrink-0 active:scale-95"
+            title="Export Excel"
           >
-            <FileSpreadsheet className="size-3.5 text-emerald-600 mr-1" />
-            Excel
+            <FileSpreadsheet className="size-4 text-emerald-600" />
           </Button>
         </div>
 
-        {/* Month Selector */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
-          <button
-            type="button"
-            onClick={() => setSelectedMonth('all')}
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-              selectedMonth === 'all'
-                ? 'bg-[#003461] text-white border-[#003461]'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            Semua Bulan
-          </button>
-          {MONTHS.map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setSelectedMonth(m)}
-              className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-                selectedMonth === m
-                  ? 'bg-[#003461] text-white border-[#003461]'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
-        {/* Status Badges */}
+        {/* Status Filter Pills */}
         <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
           {[
-            { key: 'all', label: 'Semua Status' },
+            { key: 'all', label: 'Semua' },
             { key: 'approved', label: 'Approved' },
             { key: 'pending_approval', label: 'In Review' },
             { key: 'draft', label: 'Draft' },
@@ -319,9 +289,9 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
               key={st.key}
               type="button"
               onClick={() => setSelectedStatus(st.key)}
-              className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 selectedStatus === st.key
-                  ? 'bg-teal-700 text-white border-teal-700'
+                  ? 'bg-[#003461] text-white border-[#003461] shadow-2xs'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -333,17 +303,17 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
 
       {/* Cards List */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-0.5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            Laporan Audit ({filtered.length})
+            Daftar Laporan ({filtered.length})
           </p>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="rounded-xl border border-slate-100 bg-white p-8 text-center shadow-xs">
-            <FileText className="mx-auto size-8 text-slate-300" />
+          <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center shadow-2xs">
+            <FileText className="mx-auto size-10 text-slate-300" />
             <p className="mt-2 text-sm font-semibold text-slate-700">Belum ada laporan audit 5R</p>
-            <p className="text-xs text-slate-400 mt-0.5">Silakan buat audit baru atau ubah filter.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Silakan buat audit baru atau sesuaikan filter.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -355,84 +325,61 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
               return (
                 <article
                   key={r.id}
-                  className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm space-y-3"
+                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-3 transition-all hover:border-slate-200"
                 >
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-mono text-slate-400 font-semibold">{r.reportNumber}</p>
-                      <h2 className="text-sm font-bold text-slate-900 leading-tight truncate mt-0.5">
+                  {/* Card Header: Status, Date, & Score */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {getStatusBadge(r.status)}
+                        <span className="text-[11px] font-mono font-medium text-slate-400">
+                          {r.reportNumber}
+                        </span>
+                      </div>
+                      <h2
+                        onClick={() => setSelectedReportId(r.id)}
+                        className="text-base font-bold text-slate-900 leading-snug cursor-pointer hover:text-[#003461] line-clamp-2"
+                      >
                         {r.picAreaName}
                       </h2>
-                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                        {r.siteName && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
-                            {r.siteName}
-                          </span>
-                        )}
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700">
-                          {r.auditPeriod}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <div className="flex items-center gap-1 justify-end">
-                        <span className={`inline-flex items-center justify-center size-6 rounded-md text-xs font-black border ${gradeInfo.bg}`}>
-                          {gradeInfo.grade}
-                        </span>
-                        <span className="text-base font-black text-slate-900 leading-none">
-                          {r.totalScore}
-                        </span>
-                      </div>
-                      <div className="mt-1.5">
-                        {getStatusBadge(r.status)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 5 Pillars Quick Pill Grid */}
-                  <div className="grid grid-cols-5 gap-1 rounded-lg bg-slate-50 p-2 text-center text-[10px]">
-                    <div>
-                      <span className="text-slate-400 font-medium block">Rapi</span>
-                      <span className="font-bold text-slate-800">{r.scoreRapi}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium block">Ringkas</span>
-                      <span className="font-bold text-slate-800">{r.scoreRingkas}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium block">Resik</span>
-                      <span className="font-bold text-slate-800">{r.scoreResik}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium block">Rawat</span>
-                      <span className="font-bold text-slate-800">{r.scoreRawat}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-medium block">Rajin</span>
-                      <span className="font-bold text-slate-800">{r.scoreRajin}</span>
-                    </div>
-                  </div>
-
-                  {/* Card Footer Info & Actions */}
-                  <div className="flex items-center justify-between border-t border-slate-50 pt-2 text-xs text-slate-500">
-                    <div className="min-w-0">
-                      <p className="truncate text-[11px]">
+                      <p className="text-xs text-slate-500">
                         Auditor: <span className="font-semibold text-slate-700">{r.auditorName}</span>
+                        {r.siteName && (
+                          <span> &bull; {r.siteName}</span>
+                        )}
                       </p>
-                      <p className="text-[10px] text-slate-400">{r.auditDate}</p>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Prominent Score Chip */}
+                    <div
+                      onClick={() => setSelectedReportId(r.id)}
+                      className="text-right shrink-0 cursor-pointer rounded-xl bg-slate-50 border border-slate-100 px-3 py-2 text-center min-w-[64px]"
+                    >
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-black border ${gradeInfo.bg}`}>
+                        Grade {gradeInfo.grade}
+                      </span>
+                      <p className="text-lg font-black text-slate-900 leading-none mt-1">
+                        {r.totalScore}
+                      </p>
+                      <span className="text-[9px] text-slate-400 font-medium">Skor 5R</span>
+                    </div>
+                  </div>
+
+                  {/* Card Footer: Period and Action Buttons */}
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs text-slate-500">
+                    <div className="text-[11px] text-slate-400 font-medium">
+                      {r.auditDate} &bull; <span className="text-slate-600">{r.auditPeriod}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
                       <Button
                         onClick={() => setSelectedReportId(r.id)}
                         variant="outline"
                         size="sm"
-                        className="h-8 border-slate-200 text-xs font-semibold px-2.5 text-[#003461] active:scale-95"
+                        className="h-8 border-slate-200 text-xs font-semibold px-3 text-[#003461] rounded-xl active:scale-95 shadow-2xs"
                       >
-                        <Eye className="mr-1 size-3.5" />
-                        Detail
+                        <Eye className="mr-1.5 size-3.5" />
+                        Dokumen
                       </Button>
 
                       <Button
@@ -440,8 +387,8 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
                         disabled={isPrinting}
                         variant="ghost"
                         size="sm"
-                        className="h-8 px-2 text-slate-500 hover:text-slate-900 active:scale-95"
-                        title="Print / PDF"
+                        className="h-8 px-2.5 text-slate-600 hover:text-slate-900 rounded-xl active:scale-95"
+                        title="Cetak PDF"
                       >
                         <Printer className="size-3.5" />
                       </Button>
@@ -451,7 +398,7 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
                           onClick={() => handleDelete(r.id)}
                           variant="ghost"
                           size="sm"
-                          className="h-8 px-2 text-rose-500 hover:text-rose-700 active:scale-95"
+                          className="h-8 px-2 text-rose-500 hover:text-rose-700 rounded-xl active:scale-95"
                           title="Hapus Draft"
                         >
                           <Trash2 className="size-3.5" />

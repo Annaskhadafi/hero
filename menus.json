@@ -550,18 +550,8 @@
     "resource": "marketing_a2r_competition"
   },
   {
-    "title": "Formulir 5R",
-    "url": "/dashboard/quality/5r/create",
-    "resource": "five_r_create"
-  },
-  {
-    "title": "Daftar Laporan 5R",
+    "title": "Audit 5R",
     "url": "/dashboard/quality/5r",
     "resource": "five_r_reports"
-  },
-  {
-    "title": "Master Area 5R",
-    "url": "/dashboard/quality/5r/master-area",
-    "resource": "five_r_master_area"
   }
 ]

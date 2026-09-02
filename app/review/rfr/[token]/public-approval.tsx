@@ -155,61 +155,68 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
           </div>
         )}
 
-        {/* Action Panel for Digital Signature */}
-        {!done && !rejected && (
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-900 dark:text-white border-b pb-2 text-base">
-              Bubuhkan Tanda Tangan Digital
-            </h3>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Canvas Tanda Tangan Digital (Gunakan Mouse / Touch Screen)
-                </label>
-                <Button variant="ghost" size="sm" type="button" onClick={handleClearSignature} className="text-xs text-rose-600">
-                  Bersihkan Canvas
-                </Button>
-              </div>
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 p-2">
-                <SignatureCanvas
-                  ref={(ref) => { signatureRef.current = ref }}
-                  canvasProps={{
-                    className: 'w-full h-44 bg-transparent cursor-crosshair',
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                Catatan / Remarks (Opsional)
-              </label>
-              <Textarea
-                rows={2}
-                placeholder="Catatan tambahan persetujuan..."
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button variant="outline" type="button" disabled={isPending} onClick={handleReject} className="text-rose-600 border-rose-200 hover:bg-rose-50">
-                Tolak RFR
-              </Button>
-              <Button type="button" disabled={isPending} onClick={handleApprove} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-2">
-                <CheckCircle2 className="w-4 h-4" /> {isPending ? 'Memproses...' : 'Setujui & Tanda Tangan'}
-              </Button>
-            </div>
+        {/* Main Content: Left Document Preview, Right Action Panel on Desktop */}
+        <div className="flex flex-col lg:grid lg:grid-cols-[1fr_380px] xl:grid-cols-[1fr_400px] gap-6 items-start">
+          {/* Left: Full Document View (WYSIWYG A4 Layout) */}
+          <div className="w-full order-2 lg:order-1 bg-white dark:bg-slate-800 rounded-xl shadow-md border overflow-hidden p-2">
+            <RfrDocumentPreview
+              rfr={rfr}
+              approvals={approvals}
+              currentStepOrder={approval.stepOrder}
+              liveSignatureUrl={liveSignatureUrl}
+            />
           </div>
-        )}
 
-        {/* Full Document View (WYSIWYG A4 Layout) */}
-        <RfrDocumentPreview
-          rfr={rfr}
-          approvals={approvals}
-          currentStepOrder={approval.stepOrder}
-          liveSignatureUrl={liveSignatureUrl}
-        />
+          {/* Right: Action Panel for Digital Signature & Remarks */}
+          <div className="w-full order-1 lg:order-2 space-y-4 lg:sticky lg:top-8">
+            {!done && !rejected ? (
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border shadow-sm space-y-4">
+                <h3 className="font-bold text-slate-900 dark:text-white border-b pb-2 text-base">
+                  Bubuhkan Tanda Tangan Digital
+                </h3>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Canvas Tanda Tangan Digital
+                    </label>
+                    <Button variant="ghost" size="sm" type="button" onClick={handleClearSignature} className="text-xs text-rose-600">
+                      Bersihkan Canvas
+                    </Button>
+                  </div>
+                  <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 p-2">
+                    <SignatureCanvas
+                      ref={(ref) => { signatureRef.current = ref }}
+                      canvasProps={{
+                        className: 'w-full h-44 bg-transparent cursor-crosshair',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Catatan / Remarks (Opsional)
+                  </label>
+                  <Textarea
+                    rows={3}
+                    placeholder="Catatan tambahan persetujuan..."
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button type="button" disabled={isPending} onClick={handleApprove} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-11 w-full gap-2 rounded-xl shadow-xs cursor-pointer">
+                    <CheckCircle2 className="w-4 h-4" /> {isPending ? 'Memproses...' : 'Setujui & Tanda Tangan'}
+                  </Button>
+                  <Button variant="outline" type="button" disabled={isPending} onClick={handleReject} className="text-rose-600 border-rose-200 hover:bg-rose-50 h-9 w-full rounded-xl cursor-pointer">
+                    Tolak RFR
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   )

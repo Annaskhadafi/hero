@@ -6,7 +6,7 @@ import Image from "next/image";
 import { getServerSession } from "@/lib/auth-session";
 import { fetchApdRequestById } from "@/lib/apd-data";
 import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
-import { getS3ObjectReadUrl } from "@/lib/s3-client";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 
 function parsePhotoUrls(raw: string | null | undefined): string[] {
   if (!raw || !raw.trim()) return [];
@@ -193,7 +193,12 @@ export default async function MobileApdDetailPage({ params }: { params: { id: st
                 
                 <div className="flex-1 rounded-lg border border-gray-100 bg-slate-50 p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="font-semibold text-sm text-gray-900">{step.approverName || "Approver"}</div>
+                    <div className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
+                      <span>{step.approverName || "Approver"}</span>
+                      {(step as any).approverJobTitle && (
+                        <span className="text-[11px] font-normal text-gray-500">({(step as any).approverJobTitle})</span>
+                      )}
+                    </div>
                     <time className="text-[10px] text-gray-500">
                       {step.resolvedAt ? step.resolvedAt.toLocaleString("id-ID") : "Menunggu"}
                     </time>

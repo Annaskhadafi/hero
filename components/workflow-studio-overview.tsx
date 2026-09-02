@@ -494,6 +494,48 @@ function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
   return SITE_APPROVER_MAP[siteId] ?? '955'
 }
 
+function resolveApdApproverForStudio(siteId: string, sectionId?: string): string {
+  const adminCpSites = ['126', '142', '135', '132', '213', '212', '141', '148', '143', '147', '211', '146', '137']
+  const hseMap: Record<string, string> = {
+    '133': '1374', // CK BIB -> Fathurrahman Sufi (HSE Officer)
+    '131': '1285', // CK BMB -> Danny Hangga Irawan (HSE Officer)
+    '129': '1380', // CK KIM -> Rizky Rahmadani (HSE Officer)
+    '128': '1308', // CK MHU -> Irfan Rivai Remba (HSE)
+    '140': '1307', // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
+  }
+  const pjoMap: Record<string, string> = {
+    '138': '454',  // AMM Mifa Holing -> Adit Prasetyo (Technical Engineer)
+    '144': '1057', // AMM Tabang -> Singgih Wiyono (Technical Engineer)
+    '210': '1212', // BUMA Tanjung -> Dowy Pratama Sita (Technical Engineer)
+    '150': '1250', // CDE - Bengkulu -> Rakha Dwi Saputra (Repairman)
+    '145': '1189', // CK MIFA -> Fachri Husein (Serviceman)
+    '125': '1375', // Jakarta -> Ade Saharu (HSE Officer)
+    '151': '955',  // Makassar -> Apriyanto (Head of Service MVC)
+    '134': '96',   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
+    '136': '96',   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
+    '149': '1180', // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+    '127': '1164', // Sangatta -> Saipudin (HSE Leader)
+    '139': '955',  // Sebamban -> Apriyanto (Head of Service MVC)
+    '130': '97',   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
+  }
+
+  if (adminCpSites.includes(siteId)) {
+    if (sectionId === '29') return '1039' // Repair / Retread -> Arjun Zahiri Mursith
+    if (sectionId === '37') return '1094' // TE -> Muhammad Abian Husain
+    return '1099' // MVC (33) & Others (34) -> Muhammad As'ar Fauzan
+  }
+
+  if (hseMap[siteId]) {
+    return hseMap[siteId]
+  }
+
+  if (pjoMap[siteId]) {
+    return pjoMap[siteId]
+  }
+
+  return '955'
+}
+
 function WorkflowBuilderDialog({
   data,
   initial,
@@ -616,6 +658,11 @@ function WorkflowBuilderDialog({
     (selectedMenu?.transactionType ?? '') === 'rfr_approval' ||
     (initial?.transactionType ?? '') === 'rfr_approval' ||
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('rfr')
+  const isFiveRMenu =
+    (selectedMenu?.transactionType ?? '') === 'five_r_report' ||
+    (initial?.transactionType ?? '') === 'five_r_report' ||
+    (selectedMenuKey || initial?.id || '').toLowerCase().includes('5r') ||
+    (selectedMenuKey || initial?.id || '').toLowerCase().includes('five-r')
   const isFormWoMenu = (selectedMenuKey || initial?.id || '').toLowerCase().includes('wo')
 
   function isSectionStep(label: string) {
@@ -666,8 +713,8 @@ function WorkflowBuilderDialog({
 
     const fiveRDefaults: ApprovalStep[] = [
       { id: 'step-0', label: 'Master Area', type: 'section' },
-      { id: 'step-1', label: 'Atasan Langsung PIC Area / PJO Site', type: 'employee' },
-      { id: 'step-2', label: 'Head of CPI Department', type: 'employee' },
+      { id: 'step-1', label: 'PJO Site / Atasan Langsung', type: 'employee' },
+      { id: 'step-2', label: 'Head of CPI Approval', type: 'employee' },
     ]
 
     const materialToolsDefaults: ApprovalStep[] = [
@@ -760,24 +807,112 @@ function WorkflowBuilderDialog({
       if (norm.includes('cpi')) labelToStepId['cpi'] = s.id
     }
 
+    function resolveFiveRAreaApprover(area: { id?: number; name?: string; siteId?: number | null }): string {
+      const name = (area.name || '').toLowerCase()
+      const siteId = area.siteId ? area.siteId.toString() : ''
+
+      if (name.includes('balikpapan') || siteId === '126') {
+        if (name.includes('repair') || name.includes('retread') || name.includes('accessories')) {
+          return '996' // Ary Maulana (SPV Repair & Retread Operation)
+        }
+        if (name.includes('service')) {
+          return '955' // Apriyanto (Head of Service MVC)
+        }
+        if (name.includes('supply chain') || name.includes('warehouse')) {
+          return '946' // Karmiyanto (Leader Supply Chain)
+        }
+        if (name.includes('office') || name.includes('facility') || name.includes('admin')) {
+          return '970' // Muhammad Iqbal (HR-GA Supervisor)
+        }
+        if (name.includes('safety') || name.includes('hse')) {
+          return '1375' // Ade Saharu (HSE Officer)
+        }
+        return '970' // Muhammad Iqbal (HR-GA Supervisor)
+      }
+
+      if (name.includes('jakarta') || name.includes('pupar') || siteId === '125') {
+        if (name.includes('service')) {
+          return '15' // Junaidi (Serviceman Leader)
+        }
+        if (name.includes('supply chain') || name.includes('warehouse')) {
+          return '946' // Karmiyanto (Leader Supply Chain)
+        }
+        return '966' // Rendra Rachman (Human Capital Manager - Head Office)
+      }
+
+      if (name.includes('palembang') || name.includes('pekanbaru') || siteId === '134' || siteId === '136') {
+        return '96' // Febrial Hariri (Leader Technical Sumatera)
+      }
+
+      if (name.includes('berau') || siteId === '146' || siteId === '137') {
+        return '255' // Muhammad Refaldi (PJO Berau)
+      }
+
+      if (name.includes('sangatta') || siteId === '127') {
+        return '1164' // Saipudin (HSE Leader / PJO)
+      }
+
+      if (name.includes('mhu') || siteId === '128') {
+        return '1308' // Irfan Rivai Remba (HSE / PJO)
+      }
+
+      if (name.includes('bmb') || siteId === '131') {
+        return '1285' // Danny Hangga Irawan (HSE / PJO)
+      }
+
+      if (name.includes('bib') || siteId === '133') {
+        return '1374' // Fathurrahman Sufi (HSE Officer / PJO)
+      }
+
+      if (name.includes('mifa') || siteId === '138') {
+        return '454' // Adit Prasetyo (PJO)
+      }
+
+      if (name.includes('sorowako') || name.includes('vale') || siteId === '140') {
+        return '1307' // Muhammad Wahyu Ichsan (HSE / PJO)
+      }
+
+      if (name.includes('timika') || name.includes('revy')) {
+        return '1094' // Muhammad Abian Husain (Technical Leader / Atasan Langsung)
+      }
+
+      if (name.includes('tommy') || name.includes('tanjung') || siteId === '210' || siteId === '130') {
+        if (name.includes('tommy')) return '97' // Tommy Indra Aldiny Rambe
+        return '1212' // Dowy Pratama Sita (PJO)
+      }
+
+      if (siteId === '144') {
+        return '1057' // Singgih Wiyono (PJO Tabang)
+      }
+
+      return '955' // Default fallback
+    }
+
     if (isFiveR && fiveRAreas.length > 0) {
+      const savedApprovals = initial?.siteApprovals ?? []
       let rIndex = 0
       return fiveRAreas.map((area) => {
         const areaSiteId = area.siteId ? area.siteId.toString() : '126'
-        let approverStep1 = '955'
-        const lowerName = (area.name || '').toLowerCase()
-        if (lowerName.includes('workshop') || lowerName.includes('repair')) {
-          approverStep1 = areaSiteId === '126' ? '996' : (SITE_APPROVER_MAP[areaSiteId] ?? '996')
-        } else if (lowerName.includes('warehouse') || lowerName.includes('supply chain')) {
-          approverStep1 = areaSiteId === '126' ? '979' : (SITE_APPROVER_MAP[areaSiteId] ?? '979')
-        } else if (lowerName.includes('office') || lowerName.includes('hr') || lowerName.includes('ga')) {
-          approverStep1 = areaSiteId === '126' ? '970' : (SITE_APPROVER_MAP[areaSiteId] ?? '970')
-        } else if (lowerName.includes('safety') || lowerName.includes('hse')) {
-          approverStep1 = areaSiteId === '126' ? '1164' : (SITE_APPROVER_MAP[areaSiteId] ?? '1164')
-        } else if (lowerName.includes('service')) {
-          approverStep1 = areaSiteId === '126' ? '955' : (SITE_APPROVER_MAP[areaSiteId] ?? '955')
-        } else {
-          approverStep1 = SITE_APPROVER_MAP[areaSiteId] ?? '955'
+        const existing = savedApprovals.find(
+          (sa: any) =>
+            sa.sectionId?.toString() === area.id.toString() ||
+            sa.areaId?.toString() === area.id.toString()
+        )
+
+        let approverStep1 = resolveFiveRAreaApprover(area)
+        let approverStep2 = '944'
+
+        if (existing) {
+          const custom = (existing as any).customRoles || {}
+          for (const [k, v] of Object.entries(custom)) {
+            const l = k.toLowerCase().replace(/[^a-z]/g, '')
+            if ((l.includes('pjo') || l.includes('atasan') || l.includes('leader') || l.includes('spv')) && v) {
+              approverStep1 = String(v)
+            } else if ((l.includes('cpi') || l.includes('head')) && v) {
+              approverStep2 = String(v)
+            }
+          }
+          if (existing.pjoId) approverStep1 = String(existing.pjoId)
         }
 
         return {
@@ -786,8 +921,8 @@ function WorkflowBuilderDialog({
           departmentId: '',
           values: {
             'step-0': area.id.toString(),
-            'step-1': approverStep1,
-            'step-2': '944',
+            'step-1': approverStep1, // PJO Site / Atasan Langsung Dinamis
+            'step-2': approverStep2, // Bardinia Susi Ekawaty (Head of CPI)
           },
         }
       })
@@ -838,7 +973,15 @@ function WorkflowBuilderDialog({
             if (secVal) values[employeeSteps[1].id] = String(secVal)
           }
         } else if (employeeSteps.length === 1 && !values[employeeSteps[0].id]) {
-          const siteVal = sa.pjoId ?? (sa as any).customRoles?.['pjo_hse_atasan_site'] ?? (sa as any).customRoles?.['hse'] ?? SITE_APPROVER_MAP[sa.siteId?.toString() ?? '']
+          const customValues = (sa as any).customRoles ? Object.values((sa as any).customRoles).filter(Boolean) : []
+          const firstApprover = customValues[0] as number | undefined
+          const siteVal =
+            firstApprover ??
+            sa.pjoId ??
+            (sa as any).customRoles?.['pjo_hse_atasan_site'] ??
+            (sa as any).customRoles?.['hse'] ??
+            (menuKeyLower.includes('apd') ? resolveApdApproverForStudio(sa.siteId?.toString() ?? '', sa.sectionId?.toString()) : null) ??
+            SITE_APPROVER_MAP[sa.siteId?.toString() ?? '']
           if (siteVal) values[employeeSteps[0].id] = String(siteVal)
         }
         
@@ -859,14 +1002,18 @@ function WorkflowBuilderDialog({
       }))
     }
     if (menuKeyLower.includes('apd')) {
-      return allSites.map((site, index) => ({
-        key: `site-apd-${index}-${site.id}`,
-        siteId: site.id.toString(),
-        departmentId: '',
-        values: {
-          'step-1': SITE_APPROVER_MAP[site.id.toString()] ?? site.headEmployeeId?.toString() ?? '1099',
-        },
-      }))
+      return allSites.flatMap((site, index) => {
+        const sections = ['33', '34', '29', '37']
+        return sections.map((secId, sIdx) => ({
+          key: `site-apd-${index}-${site.id}-${sIdx}-${secId}`,
+          siteId: site.id.toString(),
+          departmentId: '2',
+          values: {
+            'step-0': secId,
+            'step-1': resolveApdApproverForStudio(site.id.toString(), secId),
+          },
+        }))
+      })
     }
 
     if (menuKeyLower.includes('5r') || menuKeyLower.includes('five-r')) {
@@ -874,21 +1021,8 @@ function WorkflowBuilderDialog({
       let rIndex = 0
       return areasToUse.map((area) => {
         const areaSiteId = area.siteId ? area.siteId.toString() : '126'
-        let approverStep1 = '955'
-        const lowerName = (area.name || '').toLowerCase()
-        if (lowerName.includes('workshop') || lowerName.includes('repair')) {
-          approverStep1 = areaSiteId === '126' ? '996' : (SITE_APPROVER_MAP[areaSiteId] ?? '996')
-        } else if (lowerName.includes('warehouse') || lowerName.includes('supply chain')) {
-          approverStep1 = areaSiteId === '126' ? '979' : (SITE_APPROVER_MAP[areaSiteId] ?? '979')
-        } else if (lowerName.includes('office') || lowerName.includes('hr') || lowerName.includes('ga')) {
-          approverStep1 = areaSiteId === '126' ? '970' : (SITE_APPROVER_MAP[areaSiteId] ?? '970')
-        } else if (lowerName.includes('safety') || lowerName.includes('hse')) {
-          approverStep1 = areaSiteId === '126' ? '1164' : (SITE_APPROVER_MAP[areaSiteId] ?? '1164')
-        } else if (lowerName.includes('service')) {
-          approverStep1 = areaSiteId === '126' ? '955' : (SITE_APPROVER_MAP[areaSiteId] ?? '955')
-        } else {
-          approverStep1 = SITE_APPROVER_MAP[areaSiteId] ?? '955'
-        }
+        const siteHeadId = allSites.find((s) => s.id.toString() === areaSiteId)?.headEmployeeId?.toString()
+        const approverStep2 = siteHeadId ?? SITE_APPROVER_MAP[areaSiteId] ?? '955'
 
         return {
           key: `site-5r-${rIndex++}-${areaSiteId}-${area.id}`,
@@ -896,8 +1030,9 @@ function WorkflowBuilderDialog({
           departmentId: '',
           values: {
             'step-0': area.id.toString(),
-            'step-1': approverStep1,
-            'step-2': '944',
+            'step-1': '1181', // Ria Annisa Putri (Quality Verifier)
+            'step-2': approverStep2, // PJO Site / Atasan Langsung
+            'step-3': '944', // Bardinia Susi Ekawaty (Head of CPI)
           },
         }
       })
@@ -971,12 +1106,22 @@ function WorkflowBuilderDialog({
     // RFR: department-based assignment
     if (isRfrMenu) {
       const dept = allDepartments.find((d) => d.id.toString() === pendingSiteId)
-      if (!dept) return
-      const values: Record<string, string> = {}
-      for (const step of approvalSteps) {
-        values[step.id] = firstSite?.values[step.id] ?? ''
+      if (dept) {
+        setSiteData((prev) => [
+          ...prev,
+          {
+            key: `dept-${Date.now()}-${dept.id}`,
+            siteId: '',
+            departmentId: dept.id.toString(),
+            values: {
+              'step-1': '1182',
+              'step-2': '970',
+              'step-3': dept.headEmployeeId ? dept.headEmployeeId.toString() : '966',
+              'step-4': '1099',
+            },
+          },
+        ])
       }
-      setSiteData((prev) => [...prev, { key: `site-${Date.now()}`, siteId: '0', departmentId: pendingSiteId, values }])
       setPendingSiteId('')
       return
     }
@@ -1177,21 +1322,8 @@ function WorkflowBuilderDialog({
                       if (areasToUse.length > 0) {
                         for (const area of areasToUse) {
                           const areaSiteId = area.siteId ? area.siteId.toString() : '126'
-                          let approverStep1 = '955'
-                          const lowerName = (area.name || '').toLowerCase()
-                          if (lowerName.includes('workshop') || lowerName.includes('repair')) {
-                            approverStep1 = areaSiteId === '126' ? '996' : (SITE_APPROVER_MAP[areaSiteId] ?? '996')
-                          } else if (lowerName.includes('warehouse') || lowerName.includes('supply chain')) {
-                            approverStep1 = areaSiteId === '126' ? '979' : (SITE_APPROVER_MAP[areaSiteId] ?? '979')
-                          } else if (lowerName.includes('office') || lowerName.includes('hr') || lowerName.includes('ga')) {
-                            approverStep1 = areaSiteId === '126' ? '970' : (SITE_APPROVER_MAP[areaSiteId] ?? '970')
-                          } else if (lowerName.includes('safety') || lowerName.includes('hse')) {
-                            approverStep1 = areaSiteId === '126' ? '1164' : (SITE_APPROVER_MAP[areaSiteId] ?? '1164')
-                          } else if (lowerName.includes('service')) {
-                            approverStep1 = areaSiteId === '126' ? '955' : (SITE_APPROVER_MAP[areaSiteId] ?? '955')
-                          } else {
-                            approverStep1 = SITE_APPROVER_MAP[areaSiteId] ?? '955'
-                          }
+                          const siteHeadId = allSites.find((s) => s.id.toString() === areaSiteId)?.headEmployeeId?.toString()
+                          const approverStep2 = siteHeadId ?? SITE_APPROVER_MAP[areaSiteId] ?? '955'
 
                           autoRows.push({
                             key: `site-5r-${rIndex++}-${areaSiteId}-${area.id}`,
@@ -1199,8 +1331,9 @@ function WorkflowBuilderDialog({
                             departmentId: '',
                             values: {
                               'step-0': area.id.toString(),
-                              'step-1': approverStep1,
-                              'step-2': '944',
+                              'step-1': '1181', // Ria Annisa Putri (Quality Verifier)
+                              'step-2': approverStep2, // PJO Site / Atasan Langsung
+                              'step-3': '944', // Bardinia Susi Ekawaty (Head of CPI)
                             },
                           })
                         }
@@ -1221,15 +1354,18 @@ function WorkflowBuilderDialog({
                       setSiteData(autoRows)
                     } else if (newKey.toLowerCase().includes('apd')) {
                       setApprovalSteps(apdDefaults)
-                      const autoRows = allSites.map((site, index) => ({
-                        key: `site-apd-${index}-${site.id}`,
-                        siteId: site.id.toString(),
-                        departmentId: '',
-                        values: {
-                          'step-0': '29', // Default Repair / Retread Operation
-                          'step-1': resolvePjoOrAtasan(site.id.toString(), '29'),
-                        },
-                      }))
+                      const autoRows = allSites.flatMap((site, index) => {
+                        const sections = ['33', '34', '29', '37']
+                        return sections.map((secId, sIdx) => ({
+                          key: `site-apd-${index}-${site.id}-${sIdx}-${secId}`,
+                          siteId: site.id.toString(),
+                          departmentId: '2',
+                          values: {
+                            'step-0': secId,
+                            'step-1': resolveApdApproverForStudio(site.id.toString(), secId),
+                          },
+                        }))
+                      })
                       setSiteData(autoRows)
                     } else {
                       setApprovalSteps(generalDefaults)
@@ -1320,18 +1456,36 @@ function WorkflowBuilderDialog({
 
             <div className="border-t pt-3">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="font-display text-base font-semibold">{isRfrMenu ? 'Pengaturan per Departemen' : 'Pengaturan per Site'}</h3>
+                <h3 className="font-display text-base font-semibold">
+                  {isRfrMenu ? 'Pengaturan per Departemen' : isFiveRMenu ? 'Pengaturan per Master Area 5R' : 'Pengaturan per Site'}
+                </h3>
                 <div className="flex items-center gap-2">
                   <select
                     value={pendingSiteId}
                     onChange={(e) => setPendingSiteId(e.target.value)}
                     className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm"
                   >
-                    <option value="">{isRfrMenu ? 'Pilih departemen...' : 'Pilih site...'}</option>
+                    <option value="">
+                      {isRfrMenu ? 'Pilih departemen...' : isFiveRMenu ? 'Pilih master area 5R...' : 'Pilih site...'}
+                    </option>
                     {isRfrMenu ? (
                       allDepartments.filter((d) => !usedDeptIds.has(d.id.toString())).map((dept) => (
                         <option key={dept.id} value={dept.id.toString()}>{dept.name}</option>
                       ))
+                    ) : isFiveRMenu ? (
+                      <>
+                        {fiveRAreas.length > 0 && (
+                          <option value="all">-- Tambahkan Semua Master Area ({fiveRAreas.length} Area) --</option>
+                        )}
+                        {fiveRAreas.map((area) => {
+                          const sName = allSites.find((s) => s.id === area.siteId)?.name ?? 'Site'
+                          return (
+                            <option key={area.id} value={area.id.toString()}>
+                              {area.name} ({sName})
+                            </option>
+                          )
+                        })}
+                      </>
                     ) : (
                       <>
                         {availableSites.length > 0 && (
@@ -1354,37 +1508,59 @@ function WorkflowBuilderDialog({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                        <th className="pb-2 pr-3">{isRfrMenu ? 'Departemen' : 'Site'}</th>
-                        {approvalSteps.map((step) => (
-                          <th key={step.id} className="pb-2 pr-3">
-                            <div className="flex items-center gap-1">
-                              <span>{step.label || '(Kosong)'}</span>
-                              {siteData.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => fillDownColumn(step.id)}
-                                  title="Isi semua dari baris pertama"
-                                  className="text-muted-foreground hover:text-foreground ml-1 inline-flex items-center rounded border px-1 py-0.5 text-[10px] leading-none"
-                                >
-                                  ↓ Isi
-                                </button>
-                              )}
-                            </div>
-                          </th>
-                        ))}
+                        <th className="pb-2 pr-3">{isRfrMenu ? 'Departemen' : isFiveRMenu ? 'Master Area 5R' : 'Site'}</th>
+                        {approvalSteps
+                          .filter((step) => isFiveRMenu ? step.type !== 'section' : true)
+                          .map((step) => (
+                            <th key={step.id} className="pb-2 pr-3">
+                              <div className="flex items-center gap-1">
+                                <span>{step.label || '(Kosong)'}</span>
+                                {siteData.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => fillDownColumn(step.id)}
+                                    title="Isi semua dari baris pertama"
+                                    className="text-muted-foreground hover:text-foreground ml-1 inline-flex items-center rounded border px-1 py-0.5 text-[10px] leading-none"
+                                  >
+                                    ↓ Isi
+                                  </button>
+                                )}
+                              </div>
+                            </th>
+                          ))}
                         <th className="pb-2 w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {siteData.map((siteRow) => {
+                        const areaObj = isFiveRMenu
+                          ? fiveRAreas.find((a) => a.id.toString() === siteRow.values['step-0'] || a.id.toString() === (siteRow as any).areaId)
+                          : null
+                        const siteObj = allSites.find((s) => s.id.toString() === (areaObj?.siteId?.toString() ?? siteRow.siteId))
+
                         const siteDisplayName = isRfrMenu
                           ? (allDepartments.find((d) => d.id.toString() === siteRow.departmentId)?.name ?? siteRow.departmentId)
-                          : (siteRow.siteId === '0' ? 'Semua Site (Global)' : (allSites.find((s) => s.id.toString() === siteRow.siteId)?.name ?? siteRow.siteId))
-                        const isFiveRMenu = (selectedMenuKey || initial?.templateKey || '').toLowerCase().includes('5r')
+                          : isFiveRMenu
+                            ? (areaObj?.name ?? 'Master Area')
+                            : (siteRow.siteId === '0' ? 'Semua Site (Global)' : (siteObj?.name ?? siteRow.siteId))
+
+                        const renderedSteps = isFiveRMenu
+                          ? approvalSteps.filter((s) => s.type !== 'section')
+                          : approvalSteps
+
                         return (
                           <tr key={siteRow.key} className="border-b last:border-0">
-                            <td className="py-2 pr-3 font-medium whitespace-nowrap">{siteDisplayName}</td>
-                            {approvalSteps.map((step) => (
+                            <td className="py-2 pr-3 font-medium">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-800">{siteDisplayName}</span>
+                                {isFiveRMenu && siteObj && (
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    Lokasi: {siteObj.name} {areaObj?.picName ? `• PIC: ${areaObj.picName}` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            {renderedSteps.map((step) => (
                               <td key={step.id} className="py-2 pr-3 min-w-[180px]">
                                 <SearchableSelect
                                   value={siteRow.values[step.id] ?? ''}
@@ -1395,21 +1571,7 @@ function WorkflowBuilderDialog({
                                       if (isFiveRMenu) {
                                         const area = fiveRAreas.find((a) => a.id.toString() === v)
                                         const areaSiteId = area?.siteId ? area.siteId.toString() : siteRow.siteId
-                                        let approverStep1 = '955'
-                                        const lowerName = (area?.name || '').toLowerCase()
-                                        if (lowerName.includes('workshop') || lowerName.includes('repair')) {
-                                          approverStep1 = areaSiteId === '126' ? '996' : (SITE_APPROVER_MAP[areaSiteId] ?? '996')
-                                        } else if (lowerName.includes('warehouse') || lowerName.includes('supply chain')) {
-                                          approverStep1 = areaSiteId === '126' ? '979' : (SITE_APPROVER_MAP[areaSiteId] ?? '979')
-                                        } else if (lowerName.includes('office') || lowerName.includes('hr') || lowerName.includes('ga')) {
-                                          approverStep1 = areaSiteId === '126' ? '970' : (SITE_APPROVER_MAP[areaSiteId] ?? '970')
-                                        } else if (lowerName.includes('safety') || lowerName.includes('hse')) {
-                                          approverStep1 = areaSiteId === '126' ? '1164' : (SITE_APPROVER_MAP[areaSiteId] ?? '1164')
-                                        } else if (lowerName.includes('service')) {
-                                          approverStep1 = areaSiteId === '126' ? '955' : (SITE_APPROVER_MAP[areaSiteId] ?? '955')
-                                        } else {
-                                          approverStep1 = SITE_APPROVER_MAP[areaSiteId] ?? '955'
-                                        }
+                                        const approverStep1 = area ? resolveFiveRAreaApprover(area) : '955'
 
                                         setSiteData((prev) =>
                                           prev.map((site) => {
@@ -1420,8 +1582,8 @@ function WorkflowBuilderDialog({
                                               values: {
                                                 ...site.values,
                                                 [step.id]: v,
-                                                'step-1': approverStep1,
-                                                'step-2': '944',
+                                                'step-1': approverStep1, // PJO Site / Atasan Langsung
+                                                'step-2': '944', // Bardinia Susi Ekawaty (Head of CPI)
                                               },
                                             }
                                           })
@@ -1487,7 +1649,7 @@ function WorkflowBuilderDialog({
                 </div>
               ) : (
                 <p className="text-muted-foreground py-4 text-center text-sm">
-                  {approvalSteps.length === 0 ? 'Tambahkan langkah approval terlebih dahulu.' : 'Pilih site untuk menambahkan approval configuration.'}
+                  {approvalSteps.length === 0 ? 'Tambahkan langkah approval terlebih dahulu.' : 'Pilih site/master area untuk menambahkan approval configuration.'}
                 </p>
               )}
             </div>

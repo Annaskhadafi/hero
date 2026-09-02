@@ -7,8 +7,10 @@ import {
   Camera,
   CheckCircle2,
   Eye,
+  FileText,
   Image as ImageIcon,
   Loader2,
+  PenTool,
   Plus,
   Trash2,
   Upload,
@@ -20,7 +22,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { SignaturePad } from '@/components/signature-pad'
 import { FiveRCameraModal } from './five-r-camera-modal'
+import { FiveRDetailDialog } from './five-r-detail-dialog'
 import { createFiveRReportAction, getPreviousOpenFindingsAction } from '@/app/dashboard/quality/5r/actions'
 
 const MONTHS = [
@@ -80,7 +84,8 @@ type FiveRFormProps = {
 export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const returnUrl = pathname?.startsWith('/mobile') ? '/mobile/quality/5r' : '/dashboard/quality/5r'
+  const isMobile = Boolean(pathname?.startsWith('/mobile'))
+  const returnUrl = isMobile ? '/mobile/quality/5r' : '/dashboard/quality/5r'
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Header State
@@ -95,6 +100,8 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
   const [reportType, setReportType] = useState<
     'ada_temuan' | 'after_temuan_sebelumnya' | 'tidak_ada_temuan'
   >('ada_temuan')
+  const [auditorSignature, setAuditorSignature] = useState<string | null>(null)
+  const [createdReportId, setCreatedReportId] = useState<number | null>(null)
 
   // 5 Pillars State
   const [scoreRapi, setScoreRapi] = useState<number>(100)
@@ -323,6 +330,11 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
       return
     }
 
+    if (!auditorSignature) {
+      toast.error('Tanda tangan digital Auditor wajib dibubuhkan sebelum mengirim laporan.')
+      return
+    }
+
     if (reportType === 'ada_temuan' && findings.length === 0) {
       toast.error('Silakan tambahkan minimal 1 entri temuan pada tabel.')
       return
@@ -361,6 +373,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
         scoreResik,
         scoreRawat,
         scoreRajin,
+        auditorSignatureUrl: auditorSignature,
         findings: finalFindings.map((f) => ({
           category5r: f.category5r,
           area: f.area || finalPicAreaName,
@@ -377,7 +390,11 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
           localStorage.removeItem(DRAFT_KEY)
         } catch {}
         toast.success(res.message)
-        router.push(returnUrl)
+        if (res.reportId) {
+          setCreatedReportId(res.reportId)
+        } else {
+          router.push(returnUrl)
+        }
       } else {
         toast.error(res.message)
       }
@@ -390,38 +407,38 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+    <div className={isMobile ? 'space-y-4 pb-12' : 'mx-auto max-w-5xl space-y-6 pb-12'}>
       {/* Draft Recovery Notification Banner */}
       {hasRestoredDraft && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 shadow-sm">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-4 text-amber-700" />
-            <span>
-              <strong>Draft Formulir Dipulihkan:</strong> Data isian Anda tersimpan otomatis di browser sehingga tidak hilang saat halaman di-refresh.
+        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <CheckCircle2 className="size-4 text-amber-700 shrink-0" />
+            <span className="truncate">
+              <strong>Draft Dipulihkan:</strong> Data isian Anda tersimpan otomatis.
             </span>
           </div>
           <button
             type="button"
             onClick={resetFormDraft}
-            className="rounded bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors"
+            className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors shrink-0 ml-2"
           >
-            Kosongkan / Mulai Baru
+            Reset Form
           </button>
         </div>
       )}
 
       {/* Header Banner */}
-      <div className="rounded-xl border border-border/70 bg-surface_container_lowest p-6 shadow-sm">
+      <div className={isMobile ? 'rounded-2xl border border-slate-100 bg-white p-4 shadow-sm' : 'rounded-xl border border-border/70 bg-surface_container_lowest p-6 shadow-sm'}>
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
-              5R Report
+            <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+              Formulir Audit 5R
             </h1>
             <p className="text-xs text-rose-600 font-medium">
-              &quot;(Wajib Diisi)&quot; indicates required fields
+              &quot;(Wajib Diisi)&quot; menunjukkan kolom yang harus diisi
             </p>
           </div>
-          <div className="mt-2 flex items-center gap-2 sm:mt-0">
+          <div className="mt-1 flex items-center gap-2 sm:mt-0">
             {hasRestoredDraft && (
               <Button
                 type="button"
@@ -439,9 +456,9 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-          {/* Top Form Fields Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <form onSubmit={handleSubmit} className="mt-5 space-y-5">
+          {/* Top Form Fields Grid: 1 column on mobile, responsive on desktop */}
+          <div className={isMobile ? 'grid grid-cols-1 gap-3.5' : 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'}>
             {/* PIC - AREA 5R */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">
@@ -451,7 +468,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                 <select
                   value={selectedAreaId}
                   onChange={(e) => setSelectedAreaId(e.target.value)}
-                  className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-xs shadow-sm focus:border-slate-800 focus:outline-none"
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs shadow-2xs focus:border-[#003461] focus:outline-none"
                 >
                   <option value="">– Pilih –</option>
                   {masterAreas.map((area) => (
@@ -481,20 +498,20 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                 value={auditorName}
                 onChange={(e) => setAuditorName(e.target.value)}
                 placeholder="Nama Auditor"
-                className="h-9 text-xs bg-slate-50"
+                className="h-10 rounded-xl text-xs bg-slate-50 border-slate-300"
                 required
               />
             </div>
 
             {/* Email */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Email</Label>
+              <Label className="text-xs font-semibold text-slate-700">Email Auditor</Label>
               <Input
                 type="email"
                 value={auditorEmail}
                 onChange={(e) => setAuditorEmail(e.target.value)}
                 placeholder="email@chitraparatama.co.id"
-                className="h-9 text-xs bg-slate-50"
+                className="h-10 rounded-xl text-xs bg-slate-50 border-slate-300"
               />
             </div>
 
@@ -506,7 +523,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               <select
                 value={auditPeriod}
                 onChange={(e) => setAuditPeriod(e.target.value)}
-                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-xs shadow-sm focus:border-slate-800 focus:outline-none"
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs shadow-2xs focus:border-[#003461] focus:outline-none"
               >
                 {MONTHS.map((m) => (
                   <option key={m} value={m}>
@@ -518,12 +535,12 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
 
             {/* Date */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Date</Label>
+              <Label className="text-xs font-semibold text-slate-700">Tanggal Audit</Label>
               <Input
                 type="date"
                 value={auditDate}
                 onChange={(e) => setAuditDate(e.target.value)}
-                className="h-9 text-xs bg-slate-50"
+                className="h-10 rounded-xl text-xs bg-slate-50 border-slate-300"
                 required
               />
             </div>
@@ -531,7 +548,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
             {/* Report Type Selector */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">
-                Report <span className="text-rose-500 font-normal italic">(Wajib Diisi)</span>
+                Jenis Laporan <span className="text-rose-500 font-normal italic">(Wajib Diisi)</span>
               </Label>
               <select
                 value={reportType}
@@ -539,26 +556,41 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                   setReportType(e.target.value as any)
                   setFindings([]) // Reset table entries on type switch
                 }}
-                className="h-9 w-full rounded-md border-2 border-emerald-600 bg-emerald-50/50 px-3 text-xs font-semibold text-emerald-950 shadow-sm focus:border-emerald-700 focus:outline-none"
+                className="h-10 w-full rounded-xl border-2 border-emerald-600 bg-emerald-50/50 px-3 text-xs font-semibold text-emerald-950 shadow-2xs focus:border-emerald-700 focus:outline-none"
               >
                 <option value="ada_temuan">Ada Temuan</option>
                 <option value="after_temuan_sebelumnya">
-                  After (HANYA UNTUK TEMUAN BULAN SEBELUMNYA)
+                  After (Temuan Bulan Sebelumnya)
                 </option>
                 <option value="tidak_ada_temuan">Tidak Ada Temuan</option>
               </select>
             </div>
           </div>
 
-          <div className="border-t border-border/70 pt-6">
+          <div className="border-t border-border/70 pt-5">
             {/* 5 Pillars Assessment Section */}
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className={isMobile ? "grid grid-cols-1 gap-3.5" : "grid gap-4 sm:gap-6 md:grid-cols-2"}>
               {/* 1. Rapi */}
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
                 <div className="font-display text-xs font-bold text-slate-900">
                   Rapi <span className="font-normal text-slate-600">(Ada tempat untuk semua barang dan semua barang pada tempatnya)</span>
                 </div>
-                <div className="space-y-1.5 pt-1">
+                {/* Mobile selector */}
+                <div className={isMobile ? "block pt-1" : "sm:hidden pt-1"}>
+                  <select
+                    value={scoreRapi}
+                    onChange={(e) => setScoreRapi(Number(e.target.value))}
+                    className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    {PILLAR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value} Poin)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Desktop radios */}
+                <div className={isMobile ? "hidden" : "hidden sm:block space-y-1.5 pt-1"}>
                   {PILLAR_OPTIONS.map((opt) => (
                     <label
                       key={opt.value}
@@ -582,11 +614,26 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               </div>
 
               {/* 2. Ringkas */}
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
                 <div className="font-display text-xs font-bold text-slate-900">
                   Ringkas <span className="font-normal text-slate-600">(Membedakan barang diperlukan dengan yang tidak diperlukan)</span>
                 </div>
-                <div className="space-y-1.5 pt-1">
+                {/* Mobile selector */}
+                <div className={isMobile ? "block pt-1" : "sm:hidden pt-1"}>
+                  <select
+                    value={scoreRingkas}
+                    onChange={(e) => setScoreRingkas(Number(e.target.value))}
+                    className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    {PILLAR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value} Poin)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Desktop radios */}
+                <div className={isMobile ? "hidden" : "hidden sm:block space-y-1.5 pt-1"}>
                   {PILLAR_OPTIONS.map((opt) => (
                     <label
                       key={opt.value}
@@ -610,11 +657,26 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               </div>
 
               {/* 3. Resik */}
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
                 <div className="font-display text-xs font-bold text-slate-900">
                   Resik <span className="font-normal text-slate-600">(Kebersihan dan cara-cara untuk tetap menjaga kebersihan)</span>
                 </div>
-                <div className="space-y-1.5 pt-1">
+                {/* Mobile selector */}
+                <div className={isMobile ? "block pt-1" : "sm:hidden pt-1"}>
+                  <select
+                    value={scoreResik}
+                    onChange={(e) => setScoreResik(Number(e.target.value))}
+                    className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    {PILLAR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value} Poin)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Desktop radios */}
+                <div className={isMobile ? "hidden" : "hidden sm:block space-y-1.5 pt-1"}>
                   {PILLAR_OPTIONS.map((opt) => (
                     <label
                       key={opt.value}
@@ -638,11 +700,26 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               </div>
 
               {/* 4. Rawat */}
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
                 <div className="font-display text-xs font-bold text-slate-900">
                   Rawat <span className="font-normal text-slate-600">(Mempertahankan dan mengawasi 3 kategori diatas)</span>
                 </div>
-                <div className="space-y-1.5 pt-1">
+                {/* Mobile selector */}
+                <div className={isMobile ? "block pt-1" : "sm:hidden pt-1"}>
+                  <select
+                    value={scoreRawat}
+                    onChange={(e) => setScoreRawat(Number(e.target.value))}
+                    className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    {PILLAR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value} Poin)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Desktop radios */}
+                <div className={isMobile ? "hidden" : "hidden sm:block space-y-1.5 pt-1"}>
                   {PILLAR_OPTIONS.map((opt) => (
                     <label
                       key={opt.value}
@@ -666,11 +743,26 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               </div>
 
               {/* 5. Rajin & Nilai Audit */}
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
                 <div className="font-display text-xs font-bold text-slate-900">
                   Rajin <span className="font-normal text-slate-600">(Karyawan mengetahui dan melaksanakan penerapan 5R di area kerja)</span>
                 </div>
-                <div className="space-y-1.5 pt-1">
+                {/* Mobile selector */}
+                <div className={isMobile ? "block pt-1" : "sm:hidden pt-1"}>
+                  <select
+                    value={scoreRajin}
+                    onChange={(e) => setScoreRajin(Number(e.target.value))}
+                    className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-600 focus:outline-none"
+                  >
+                    {PILLAR_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value} Poin)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Desktop radios */}
+                <div className={isMobile ? "hidden" : "hidden sm:block space-y-1.5 pt-1"}>
                   {PILLAR_OPTIONS.map((opt) => (
                     <label
                       key={opt.value}
@@ -694,11 +786,11 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               </div>
 
               {/* Nilai Audit Card */}
-              <div className="flex flex-col justify-center items-center rounded-lg border-2 border-slate-800 bg-slate-900 text-white p-6 shadow-md">
+              <div className="flex flex-col justify-center items-center rounded-xl border-2 border-slate-800 bg-slate-900 text-white p-5 sm:p-6 shadow-md">
                 <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">
                   Nilai Audit 5R
                 </span>
-                <div className="mt-2 text-5xl font-black tracking-tight text-emerald-400">
+                <div className="mt-2 text-4xl sm:text-5xl font-black tracking-tight text-emerald-400">
                   {auditScore}
                 </div>
                 <div className="mt-1 text-xs text-slate-300">
@@ -758,8 +850,164 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
               )}
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            {/* Mobile Card-Based Findings View */}
+            <div className={isMobile ? "space-y-3 block" : "space-y-3 sm:hidden"}>
+              {findings.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-6 text-center text-xs text-slate-500">
+                  Belum ada temuan/foto. Tekan tombol <strong>ADD ENTRY</strong> di bawah untuk menambahkan.
+                </div>
+              ) : (
+                findings.map((row, idx) => (
+                  <div
+                    key={row.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        Entry #{idx + 1}
+                        {reportType === 'ada_temuan' && (
+                          <span className="text-emerald-700">&bull; {row.category5r}</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeEntry(idx)}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                      >
+                        <Trash2 className="size-3.5" /> Hapus
+                      </button>
+                    </div>
+
+                    {reportType === 'ada_temuan' && (
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-slate-700">Kategori 5R</Label>
+                        <select
+                          value={row.category5r}
+                          onChange={(e) => updateRow(idx, 'category5r', e.target.value as any)}
+                          className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs focus:outline-none focus:border-slate-800"
+                        >
+                          <option value="Rapi">Rapi</option>
+                          <option value="Ringkas">Ringkas</option>
+                          <option value="Resik">Resik</option>
+                          <option value="Rawat">Rawat</option>
+                          <option value="Rajin">Rajin</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-slate-700">Lokasi / Area Spesifik</Label>
+                      <Input
+                        value={row.area}
+                        onChange={(e) => updateRow(idx, 'area', e.target.value)}
+                        placeholder="Lokasi / Area spesifik (misal: Rak Tools Bay 3)"
+                        className="h-9 text-xs"
+                        required
+                      />
+                    </div>
+
+                    {reportType === 'ada_temuan' && (
+                      <div className="space-y-3 pt-1 border-t border-slate-100">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">Uraian Temuan</Label>
+                          <Input
+                            value={row.findingDescription}
+                            onChange={(e) => updateRow(idx, 'findingDescription', e.target.value)}
+                            placeholder="Uraian ketidaksesuaian 5R"
+                            className="h-9 text-xs"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">Foto Temuan</Label>
+                          <PhotoCell
+                            photoUrl={row.findingPhotoUrl}
+                            onPreview={() =>
+                              row.findingPhotoUrl &&
+                              setPreviewImage({
+                                url: row.findingPhotoUrl,
+                                title: `Foto Temuan 5R (Baris ${idx + 1} - ${row.area || 'Area'})`,
+                              })
+                            }
+                            onCaptureClick={() =>
+                              setCameraTarget({ rowIndex: idx, field: 'findingPhotoUrl' })
+                            }
+                            onUpload={(file) =>
+                              handleFileUpload(idx, 'findingPhotoUrl', file)
+                            }
+                            onRemove={() => updateRow(idx, 'findingPhotoUrl', '')}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {reportType !== 'tidak_ada_temuan' && (
+                      <div className="space-y-3 pt-1 border-t border-slate-100">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">
+                            {reportType === 'after_temuan_sebelumnya' ? 'Tindakan Perbaikan (After)' : 'Tindakan'}
+                          </Label>
+                          <Input
+                            value={row.actionDescription}
+                            onChange={(e) => updateRow(idx, 'actionDescription', e.target.value)}
+                            placeholder="Tindakan korektif yang dilakukan"
+                            className="h-9 text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-slate-700">Foto Tindakan</Label>
+                          <PhotoCell
+                            photoUrl={row.actionPhotoUrl}
+                            onPreview={() =>
+                              row.actionPhotoUrl &&
+                              setPreviewImage({
+                                url: row.actionPhotoUrl,
+                                title: `Foto Tindakan Perbaikan (Baris ${idx + 1} - ${row.area || 'Area'})`,
+                              })
+                            }
+                            onCaptureClick={() =>
+                              setCameraTarget({ rowIndex: idx, field: 'actionPhotoUrl' })
+                            }
+                            onUpload={(file) =>
+                              handleFileUpload(idx, 'actionPhotoUrl', file)
+                            }
+                            onRemove={() => updateRow(idx, 'actionPhotoUrl', '')}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {reportType === 'tidak_ada_temuan' && (
+                      <div className="space-y-1 pt-1 border-t border-slate-100">
+                        <Label className="text-[11px] font-semibold text-slate-700">Foto Bukti Kondisi Area</Label>
+                        <PhotoCell
+                          photoUrl={row.noFindingPhotoUrl}
+                          onPreview={() =>
+                            row.noFindingPhotoUrl &&
+                            setPreviewImage({
+                              url: row.noFindingPhotoUrl,
+                              title: `Foto Bukti Kondisi Area (Baris ${idx + 1} - ${row.area || 'Area'})`,
+                            })
+                          }
+                          onCaptureClick={() =>
+                            setCameraTarget({ rowIndex: idx, field: 'noFindingPhotoUrl' })
+                          }
+                          onUpload={(file) =>
+                            handleFileUpload(idx, 'noFindingPhotoUrl', file)
+                          }
+                          onRemove={() => updateRow(idx, 'noFindingPhotoUrl', '')}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className={isMobile ? "hidden" : "hidden sm:block overflow-x-auto rounded-lg border border-slate-200 bg-white"}>
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                   <tr>
@@ -974,6 +1222,26 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
             </div>
           </div>
 
+          {/* Tanda Tangan Digital Auditor */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
+            <div className="border-b border-slate-100 pb-2.5">
+              <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                <PenTool className="size-4 text-emerald-600" />
+                Tanda Tangan Digital Auditor <span className="text-rose-500 font-normal italic text-xs">(Wajib Dibubuhkan)</span>
+              </Label>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Bubuhkan tanda tangan Anda sebagai pengesahan dokumen 5R resmi yang akan dicantumkan pada lembar cetak A4.
+              </p>
+            </div>
+
+            <div className="max-w-md">
+              <SignaturePad
+                onDataUrlChange={(url) => setAuditorSignature(url)}
+                height={160}
+              />
+            </div>
+          </div>
+
           {/* Submit Action Bar */}
           <div className="border-t border-border/70 pt-6 flex items-center justify-between">
             <Button
@@ -989,7 +1257,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="h-10 bg-slate-900 px-8 font-semibold text-white hover:bg-slate-800 shadow"
+              className="h-10 bg-slate-900 px-8 font-semibold text-white hover:bg-slate-800 shadow cursor-pointer"
             >
               {isSubmitting ? (
                 <>
@@ -997,12 +1265,27 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                   Menyimpan...
                 </>
               ) : (
-                'Submit'
+                'Submit Laporan 5R'
               )}
             </Button>
           </div>
         </form>
       </div>
+
+      {/* A4 Document Preview Dialog after Submission */}
+      {createdReportId && (
+        <FiveRDetailDialog
+          reportId={createdReportId}
+          onClose={() => {
+            setCreatedReportId(null)
+            router.push(returnUrl)
+          }}
+          onActionComplete={() => {
+            setCreatedReportId(null)
+            router.push(returnUrl)
+          }}
+        />
+      )}
 
       {/* Camera Capture Modal */}
       <FiveRCameraModal

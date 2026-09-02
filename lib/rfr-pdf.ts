@@ -492,7 +492,7 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
   drawSectionHeader('E. Approval')
 
   const gridY = currentY
-  const gridHeight = 88
+  const gridHeight = 96
   const colCount = data.approvals && data.approvals.length > 0 ? data.approvals.length : 5
   const colWidth = contentWidth / colCount
 
@@ -528,8 +528,9 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
 
   const defaultRoleTitles = [
     { label: 'Diajukan Oleh', name: data.requestorName || '-', title: 'Requestor' },
-    { label: 'HC Verification', name: 'Adila Tri Arizona', title: 'HR Recruitment & GA' },
+    { label: 'HC Verification', name: 'Adila Tri Arizona', title: 'HR Recruitment Staff' },
     { label: 'Leader HR-GA', name: 'Kesuma Bagaskara', title: 'Leader HR-GA' },
+    { label: 'Human Capital Spv', name: 'Muhammad Iqbal', title: 'Human Capital Spv' },
     { label: 'Manager Departemen', name: 'Romy Hidayat', title: 'Central Services Manager' },
     { label: 'General Manager', name: 'Person Sihaloho', title: 'General Manager' },
   ]
@@ -657,6 +658,28 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
         font: fontRegular,
         color: rgb(0.45, 0.45, 0.45),
       })
+      textY -= 6.5
+    }
+
+    // Catatan / Remarks Approver (jika ada)
+    const approverRemark =
+      appData?.remarks &&
+      !['Resubmitted after revision', 'Submitted', 'Reverted', 'Approved', 'approved'].includes(appData.remarks.trim())
+        ? appData.remarks.trim()
+        : ''
+    if (approverRemark) {
+      const remarkLines = wrapText(`Catatan: ${approverRemark}`, colWidth - 4, fontRegular, 4.8)
+      for (const rLine of remarkLines.slice(0, 2)) {
+        const rW = fontRegular.widthOfTextAtSize(rLine, 4.8)
+        page.drawText(rLine, {
+          x: colX + (colWidth - rW) / 2,
+          y: textY,
+          size: 4.8,
+          font: fontRegular,
+          color: rgb(0.45, 0.45, 0.45),
+        })
+        textY -= 5.5
+      }
     }
   }
 
