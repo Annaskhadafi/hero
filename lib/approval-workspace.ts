@@ -2702,6 +2702,7 @@ export async function getApprovalCenterData(email: string) {
     const [
       approvalRows,
       contractReviewInboxItems,
+      rfrInboxItems,
       dailyActivityInboxItems,
       overtimeInboxItems,
       ptwInboxItems,
@@ -2709,6 +2710,7 @@ export async function getApprovalCenterData(email: string) {
     ] = await Promise.all([
       safeQuery(() => fetchApprovalRowsForUser(email, currentEmployee), [], "fetchApprovalRowsForUser"),
       safeQuery(() => getContractReviewInboxItems(email, currentEmployee), [], "getContractReviewInboxItems"),
+      safeQuery(() => getRfrInboxItems(email, currentEmployee), [], "getRfrInboxItems"),
       safeQuery(() => getDailyActivityInboxItems(email, currentEmployee), [], "getDailyActivityInboxItems"),
       safeQuery(() => getOvertimeInboxItems(email, currentEmployee), [], "getOvertimeInboxItems"),
       safeQuery(() => getPtwInboxItems(email, currentEmployee), [], "getPtwInboxItems"),

@@ -398,7 +398,7 @@ function InboxTab({
   const allUnifiedItems = useMemo(() => {
     const list: Array<{
       id: string
-      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'GENERAL'
+      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'RFR' | 'GENERAL'
       categoryLabel: string
       documentNumber: string
       title: string
@@ -423,6 +423,7 @@ function InboxTab({
       rawPtw?: (typeof ptwItems)[number]
       rawContractReview?: (typeof contractReviewItems)[number]
       rawSopWinRequest?: (typeof sopWinRequestItems)[number]
+      rawRfr?: (typeof rfrItems)[number]
       rawGeneralGroup?: (typeof groups)[number]
     }> = []
 
@@ -555,6 +556,24 @@ function InboxTab({
         url: '#',
         rawGeneralGroup: g,
       })
+    for (const rfr of rfrItems) {
+      list.push({
+        id: `rfr-${rfr.approvalId || rfr.id}`,
+        category: 'RFR',
+        categoryLabel: 'Request for Recruitment',
+        documentNumber: rfr.rfrNumber,
+        title: `RFR: ${rfr.positionTitle} (${rfr.numberOfPersons} orang)`,
+        employeeName: rfr.requestorName,
+        department: rfr.sectionDepartment,
+        stepLabel: `${rfr.roleLabel} (Step ${rfr.stepOrder}/${rfr.totalSteps})`,
+        approverName: rfr.approverName,
+        dueState: rfr.dueState,
+        dueAt: rfr.dueAt,
+        submittedAt: rfr.submittedAt,
+        url: rfr.url,
+        actionLabel: 'Review & Tanda Tangan',
+        rawRfr: rfr,
+      })
     }
 
     if (filterCategory) {
@@ -562,7 +581,7 @@ function InboxTab({
     }
 
     return list
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, groups, filterCategory])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1156,7 +1175,9 @@ function InboxTab({
                       </div>
                     </TableCell>
                     <TableCell className="align-top text-right">
-                      {((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) || (item as any).activityType === 'Summary APD' ? (
+                      {item.category === 'RFR' && item.rawRfr ? (
+                        <RfrApprovalDialog item={item.rawRfr} />
+                      ) : ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) || (item as any).activityType === 'Summary APD' ? (
                         <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).activityType === 'Work Order' ||
                         (item as any).repairFormWo ||
@@ -1194,33 +1215,6 @@ function InboxTab({
                   </TableRow>
                 )
               })}
-              {/* RFR items inline */}
-              {(rfrItems ?? []).map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="align-top">
-                    <p className="text-foreground font-semibold text-sm">RFR</p>
-                    <p className="text-muted-foreground text-xs">{item.requestorName}</p>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <p className="text-foreground text-sm">-</p>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <p className="text-foreground text-sm font-medium">{item.positionTitle}</p>
-                    <p className="text-muted-foreground text-xs">{item.numberOfPersons} orang</p>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <p className="text-foreground text-sm font-medium">{item.roleLabel}</p>
-                    <p className="text-muted-foreground text-xs">Step {item.stepOrder}/{item.totalSteps}</p>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <AdminStatusBadge value={item.dueState} />
-                    <p className="text-muted-foreground mt-1 text-xs">Due {item.dueAt.toLocaleString('id-ID')}</p>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <RfrApprovalDialog item={item} />
-                  </TableCell>
-                </TableRow>
-              ))}
             </TableBody>
           </Table>
         </MinimalTableShell>

@@ -35,12 +35,12 @@ export default async function ApprovalPage() {
       inReview: 0,
     },
     inboxGroups: [],
-    historyGroups: [],
-    dailyActivityInboxItems: [],
-    overtimeInboxItems: [],
-    ptwInboxItems: [],
-    contractReviewInboxItems: [],
-    sopWinRequestInboxItems: [],
+    dailyActivityInboxItems: data?.dailyActivityInboxItems || [],
+    overtimeInboxItems: data?.overtimeInboxItems || [],
+    ptwInboxItems: data?.ptwInboxItems || [],
+    contractReviewInboxItems: data?.contractReviewInboxItems || [],
+    sopWinRequestInboxItems: data?.sopWinRequestInboxItems || [],
+    rfrInboxItems: data?.rfrInboxItems || [],
   };
 
   return <ApprovalWorkbench data={safeData} />;
