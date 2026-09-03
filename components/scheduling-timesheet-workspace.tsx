@@ -5236,15 +5236,34 @@ export function SchedulingTimesheetWorkspace({
             ? siteConfig.nightShiftClockOut
             : siteConfig.dayShiftClockOut
 
+      const isOffsiteOrAbsent =
+        day.status === 'empty' ||
+        day.status === 'sick' ||
+        day.status === 'leave' ||
+        day.status === 'absent' ||
+        day.status === 'field_break' ||
+        day.status === 'standby' ||
+        day.scheduleCode === 'OFF' ||
+        day.scheduleCode === 'FB' ||
+        day.scheduleCode === 'Libur'
+
+      const hasManualClockIn = Boolean(day.clockIn && day.clockIn.trim() !== '')
+      const hasManualClockOut = Boolean(day.clockOut && day.clockOut.trim() !== '')
+
       return {
         ...day,
-        workingTimeFrom: day.isHoliday
-          ? ''
-          : day.clockIn || defaultWorkFrom,
-        workingTimeTo: day.isHoliday
-          ? ''
-          : day.clockOut || defaultWorkTo,
-        configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
+        workingTimeFrom:
+          day.isHoliday || (isOffsiteOrAbsent && !hasManualClockIn)
+            ? ''
+            : day.clockIn || defaultWorkFrom,
+        workingTimeTo:
+          day.isHoliday || (isOffsiteOrAbsent && !hasManualClockOut)
+            ? ''
+            : day.clockOut || defaultWorkTo,
+        configuredOvertimeIntervals:
+          isOffsiteOrAbsent && !hasManualClockIn && !hasManualClockOut
+            ? []
+            : (configuredIntervals as OvertimeInterval[]),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
@@ -5426,7 +5445,7 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'meals') {
               if (!allowance.rule.meals || siteConfig.mealsType === 'none') return '-'
               if (isFieldBreakDay) return 'FB'
-              return String(allowance.mealsAmount)
+              return allowance.mealsAmount > 0 ? String(allowance.mealsAmount) : '-'
             }
             // lokasi (Tunjangan Khusus)
             if (!allowance.rule.specialAllowance) return '-'
@@ -6169,7 +6188,7 @@ export function SchedulingTimesheetWorkspace({
     const shiftCode = schedule[day - 1] ?? 'IN'
     const isOff = shiftCode === 'OFF' || shiftCode === 'FB' || shiftCode === 'Libur'
     const isHol = isHoliday(period, day, holidays)
-    if (!clockIn && !clockOut && isOff && !isHol) {
+    if (!clockIn && !clockOut && isOff) {
       return legacyOvertimeResult(0)
     }
     const defaultIn = shiftCode === 'NS' ? siteConfig.nightShiftClockIn : siteConfig.dayShiftClockIn
@@ -6208,6 +6227,20 @@ export function SchedulingTimesheetWorkspace({
       scheduleCode === 'FB' ||
       attendanceStatus === 'field_break' ||
       (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+
+    // Status '-' (empty / cuti / pulang kampung), Sakit, Izin, Alpha tidak mendapatkan MSA atau Meals
+    if (
+      attendanceStatus === 'empty' ||
+      attendanceStatus === 'sick' ||
+      attendanceStatus === 'leave' ||
+      attendanceStatus === 'absent'
+    ) {
+      return {
+        eligibleMsa: false,
+        eligibleMeals: false,
+      }
+    }
+
     return {
       eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
       eligibleMeals: isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay),
@@ -10967,7 +11000,18 @@ export function SchedulingTimesheetWorkspace({
                       selectedAttendanceValue.clockIn,
                       selectedAttendanceValue.clockOut
                     )
-                const defaultOtHours = defaultOtCalculation.totalHours > 0 ? defaultOtCalculation.totalHours : legacyOt
+                const isNonWorkingDialogStatus =
+                  selectedAttendanceValue.status === 'empty' ||
+                  selectedAttendanceValue.status === 'sick' ||
+                  selectedAttendanceValue.status === 'leave' ||
+                  selectedAttendanceValue.status === 'absent' ||
+                  selectedAttendanceValue.status === 'field_break'
+                const defaultOtHours =
+                  isNonWorkingDialogStatus && !selectedAttendanceValue.clockIn && !selectedAttendanceValue.clockOut
+                    ? 0
+                    : defaultOtCalculation.totalHours > 0
+                      ? defaultOtCalculation.totalHours
+                      : legacyOt
 
                 const onSaveAndClose = async () => {
                   const key = attendanceKey(

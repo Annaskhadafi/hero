@@ -396,7 +396,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
-    const isAbsent = day.status === 'sick' || day.status === 'leave' || day.status === 'absent'
+    const isAbsent =
+      day.status === 'sick' ||
+      day.status === 'leave' ||
+      day.status === 'absent' ||
+      day.status === 'empty'
     const hasAttendance = !isAbsent && Boolean(
       day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
     )
@@ -411,7 +415,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     // Compute effective overtime hours
     let ot = day.overtime?.totalHours ?? 0
-    if (ot <= 0 && hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime) {
+    if (isAbsent || isStatusWithoutTime || (isOff && !hasAttendance)) {
+      ot = 0
+    } else if (ot <= 0 && hasOvertimeIntervals) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
         const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
@@ -424,7 +430,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (!isAbsent && !isStatusWithoutTime && (!isOff || day.isHoliday || hasAttendance)) {
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)) {
       totalOT += ot
     }
 
@@ -472,7 +478,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       const shouldRenderWorkTimes = !isAbsent && !day.isHoliday && (day.workingTimeFrom || day.clockIn) && !isOff
       const workFrom = shouldRenderWorkTimes ? String(day.workingTimeFrom ?? day.clockIn ?? '').replace(':', '.') : ''
       const workTo = shouldRenderWorkTimes ? String(day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.') : ''
-      const shouldRenderOtTimes = hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime
+      const shouldRenderOtTimes =
+        hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)
 
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: isOff && !hasAttendance ? 'OFF' : workFrom,
