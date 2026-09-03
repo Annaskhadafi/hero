@@ -578,11 +578,17 @@ function InboxTab({
       })
     }
 
+    const sorted = list.sort((a, b) => {
+      const timeA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0
+      const timeB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0
+      return timeB - timeA
+    })
+
     if (filterCategory) {
-      return list.filter((it) => it.category === filterCategory)
+      return sorted.filter((it) => it.category === filterCategory)
     }
 
-    return list
+    return sorted
   }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory])
 
   const searchParams = useSearchParams()
@@ -1138,6 +1144,7 @@ function InboxTab({
                             item.category === 'OVERTIME' && 'bg-amber-50 text-amber-700 border-amber-200',
                             item.category === 'PTW' && 'bg-emerald-50 text-emerald-700 border-emerald-200',
                             item.category === 'CONTRACT_REVIEW' && 'bg-blue-50 text-blue-700 border-blue-200',
+                            item.category === 'RFR' && 'bg-purple-50 text-purple-700 border-purple-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -1149,11 +1156,11 @@ function InboxTab({
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="text-foreground text-sm">{group?.siteName || item.siteName || item.location || '—'}</p>
+                        <p className="text-foreground text-sm">{item.siteName || item.location || item.rawGeneralGroup?.siteName || '—'}</p>
                         {item.shiftCode && <p className="text-muted-foreground text-xs">Shift {item.shiftCode}</p>}
-                        {group?.items?.some(i => i.activityType === 'Daily Activity') && group.totalOvertimeLabel ? (
+                        {item.rawGeneralGroup?.items?.some(i => i.activityType === 'Daily Activity') && item.rawGeneralGroup.totalOvertimeLabel ? (
                           <p className="text-muted-foreground text-xs">
-                            Overtime {group.totalOvertimeLabel}
+                            Overtime {item.rawGeneralGroup.totalOvertimeLabel}
                           </p>
                         ) : null}
                       </div>

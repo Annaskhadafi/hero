@@ -220,7 +220,7 @@ export function RfrApprovalDialog({ item, trigger }: RfrApprovalDialogProps) {
           </div>
 
           <a
-            href={`/api/hc/rfr/${item.id}/pdf`}
+            href={`/api/hc/rfr/${(item as any).rfrId || (item as any).id}/pdf`}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 py-1 px-2.5 rounded-xl shadow-2xs transition-all"

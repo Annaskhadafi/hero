@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { getRfrDetail } from '@/app/actions/rfr'
 import { generateRfrPdf } from '@/lib/rfr-pdf'
 import { getServerSession } from '@/lib/auth-session'
+import { db } from '@/db'
+import { hcRfrApprovals, hcRfrRequests } from '@/db/schema/hero'
+import { eq } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
@@ -16,12 +19,29 @@ export async function GET(
     }
 
     const { id } = await params
-    const rfrId = parseInt(id, 10)
+    const rawNumber = id.replace(/^rfr-/, '')
+    let rfrId = parseInt(rawNumber, 10)
+
     if (isNaN(rfrId)) {
       return NextResponse.json({ error: 'ID RFR tidak valid' }, { status: 400 })
     }
 
-    const detail = await getRfrDetail(rfrId)
+    let detail = await getRfrDetail(rfrId)
+    
+    // If not found directly by rfrId, try lookup by approvalId
+    if (!detail || !detail.rfr) {
+      const [approvalRow] = await db
+        .select({ rfrId: hcRfrApprovals.rfrId })
+        .from(hcRfrApprovals)
+        .where(eq(hcRfrApprovals.id, rfrId))
+        .limit(1)
+
+      if (approvalRow?.rfrId) {
+        rfrId = approvalRow.rfrId
+        detail = await getRfrDetail(rfrId)
+      }
+    }
+
     if (!detail || !detail.rfr) {
       return NextResponse.json({ error: 'RFR tidak ditemukan' }, { status: 404 })
     }
