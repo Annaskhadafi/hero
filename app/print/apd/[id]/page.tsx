@@ -61,10 +61,8 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
   const isMaterial = data.requestCategory === 'MATERIAL';
   const isTools = data.requestCategory === 'TOOLS';
 
-  // APD strictly uses only 1 approver (PJO / Atasan Site), removing obsolete HSE / Section Head column
-  const effectiveApprovalHistory = isApd
-    ? approvalHistory.filter((step) => step.level === 1)
-    : approvalHistory;
+  // APD, Material, and Tools strictly use only 1 approver (PJO / HSE / Admin Site Leader)
+  const effectiveApprovalHistory = approvalHistory.filter((step) => step.level === 1);
 
   // Dynamic title based on category
   const formTitle = isApd
