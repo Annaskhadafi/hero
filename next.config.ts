@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
+    cpus: 2,
   },
   async headers() {
     return [

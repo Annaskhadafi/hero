@@ -24,6 +24,8 @@ type ApprovalContext = {
   sectionId: number | null
   positionId: number | null
   directManagerId: number | null
+  requesterDirectManagerId?: number | null
+  applicantEmployeeId?: number | null
   activityType: string
   priority: string
   overtimeMinutes: number
@@ -37,6 +39,8 @@ export type ResolvedApprovalStep = {
   approverName: string
   approverEmployeeId: number | null
   approverNodeId: number | null
+  approvalMatrixStepId?: number | null
+  approvalMode?: string | null
   resolutionSource:
     | 'matrix'
     | 'delegate'

@@ -17,6 +17,7 @@ type RfrPdfApprovalStep = {
   status: string
   signatureDataUrl?: string | null
   signedAt?: Date | string | null
+  remarks?: string | null
 }
 
 export type RfrPdfData = {

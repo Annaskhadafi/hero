@@ -3,6 +3,7 @@ NODE_ENV = "production"
 NPM_CONFIG_PRODUCTION = "false"
 PORT = "3000"
 HOSTNAME = "0.0.0.0"
+NODE_OPTIONS = "--max-old-space-size=2048"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "postgresql"]
