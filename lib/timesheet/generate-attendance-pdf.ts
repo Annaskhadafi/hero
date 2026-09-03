@@ -400,9 +400,33 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const hasAttendance = !isAbsent && Boolean(
       day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
     )
-    const overtime = hasAttendance ? day.overtime : undefined
-    const ot = overtime?.totalHours ?? 0
-    totalOT += ot
+    const configuredOvertimeIntervals =
+      day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? []
+    const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
+
+    const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.start).replace(':', '.')}-${String(interval.end).replace(':', '.')}` : ''
+    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    const otTo = formatOvertimeInterval(configuredOvertimeIntervals[1])
+
+    // Compute effective overtime hours
+    let ot = day.overtime?.totalHours ?? 0
+    if (ot <= 0 && hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime) {
+      ot = configuredOvertimeIntervals.reduce((sum, inv) => {
+        if (!inv || !inv.start || !inv.end) return sum
+        const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
+        const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
+        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        return sum + (endMin - startMin) / 60
+      }, 0)
+    }
+
+    if (!isAbsent && !isStatusWithoutTime && (!isOff || day.isHoliday || hasAttendance)) {
+      totalOT += ot
+    }
 
     const bgColor = day.isHoliday
       ? rgb(1, 1, 0.75)
@@ -433,7 +457,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (isOff && !hasAttendance) {
+    } else if (isOff && !hasAttendance && !day.isHoliday && !hasOvertimeIntervals) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: 'OFF',
         font: fontBold,
@@ -444,19 +468,15 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (hasAttendance) {
-      const workFrom = (day.workingTimeFrom ?? day.clockIn).replace(':', '.')
-      const workTo = (day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.')
-      const configuredOvertimeIntervals =
-        day.configuredOvertimeIntervals ?? overtime?.intervals ?? []
-      const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
-        interval ? `${interval.start.replace(':', '.')}-${interval.end.replace(':', '.')}` : ''
-      const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-      const otTo = formatOvertimeInterval(configuredOvertimeIntervals[1])
+    } else if (hasAttendance || hasOvertimeIntervals || day.isHoliday) {
+      const shouldRenderWorkTimes = !isAbsent && !day.isHoliday && (day.workingTimeFrom || day.clockIn) && !isOff
+      const workFrom = shouldRenderWorkTimes ? String(day.workingTimeFrom ?? day.clockIn ?? '').replace(':', '.') : ''
+      const workTo = shouldRenderWorkTimes ? String(day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.') : ''
+      const shouldRenderOtTimes = hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime
 
       drawCell(page, colX[2], y, cols[2], rowH, {
-        text: workFrom,
-        font,
+        text: isOff && !hasAttendance ? 'OFF' : workFrom,
+        font: isOff && !hasAttendance ? fontBold : font,
         fontSize: 8,
         align: 'center',
         bgColor,
@@ -469,14 +489,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
         bgColor,
       })
       drawCell(page, colX[4], y, cols[4], rowH, {
-        text: otFrom,
+        text: shouldRenderOtTimes ? otFrom : '',
         font,
         fontSize: otFrom.length > 5 ? 6 : 8,
         align: 'center',
         bgColor,
       })
       drawCell(page, colX[5], y, cols[5], rowH, {
-        text: otTo,
+        text: shouldRenderOtTimes ? otTo : '',
         font,
         fontSize: otTo.length > 5 ? 6 : 8,
         align: 'center',
@@ -501,7 +521,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[7], y, cols[7], rowH, { bgColor })
 
     let remark = ''
-    if (overtime?.splNumbers.length) remark = `SPL ${overtime.splNumbers.join(', ')}`
+    if (day.overtime?.splNumbers?.length) remark = `SPL ${day.overtime.splNumbers.join(', ')}`
 
     if (!remark && day.status === 'standby') remark = 'ST'
     else if (!remark && day.status === 'field_break') remark = 'FB'
@@ -553,7 +573,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   drawCell(page, colX[8], y, cols[8], rowH, { bgColor: tBg })
 
   // Signatures
-  y -= 70
+  y -= 30
   drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
 
   return doc.save()
@@ -890,7 +910,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   drawCell(page, colX[5], y, cols[5], rowH, { bgColor: tBg })
 
   // Signatures — proper spacing
-  y -= 70
+  y -= 30
   drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
 
   return doc.save()
@@ -1128,7 +1148,7 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
   drawCell(page, colX[4], y, cols[4], rowH, { bgColor: tBg })
 
   // Tanda tangan
-  y -= 70
+  y -= 30
   drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
 
   return doc.save()

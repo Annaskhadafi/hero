@@ -599,23 +599,39 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     return merged
       .filter((step) => step.stepOrder <= 3 && step.approverRole !== 'manager')
       .map((step) => {
-        const isApproved = step.status === 'approved'
+        const isStep1 = step.stepOrder === 1
+        const rawStatus = (step.status || '').toLowerCase()
+        const isDraft = (data.status || '').toLowerCase() === 'draft'
+        const effectiveStatus =
+          isStep1 && !isDraft && (rawStatus === 'pending' || rawStatus === 'submitted')
+            ? 'approved'
+            : step.status
+        const isApproved = ['approved', 'signed', 'completed'].includes(effectiveStatus.toLowerCase())
+        const isReverted = effectiveStatus.toLowerCase() === 'reverted' || effectiveStatus.toLowerCase() === 'needs_revision'
         const isActivelySigning = activeStepId === step.id && Boolean(previewSig)
+
         const currentSig = isApproved
-          ? (signaturesByStepId[step.id] || step.signatureDataUrl)
+          ? (signaturesByStepId[step.id] || step.signatureDataUrl || (isStep1 ? (data.employee as any)?.signatureDataUrl : null))
           : isActivelySigning
           ? previewSig
           : null
+
         const currentRemark = stepRemarks[step.id] !== undefined ? stepRemarks[step.id] : step.remarks
+        const currentSignedAt =
+          step.signedAt ||
+          (isApproved && isStep1 ? (data.submittedAt || data.workDate || new Date()) : null) ||
+          (isReverted ? (data.updatedAt || new Date()) : null) ||
+          (isActivelySigning ? (previewSignedAt || new Date()) : null)
+
         return {
           ...step,
-          status: step.status,
+          status: effectiveStatus,
           signatureDataUrl: currentSig,
           remarks: currentRemark || step.remarks,
-          signedAt: isApproved ? step.signedAt : isActivelySigning ? (previewSignedAt || new Date()) : null,
+          signedAt: currentSignedAt,
         }
       })
-  }, [data.approvals, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee.name, selectedLeaderId, selectedSuperiorId, selectedManagerId, employeesProp])
+  }, [data.approvals, data.status, data.submittedAt, data.workDate, data.updatedAt, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee, selectedLeaderId, selectedSuperiorId, selectedManagerId, employeesProp])
 
   const employeeSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'employee')
   const leaderSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial')
@@ -731,16 +747,29 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           </tr>
         </thead>
         <tbody>
-          {approvalHistoryForDisplay.map((step: any) => (
-            <tr key={step.id}>
-              <td className="text-center">{step.stepOrder}</td>
-              <td className="text-left font-medium">{step.stepLabel}</td>
-              <td className="text-left font-medium">{step.approverName || '-'}</td>
-              <td className="text-center capitalize font-bold">{step.status}</td>
-              <td className="text-center text-[7pt]">{fmtDt(step.signedAt)}</td>
-              <td className="text-left text-[7.5pt] text-slate-600 italic break-words whitespace-normal leading-tight">{step.remarks || '—'}</td>
-            </tr>
-          ))}
+          {approvalHistoryForDisplay.map((step: any) => {
+            const isApproved = ['approved', 'signed', 'completed'].includes((step.status || '').toLowerCase())
+            const isReverted = (step.status || '').toLowerCase() === 'reverted' || (step.status || '').toLowerCase() === 'needs_revision'
+            const statusLabel = isApproved ? 'Approved' : isReverted ? 'Reverted' : step.status
+            return (
+              <tr key={step.id} className={isReverted ? "bg-amber-50/70" : undefined}>
+                <td className="text-center">{step.stepOrder}</td>
+                <td className="text-left font-medium">{step.stepLabel}</td>
+                <td className="text-left font-medium">{step.approverName || '-'}</td>
+                <td className={cn(
+                  "text-center capitalize font-bold",
+                  isApproved ? "text-emerald-700" :
+                  isReverted ? "text-amber-700" :
+                  step.status === 'rejected' ? "text-rose-700" :
+                  "text-slate-700"
+                )}>
+                  {statusLabel}
+                </td>
+                <td className="text-center text-[7pt]">{step.signedAt ? fmtDt(step.signedAt) : '—'}</td>
+                <td className="text-left text-[7.5pt] text-slate-600 italic break-words whitespace-normal leading-tight">{step.remarks || '—'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
 
@@ -751,8 +780,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
           <div className="h-14 flex items-end">
-            {employeeSig?.status === 'approved' && employeeSig?.signatureDataUrl ? (
+            {employeeSig?.signatureDataUrl ? (
               <img src={employeeSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : employeeSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{data.employee.name}</span>
             ) : (
               <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
@@ -761,8 +792,11 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             {data.employee.name}
           </div>
           <div className="text-[7pt] text-slate-600 font-medium">{data.employee.jobTitle || 'Staff'}</div>
-          {employeeSig?.status === 'approved' && employeeSig?.signedAt && (
-            <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {fmtDt(employeeSig.signedAt)}</div>
+          {employeeSig?.signedAt && (
+            <div className="text-[6.5pt] text-slate-500 mt-0.5">
+              {employeeSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+              {fmtDt(employeeSig.signedAt)}
+            </div>
           )}
         </div>
 
@@ -770,8 +804,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
           <div className="h-14 flex items-end">
-            {leaderSig?.status === 'approved' && leaderSig?.signatureDataUrl ? (
+            {leaderSig?.signatureDataUrl ? (
               <img src={leaderSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : leaderSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{leaderSig.approverName || 'Leader / PJO'}</span>
             ) : (
               <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
@@ -780,8 +816,11 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             {leaderSig?.approverName || data.employee.name}
           </div>
           <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
-          {leaderSig?.status === 'approved' && leaderSig?.signedAt && (
-            <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {fmtDt(leaderSig.signedAt)}</div>
+          {leaderSig?.signedAt && (
+            <div className="text-[6.5pt] text-slate-500 mt-0.5">
+              {leaderSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+              {fmtDt(leaderSig.signedAt)}
+            </div>
           )}
         </div>
 
@@ -789,8 +828,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
           <div className="h-14 flex items-end">
-            {sectionHeadSig?.status === 'approved' && sectionHeadSig?.signatureDataUrl ? (
+            {sectionHeadSig?.signatureDataUrl ? (
               <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : sectionHeadSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{sectionHeadSig.approverName || 'Section Head'}</span>
             ) : (
               <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
@@ -799,8 +840,11 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             {sectionHeadSig?.approverName || data.employee.name}
           </div>
           <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-          {sectionHeadSig?.status === 'approved' && sectionHeadSig?.signedAt && (
-            <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {fmtDt(sectionHeadSig.signedAt)}</div>
+          {sectionHeadSig?.signedAt && (
+            <div className="text-[6.5pt] text-slate-500 mt-0.5">
+              {sectionHeadSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+              {fmtDt(sectionHeadSig.signedAt)}
+            </div>
           )}
         </div>
       </div>

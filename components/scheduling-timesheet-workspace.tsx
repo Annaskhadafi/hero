@@ -5212,34 +5212,38 @@ export function SchedulingTimesheetWorkspace({
       const configuredIntervals = siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
       const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
       const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
+      const defaultWorkFrom = useDay7WorkingTime
+        ? day.scheduleCode === 'NS'
+          ? siteConfig.day7NightShiftClockIn
+          : siteConfig.day7DayShiftClockIn
+        : useDay6WorkingTime
+          ? day.scheduleCode === 'NS'
+            ? siteConfig.day6NightShiftClockIn
+            : siteConfig.day6DayShiftClockIn
+          : day.scheduleCode === 'NS'
+            ? siteConfig.nightShiftClockIn
+            : siteConfig.dayShiftClockIn
+
+      const defaultWorkTo = useDay7WorkingTime
+        ? day.scheduleCode === 'NS'
+          ? siteConfig.day7NightShiftClockOut
+          : siteConfig.day7DayShiftClockOut
+        : useDay6WorkingTime
+          ? day.scheduleCode === 'NS'
+            ? siteConfig.day6NightShiftClockOut
+            : siteConfig.day6DayShiftClockOut
+          : day.scheduleCode === 'NS'
+            ? siteConfig.nightShiftClockOut
+            : siteConfig.dayShiftClockOut
+
       return {
         ...day,
         workingTimeFrom: day.isHoliday
           ? ''
-          : useDay7WorkingTime
-            ? day.scheduleCode === 'NS'
-              ? siteConfig.day7NightShiftClockIn
-              : siteConfig.day7DayShiftClockIn
-            : useDay6WorkingTime
-              ? day.scheduleCode === 'NS'
-                ? siteConfig.day6NightShiftClockIn
-                : siteConfig.day6DayShiftClockIn
-              : day.scheduleCode === 'NS'
-                ? siteConfig.nightShiftClockIn
-                : siteConfig.dayShiftClockIn,
+          : day.clockIn || defaultWorkFrom,
         workingTimeTo: day.isHoliday
           ? ''
-          : useDay7WorkingTime
-            ? day.scheduleCode === 'NS'
-              ? siteConfig.day7NightShiftClockOut
-              : siteConfig.day7DayShiftClockOut
-            : useDay6WorkingTime
-              ? day.scheduleCode === 'NS'
-                ? siteConfig.day6NightShiftClockOut
-                : siteConfig.day6DayShiftClockOut
-              : day.scheduleCode === 'NS'
-                ? siteConfig.nightShiftClockOut
-                : siteConfig.dayShiftClockOut,
+          : day.clockOut || defaultWorkTo,
         configuredOvertimeIntervals: configuredIntervals as OvertimeInterval[],
       }
     })
@@ -5251,7 +5255,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...secSigs, preparedBy: employee.name },
+      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
@@ -5274,7 +5278,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...secSigs, preparedBy: employee.name },
+      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
       days: dayData,
     })
   }
@@ -5299,12 +5303,13 @@ export function SchedulingTimesheetWorkspace({
         toast.success(`PDF ${label} Record ${employee.name} berhasil di-generate.`)
         return
       }
+      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
       const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `OT_Record_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+      a.download = `OT_Record_${employee.name.replace(/\s+/g, '_')}_${period}${extSuffix}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -5759,7 +5764,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: { ...secSigs, preparedBy: employee.name },
+      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
       days: dayData,
     })
   }
@@ -5784,12 +5789,13 @@ export function SchedulingTimesheetWorkspace({
 
   async function generateEmployeeAllowancePdf(employee: EmployeeOption) {
     try {
+      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
       const pdf = await buildEmployeeAllowancePdf(employee)
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Site_Allowance_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+      a.download = `Site_Allowance_${employee.name.replace(/\s+/g, '_')}_${period}${extSuffix}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -6157,10 +6163,15 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
-    if (staff || siteConfig.overtimeType === 'none' || (!clockIn && !clockOut)) {
+    if (staff || siteConfig.overtimeType === 'none') {
       return legacyOvertimeResult(0)
     }
     const shiftCode = schedule[day - 1] ?? 'IN'
+    const isOff = shiftCode === 'OFF' || shiftCode === 'FB' || shiftCode === 'Libur'
+    const isHol = isHoliday(period, day, holidays)
+    if (!clockIn && !clockOut && isOff && !isHol) {
+      return legacyOvertimeResult(0)
+    }
     const defaultIn = shiftCode === 'NS' ? siteConfig.nightShiftClockIn : siteConfig.dayShiftClockIn
     const defaultOut =
       shiftCode === 'NS' ? siteConfig.nightShiftClockOut : siteConfig.dayShiftClockOut

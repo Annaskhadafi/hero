@@ -4493,7 +4493,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       .where(
         and(
           eq(dailyActivitySessionItems.sessionId, header.sessionId),
-          eq(dailyActivitySessionItems.isChecked, true)
+          or(
+            eq(dailyActivitySessionItems.isChecked, true),
+            isNull(dailyActivitySessionItems.isChecked)
+          )
         )
       )
       .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
@@ -4517,6 +4520,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     return {
       id: item.id,
       label: item.snapshotLabel,
+      snapshotLabel: item.snapshotLabel,
       group: item.snapshotGroupName || '',
       libraryActivityId: item.libraryActivityId || parsedPayload?.libraryActivityId || null,
       routeItemId: item.routeItemId || parsedPayload?.routeItemId || null,
@@ -4526,6 +4530,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       materialUsed: parsedPayload?.materialUsed || '',
       duration: durationMinutes > 0 ? (hours > 0 ? `${hours}j ${mins}m` : `${mins}m`) : '-',
       points: item.actualPoints || 0,
+      actualPoints: item.actualPoints || 0,
       sortOrder: item.sortOrder || 0,
       photoUrl,
       photos,
@@ -4554,6 +4559,23 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       currentEmployee.accessRole || ''
     )
 
+  const employeeIdsToFetch = Array.from(
+    new Set(
+      [header.employeeId, ...approvals.map((a) => a.approverEmployeeId)].filter(
+        (id): id is number => Boolean(id)
+      )
+    )
+  )
+
+  const employeeSigs = employeeIdsToFetch.length > 0
+    ? await db
+        .select({ id: employees.id, signatureDataUrl: employees.signatureDataUrl })
+        .from(employees)
+        .where(inArray(employees.id, employeeIdsToFetch))
+    : []
+
+  const sigMap = new Map(employeeSigs.map((e) => [e.id, e.signatureDataUrl]))
+
   return {
     sessionId: header.sessionId,
     sessionCode: header.sessionCode,
@@ -4570,33 +4592,62 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       id: header.employeeId,
       name: header.employeeName,
       sn: header.employeeSn,
+      employeeSn: header.employeeSn,
       department: header.department,
       section: header.section,
       jobTitle: header.jobTitle,
+      signatureDataUrl: (header.employeeId ? sigMap.get(header.employeeId) : null) || null,
     },
     site: {
       id: header.siteId,
       name: header.siteName,
       customerName: header.customerName,
     },
+    siteName: header.siteName,
+    customerName: header.customerName,
     totals: {
       itemCount,
       totalPoints,
     },
     sessionItems,
-    approvals: approvals.map((a) => ({
-      id: a.id,
-      stepOrder: a.stepOrder,
-      stepLabel: a.stepLabel,
-      approverEmployeeId: a.approverEmployeeId,
-      approverName: a.approverName,
-      approverEmail: a.approverEmail,
-      approverRole: a.approverRole,
-      status: a.status,
-      signatureDataUrl: a.signatureDataUrl ?? null,
-      remarks: a.remarks,
-      signedAt: a.signedAt,
-    })),
+    items: sessionItems,
+    approvals: approvals.map((a) => {
+      const isStep1 = a.stepOrder === 1
+      const isDraft = (header.status || '').toLowerCase() === 'draft'
+      const rawStatus = (a.status || '').toLowerCase()
+      const effectiveStatus = isStep1 && !isDraft && (rawStatus === 'pending' || rawStatus === 'submitted') ? 'approved' : a.status
+      const isApprovedOrSigned = ['approved', 'signed', 'completed'].includes(effectiveStatus.toLowerCase())
+      const isReverted = effectiveStatus.toLowerCase() === 'reverted' || effectiveStatus.toLowerCase() === 'needs_revision'
+
+      let sig = a.signatureDataUrl || null
+      if (!sig && isApprovedOrSigned) {
+        if (a.approverEmployeeId && sigMap.get(a.approverEmployeeId)) {
+          sig = sigMap.get(a.approverEmployeeId) || null
+        } else if (isStep1 && header.employeeId && sigMap.get(header.employeeId)) {
+          sig = sigMap.get(header.employeeId) || null
+        }
+      }
+
+      const signedAt =
+        a.signedAt ||
+        (isStep1 && isApprovedOrSigned ? (header.submittedAt || header.workDate || new Date()) : null) ||
+        (isReverted ? (header.approvedAt || header.submittedAt || new Date()) : null)
+
+      return {
+        id: a.id,
+        stepOrder: a.stepOrder,
+        stepLabel: a.stepLabel,
+        approverEmployeeId: a.approverEmployeeId,
+        approverName: a.approverName,
+        approverEmail: a.approverEmail,
+        approverRole: a.approverRole,
+        status: effectiveStatus,
+        signatureDataUrl: sig,
+        signatureUrl: sig,
+        remarks: a.remarks,
+        signedAt,
+      }
+    }),
     permissions: {
       canApprove,
       isCurrentEmployee: header.employeeId === currentEmployee.id,
@@ -5462,55 +5513,99 @@ export async function saveDailyActivityApprovalForm(payload: {
       (existingSession?.status || '').toLowerCase().includes('revision')
 
     if (isCurrentlyReverted) {
-      sessionUpdates.status = 'Submitted'
+      sessionUpdates.status = 'submitted'
+      sessionUpdates.submittedAt = new Date()
+      sessionUpdates.updatedAt = new Date()
 
-      const revertedSteps = await db
+      const now = new Date()
+
+      // 1. Step 1 (Karyawan Sign) is approved and signed by submitter
+      const [sessionEmp] = existingSession?.employeeId
+        ? await db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              email: employees.email,
+              signatureDataUrl: employees.signatureDataUrl,
+            })
+            .from(employees)
+            .where(eq(employees.id, existingSession.employeeId))
+            .limit(1)
+        : []
+
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'approved',
+          signedAt: now,
+          signatureDataUrl: sessionEmp?.signatureDataUrl || payload.signatureDataUrl || null,
+          remarks: '',
+        })
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, payload.sessionId),
+            eq(dailyActivityApprovals.stepOrder, 1)
+          )
+        )
+
+      // 2. Step 2 (Leader / PJO) is reset to 'pending'
+      const [step2] = await db
         .select()
         .from(dailyActivityApprovals)
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            or(
-              eq(dailyActivityApprovals.status, 'reverted'),
-              eq(dailyActivityApprovals.status, 'needs_revision')
-            )
+            eq(dailyActivityApprovals.stepOrder, 2)
           )
         )
-        .orderBy(asc(dailyActivityApprovals.stepOrder))
+        .limit(1)
 
-      if (revertedSteps.length > 0) {
-        const targetStep = revertedSteps[0]
+      if (step2) {
         await db
           .update(dailyActivityApprovals)
           .set({
             status: 'pending',
             signatureDataUrl: null,
             signedAt: null,
+            remarks: '',
           })
-          .where(eq(dailyActivityApprovals.id, targetStep.id))
+          .where(eq(dailyActivityApprovals.id, step2.id))
+      }
 
-        const [sessionEmp] = existingSession?.employeeId
-          ? await db.select({ name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, existingSession.employeeId)).limit(1)
-          : []
+      // 3. Reset subsequent steps (e.g. Step 3 Section Head) to 'waiting'
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'waiting',
+          signatureDataUrl: null,
+          signedAt: null,
+          remarks: '',
+        })
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, payload.sessionId),
+            sql`${dailyActivityApprovals.stepOrder} > 2`
+          )
+        )
 
-        const [siteRow] = existingSession?.siteId
-          ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
-          : []
+      // 4. Send email notification to Step 2 (Leader / PJO)
+      const [siteRow] = existingSession?.siteId
+        ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
+        : []
 
+      if (step2?.approverEmail) {
         try {
-          if (targetStep.approverEmail) {
-            await sendDailyActivityStepApprovalEmail({
-              sessionId: payload.sessionId,
-              sessionCode: existingSession?.sessionCode || `ACT-${payload.sessionId}`,
-              employeeName: sessionEmp?.name || 'Karyawan',
-              workDate: existingSession?.workDate,
-              siteName: siteRow?.name || '-',
-              approverName: targetStep.approverName || 'Approver',
-              approverEmail: targetStep.approverEmail,
-              approvalStep: targetStep.stepLabel,
-              approvalToken: targetStep.approvalToken,
-            })
-          }
+          await sendDailyActivityStepApprovalEmail({
+            sessionId: payload.sessionId,
+            sessionCode: existingSession?.sessionCode || `ACT-${payload.sessionId}`,
+            employeeName: sessionEmp?.name || 'Karyawan',
+            workDate: existingSession?.workDate,
+            siteName: siteRow?.name || '-',
+            approverName: step2.approverName || 'Leader / PJO',
+            approverEmail: step2.approverEmail,
+            approvalStep: step2.stepLabel || 'Leader / PJO',
+            approvalToken: step2.approvalToken,
+          })
         } catch (mailErr) {
           console.error('Error sending smart resume daily activity email:', mailErr)
         }
@@ -6514,7 +6609,9 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: emp.id,
           approverName: emp.name,
           approverEmail: emp.email || '',
-          status: 'pending',
+          status: 'approved',
+          signatureDataUrl: submitterSig,
+          signedAt: now,
           approvalToken: step1Token,
           createdAt: now,
         },
@@ -6526,7 +6623,7 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: leaderEmpId ?? null,
           approverName: leaderName,
           approverEmail: leaderEmail,
-          status: 'waiting',
+          status: 'pending',
           approvalToken: step2Token,
           createdAt: now,
         },
@@ -6641,7 +6738,11 @@ export async function deleteUserSignatureAction() {
   }
 }
 
-export async function batchApproveDailyActivitySessionsAction(sessionIds: number[], remarks?: string) {
+export async function batchApproveDailyActivitySessionsAction(
+  sessionIds: number[],
+  remarks?: string,
+  signatureDataUrl?: string
+) {
   try {
     if (!sessionIds || sessionIds.length === 0) {
       return { success: false as const, error: 'Pilih minimal satu aktivitas untuk diapprove.' }
@@ -6662,7 +6763,17 @@ export async function batchApproveDailyActivitySessionsAction(sessionIds: number
       .where(eq(employees.id, emp.id))
       .limit(1)
 
-    if (!empRecord?.signatureDataUrl) {
+    let sigUrl = empRecord?.signatureDataUrl || signatureDataUrl || null
+
+    if (signatureDataUrl && (!empRecord?.signatureDataUrl || empRecord.signatureDataUrl !== signatureDataUrl)) {
+      await db
+        .update(employees)
+        .set({ signatureDataUrl, updatedAt: new Date() })
+        .where(eq(employees.id, emp.id))
+      sigUrl = signatureDataUrl
+    }
+
+    if (!sigUrl) {
       return {
         success: false as const,
         needsSignatureRegistration: true as const,
@@ -6670,7 +6781,6 @@ export async function batchApproveDailyActivitySessionsAction(sessionIds: number
       }
     }
 
-    const sigUrl = empRecord.signatureDataUrl
     const now = new Date()
     let approvedCount = 0
 
@@ -6709,8 +6819,8 @@ export async function batchApproveDailyActivitySessionsAction(sessionIds: number
           status: 'approved',
           signatureDataUrl: sigUrl,
           signedAt: now,
-          approverName: empRecord.name || waitingStep.approverName,
-          approverEmployeeId: empRecord.id,
+          approverName: empRecord?.name || waitingStep.approverName,
+          approverEmployeeId: empRecord?.id || emp.id,
           remarks: remarks || 'Approved',
         })
         .where(eq(dailyActivityApprovals.id, waitingStep.id))
@@ -6975,22 +7085,33 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
     const now = new Date()
 
     for (const sessionId of sessionIds) {
-      // Find current active step (pending/waiting) to mark as reverted with the revert note
-      const [activeStep] = await db
+      // Find current active step: first pending step, or fallback to first waiting/approved step
+      const [pendingStep] = await db
         .select()
         .from(dailyActivityApprovals)
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, sessionId),
-            sql`${dailyActivityApprovals.stepOrder} > 1`,
-            or(
-              eq(dailyActivityApprovals.status, 'pending'),
-              eq(dailyActivityApprovals.status, 'waiting')
-            )
+            eq(dailyActivityApprovals.status, 'pending')
           )
         )
         .orderBy(asc(dailyActivityApprovals.stepOrder))
         .limit(1)
+
+      const activeStep = pendingStep || (await db
+        .select()
+        .from(dailyActivityApprovals)
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, sessionId),
+            or(
+              eq(dailyActivityApprovals.status, 'waiting'),
+              eq(dailyActivityApprovals.status, 'approved')
+            )
+          )
+        )
+        .orderBy(desc(dailyActivityApprovals.stepOrder))
+        .limit(1))[0]
 
       if (activeStep) {
         await db
@@ -6998,12 +7119,27 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
           .set({
             status: 'reverted',
             remarks: remarks || `Dokumen dikembalikan oleh ${emp.name} untuk revisi.`,
-            signedAt: null,
-            signatureDataUrl: null,
+            signedAt: now,
             approverName: emp.name,
             approverEmployeeId: emp.id,
           })
           .where(eq(dailyActivityApprovals.id, activeStep.id))
+
+        // Reset subsequent steps (if any) to waiting
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'waiting',
+            remarks: '',
+            signedAt: null,
+            signatureDataUrl: null,
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, sessionId),
+              sql`${dailyActivityApprovals.stepOrder} > ${activeStep.stepOrder}`
+            )
+          )
       }
 
       await db
@@ -7068,8 +7204,8 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
   }
 }
 
-export async function singleApproveDailyActivityAction(sessionId: number, remarks?: string) {
-  return batchApproveDailyActivitySessionsAction([sessionId], remarks)
+export async function singleApproveDailyActivityAction(sessionId: number, remarks?: string, signatureDataUrl?: string) {
+  return batchApproveDailyActivitySessionsAction([sessionId], remarks, signatureDataUrl)
 }
 
 export async function singleRejectDailyActivityAction(sessionId: number, remarks?: string) {

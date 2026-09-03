@@ -16,6 +16,7 @@ export type PdfSignatureNames = {
   logoUrl?: string
   useExternalOnly?: boolean
   omitExternal?: boolean
+  includeExternal?: boolean
 }
 
 export async function embedCustomLogo(
@@ -69,7 +70,7 @@ export function drawPdfSignatures(
       ['Diketahui oleh:', names.hrName || ''],
     ]
 
-    if (!names.omitExternal) {
+    if (names.includeExternal && !names.omitExternal) {
       if (names.externalPreparedBy?.trim()) {
         labels.push(['Dibuat oleh (Eksternal):', names.externalPreparedBy.trim()])
       }
@@ -98,14 +99,14 @@ export function drawPdfSignatures(
 
     page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
     page.drawLine({
-      start: { x, y: y - 55 },
-      end: { x: x + lineWidth, y: y - 55 },
+      start: { x, y: y - 42 },
+      end: { x: x + lineWidth, y: y - 42 },
       color: rgb(0.5, 0.5, 0.5),
       thickness: 0.5,
     })
     page.drawText(name || '-', {
       x,
-      y: y - 70,
+      y: y - 54,
       font: fonts.regular,
       size: 7,
       maxWidth: lineWidth,

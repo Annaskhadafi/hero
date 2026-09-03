@@ -162,7 +162,11 @@ export function MobileDailyActivityClient({
     if (!selectedReviewDoc) return
     setIsActionRunning(true)
     try {
-      const res = await singleApproveDailyActivityAction(selectedReviewDoc.sessionId, approvalRemarks)
+      const res = await singleApproveDailyActivityAction(
+        selectedReviewDoc.sessionId,
+        approvalRemarks,
+        userSignature || undefined
+      )
       if (res.success) {
         toast.success('Dokumen Daily Activity berhasil disetujui!')
         setIsReviewOpen(false)
@@ -330,6 +334,7 @@ export function MobileDailyActivityClient({
             standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
             site={data.site}
             teamMembers={teamMembers}
+            revisionSessionId={editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : undefined)}
             initialSessionData={editSessionData?.session || editSessionData}
           />
         </TabsContent>
@@ -783,8 +788,8 @@ export function MobileDailyActivityClient({
                             <td>Dept / Section: <strong>{[selectedReviewDoc.employee?.department, selectedReviewDoc.employee?.section].filter(Boolean).join(' / ') || '—'}</strong></td>
                           </tr>
                           <tr>
-                            <td>Site: <strong>{selectedReviewDoc.site?.name || 'Balikpapan'}</strong></td>
-                            <td>Customer: <strong>{selectedReviewDoc.customerName || 'Default Customer'}</strong></td>
+                            <td>Site: <strong>{selectedReviewDoc.site?.name || selectedReviewDoc.siteName || 'Balikpapan'}</strong></td>
+                            <td>Customer: <strong>{selectedReviewDoc.customerName || selectedReviewDoc.site?.customerName || 'Default Customer'}</strong></td>
                           </tr>
                           {selectedReviewDoc.teamMembersSummary ? (
                             <tr>
@@ -798,8 +803,8 @@ export function MobileDailyActivityClient({
 
                       {/* A. Daily Activity Items */}
                       {(() => {
-                        const items = selectedReviewDoc.items || []
-                        const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points || 0), 0)
+                        const items = selectedReviewDoc.items || selectedReviewDoc.sessionItems || []
+                        const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points ?? it.actualPoints ?? 0), 0)
                         return (
                           <>
                             <div className="font-bold mb-1 text-[8.5pt]">
@@ -821,10 +826,10 @@ export function MobileDailyActivityClient({
                                   items.map((it: any, idx: number) => (
                                     <tr key={it.id || idx}>
                                       <td className="text-center">{idx + 1}</td>
-                                      <td>{it.label}</td>
+                                      <td>{it.label || it.snapshotLabel || 'Aktivitas'}</td>
                                       <td className="text-center">{it.unitNumber || '-'}</td>
                                       <td className="text-center">{it.duration || '-'}</td>
-                                      <td className="text-center font-bold">{it.points || 0}</td>
+                                      <td className="text-center font-bold">{it.points ?? it.actualPoints ?? 0}</td>
                                       <td className="text-left text-[7.5pt]">{it.remark || '-'}</td>
                                     </tr>
                                   ))
@@ -856,13 +861,22 @@ export function MobileDailyActivityClient({
                           {(selectedReviewDoc.approvals || []).map((step: any) => {
                             const isPending = step.status === 'pending'
                             const liveRemark = isPending && approvalRemarks ? approvalRemarks : step.remarks || '—'
+                            const isStepSigned = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
+                            const isStepReverted = step.status === 'reverted'
+                            const timeLabel = step.signedAt
+                              ? formatTimestamp(step.signedAt)
+                              : isPending && approvalRemarks
+                              ? 'Live Preview'
+                              : '—'
                             return (
                               <tr key={step.stepOrder}>
                                 <td className="text-center">{step.stepOrder}</td>
                                 <td className="text-left font-medium">{step.stepLabel}</td>
                                 <td className="text-left font-medium">{step.approverName || '-'}</td>
-                                <td className="text-center capitalize font-bold">{step.status}</td>
-                                <td className="text-center text-[7pt]">{formatTimestamp(step.signedAt)}</td>
+                                <td className={cn("text-center capitalize font-bold", isStepReverted ? "text-amber-700" : isStepSigned ? "text-emerald-700" : "")}>
+                                  {step.status}
+                                </td>
+                                <td className="text-center text-[7pt]">{timeLabel}</td>
                                 <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight">{liveRemark}</td>
                               </tr>
                             )
@@ -876,12 +890,14 @@ export function MobileDailyActivityClient({
                         const step1 = approvals.find((s: any) => s.stepOrder === 1)
                         const step2 = approvals.find((s: any) => s.stepOrder === 2)
                         const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
+                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signatureDataUrl || step1?.signatureUrl)
                         const isApproved2 = step2?.status === 'approved'
                         const isApproved3 = step3?.status === 'approved'
-                        const currentSig = isSigned1 ? (step1?.signatureUrl || step1?.signatureDataUrl) : null
-                        const sig2 = isApproved2 ? (step2?.signatureUrl || step2?.signatureDataUrl) : null
-                        const sig3 = isApproved3 ? (step3?.signatureUrl || step3?.signatureDataUrl) : null
+                        const isReverted2 = step2?.status === 'reverted'
+                        const isReverted3 = step3?.status === 'reverted'
+                        const currentSig = step1?.signatureUrl || step1?.signatureDataUrl || selectedReviewDoc.employee?.signatureDataUrl || null
+                        const sig2 = step2?.signatureUrl || step2?.signatureDataUrl || null
+                        const sig3 = step3?.signatureUrl || step3?.signatureDataUrl || null
 
                         return (
                           <>
@@ -903,8 +919,11 @@ export function MobileDailyActivityClient({
                                   {selectedReviewDoc.employee?.name}
                                 </div>
                                 <div className="text-[7pt] text-slate-600 font-medium">{selectedReviewDoc.employee?.jobTitle || 'Serviceman'}</div>
-                                {isSigned1 && step1?.signedAt && (
-                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1.signedAt)}</div>
+                                {step1?.signedAt && (
+                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                    {step1?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                    {formatTimestamp(step1.signedAt)}
+                                  </div>
                                 )}
                               </div>
 
@@ -926,8 +945,11 @@ export function MobileDailyActivityClient({
                                   {step2?.approverName || selectedReviewDoc.employee?.name}
                                 </div>
                                 <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
-                                {isApproved2 && step2?.signedAt && (
-                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step2.signedAt)}</div>
+                                {step2?.signedAt && (
+                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                    {isReverted2 ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                    {formatTimestamp(step2.signedAt)}
+                                  </div>
                                 )}
                               </div>
 
@@ -949,8 +971,11 @@ export function MobileDailyActivityClient({
                                   {step3?.approverName || selectedReviewDoc.employee?.name}
                                 </div>
                                 <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                                {isApproved3 && step3?.signedAt && (
-                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step3.signedAt)}</div>
+                                {step3?.signedAt && (
+                                  <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                    {isReverted3 ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                    {formatTimestamp(step3.signedAt)}
+                                  </div>
                                 )}
                               </div>
                             </div>

@@ -229,11 +229,15 @@ export async function ensureSchedulingTimesheetTables() {
         import_preview_id integer,
         validation_flags jsonb not null default '[]'::jsonb,
         work_minutes integer,
+        overtime_hours double precision,
         saved_by_user_id text references "user"(id) on delete set null,
         created_at timestamp not null default now(),
         updated_at timestamp not null default now()
       );
     `)
+      await tx.execute(
+        sql`alter table hero_timesheet_attendance_real_overrides add column if not exists overtime_hours double precision;`
+      )
       await tx.execute(sql`
       create unique index if not exists hero_timesheet_attendance_real_overrides_employee_day_uidx
       on hero_timesheet_attendance_real_overrides(site_id, period, employee_id, day);

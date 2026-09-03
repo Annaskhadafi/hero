@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   Download,
+  Eye,
   FileSignature,
   FileText,
   ImagePlus,
@@ -31,6 +32,7 @@ import {
 } from '@/app/dashboard/activity-hub/actions'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
+import { cn } from '@/lib/utils'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -58,6 +60,29 @@ import {
 } from '@/lib/offline-sync'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { RouteFolderTree } from '@/components/mobile/route-folder-tree'
+
+function fmtDate(d: string | Date | null | undefined): string {
+  if (!d) return '—'
+  const date = typeof d === 'string' ? new Date(d) : d
+  if (isNaN(date.getTime())) return String(d)
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = date.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
+function fmtDt(d: string | Date | null | undefined): string {
+  if (!d) return '—'
+  const date = typeof d === 'string' ? new Date(d) : d
+  if (isNaN(date.getTime())) return String(d)
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const yyyy = date.getFullYear()
+  const hh = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  const ss = String(date.getSeconds()).padStart(2, '0')
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`
+}
 
 type AssignmentOption = {
   id: number
@@ -521,11 +546,17 @@ export function MobileDailyActivityForm({
   const [notes, setNotes] = useState(initialSessionData?.summaryRemark || initialSessionData?.notes || '')
   const [manualLocation, setManualLocation] = useState('')
   const initialCustomerName =
-    site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : ''
+    initialSessionData?.customerName ||
+    initialSessionData?.site?.customerName ||
+    (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
   const [customerName, setCustomerName] = useState(initialCustomerName)
 
-  const existingLeaderApproval = initialSessionData?.approvals?.find((a: any) => a.stepOrder === 1)
-  const existingSuperiorApproval = initialSessionData?.approvals?.find((a: any) => a.stepOrder === 2)
+  const existingLeaderApproval =
+    initialSessionData?.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
+    initialSessionData?.approvals?.find((a: any) => a.stepOrder === 1)
+  const existingSuperiorApproval =
+    initialSessionData?.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
+    initialSessionData?.approvals?.find((a: any) => a.stepOrder === 2)
 
   const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
     if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
@@ -535,6 +566,44 @@ export function MobileDailyActivityForm({
     if (existingSuperiorApproval?.approverEmployeeId) return String(existingSuperiorApproval.approverEmployeeId)
     return hierarchy?.superior?.id ? String(hierarchy.superior.id) : ''
   })
+
+  useEffect(() => {
+    if (initialSessionData) {
+      const cust =
+        initialSessionData.customerName ||
+        initialSessionData.site?.customerName ||
+        (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
+      if (cust) {
+        setCustomerName(cust)
+      }
+      if (initialSessionData.shiftCode) {
+        setShiftCode(initialSessionData.shiftCode)
+      }
+      if (initialSessionData.summaryRemark || initialSessionData.notes) {
+        setNotes(initialSessionData.summaryRemark || initialSessionData.notes)
+      }
+      if (initialSessionData.workDate) {
+        try {
+          const d = new Date(initialSessionData.workDate)
+          if (!isNaN(d.getTime())) {
+            setWorkDate(d.toISOString().slice(0, 10))
+          }
+        } catch {}
+      }
+      const leaderApp =
+        initialSessionData.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
+        initialSessionData.approvals?.find((a: any) => a.stepOrder === 1)
+      if (leaderApp?.approverEmployeeId) {
+        setLeaderEmployeeId(String(leaderApp.approverEmployeeId))
+      }
+      const superiorApp =
+        initialSessionData.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
+        initialSessionData.approvals?.find((a: any) => a.stepOrder === 2)
+      if (superiorApp?.approverEmployeeId) {
+        setSuperiorEmployeeId(String(superiorApp.approverEmployeeId))
+      }
+    }
+  }, [initialSessionData, site?.customerName])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoName, setPhotoName] = useState('')
@@ -1865,9 +1934,21 @@ export function MobileDailyActivityForm({
                 Details & Employee Profile
               </h2>
             </div>
-            <Badge className={revisionSessionId ? "border-0 bg-amber-100 text-amber-800 text-[10px] font-bold" : "border-0 bg-[#eaf4fb] text-[#003f78] text-[10px] font-bold"}>
-                {revisionSessionId ? "Mode Revisi" : "Draft Laporan"}
-              </Badge>
+            <Button
+              type="button"
+              onClick={() => setIsPdfOpen(true)}
+              size="sm"
+              variant="outline"
+              className={cn(
+                "h-8 px-3 rounded-xl text-xs font-bold gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer",
+                revisionSessionId
+                  ? "border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-900 ring-2 ring-amber-200/70"
+                  : "border-sky-200 bg-[#eaf4fb] hover:bg-sky-100 text-[#003f78]"
+              )}
+            >
+              <Eye className="size-3.5" />
+              Preview
+            </Button>
           </div>
 
           {/* Tanggal & Shift Grid */}
@@ -2908,225 +2989,284 @@ export function MobileDailyActivityForm({
             </DialogHeader>
 
             <div className="flex-1 overflow-auto p-4 bg-slate-950 flex justify-center items-start">
-              <div
-                ref={pdfPreviewRef}
-                style={{
-                  transform: `scale(${zoomScale})`,
-                  transformOrigin: 'top center',
-                  transition: 'transform 0.15s ease-out',
-                }}
-                className="w-full max-w-[620px] bg-white text-slate-900 shadow-2xl p-6 sm:p-8 rounded-sm text-xs leading-normal border border-slate-200"
-              >
-                {/* Company Header */}
-                <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3 mb-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="size-10 rounded-lg bg-[#003461] text-white flex items-center justify-center font-black text-base tracking-wider">
-                      HERO
-                    </div>
-                    <div>
-                      <p className="font-black text-sm tracking-tight text-slate-900 uppercase">PT CHITRAPARATAMA</p>
-                      <p className="text-[10px] text-slate-500 font-medium">Heavy Equipment &amp; Resource Operations</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-mono font-bold text-xs text-[#003461]">LAPORAN AKTIVITAS</p>
-                    <p className="font-mono text-[10px] text-slate-500">Doc No: F.OP.ACT-01</p>
-                    <Badge className="border-0 bg-amber-100 text-amber-900 font-bold text-[9px] mt-0.5">
-                      {(initialSessionData?.status || 'DRAFT').toUpperCase()}
-                    </Badge>
-                  </div>
-                </div>
+              {(() => {
+                const previewItemsList = selectedLibraries.length > 0
+                  ? selectedLibraries.map((lib, idx) => {
+                      const entry = selfInputEntries[`${lib.id}`]
+                      const durationStr = entry?.startTime && entry?.endTime ? `${entry.startTime} - ${entry.endTime}` : '-'
+                      return {
+                        id: lib.id,
+                        label: `${lib.activityCode} - ${lib.activityName}`,
+                        unitNumber: entry?.equipmentNo || '-',
+                        duration: durationStr,
+                        points: lib.basePoints || 5,
+                        remark: entry?.notes || '-',
+                      }
+                    })
+                  : initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0
+                  ? initialSessionData.sessionItems.map((it: any) => ({
+                      id: it.id,
+                      label: it.label || it.snapshotLabel || '-',
+                      unitNumber: it.unitNumber || '-',
+                      duration: it.duration || (it.startedAt && it.endedAt ? `${it.startedAt} - ${it.endedAt}` : '-'),
+                      points: it.points || it.actualPoints || 5,
+                      remark: it.remark || '-',
+                    }))
+                  : []
 
-                {/* Title */}
-                <div className="text-center my-3">
-                  <h1 className="text-sm font-black uppercase tracking-wider text-slate-900 underline decoration-slate-900 decoration-1 underline-offset-4">
-                    LAPORAN HARIAN AKTIVITAS TEKNISI
-                  </h1>
-                  <p className="font-mono text-xs font-bold text-slate-600 mt-1">
-                    Nomor Sesi: {initialSessionData?.sessionCode || 'ACT-DRAFT-REVISI'}
-                  </p>
-                </div>
+                const leaderName =
+                  leaderOptions.find((l) => l.value === leaderEmployeeId)?.label?.split('—')[0]?.trim() ||
+                  existingLeaderApproval?.approverName ||
+                  'Leader Lapangan'
+                const superiorName =
+                  superiorOptions.find((s) => s.value === superiorEmployeeId)?.label?.split('—')[0]?.trim() ||
+                  existingSuperiorApproval?.approverName ||
+                  'Section Head'
 
-                {/* Reversion Notice in PDF if any */}
-                {initialSessionData?.approvals?.find((a: any) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision')?.remarks ? (
-                  <div className="my-3 p-2.5 rounded bg-amber-50 border border-amber-300 text-amber-900 text-[10px]">
-                    <p className="font-bold uppercase tracking-wider text-amber-800">
-                      Catatan Revisi Approver:
-                    </p>
-                    <p className="italic mt-0.5">
-                      &ldquo;{initialSessionData.approvals.find((a: any) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision')?.remarks}&rdquo;
-                    </p>
-                  </div>
-                ) : null}
+                const previewApprovalsList = [
+                  {
+                    stepOrder: 1,
+                    stepLabel: 'Karyawan Sign',
+                    approverRole: 'employee',
+                    approverName: employee?.name || initialSessionData?.employee?.name || 'Karyawan',
+                    status: 'approved',
+                    signedAt: initialSessionData?.submittedAt || initialSessionData?.workDate || new Date(),
+                    signatureDataUrl: employee?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl || null,
+                    remarks: '',
+                  },
+                  {
+                    stepOrder: 2,
+                    stepLabel: 'Leader / PJO',
+                    approverRole: 'leader',
+                    approverName: leaderName,
+                    status: existingLeaderApproval?.status || 'waiting',
+                    signedAt: existingLeaderApproval?.signedAt || (existingLeaderApproval?.status === 'reverted' ? initialSessionData?.approvedAt || initialSessionData?.submittedAt || new Date() : null),
+                    signatureDataUrl: existingLeaderApproval?.signatureDataUrl || null,
+                    remarks: existingLeaderApproval?.remarks || '',
+                  },
+                  {
+                    stepOrder: 3,
+                    stepLabel: 'Section Head',
+                    approverRole: 'section_head',
+                    approverName: superiorName,
+                    status: existingSuperiorApproval?.status || 'waiting',
+                    signedAt: existingSuperiorApproval?.signedAt || (existingSuperiorApproval?.status === 'reverted' ? initialSessionData?.approvedAt || initialSessionData?.submittedAt || new Date() : null),
+                    signatureDataUrl: existingSuperiorApproval?.signatureDataUrl || null,
+                    remarks: existingSuperiorApproval?.remarks || '',
+                  },
+                ]
 
-                {/* Section 1: Overview Table */}
-                <div className="my-3 space-y-1.5">
-                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
-                    I. Profil Teknisi &amp; Parameter Kerja
-                  </p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">Nama Teknisi</span>
-                      <span className="font-semibold text-slate-900">: {employee?.name || initialSessionData?.employee?.name || '-'}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">Tanggal Kerja</span>
-                      <span className="font-semibold text-slate-900">: {workDate || '-'}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">SN / NIK</span>
-                      <span className="font-semibold text-slate-900">: {employee?.employeeSn || initialSessionData?.employee?.sn || '-'}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">Shift</span>
-                      <span className="font-semibold text-slate-900">: {shiftCode || '-'}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">Departemen</span>
-                      <span className="font-semibold text-slate-900">: {employee?.department || initialSessionData?.employee?.department || '-'}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="w-28 text-slate-500 shrink-0 font-medium">Lokasi Site</span>
-                      <span className="font-semibold text-slate-900">: {site?.name || initialSessionData?.site?.name || 'Site Operasional'}</span>
-                    </div>
-                  </div>
-                </div>
+                const previewEmployeeSig = previewApprovalsList.find((a) => a.approverRole === 'employee')
+                const previewLeaderSig = previewApprovalsList.find((a) => a.approverRole === 'leader')
+                const previewSectionHeadSig = previewApprovalsList.find((a) => a.approverRole === 'section_head')
 
-                {/* Section 2: Activities Table */}
-                <div className="my-3 space-y-1.5">
-                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
-                    II. Rincian Aktivitas &amp; Capaian Poin
-                  </p>
-                  <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                    <thead>
-                      <tr className="bg-slate-100 font-bold text-slate-700">
-                        <th className="border border-slate-300 px-2 py-1 text-center w-8">No</th>
-                        <th className="border border-slate-300 px-2 py-1">Aktivitas / Uraian</th>
-                        <th className="border border-slate-300 px-2 py-1 text-center w-20">No. Unit</th>
-                        <th className="border border-slate-300 px-2 py-1 text-center w-24">Waktu</th>
-                        <th className="border border-slate-300 px-2 py-1 text-center w-14">Poin</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedLibraries.length > 0 ? (
-                        selectedLibraries.map((lib, idx) => {
-                          const entry = selfInputEntries[`${lib.id}`]
+                const totalPts = previewItemsList.reduce((s, i) => s + i.points, 0)
+                const teamSummary = isTeamLog && selectedMemberIds.length > 0
+                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ')
+                  : ''
+
+                return (
+                  <div
+                    ref={pdfPreviewRef}
+                    style={{
+                      transform: `scale(${zoomScale})`,
+                      transformOrigin: 'top center',
+                      transition: 'transform 0.15s ease-out',
+                    }}
+                    className="w-full max-w-[680px] bg-white text-black shadow-2xl p-6 sm:p-8 rounded-sm text-[8.5pt] font-sans leading-tight border border-slate-200"
+                  >
+                    <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+                    <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                      <tbody>
+                        <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Details</td></tr>
+                        <tr>
+                          <td className="w-1/2">Tanggal Kerja: <strong>{workDate ? fmtDate(workDate) : '—'}</strong></td>
+                          <td className="w-1/2">Shift: <strong>{shiftCode || 'ALL'}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Kode Sesi: <strong>{initialSessionData?.sessionCode || 'ACT-DRAFT-REVISI'}</strong></td>
+                          <td>Status: <span className="capitalize font-bold text-black">{initialSessionData?.status || 'Draft'}</span></td>
+                        </tr>
+                        <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Employee Profile</td></tr>
+                        <tr>
+                          <td>Nama: <strong>{employee?.name || initialSessionData?.employee?.name || '—'}</strong></td>
+                          <td>SN: <strong>{employee?.employeeSn || (initialSessionData?.employee as any)?.sn || employeeId || '—'}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Job Title: <strong>{employee?.jobTitle || initialSessionData?.employee?.jobTitle || 'Staff'}</strong></td>
+                          <td>Dept / Section: <strong>{[employee?.department || initialSessionData?.employee?.department, employee?.section || initialSessionData?.employee?.section].filter(Boolean).join(' / ') || '—'}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Site: <strong>{site?.name || initialSessionData?.site?.name || '—'}</strong></td>
+                          <td>Customer: <strong>{customerName || site?.customerName || initialSessionData?.customerName || 'Default Customer'}</strong></td>
+                        </tr>
+                        {teamSummary ? (
+                          <tr>
+                            <td colSpan={2}>
+                              Anggota Tim: <strong className="text-blue-900">{teamSummary}</strong>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+
+                    {/* A. Daily Activity Items */}
+                    <div className="font-bold mb-1 text-[8.5pt]">
+                      A. Daily Activity Items (Total: {previewItemsList.length} item, {totalPts} poin)
+                    </div>
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                      <thead>
+                        <tr className="bg-white font-bold text-center">
+                          <th className="w-[6%]">#</th>
+                          <th className="text-left w-[40%]">Aktivitas</th>
+                          <th className="w-[14%]">Unit</th>
+                          <th className="w-[12%]">Durasi</th>
+                          <th className="w-[10%]">Poin</th>
+                          <th className="text-left w-[18%]">Remark</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewItemsList.length > 0 ? (
+                          previewItemsList.map((item, idx) => (
+                            <tr key={item.id || idx}>
+                              <td className="text-center">{idx + 1}</td>
+                              <td>{item.label}</td>
+                              <td className="text-center">{item.unitNumber || '-'}</td>
+                              <td className="text-center">{item.duration}</td>
+                              <td className="text-center font-bold">{item.points}</td>
+                              <td className="text-left text-[7.5pt]">{item.remark || '-'}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* B. Approval Steps */}
+                    <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr className="bg-white font-bold text-center">
+                          <th style={{ width: '6%' }}>#</th>
+                          <th className="text-left" style={{ width: '22%' }}>Tahap</th>
+                          <th className="text-left" style={{ width: '24%' }}>Approver</th>
+                          <th style={{ width: '14%' }}>Status</th>
+                          <th style={{ width: '18%' }}>Waktu</th>
+                          <th className="text-left" style={{ width: '16%' }}>Catatan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewApprovalsList.map((step) => {
+                          const isApproved = ['approved', 'signed', 'completed'].includes((step.status || '').toLowerCase())
+                          const isReverted = (step.status || '').toLowerCase() === 'reverted' || (step.status || '').toLowerCase() === 'needs_revision'
+                          const statusLabel = isApproved ? 'Approved' : isReverted ? 'Reverted' : step.status
                           return (
-                            <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
-                              <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
-                              <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">
-                                {lib.activityCode} - {lib.activityName}
-                                {entry?.notes ? <p className="text-[9px] font-normal text-slate-500 italic mt-0.5">{entry.notes}</p> : null}
+                            <tr key={step.stepOrder} className={isReverted ? "bg-amber-50/70" : undefined}>
+                              <td className="text-center">{step.stepOrder}</td>
+                              <td className="text-left font-medium">{step.stepLabel}</td>
+                              <td className="text-left font-medium">{step.approverName || '-'}</td>
+                              <td className={cn(
+                                "text-center capitalize font-bold",
+                                isApproved ? "text-emerald-700" :
+                                isReverted ? "text-amber-700" :
+                                step.status === 'rejected' ? "text-rose-700" :
+                                "text-slate-700"
+                              )}>
+                                {statusLabel}
                               </td>
-                              <td className="border border-slate-300 px-2 py-1 text-center font-mono">{entry?.equipmentNo || '-'}</td>
-                              <td className="border border-slate-300 px-2 py-1 text-center font-mono text-[9px]">
-                                {entry?.startTime || '-'} - {entry?.endTime || '-'}
-                              </td>
-                              <td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{lib.basePoints || 5} pts</td>
+                              <td className="text-center text-[7pt]">{step.signedAt ? fmtDt(step.signedAt) : '—'}</td>
+                              <td className="text-left text-[7.5pt] text-slate-600 italic break-words whitespace-normal leading-tight">{step.remarks || '—'}</td>
                             </tr>
                           )
-                        })
-                      ) : initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0 ? (
-                        initialSessionData.sessionItems.map((it: any, idx: number) => (
-                          <tr key={idx} className="odd:bg-white even:bg-slate-50/50">
-                            <td className="border border-slate-300 px-2 py-1 text-center font-mono">{idx + 1}</td>
-                            <td className="border border-slate-300 px-2 py-1 font-semibold text-slate-900">
-                              {it.label}
-                              {it.remark ? <p className="text-[9px] font-normal text-slate-500 italic mt-0.5">{it.remark}</p> : null}
-                            </td>
-                            <td className="border border-slate-300 px-2 py-1 text-center font-mono">{it.unitNumber || '-'}</td>
-                            <td className="border border-slate-300 px-2 py-1 text-center font-mono text-[9px]">
-                              {it.startedAt || '-'} - {it.endedAt || '-'}
-                            </td>
-                            <td className="border border-slate-300 px-2 py-1 text-center font-mono font-bold text-amber-700">{it.points || 5} pts</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={5} className="border border-slate-300 px-2 py-2 text-center text-slate-400 italic">
-                            Belum ada aktivitas yang dipilih.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        })}
+                      </tbody>
+                    </table>
 
-                {notes ? (
-                  <div className="my-3 space-y-1">
-                    <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
-                      III. Catatan / Ringkasan Pekerjaan
-                    </p>
-                    <p className="text-[11px] text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200">{notes}</p>
-                  </div>
-                ) : null}
-
-                {/* Section 4: Signatures Table */}
-                <div className="mt-5 space-y-1.5">
-                  <p className="font-bold text-[11px] text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-0.5">
-                    IV. Lembar Persetujuan &amp; Otorisasi
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-center text-[10px] mt-2 border border-slate-300 rounded p-2">
-                    {/* Requester */}
-                    <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
-                      <p className="font-bold text-slate-700">Teknisi / Pemohon</p>
-                      <div className="my-1 py-1 flex items-center justify-center">
-                        <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          DIGITALLY SUBMITTED
-                        </span>
-                      </div>
+                    {/* Signatories */}
+                    <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                      {/* Karyawan */}
                       <div>
-                        <p className="font-bold text-slate-900 underline">{employee?.name || initialSessionData?.employee?.name || 'Teknisi'}</p>
-                        <p className="text-[9px] text-slate-500">Teknisi</p>
-                      </div>
-                    </div>
-
-                    {/* Step 1 Leader */}
-                    <div className="border-r border-slate-200 pr-1 flex flex-col justify-between min-h-[90px]">
-                      <p className="font-bold text-slate-700">Leader / Supervisor</p>
-                      <div className="my-1 py-1 flex items-center justify-center">
-                        {existingLeaderApproval?.signatureDataUrl ? (
-                          <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="h-8 max-w-[90px] object-contain" />
-                        ) : existingLeaderApproval?.status === 'approved' ? (
-                          <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
-                        ) : existingLeaderApproval?.status === 'reverted' ? (
-                          <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
+                        <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
+                        <div className="h-14 flex items-end">
+                          {previewEmployeeSig?.signatureDataUrl ? (
+                            <img src={previewEmployeeSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+                          ) : previewEmployeeSig?.status === 'approved' ? (
+                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{employee?.name || initialSessionData?.employee?.name}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[7.5pt]"></span>
+                          )}
+                        </div>
+                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                          {employee?.name || initialSessionData?.employee?.name || '—'}
+                        </div>
+                        <div className="text-[7pt] text-slate-600 font-medium">{employee?.jobTitle || initialSessionData?.employee?.jobTitle || 'Staff'}</div>
+                        {previewEmployeeSig?.signedAt && (
+                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                            {previewEmployeeSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                            {fmtDt(previewEmployeeSig.signedAt)}
+                          </div>
                         )}
                       </div>
+
+                      {/* Leader / PJO */}
                       <div>
-                        <p className="font-bold text-slate-900 underline">
-                          {leaderOptions.find((l) => l.value === leaderEmployeeId)?.label?.split('—')[0]?.trim() || existingLeaderApproval?.approverName || '-'}
-                        </p>
-                        <p className="text-[9px] text-slate-500">Leader (Tahap 1)</p>
+                        <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
+                        <div className="h-14 flex items-end">
+                          {previewLeaderSig?.signatureDataUrl ? (
+                            <img src={previewLeaderSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+                          ) : previewLeaderSig?.status === 'approved' ? (
+                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{previewLeaderSig.approverName || 'Leader / PJO'}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[7.5pt]"></span>
+                          )}
+                        </div>
+                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                          {previewLeaderSig?.approverName || employee?.name || initialSessionData?.employee?.name || '—'}
+                        </div>
+                        <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
+                        {previewLeaderSig?.signedAt && (
+                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                            {previewLeaderSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                            {fmtDt(previewLeaderSig.signedAt)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Section Head */}
+                      <div>
+                        <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
+                        <div className="h-14 flex items-end">
+                          {previewSectionHeadSig?.signatureDataUrl ? (
+                            <img src={previewSectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+                          ) : previewSectionHeadSig?.status === 'approved' ? (
+                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{previewSectionHeadSig.approverName || 'Section Head'}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[7.5pt]"></span>
+                          )}
+                        </div>
+                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
+                          {previewSectionHeadSig?.approverName || employee?.name || initialSessionData?.employee?.name || '—'}
+                        </div>
+                        <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
+                        {previewSectionHeadSig?.signedAt && (
+                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                            {previewSectionHeadSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                            {fmtDt(previewSectionHeadSig.signedAt)}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Step 2 Superior */}
-                    <div className="flex flex-col justify-between min-h-[90px]">
-                      <p className="font-bold text-slate-700">Section Head / Superior</p>
-                      <div className="my-1 py-1 flex items-center justify-center">
-                        {existingSuperiorApproval?.signatureDataUrl ? (
-                          <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="h-8 max-w-[90px] object-contain" />
-                        ) : existingSuperiorApproval?.status === 'approved' ? (
-                          <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">APPROVED</span>
-                        ) : existingSuperiorApproval?.status === 'reverted' ? (
-                          <span className="text-[9px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">REVERTED</span>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 font-medium italic">Pending Approval</span>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900 underline">
-                          {superiorOptions.find((s) => s.value === superiorEmployeeId)?.label?.split('—')[0]?.trim() || existingSuperiorApproval?.approverName || '-'}
-                        </p>
-                        <p className="text-[9px] text-slate-500">Section Head (Tahap 2)</p>
-                      </div>
-                    </div>
+                    <div className="text-right text-[7pt] text-gray-400 mt-4">PT Chitra Paratama • HERO Platform</div>
                   </div>
-                </div>
-              </div>
+                )
+              })()}
             </div>
           </DialogContent>
         </Dialog>

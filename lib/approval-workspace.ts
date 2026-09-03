@@ -1774,9 +1774,45 @@ async function getDailyActivityInboxItems(
       .where(inArray(dailyActivityApprovals.sessionId, candidateSessionIds))
       .orderBy(asc(dailyActivityApprovals.stepOrder))
 
+    const approverEmpIds = Array.from(
+      new Set(
+        [
+          ...allSteps.map((s) => s.approverEmployeeId),
+          ...rawRows.map((r) => r.requesterEmployeeId),
+        ].filter((id): id is number => Boolean(id))
+      )
+    )
+
+    const empSigs = approverEmpIds.length > 0
+      ? await db
+          .select({ id: employees.id, signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(inArray(employees.id, approverEmpIds))
+      : []
+
+    const sigByEmpId = new Map(empSigs.map((e) => [e.id, e.signatureDataUrl]))
+
     for (const s of allSteps) {
+      const isApprovedOrSigned = ['approved', 'signed', 'completed'].includes((s.status || '').toLowerCase())
+      const isStep1 = s.stepOrder === 1
+      let sig = s.signatureDataUrl
+      if (!sig) {
+        if (isApprovedOrSigned && s.approverEmployeeId && sigByEmpId.get(s.approverEmployeeId)) {
+          sig = sigByEmpId.get(s.approverEmployeeId) || null
+        } else if (isStep1) {
+          const parentRow = rawRows.find((r) => r.sessionId === s.sessionId)
+          if (parentRow?.requesterEmployeeId && sigByEmpId.get(parentRow.requesterEmployeeId)) {
+            sig = sigByEmpId.get(parentRow.requesterEmployeeId) || null
+          }
+        }
+      }
+
       const list = allStepsMap.get(s.sessionId) || []
-      list.push(s)
+      list.push({
+        ...s,
+        signatureDataUrl: sig,
+        signatureUrl: sig,
+      })
       allStepsMap.set(s.sessionId, list)
     }
   }

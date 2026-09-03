@@ -1369,8 +1369,8 @@ function InboxTab({
 
                           {/* A. Daily Activity Items */}
                           {(() => {
-                            const items = (currentBatchDoc.rawDaily as any).items || []
-                            const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points || 0), 0)
+                            const items = (currentBatchDoc.rawDaily as any)?.items || (currentBatchDoc.rawDaily as any)?.sessionItems || (currentBatchDoc as any)?.items || []
+                            const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points ?? it.actualPoints ?? 0), 0)
                             return (
                               <>
                                 <div className="font-bold mb-1 text-[8.5pt]">
@@ -1392,10 +1392,10 @@ function InboxTab({
                                       items.map((it: any, idx: number) => (
                                         <tr key={it.id || idx}>
                                           <td className="text-center">{idx + 1}</td>
-                                          <td>{it.label}</td>
+                                          <td>{it.label || it.snapshotLabel || 'Aktivitas'}</td>
                                           <td className="text-center">{it.unitNumber || '-'}</td>
                                           <td className="text-center">{it.duration || '-'}</td>
-                                          <td className="text-center font-bold">{it.points || 0}</td>
+                                          <td className="text-center font-bold">{it.points ?? it.actualPoints ?? 0}</td>
                                           <td className="text-left text-[7.5pt]">{it.remark || '-'}</td>
                                         </tr>
                                       ))
@@ -1427,8 +1427,13 @@ function InboxTab({
                               {((currentBatchDoc.rawDaily as any).approvals || []).map((step: any) => {
                                 const isPending = step.status === 'pending'
                                 const isReverted = step.status === 'reverted'
-                                const isApproved = step.status === 'approved'
+                                const isApproved = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
                                 const liveRemark = isPending && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
+                                const timeLabel = step.signedAt
+                                  ? formatTimestamp(step.signedAt)
+                                  : isPending && approvalRemarks[currentBatchDoc.id]
+                                  ? 'Live Preview'
+                                  : '—'
                                 return (
                                   <tr key={step.stepOrder} className={isReverted ? "bg-amber-50/70" : undefined}>
                                     <td className="text-center">{step.stepOrder}</td>
@@ -1443,7 +1448,7 @@ function InboxTab({
                                     )}>
                                       {isReverted ? 'Reverted' : step.status}
                                     </td>
-                                    <td className="text-center text-[7pt]">{isApproved ? formatTimestamp(step.signedAt) : '—'}</td>
+                                    <td className="text-center text-[7pt]">{timeLabel}</td>
                                     <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight">{liveRemark}</td>
                                   </tr>
                                 )
@@ -1457,12 +1462,14 @@ function InboxTab({
                             const step1 = approvals.find((s: any) => s.stepOrder === 1)
                             const step2 = approvals.find((s: any) => s.stepOrder === 2)
                             const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                            const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
+                            const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signatureDataUrl || step1?.signatureUrl)
                             const isApproved2 = step2?.status === 'approved'
                             const isApproved3 = step3?.status === 'approved'
-                            const currentSig = isSigned1 ? step1?.signatureDataUrl : null
-                            const sig2 = isApproved2 ? step2?.signatureDataUrl : null
-                            const sig3 = isApproved3 ? step3?.signatureDataUrl : null
+                            const isReverted2 = step2?.status === 'reverted'
+                            const isReverted3 = step3?.status === 'reverted'
+                            const currentSig = step1?.signatureDataUrl || step1?.signatureUrl || (currentBatchDoc.rawDaily as any).employee?.signatureDataUrl || null
+                            const sig2 = step2?.signatureDataUrl || step2?.signatureUrl || null
+                            const sig3 = step3?.signatureDataUrl || step3?.signatureUrl || null
 
                             return (
                               <>
@@ -1476,8 +1483,6 @@ function InboxTab({
                                         <img src={currentSig} alt="TTD" className="h-10 object-contain" />
                                       ) : isSigned1 ? (
                                         <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{currentBatchDoc.employeeName}</span>
-                                      ) : step1?.status === 'reverted' ? (
-                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
                                       ) : (
                                         <span className="text-slate-400 italic text-[7.5pt]"></span>
                                       )}
@@ -1486,8 +1491,11 @@ function InboxTab({
                                       {currentBatchDoc.employeeName}
                                     </div>
                                     <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
-                                    {isSigned1 && step1?.signedAt && (
-                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step1.signedAt)}</div>
+                                    {step1?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                        {step1?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                        {formatTimestamp(step1.signedAt)}
+                                      </div>
                                     )}
                                   </div>
 
@@ -1501,8 +1509,6 @@ function InboxTab({
                                         <div className="flex flex-col items-center justify-center text-center">
                                           <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2?.signedAt)})</span>
                                         </div>
-                                      ) : step2?.status === 'reverted' ? (
-                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
                                       ) : (
                                         <span className="text-slate-400 italic text-[7.5pt]"></span>
                                       )}
@@ -1511,8 +1517,11 @@ function InboxTab({
                                       {step2?.approverName || currentBatchDoc.employeeName}
                                     </div>
                                     <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
-                                    {isApproved2 && step2?.signedAt && (
-                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step2.signedAt)}</div>
+                                    {step2?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                        {isReverted2 ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                        {formatTimestamp(step2.signedAt)}
+                                      </div>
                                     )}
                                   </div>
 
@@ -1526,8 +1535,6 @@ function InboxTab({
                                         <div className="flex flex-col items-center justify-center text-center">
                                           <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
                                         </div>
-                                      ) : step3?.status === 'reverted' ? (
-                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
                                       ) : (
                                         <span className="text-slate-400 italic text-[7.5pt]"></span>
                                       )}
@@ -1536,8 +1543,11 @@ function InboxTab({
                                       {step3?.approverName || currentBatchDoc.employeeName}
                                     </div>
                                     <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                                    {isApproved3 && step3?.signedAt && (
-                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">Waktu TTD: {formatTimestamp(step3.signedAt)}</div>
+                                    {step3?.signedAt && (
+                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">
+                                        {isReverted3 ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                        {formatTimestamp(step3.signedAt)}
+                                      </div>
                                     )}
                                   </div>
                                 </div>

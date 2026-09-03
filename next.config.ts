@@ -35,12 +35,52 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: '/dashboard/activity%20hub/:path*',
+        destination: '/dashboard/activity-hub/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/activity%20hub',
+        destination: '/dashboard/activity-hub',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/activity hub/:path*',
+        destination: '/dashboard/activity-hub/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/activity hub',
+        destination: '/dashboard/activity-hub',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/activity_hub/:path*',
+        destination: '/dashboard/activity-hub/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/activity_hub',
+        destination: '/dashboard/activity-hub',
+        permanent: false,
+      },
+      {
         source: '/dashboard/scheduling%20timesheet/:path*',
         destination: '/dashboard/scheduling-timesheet/:path*',
         permanent: false,
       },
       {
         source: '/dashboard/scheduling%20timesheet',
+        destination: '/dashboard/scheduling-timesheet',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling timesheet/:path*',
+        destination: '/dashboard/scheduling-timesheet/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/scheduling timesheet',
         destination: '/dashboard/scheduling-timesheet',
         permanent: false,
       },
