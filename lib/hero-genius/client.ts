@@ -45,6 +45,24 @@ function getAuthHeaders(): HeadersInit {
   }
 }
 
+export async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  retries = 3,
+  delayMs = 1000
+): Promise<Response> {
+  let attempt = 0
+  while (true) {
+    try {
+      return await fetch(url, init)
+    } catch (err: any) {
+      attempt++
+      if (attempt > retries) throw err
+      await new Promise((r) => setTimeout(r, delayMs * attempt))
+    }
+  }
+}
+
 export interface RagInfoResponse {
   status: string
   data: {
@@ -218,6 +236,7 @@ export async function sendRagChat(payload: RagChatRequest): Promise<RagChatRespo
       session_id: payload.session_id || undefined,
     }),
     cache: 'no-store',
+    signal: AbortSignal.timeout(6000),
   })
 
   if (!res.ok) {
@@ -251,21 +270,68 @@ export async function searchRagKnowledge(query: string, top_k = 4): Promise<RagS
 }
 
 /**
- * 4. List All Documents in Knowledge Base
+ * 4. List All Documents in Knowledge Base (with full pagination support)
  */
-export async function listRagDocuments(): Promise<RagDocumentsResponse> {
+export async function listRagDocuments(options?: {
+  skip?: number
+  limit?: number
+  fetchAll?: boolean
+}): Promise<RagDocumentsResponse> {
   const baseUrl = getRagBaseUrl()
-  const res = await fetch(`${baseUrl}/rag/documents`, {
-    method: 'GET',
-    headers: getAuthHeaders(),
-    cache: 'no-store',
-  })
+  const headers = getAuthHeaders()
 
-  if (!res.ok) {
-    throw new Error(`Failed to list documents (${res.status}): ${await res.text()}`)
+  // If specific skip/limit without fetchAll is requested, perform single call
+  if (options?.fetchAll === false && (options?.skip !== undefined || options?.limit !== undefined)) {
+    const skip = options.skip ?? 0
+    const limit = options.limit ?? 50
+    const res = await fetch(`${baseUrl}/rag/documents?skip=${skip}&limit=${limit}`, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to list documents (${res.status}): ${await res.text()}`)
+    }
+    return res.json()
   }
 
-  return res.json()
+  // Otherwise, automatically paginate to fetch ALL documents (max 200 per page)
+  let allDocuments: RagDocumentItem[] = []
+  let skip = 0
+  const limit = 200
+  let totalDocs = 0
+  let totalChunks = 0
+
+  while (true) {
+    const res = await fetchWithRetry(`${baseUrl}/rag/documents?skip=${skip}&limit=${limit}`, {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      if (allDocuments.length > 0) break
+      throw new Error(`Failed to list documents (${res.status}): ${await res.text()}`)
+    }
+
+    const data: RagDocumentsResponse = await res.json()
+    const pageDocs = data.documents || []
+    totalDocs = data.total_documents || totalDocs
+    totalChunks = data.total_chunks || totalChunks
+    allDocuments.push(...pageDocs)
+
+    if (pageDocs.length < limit || allDocuments.length >= totalDocs) {
+      break
+    }
+    skip += limit
+  }
+
+  return {
+    status: 'success',
+    total_documents: totalDocs || allDocuments.length,
+    total_chunks: totalChunks || allDocuments.reduce((acc, d) => acc + (d.total_chunks || 0), 0),
+    documents: allDocuments,
+  }
 }
 
 /**

@@ -526,17 +526,34 @@ export async function syncAndAutoChunkAllSopWinDocuments() {
 
     for (const doc of allDbDocs) {
       // Find matching document in RAG Knowledge Base
+      const docNum = (doc.documentNumber || "").trim().toLowerCase();
+      const rawPdf = (doc.pdfFileUrl || "").split("/").pop() || "";
+      const rawDocx = (doc.docxFileUrl || "").split("/").pop() || "";
+      const cleanDocNum = docNum.replace(/[^a-z0-9]/gi, "");
+
       const matchingRag = ragDocs.find((r) => {
         if (doc.ragDocumentId && r.id === doc.ragDocumentId) return true;
-        // Match by filename or documentNumber
-        const rawFilename = (doc.pdfFileUrl || doc.docxFileUrl || "").split("/").pop() || "";
-        if (rawFilename && r.filename && (r.filename.includes(rawFilename) || rawFilename.includes(r.filename))) return true;
-        if (doc.documentNumber && r.filename && r.filename.includes(doc.documentNumber)) return true;
+        const rFile = (r.filename || "").toLowerCase();
+        const rS3 = (r.s3_url || "").toLowerCase();
+
+        // 1. Match by raw filename in r.filename or r.s3_url
+        if (rawPdf && (rFile.includes(rawPdf.toLowerCase()) || rS3.includes(rawPdf.toLowerCase()))) return true;
+        if (rawDocx && (rFile.includes(rawDocx.toLowerCase()) || rS3.includes(rawDocx.toLowerCase()))) return true;
+
+        // 2. Match by document number
+        if (docNum && (rFile.includes(docNum) || rS3.includes(docNum))) return true;
+
+        // 3. Match by normalized alphanumeric document number
+        if (cleanDocNum.length >= 6) {
+          const rClean = (rFile + " " + rS3).replace(/[^a-z0-9]/gi, "");
+          if (rClean.includes(cleanDocNum)) return true;
+        }
+
         return false;
       });
 
       if (matchingRag && (matchingRag.total_chunks || 0) > 0) {
-        // Document exists in RAG with chunks
+        // Document exists in RAG with chunks -> Mark Ready
         await db
           .update(sopWinDocuments)
           .set({
@@ -544,14 +561,54 @@ export async function syncAndAutoChunkAllSopWinDocuments() {
             ragChunksCount: matchingRag.total_chunks || 0,
             ragStatus: "ready",
             ragErrorMessage: null,
+            ragProcessedAt: new Date(),
             updatedAt: new Date(),
           })
           .where(eq(sopWinDocuments.id, doc.id));
+
+        // Update revisions for this document
+        await db
+          .update(sopWinRevisions)
+          .set({
+            ragDocumentId: matchingRag.id,
+            ragChunksCount: matchingRag.total_chunks || 0,
+            ragStatus: "ready",
+            ragErrorMessage: null,
+          })
+          .where(eq(sopWinRevisions.documentId, doc.id));
+
+        // Mark any queue items as completed
+        await db
+          .update(sopWinRagQueue)
+          .set({
+            status: "completed",
+            completedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(sopWinRagQueue.documentId, doc.id),
+              inArray(sopWinRagQueue.status, ["pending", "pending_retry", "processing"])
+            )
+          );
+
         updatedCount++;
       } else {
-        // Document NOT chunked or 0 chunks in RAG: Auto-enqueue for chunking!
-        console.log(`[RAG Sync] Document ${doc.documentNumber} (${doc.title}) has 0 chunks. Auto-enqueuing for RAG chunking...`);
         const fileUrl = doc.docxFileUrl || doc.pdfFileUrl;
+        if (!fileUrl) {
+          await db
+            .update(sopWinDocuments)
+            .set({
+              ragStatus: "failed",
+              ragErrorMessage: "Dokumen tidak memiliki lampiran file PDF atau DOCX untuk di-chunk.",
+              updatedAt: new Date(),
+            })
+            .where(eq(sopWinDocuments.id, doc.id));
+          continue;
+        }
+
+        // Document NOT chunked: Enqueue for RAG chunking
+        console.log(`[RAG Sync] Document ${doc.documentNumber} (${doc.title}) has 0 chunks in RAG. Enqueuing for chunking...`);
         const fileType = doc.docxFileUrl ? "docx" : "pdf";
         const fileName = `${doc.documentNumber}-${doc.title}.${fileType}`;
 
