@@ -172,11 +172,23 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const noPengajuanWidth = fontRegular.widthOfTextAtSize(noPengajuanText, 9)
   page.drawText(noPengajuanText, {
     x: width - 36 - noPengajuanWidth,
-    y: curY - 22,
+    y: curY - 20,
     size: 9,
     font: fontRegular,
     color: rgb(0.3, 0.35, 0.45),
   })
+
+  if (data.noWoTerbit) {
+    const noWoTerbitText = `No. WO Terbit: ${data.noWoTerbit}`
+    const noWoTerbitWidth = fontBold.widthOfTextAtSize(noWoTerbitText, 9)
+    page.drawText(noWoTerbitText, {
+      x: width - 36 - noWoTerbitWidth,
+      y: curY - 32,
+      size: 9,
+      font: fontBold,
+      color: rgb(0.05, 0.5, 0.3),
+    })
+  }
 
   curY -= 45
 

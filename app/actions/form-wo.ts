@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gt, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -289,7 +289,57 @@ export async function getFormWoList() {
   try {
     await ensureFormWoTable()
     const rows = await db.select().from(repairFormWo).orderBy(desc(repairFormWo.createdAt))
-    return rows
+    if (rows.length === 0) return []
+
+    const woIds = rows.map((r) => r.id)
+    const appRows = await db
+      .select({
+        id: approvals.id,
+        repairFormWoId: approvals.repairFormWoId,
+        level: approvals.level,
+        approverName: approvals.approverName,
+        approverEmployeeId: approvals.approverEmployeeId,
+        status: approvals.status,
+        reviewedAt: approvals.reviewedAt,
+        signatureUrl: approvals.signatureUrl,
+        decisionNote: approvals.decisionNote,
+        routeSnapshot: approvals.routeSnapshot,
+      })
+      .from(approvals)
+      .where(inArray(approvals.repairFormWoId, woIds))
+      .orderBy(asc(approvals.level))
+
+    const stepsMap = new Map<number, any[]>()
+    for (const a of appRows) {
+      if (a.repairFormWoId != null) {
+        let jobTitle = 'Approver'
+        if (a.routeSnapshot) {
+          try {
+            const p = JSON.parse(a.routeSnapshot)
+            jobTitle = p.label || p.nodeLabel || jobTitle
+          } catch {}
+        }
+        const existing = stepsMap.get(a.repairFormWoId) || []
+        existing.push({
+          id: a.id,
+          level: a.level,
+          approverName: a.approverName,
+          approverEmployeeId: a.approverEmployeeId,
+          jobTitle,
+          status: a.status,
+          decision: a.status,
+          reviewedAt: a.reviewedAt,
+          signatureUrl: a.signatureUrl,
+          decisionNote: a.decisionNote,
+        })
+        stepsMap.set(a.repairFormWoId, existing)
+      }
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      steps: stepsMap.get(r.id) || [],
+    }))
   } catch (error) {
     console.error('Failed to load Form WO list', error)
     return []
@@ -374,12 +424,21 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
       })
       .returning({ id: repairFormWo.id })
 
-    const customerLower = (parsed.customer || '').toLowerCase()
+    const customerLower = (parsed.customer || '').toLowerCase().trim()
     const isMvc =
       customerLower.includes('trakindo') ||
-      customerLower.includes('cipta kridatama') ||
+      customerLower.includes('cipta krida') ||
+      customerLower.includes('ciptakrida') ||
       customerLower.includes('ckb') ||
-      customerLower.trim() === 'ck'
+      customerLower.includes('mvc') ||
+      /\bck\b/i.test(customerLower) ||
+      customerLower === 'ck' ||
+      customerLower.startsWith('ck ') ||
+      customerLower.endsWith(' ck') ||
+      customerLower.includes(' ck ') ||
+      customerLower.includes('pt ck') ||
+      customerLower.includes('pt. ck') ||
+      customerLower.includes('pt.ck')
 
     const transactionType = isService
       ? isMvc
@@ -594,8 +653,43 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         .set({ statusPengajuan: effectiveFormWoStatus, updatedAt: new Date() })
         .where(eq(repairFormWo.id, id))
 
+      // Fetch previous approvers who already approved earlier steps to CC them
+      const previousApprovedSteps = await db
+        .select({
+          approverEmployeeId: approvals.approverEmployeeId,
+          approverName: approvals.approverName,
+        })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.repairFormWoId, id),
+            lt(approvals.level, targetLevel),
+            eq(approvals.status, 'approved')
+          )
+        )
+
+      const prevApproverEmpIds = Array.from(
+        new Set(
+          previousApprovedSteps
+            .map((s) => s.approverEmployeeId)
+            .filter((empId): empId is number => empId != null)
+        )
+      )
+
+      let previousApproverEmails: string[] = []
+      if (prevApproverEmpIds.length > 0) {
+        const prevEmps = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(inArray(employees.id, prevApproverEmpIds))
+        previousApproverEmails = prevEmps
+          .map((e) => e.email)
+          .filter(Boolean) as string[]
+      }
+
       // Notify the specific approver of targetLevel
       const approverToNotify = targetStep
+      let approverEmail: string | undefined
       if (approverToNotify?.approverEmployeeId) {
         const [approverEmp] = await db
           .select({ email: employees.email })
@@ -604,8 +698,9 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
           .limit(1)
 
         if (approverEmp?.email) {
+          approverEmail = approverEmp.email
           notifyWorkflowBellRecipients({
-            recipientEmails: [approverEmp.email],
+            recipientEmails: [approverEmp.email, ...previousApproverEmails],
             eventType: 'form_wo_review',
             category: 'approval',
             title: `Form WO Telah Direvisi (Step ${targetLevel})`,
@@ -617,6 +712,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
       }
 
       sendFormWoApprovalRequestEmail({
+        approverEmail,
         approverName: approverToNotify?.approverName || 'Approver',
         pemohon: parsed.pemohon || existing.pemohon || 'Pemohon',
         noPengajuan: existing.noPengajuan || '',
@@ -629,6 +725,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         totalAmount: parsed.totalAmount || existing.totalAmount || '-',
         catatanPengajuan: parsed.catatanPengajuan || existing.catatanPengajuan || '-',
         tier: targetLevel as any,
+        ccEmails: previousApproverEmails,
       }).catch(console.error)
     }
 

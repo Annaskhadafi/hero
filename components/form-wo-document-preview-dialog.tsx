@@ -101,25 +101,43 @@ function formatCurrency(val: string | number | null | undefined): string {
 }
 
 export function extractCleanNote(rawNote: string | null | undefined): string {
-  if (!rawNote || !rawNote.trim()) return '-'
+  if (!rawNote || !rawNote.trim()) return ''
   const trimmed = rawNote.trim()
+  let noteText = trimmed
   if (trimmed.startsWith('{') || trimmed.includes('"message"')) {
     try {
       const parsed = JSON.parse(trimmed)
       if (parsed && typeof parsed.message === 'string') {
-        return parsed.message || '-'
+        noteText = parsed.message.trim()
       }
     } catch {
       const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
           const p = JSON.parse(lines[i])
-          if (p && typeof p.message === 'string' && p.message) return p.message
+          if (p && typeof p.message === 'string' && p.message) {
+            noteText = p.message.trim()
+            break
+          }
         } catch {}
       }
     }
   }
-  return trimmed || '-'
+
+  // Jika catatan hanya template bawaan otomatis (bukan ketikan manual approver), jangan tampilkan
+  const lower = noteText.toLowerCase().replace(/[.\s]/g, '')
+  if (
+    !noteText ||
+    lower === 'disetujui' ||
+    lower === 'wodisetujui' ||
+    lower === 'approved' ||
+    lower === '-' ||
+    lower === 'none'
+  ) {
+    return ''
+  }
+
+  return noteText
 }
 
 function formatIndoDay(dateVal: Date | string | null | undefined, fallback = '-'): string {
@@ -272,26 +290,34 @@ export function FormWoDocumentView({
         else if (s.level === 4) header = 'DISETUJUI OLEH'
       }
 
+      const stepLevel = s.level || idx + 1
+      const isCurrentActiveStep =
+        s.status === 'pending' ||
+        (currentLevel === stepLevel && s.status !== 'approved')
+
       const signerName = s.approverName || s.jobTitle || 'Approver'
       const jobTitle = s.jobTitle || s.label || 'Approver'
+
       const sigUrl =
-        currentLevel === s.level && liveSignatureUrl
-          ? liveSignatureUrl
-          : s.signatureUrl || null
+        s.status === 'approved' && s.signatureUrl
+          ? s.signatureUrl
+          : isCurrentActiveStep && liveSignatureUrl
+            ? liveSignatureUrl
+            : s.signatureUrl || null
 
       const isApproved =
-        s.status === 'approved' || (currentLevel === s.level && Boolean(liveSignatureUrl))
+        s.status === 'approved' || (isCurrentActiveStep && Boolean(liveSignatureUrl))
 
       const dateTime = s.reviewedAt
         ? formatIndoDateTime(s.reviewedAt)
-        : currentLevel === s.level && liveSignatureUrl
+        : isCurrentActiveStep && liveSignatureUrl
           ? formatIndoDateTime(new Date())
           : null
 
       const note = s.decisionNote || null
 
       return {
-        key: `step-${s.level || idx + 1}`,
+        key: `step-${stepLevel}`,
         header,
         signerName,
         jobTitle,
@@ -309,9 +335,9 @@ export function FormWoDocumentView({
           header: 'DISETUJUI OLEH',
           signerName: 'Service Operation Others Coord. SPV',
           jobTitle: 'Service Operation Others Coord. SPV',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
+          dateTime: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
@@ -319,9 +345,9 @@ export function FormWoDocumentView({
           header: 'DIPERIKSA OLEH',
           signerName: 'Team Billing',
           jobTitle: 'Team Billing',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: currentLevel === 2 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 2 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 2 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
@@ -329,9 +355,9 @@ export function FormWoDocumentView({
           header: 'DISETUJUI OLEH',
           signerName: 'Inventory & Warehouse Management SPV',
           jobTitle: 'Inventory & Warehouse Management SPV',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: currentLevel === 3 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 3 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 3 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
       ]
@@ -342,9 +368,9 @@ export function FormWoDocumentView({
           header: 'DIKETAHUI OLEH',
           signerName: 'QC / Leader',
           jobTitle: 'QC / Leader',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
+          dateTime: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
@@ -352,9 +378,9 @@ export function FormWoDocumentView({
           header: 'DISETUJUI OLEH',
           signerName: 'Repair / Retread Operation SPV',
           jobTitle: 'Repair / Retread Operation SPV',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: currentLevel === 2 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 2 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 2 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
@@ -362,9 +388,9 @@ export function FormWoDocumentView({
           header: 'DIPERIKSA OLEH',
           signerName: 'Team Billing',
           jobTitle: 'Team Billing',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: currentLevel === 3 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 3 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 3 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
@@ -372,9 +398,9 @@ export function FormWoDocumentView({
           header: 'DISETUJUI OLEH',
           signerName: 'Inventory & Warehouse Management SPV',
           jobTitle: 'Inventory & Warehouse Management SPV',
-          signatureUrl: null,
-          isApproved: false,
-          dateTime: null,
+          signatureUrl: currentLevel === 4 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 4 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 4 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
       ]
@@ -390,7 +416,7 @@ export function FormWoDocumentView({
   return (
     <div
       ref={containerRef}
-      className="print-area relative mx-auto bg-white w-[297mm] min-w-[297mm] min-h-[210mm] p-6 sm:p-8 space-y-3 text-slate-900 font-sans border border-slate-300 rounded-sm shadow-2xl overflow-hidden flex flex-col justify-between"
+      className="print-area relative mx-auto bg-white w-full max-w-[297mm] min-h-[200mm] p-4 sm:p-6 space-y-2.5 text-slate-900 font-sans border border-slate-300 rounded-lg shadow-sm overflow-hidden flex flex-col justify-between"
     >
       <div className="space-y-3.5">
         {/* Top Header: Logo on left, Title on far right */}
@@ -414,9 +440,16 @@ export function FormWoDocumentView({
             <h1 className="text-base sm:text-lg font-black text-slate-950 tracking-tight uppercase">
               FORM PERMINTAAN WORK ORDER
             </h1>
-            <p className="text-[11px] font-mono text-slate-600 mt-0.5">
-              No. Pengajuan: <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
-            </p>
+            <div className="flex flex-col items-end gap-0.5 text-right font-mono text-[11px] mt-0.5">
+              <p className="text-slate-600">
+                No. Pengajuan: <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
+              </p>
+              {doc.noWoTerbit ? (
+                <p className="text-emerald-700 font-bold">
+                  No. WO Terbit: <strong className="text-emerald-950 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300">{doc.noWoTerbit}</strong>
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -478,7 +511,7 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5">{row.site || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono text-slate-600">{row.serialNo || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.refNo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
                   ))}
@@ -513,7 +546,7 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5">{row.site || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
                       <td className="py-1.5 px-2.5 font-semibold">{row.category || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
                   ))}
@@ -594,13 +627,16 @@ export function FormWoDocumentView({
               ))}
             </tr>
             <tr className="divide-x divide-slate-300 bg-slate-50/60">
-              {signatureColumns.map((col) => (
-                <td key={col.key} className="px-1.5 pt-0.5 pb-1.5 text-center align-top">
-                  <p className="text-[9px] text-slate-500 line-clamp-2 italic">
-                    {col.note ? `Catatan: ${extractCleanNote(col.note)}` : '-'}
-                  </p>
-                </td>
-              ))}
+              {signatureColumns.map((col) => {
+                const cleanNote = extractCleanNote(col.note)
+                return (
+                  <td key={col.key} className="px-1.5 pt-0.5 pb-1.5 text-center align-top">
+                    <p className="text-[9px] text-slate-500 line-clamp-2 italic">
+                      {cleanNote ? `Catatan: ${cleanNote}` : '-'}
+                    </p>
+                  </td>
+                )
+              })}
             </tr>
           </tbody>
         </table>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { repairFormWo } from '@/db/schema/form-wo'
-import { approvals } from '@/db/schema/hero'
+import { approvals, employees } from '@/db/schema/hero'
 import { generateFormWoPdf } from '@/lib/form-wo-pdf'
 import { eq, asc } from 'drizzle-orm'
 
@@ -59,6 +59,9 @@ export async function GET(
       id: doc.id,
       noPengajuan: doc.noPengajuan,
       jenisPengajuan: doc.jenisPengajuan,
+      noWoTerbit: doc.noWoTerbit,
+      noPo: doc.noPo,
+      tanggalPo: doc.tanggalPo,
       hari: doc.hari,
       tanggal: doc.tanggal,
       tanggalPengajuan: doc.tanggalPengajuan,
