@@ -19,7 +19,8 @@ export async function sendFormWoApprovalRequestEmail(params: {
   totalAmount?: string
   catatanPengajuan?: string
   approvalLink?: string
-  tier?: 1 | 2 | 3
+  tier?: 1 | 2 | 3 | 4 | 5
+  ccEmails?: string[]
 }) {
   const currentTier = params.tier || 1
   const tierName =
@@ -54,8 +55,13 @@ export async function sendFormWoApprovalRequestEmail(params: {
     return { success: false, message: 'No valid recipient email configured for Form WO approval.' }
   }
 
+  const validCcEmails = params.ccEmails && params.ccEmails.length > 0
+    ? Array.from(new Set(params.ccEmails.filter(Boolean)))
+    : undefined
+
   return sendWorkflowEmail({
     to: recipients,
+    cc: validCcEmails,
     templateCode: "form_wo_approval_request",
     variables: {
       approverName: finalApproverName,
@@ -195,6 +201,7 @@ export async function sendFormWoStatusRevertedEmail(params: {
   noPengajuan: string
   catatanRevisi?: string
   revisiLink?: string
+  ccEmails?: string[]
 }) {
   const recipients = Array.from(
     new Set([params.requesterEmail].filter(Boolean) as string[])
@@ -202,8 +209,13 @@ export async function sendFormWoStatusRevertedEmail(params: {
 
   if (recipients.length === 0) return { success: false, message: 'No recipient email' }
 
+  const validCcEmails = params.ccEmails && params.ccEmails.length > 0
+    ? Array.from(new Set(params.ccEmails.filter(Boolean)))
+    : undefined
+
   return sendWorkflowEmail({
     to: recipients,
+    cc: validCcEmails,
     templateCode: "form_wo_status_reverted",
     variables: {
       pemohon: params.pemohon,

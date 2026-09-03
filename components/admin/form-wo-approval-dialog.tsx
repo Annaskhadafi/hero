@@ -41,21 +41,66 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
   const [isPending, startTransition] = useTransition()
   const printDocRef = useRef<HTMLDivElement>(null)
 
-  const doc = item.repairFormWo ?? {
-    noPengajuan: item.requestNumber || item.title,
-    jenisPengajuan: item.title?.toLowerCase().includes('service') ? 'service' : 'repair',
-    customer: item.requestKindLabel || '-',
-    site: item.siteName || '-',
-    pemohon: item.requesterName || '-',
-    totalAmount: item.overtimeLabel || '0',
-    tanggalPengajuan: item.startTime,
+  const rawWo =
+    item.repairFormWo ||
+    (item as any).rawFormWo ||
+    (item as any).rawGeneralGroup?.items?.find((i: any) => i.repairFormWo)?.repairFormWo ||
+    (group as any)?.items?.find((i: any) => i.repairFormWo)?.repairFormWo ||
+    null
+
+  const resolvedApprovalId =
+    item.approvalId ||
+    (item as any).rawGeneralGroup?.items?.find((i: any) => i.repairFormWo)?.approvalId ||
+    (item as any).rawGeneralGroup?.items?.[0]?.approvalId ||
+    (group as any)?.items?.find((i: any) => i.repairFormWo)?.approvalId ||
+    (group as any)?.items?.[0]?.approvalId
+
+  const doc = {
+    ...(rawWo || {}),
+    id: rawWo?.id,
+    noPengajuan: rawWo?.noPengajuan || (item as any).documentNumber || item.requestNumber || item.title,
+    jenisPengajuan: rawWo?.jenisPengajuan || (item.title?.toLowerCase().includes('service') ? 'service' : 'repair'),
+    hari: rawWo?.hari || '-',
+    tanggal: rawWo?.tanggal || null,
+    tanggalPengajuan: rawWo?.tanggalPengajuan || (item as any).submittedAt || item.startTime,
+    pemohon: rawWo?.pemohon || (item as any).employeeName || item.requesterName || (group as any)?.requesterName || '-',
+    pemohonJobTitle: rawWo?.pemohonJobTitle || (item as any).requesterJobTitle || (group as any)?.requesterJobTitle || 'Pemohon',
+    customer: rawWo?.customer || (item as any).customerName || item.requestKindLabel || '-',
+    site: rawWo?.site || (item as any).siteName || (group as any)?.siteName || item.siteName || '-',
+    deskripsiPekerjaan: rawWo?.deskripsiPekerjaan || 'Labour Service',
+    catatanPengajuan: rawWo?.catatanPengajuan || null,
+    totalAmount: rawWo?.totalAmount || (item as any).totalAmount || '0',
+    items: rawWo?.items || null,
+    noPo: rawWo?.noPo || null,
+    tanggalPo: rawWo?.tanggalPo || null,
+    submitterSignatureUrl: rawWo?.submitterSignatureUrl || (item as any).signatureUrl || null,
+    steps: rawWo?.steps || (item as any).rawFormWo?.steps || item.steps?.map((s) => ({
+      level: s.level,
+      approverName: s.approverName,
+      jobTitle: s.label,
+      status: s.status,
+      decision: s.status,
+      reviewedAt: s.reviewedAt,
+      signatureUrl: (s as any).signatureUrl || null,
+    })) || [],
   }
+
+  const pendingStep = doc.steps?.find((s: any) => s.status === 'pending')
+  const resolvedCurrentLevel =
+    item.level ||
+    (item as any).rawGeneralGroup?.items?.find((i: any) => i.repairFormWo)?.level ||
+    (item as any).rawGeneralGroup?.items?.[0]?.level ||
+    pendingStep?.level ||
+    1
 
   const handleDecision = (decision: 'approved' | 'needs_correction' | 'rejected') => {
     startTransition(async () => {
       try {
+        if (!resolvedApprovalId) {
+          throw new Error('ID Approval tidak valid atau tidak ditemukan.')
+        }
         const formData = new FormData()
-        formData.append('approvalId', String(item.approvalId))
+        formData.append('approvalId', String(resolvedApprovalId))
         formData.append('decision', decision)
         formData.append('note', note.trim())
         if (signatureFile) {
@@ -131,7 +176,7 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
           Review
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[98vw] lg:max-w-[1400px] w-[98vw] h-[92vh] flex flex-col p-4 sm:p-6 gap-4 bg-slate-100 border border-slate-300 rounded-2xl shadow-2xl">
+      <DialogContent className="sm:max-w-[99vw] lg:max-w-[1550px] 2xl:max-w-[1680px] w-[99vw] h-[94vh] flex flex-col p-4 sm:p-5 gap-3 bg-slate-100 border border-slate-300 rounded-2xl shadow-2xl">
         {/* Header Modal */}
         <DialogHeader className="flex flex-row items-center justify-between border-b pb-3">
           <div>
@@ -174,14 +219,14 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
         </DialogHeader>
 
         {/* 2-Column Split View: Left = Document WYSIWYG Preview, Right = Review Action Form */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4 min-h-0 overflow-hidden">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_390px] gap-3.5 min-h-0 overflow-hidden">
           {/* Left Column: Official Document WYSIWYG View */}
-          <div className="overflow-y-auto pr-1 h-full rounded-xl">
+          <div className="overflow-y-auto overflow-x-hidden p-1.5 h-full rounded-xl flex justify-center items-start bg-slate-200/40">
             <FormWoDocumentView
               doc={doc}
               containerRef={printDocRef}
               liveSignatureUrl={liveSignatureUrl}
-              currentLevel={item.level || 1}
+              currentLevel={resolvedCurrentLevel}
             />
           </div>
 

@@ -283,12 +283,21 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
     priority: input.priority,
     overtimeMinutes: input.overtimeMinutes,
     transactionType: (() => {
-      const custLower = (input.customerName || '').toLowerCase()
+      const custLower = (input.customerName || '').toLowerCase().trim()
       const isMvc =
         custLower.includes('trakindo') ||
-        custLower.includes('cipta kridatama') ||
+        custLower.includes('cipta krida') ||
+        custLower.includes('ciptakrida') ||
         custLower.includes('ckb') ||
-        custLower.trim() === 'ck'
+        custLower.includes('mvc') ||
+        /\bck\b/i.test(custLower) ||
+        custLower === 'ck' ||
+        custLower.startsWith('ck ') ||
+        custLower.endsWith(' ck') ||
+        custLower.includes(' ck ') ||
+        custLower.includes('pt ck') ||
+        custLower.includes('pt. ck') ||
+        custLower.includes('pt.ck')
       const baseType = input.transactionType ?? 'activity'
       if (
         baseType === 'form_wo_service' ||
@@ -503,10 +512,21 @@ async function resolveFormWoServiceApprovalRoute(
 ): Promise<ApprovalRouteResolution> {
   const steps: ResolvedApprovalStep[] = []
 
-  // Check customer/company name (TRAKINDO / CK / CKB -> Apriyanto, others -> Junaidi)
-  const custUpper = (customerName || '').toUpperCase()
+  const custUpper = (customerName || '').toUpperCase().trim()
   const isMvcCompany =
-    custUpper.includes('TRAKINDO') || custUpper.includes('CK') || custUpper.includes('CKB')
+    custUpper.includes('TRAKINDO') ||
+    custUpper.includes('CIPTA KRIDA') ||
+    custUpper.includes('CIPTAKRIDA') ||
+    custUpper.includes('CKB') ||
+    custUpper.includes('MVC') ||
+    /\bCK\b/.test(custUpper) ||
+    custUpper === 'CK' ||
+    custUpper.startsWith('CK ') ||
+    custUpper.endsWith(' CK') ||
+    custUpper.includes(' CK ') ||
+    custUpper.includes('PT CK') ||
+    custUpper.includes('PT. CK') ||
+    custUpper.includes('PT.CK')
 
   const stage1Approver = isMvcCompany
     ? { id: 955, name: 'Apriyanto', label: 'Service Operation MVC Coord. SPV' }

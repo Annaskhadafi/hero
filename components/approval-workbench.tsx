@@ -68,6 +68,7 @@ import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
 import { FiveRApprovalDialog } from '@/components/admin/five-r-approval-dialog'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
+import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -540,22 +541,63 @@ function InboxTab({
     }
 
     for (const g of groups) {
-      list.push({
-        id: `general-group-${g.id}`,
-        category: 'GENERAL',
-        categoryLabel: 'Form Activity',
-        documentNumber: `GRP-${g.id}`,
-        title: `${g.requesterName} - ${g.activityCount} Item Activity`,
-        employeeName: g.requesterName,
-        siteName: g.siteName,
-        workDate: g.workDate,
-        stepLabel: `${g.items.length} Step Pending`,
-        dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
-        dueAt: g.items[0]?.dueAt || new Date(),
-        submittedAt: g.items[0]?.submittedAt || new Date(),
-        url: '#',
-        rawGeneralGroup: g,
-      })
+      const formWoItem = g.items.find((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO')
+      const isFormWo = Boolean(formWoItem?.repairFormWo)
+      const woData = formWoItem?.repairFormWo
+
+      if (isFormWo && woData) {
+        list.push({
+          id: `form-wo-${woData.id}`,
+          category: 'FORM_WO',
+          categoryLabel: 'Form Permintaan Work Order',
+          documentNumber: woData.noPengajuan || `WO-${woData.id}`,
+          title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
+          employeeName: woData.pemohon || g.requesterName,
+          siteName: woData.site || g.siteName,
+          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : g.workDate,
+          stepLabel: formWoItem?.currentStepLabel || `${g.items.length} Step Pending`,
+          dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
+          dueAt: g.items[0]?.dueAt || new Date(),
+          submittedAt: g.items[0]?.submittedAt || new Date(),
+          url: '#',
+          approvalId: formWoItem?.approvalId,
+          level: formWoItem?.level || g.items[0]?.level || 1,
+          repairFormWo: woData,
+          customerName: woData.customer,
+          totalAmount: woData.totalAmount,
+          signatureUrl: woData.submitterSignatureUrl,
+          rawFormWo: {
+            ...woData,
+            steps: formWoItem?.steps?.map((s: any) => ({
+              level: s.level,
+              approverName: s.approverName,
+              jobTitle: s.label,
+              status: s.status,
+              decision: s.status,
+              reviewedAt: s.reviewedAt,
+              signatureUrl: s.signatureUrl || null,
+            })) || [],
+          },
+          rawGeneralGroup: g,
+        })
+      } else {
+        list.push({
+          id: `general-group-${g.id}`,
+          category: 'GENERAL',
+          categoryLabel: 'Form Activity',
+          documentNumber: `GRP-${g.id}`,
+          title: `${g.requesterName} - ${g.activityCount} Item Activity`,
+          employeeName: g.requesterName,
+          siteName: g.siteName,
+          workDate: g.workDate,
+          stepLabel: `${g.items.length} Step Pending`,
+          dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
+          dueAt: g.items[0]?.dueAt || new Date(),
+          submittedAt: g.items[0]?.submittedAt || new Date(),
+          url: '#',
+          rawGeneralGroup: g,
+        })
+      }
     }
 
     for (const rfr of rfrItems) {
@@ -1145,6 +1187,7 @@ function InboxTab({
                             item.category === 'PTW' && 'bg-emerald-50 text-emerald-700 border-emerald-200',
                             item.category === 'CONTRACT_REVIEW' && 'bg-blue-50 text-blue-700 border-blue-200',
                             item.category === 'RFR' && 'bg-purple-50 text-purple-700 border-purple-200',
+                            item.category === 'FORM_WO' && 'bg-teal-50 text-teal-700 border-teal-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -1234,7 +1277,11 @@ function InboxTab({
           onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}
         >
           {(() => {
-            const isLandscapeDoc = currentBatchDoc?.category === 'PTW'
+            const isLandscapeDoc =
+              currentBatchDoc?.category === 'PTW' ||
+              currentBatchDoc?.category === 'FORM_WO' ||
+              Boolean((currentBatchDoc as any)?.rawFormWo) ||
+              Boolean(currentBatchDoc?.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO'))
             return (
               <DialogContent
                 showCloseButton={false}
@@ -1327,10 +1374,10 @@ function InboxTab({
                           className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
                           style={{
                             color: 'black',
-                            paddingTop: isLandscapeDoc ? '10mm' : '36mm',
-                            paddingBottom: isLandscapeDoc ? '10mm' : '30mm',
-                            paddingLeft: isLandscapeDoc ? '12mm' : '20mm',
-                            paddingRight: isLandscapeDoc ? '12mm' : '20mm',
+                            paddingTop: isLandscapeDoc ? '4mm' : '36mm',
+                            paddingBottom: isLandscapeDoc ? '4mm' : '30mm',
+                            paddingLeft: isLandscapeDoc ? '4mm' : '20mm',
+                            paddingRight: isLandscapeDoc ? '4mm' : '20mm',
                             minHeight: isLandscapeDoc ? '210mm' : '297mm',
                           }}
                         >
@@ -2613,11 +2660,102 @@ function InboxTab({
                         </div>
                       )}
 
-                      {/* General & Contract Review Fallbacks */}
-                      {(currentBatchDoc.category === 'CONTRACT_REVIEW' || currentBatchDoc.category === 'GENERAL') && (
+                      {/* Form Permintaan Work Order (Landscape Document) */}
+                      {(currentBatchDoc.category === 'FORM_WO' ||
+                        Boolean((currentBatchDoc as any).rawFormWo) ||
+                        Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo))) && (() => {
+                        const formWoRaw =
+                          (currentBatchDoc as any).rawFormWo ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => i.repairFormWo)?.repairFormWo
+                        if (!formWoRaw) return null
+                        return (
+                          <div className="w-full flex justify-center overflow-x-auto">
+                            <FormWoDocumentView
+                              doc={{
+                                ...formWoRaw,
+                                steps: (currentBatchDoc as any).rawFormWo?.steps || formWoRaw.steps || [],
+                              }}
+                              liveSignatureUrl={userSignature}
+                            />
+                          </div>
+                        )
+                      })()}
+
+                      {/* General Group (Form Activity) */}
+                      {currentBatchDoc.category === 'GENERAL' && !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) && currentBatchDoc.rawGeneralGroup && (
+                        <div>
+                          <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+                          <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">FORM ACTIVITY APPROVAL REPORT</h2>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                            <tbody>
+                              <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Informasi Sesi Pengajuan</td></tr>
+                              <tr>
+                                <td className="w-1/2">Nomor Sesi: <strong>{currentBatchDoc.documentNumber}</strong></td>
+                                <td className="w-1/2">Tanggal Kerja: <strong>{formatDate(currentBatchDoc.workDate || currentBatchDoc.submittedAt)}</strong></td>
+                              </tr>
+                              <tr>
+                                <td>Nama Karyawan: <strong>{currentBatchDoc.employeeName}</strong></td>
+                                <td>Site / Lokasi: <strong>{currentBatchDoc.siteName || currentBatchDoc.location || '—'}</strong></td>
+                              </tr>
+                              <tr>
+                                <td>Shift: <strong>{currentBatchDoc.shiftCode || 'ALL'}</strong></td>
+                                <td>Total Aktivitas: <strong>{currentBatchDoc.rawGeneralGroup.items?.length || 0} Item</strong></td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          {/* Daftar Aktivitas */}
+                          <div className="font-bold mb-1 text-[8.5pt]">
+                            Rincian Aktivitas Pekerjaan ({currentBatchDoc.rawGeneralGroup.items?.length || 0} Item)
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold text-center">
+                                <th className="w-[5%]">#</th>
+                                <th className="text-left w-[25%]">Tipe Aktivitas</th>
+                                <th className="w-[15%]">Unit / Equipment</th>
+                                <th className="text-left w-[35%]">Deskripsi / Judul</th>
+                                <th className="w-[10%]">Jam</th>
+                                <th className="w-[10%]">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(currentBatchDoc.rawGeneralGroup.items || []).map((it: any, idx: number) => (
+                                <tr key={it.activityId || idx}>
+                                  <td className="text-center">{idx + 1}</td>
+                                  <td className="font-semibold">{it.activityType || 'Aktivitas'}</td>
+                                  <td className="text-center">{it.unitNumber || it.equipmentNo || '-'}</td>
+                                  <td className="text-left">{it.title || it.description || '-'}</td>
+                                  <td className="text-center text-[7.5pt]">{it.timeRange || '-'}</td>
+                                  <td className="text-center capitalize text-[7.5pt]">{it.dailyActivityStatus || 'Submitted'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* Matriks Tanda Tangan & Persetujuan */}
+                          <div className="font-bold mb-1 text-[8.5pt]">Matriks Persetujuan</div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                            <div className="border border-black p-2 text-center text-[8pt] bg-white">
+                              <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Diajukan Oleh (Karyawan)</p>
+                              <p className="font-bold underline">{currentBatchDoc.employeeName}</p>
+                              <p className="text-[7pt] text-slate-500">{formatDate(currentBatchDoc.submittedAt)}</p>
+                            </div>
+                            <div className="border border-black p-2 text-center text-[8pt] bg-white">
+                              <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Persetujuan / Atasan</p>
+                              <p className="font-bold underline">{currentBatchDoc.approverName || 'Approver'}</p>
+                              <p className="text-[7pt] text-indigo-700 font-semibold">{currentBatchDoc.stepLabel}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Contract Review Fallback */}
+                      {currentBatchDoc.category === 'CONTRACT_REVIEW' && (
                         <div>
                           <h1 className="text-center font-bold text-[11pt] mb-1">PT. CHITRA PARATAMA</h1>
-                          <h2 className="text-center font-bold text-[12pt] mb-3">{currentBatchDoc.categoryLabel.toUpperCase()}</h2>
+                          <h2 className="text-center font-bold text-[12pt] mb-3">CONTRACT REVIEW</h2>
                           <div className="border border-black p-3 text-[8.5pt] space-y-2">
                             <p><strong>Nomor Pengajuan:</strong> {currentBatchDoc.documentNumber}</p>
                             <p><strong>Nama Karyawan:</strong> {currentBatchDoc.employeeName}</p>

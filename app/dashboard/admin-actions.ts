@@ -4458,11 +4458,11 @@ async function applyApprovalDecision(params: {
             actor: actorName,
             message:
               trimmedNote ||
-              (params.decision === 'approved'
-                ? 'WO disetujui.'
-                : params.decision === 'rejected'
-                  ? 'WO ditolak.'
-                  : 'WO dikembalikan untuk revisi.'),
+              (params.decision === 'rejected'
+                ? 'WO ditolak.'
+                : params.decision === 'needs_correction'
+                  ? 'WO dikembalikan untuk revisi.'
+                  : ''),
             at: now.toISOString(),
           }),
         })
@@ -4720,6 +4720,40 @@ async function applyApprovalDecision(params: {
             creatorEmail = creatorEmp?.email
           }
 
+          // Fetch previous approvers who already approved earlier steps to CC them
+          const previousApprovedSteps = await tx
+            .select({
+              approverEmployeeId: approvals.approverEmployeeId,
+              approverName: approvals.approverName,
+            })
+            .from(approvals)
+            .where(
+              and(
+                eq(approvals.repairFormWoId, approval.repairFormWoId!),
+                lt(approvals.level, approval.level ?? 1),
+                eq(approvals.status, 'approved')
+              )
+            )
+
+          const prevApproverEmpIds = Array.from(
+            new Set(
+              previousApprovedSteps
+                .map((s) => s.approverEmployeeId)
+                .filter((id): id is number => id != null)
+            )
+          )
+
+          let previousApproverEmails: string[] = []
+          if (prevApproverEmpIds.length > 0) {
+            const prevEmps = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .where(inArray(employees.id, prevApproverEmpIds))
+            previousApproverEmails = prevEmps
+              .map((e) => e.email)
+              .filter(Boolean) as string[]
+          }
+
           if (creatorEmail) {
             const { sendFormWoStatusRevertedEmail } = await import('@/lib/form-wo-email')
             sendFormWoStatusRevertedEmail({
@@ -4727,13 +4761,14 @@ async function applyApprovalDecision(params: {
               pemohon: reqInfo.pemohon || 'Pemohon',
               noPengajuan: reqInfo.noPengajuan,
               catatanRevisi: trimmedNote || 'Pengajuan dikembalikan untuk revisi.',
+              ccEmails: previousApproverEmails,
             }).catch(console.error)
 
             const { notifyWorkflowBellRecipients } = await import(
               '@/lib/workflow-notification-center'
             )
             notifyWorkflowBellRecipients({
-              recipientEmails: [creatorEmail],
+              recipientEmails: [creatorEmail, ...previousApproverEmails],
               eventType: 'form_wo_reverted',
               category: 'approval',
               title: 'Form WO Perlu Revisi',
