@@ -454,24 +454,17 @@ export function FiveRDocumentPreview({
                 Diajukan Oleh,
               </div>
 
-              <div className="my-auto py-1 flex items-center justify-center min-h-[56px]">
+              <div className="my-auto py-1 flex items-center justify-center h-14">
                 {report.auditorSignatureUrl ? (
-                  <div className="flex flex-col items-center">
-                    <img
-                      src={report.auditorSignatureUrl}
-                      alt="Tanda Tangan Auditor"
-                      className="max-h-14 w-auto object-contain max-w-[140px]"
-                    />
-                  </div>
-                ) : report.currentApprovalLevel > 1 || report.status === 'approved' ? (
-                  <div className="flex flex-col items-center">
-                    <div className="font-bold text-slate-900 text-[10px]">{report.auditorName || 'Mochamad Annas Khadafi'}</div>
-                    <div className="text-[9.5px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
-                      <CheckCircle2 className="size-3" /> Terverifikasi
-                    </div>
-                  </div>
+                  <img
+                    src={report.auditorSignatureUrl}
+                    alt="Tanda Tangan Auditor"
+                    className="max-h-14 w-auto object-contain max-w-[140px]"
+                  />
                 ) : (
-                  <div className="text-slate-400 italic text-[9.5px]">Menunggu Verifikasi Mutu</div>
+                  <div className="font-bold text-slate-900 text-[10px]">
+                    {report.auditorName || 'Mochamad Annas Khadafi'}
+                  </div>
                 )}
               </div>
 
@@ -519,32 +512,25 @@ export function FiveRDocumentPreview({
                       Diperiksa Oleh,
                     </div>
 
-                    <div className="my-auto py-1 flex items-center justify-center min-h-[56px]">
+                    <div className="my-auto py-1 flex items-center justify-center h-14">
                       {currentStepLevel === 1 && liveSignatureUrl ? (
-                        <div className="flex flex-col items-center">
+                        <img
+                          src={liveSignatureUrl}
+                          alt="Signature"
+                          className="max-h-14 w-auto object-contain max-w-[140px]"
+                        />
+                      ) : isStep1Approved ? (
+                        step1Signature ? (
                           <img
-                            src={liveSignatureUrl}
+                            src={step1Signature}
                             alt="Signature"
                             className="max-h-14 w-auto object-contain max-w-[140px]"
                           />
-                        </div>
-                      ) : isStep1Approved ? (
-                        <div className="flex flex-col items-center">
-                          {step1Signature ? (
-                            <img
-                              src={step1Signature}
-                              alt="Signature"
-                              className="max-h-14 w-auto object-contain max-w-[140px]"
-                            />
-                          ) : (
-                            <div className="font-bold text-slate-900 text-[10px]">
-                              {step1?.approverName || 'PJO Site'}
-                            </div>
-                          )}
-                          <div className="text-[9.5px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
-                            <CheckCircle2 className="size-3" /> Disetujui
+                        ) : (
+                          <div className="font-bold text-slate-900 text-[10px]">
+                            {step1?.approverName || 'PJO Site'}
                           </div>
-                        </div>
+                        )
                       ) : (
                         <div className="text-slate-400 italic text-[9.5px]">Menunggu Persetujuan Site</div>
                       )}
@@ -575,41 +561,27 @@ export function FiveRDocumentPreview({
                       Disetujui Oleh,
                     </div>
 
-                    <div className="my-auto py-1 flex items-center justify-center min-h-[56px]">
+                    <div className="my-auto py-1 flex items-center justify-center h-14">
                       {currentStepLevel === 2 && liveSignatureUrl ? (
-                        <div className="flex flex-col items-center">
+                        <img
+                          src={liveSignatureUrl}
+                          alt="Signature"
+                          className="max-h-14 w-auto object-contain max-w-[140px]"
+                        />
+                      ) : isStep2Approved ? (
+                        step2Signature ? (
                           <img
-                            src={liveSignatureUrl}
+                            src={step2Signature}
                             alt="Signature"
                             className="max-h-14 w-auto object-contain max-w-[140px]"
                           />
-                        </div>
-                      ) : isStep2Approved ? (
-                        <div className="flex flex-col items-center">
-                          {step2Signature ? (
-                            <img
-                              src={step2Signature}
-                              alt="Signature"
-                              className="max-h-14 w-auto object-contain max-w-[140px]"
-                            />
-                          ) : (
-                            <div className="font-bold text-slate-900 text-[10px]">
-                              {step2?.approverName || 'Bardinia Susi Ekawaty'}
-                            </div>
-                          )}
-                          <div className="text-[9.5px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
-                            <CheckCircle2 className="size-3" /> Disetujui
-                          </div>
-                        </div>
-                      ) : report.status === 'needs_revision' ? (
-                        <div className="flex flex-col items-center">
+                        ) : (
                           <div className="font-bold text-slate-900 text-[10px]">
                             {step2?.approverName || 'Bardinia Susi Ekawaty'}
                           </div>
-                          <div className="text-[9.5px] text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
-                            <AlertCircle className="size-3 text-amber-600" /> Perlu Revisi
-                          </div>
-                        </div>
+                        )
+                      ) : report.status === 'needs_revision' ? (
+                        <div className="text-amber-700 font-semibold text-[9.5px]">Perlu Revisi</div>
                       ) : (
                         <div className="text-slate-400 italic text-[9.5px]">Menunggu Otorisasi Final</div>
                       )}

@@ -323,6 +323,7 @@ export function InboxTab({
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
+  const [viewerZoom, setViewerZoom] = useState(1.0)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
@@ -1608,6 +1609,44 @@ export function InboxTab({
                       </div>
                     )}
 
+                    {/* Zoom Controls */}
+                    <div className="flex items-center gap-1 bg-slate-50 rounded-xl px-1.5 py-1 border border-slate-200">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
+                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
+                        title="Zoom Out"
+                      >
+                        -
+                      </Button>
+                      <span className="text-[10px] font-mono font-bold text-slate-600 px-1 min-w-7 text-center">
+                        {Math.round(viewerZoom * 100)}%
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewerZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
+                        title="Zoom In"
+                      >
+                        +
+                      </Button>
+                      {viewerZoom !== 1.0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setViewerZoom(1.0)}
+                          className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
+                        >
+                          Reset
+                        </Button>
+                      )}
+                    </div>
+
                     <Button
                       size="sm"
                       variant="outline"
@@ -1633,17 +1672,28 @@ export function InboxTab({
                 {/* Body: 2 Columns on Desktop, Continuous Vertical Scroll on Mobile */}
                 <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row bg-slate-100 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
                   {/* Top Section (Mobile) / Left Column (Desktop): Live Letterhead PDF Preview */}
-                  <div className="w-full lg:flex-1 p-2 sm:p-6 flex justify-center items-start bg-slate-200/60 overflow-x-auto shrink-0 lg:shrink">
+                  <div className={cn(
+                    "w-full lg:flex-1 p-2 sm:p-6 flex justify-center items-start bg-slate-200/60 shrink-0 lg:shrink",
+                    viewMode === 'mobile' ? "overflow-hidden" : "overflow-x-auto"
+                  )}>
                     {currentBatchDoc && (
                       <div
                         id="unified-batch-preview-sheet"
                         className={cn(
-                          "relative mx-auto shrink-0 overflow-hidden bg-white shadow-md border border-slate-200/90 rounded-sm transition-all",
+                          "relative mx-auto shrink-0 overflow-hidden bg-white shadow-md border border-slate-200/90 rounded-sm transition-transform duration-150 origin-top",
                           isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
                         )}
                         style={{
                           backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
                           backgroundSize: '100% 100%',
+                          transform: viewMode === 'mobile'
+                            ? `scale(${isLandscapeDoc ? 0.32 * viewerZoom : 0.44 * viewerZoom})`
+                            : viewerZoom !== 1.0
+                            ? `scale(${viewerZoom})`
+                            : undefined,
+                          marginBottom: viewMode === 'mobile'
+                            ? `${(isLandscapeDoc ? -145 : -165) + (viewerZoom - 1.0) * 125}mm`
+                            : undefined,
                         }}
                       >
                         <div
