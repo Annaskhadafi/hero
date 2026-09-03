@@ -556,6 +556,8 @@ function InboxTab({
         url: '#',
         rawGeneralGroup: g,
       })
+    }
+
     for (const rfr of rfrItems) {
       list.push({
         id: `rfr-${rfr.approvalId || rfr.id}`,
