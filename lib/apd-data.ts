@@ -93,6 +93,7 @@ export async function fetchApdRequestById(id: number) {
       approverName: approvals.approverName,
       approverEmployeeId: approvals.approverEmployeeId,
       approverJobTitle: employees.jobTitle,
+      approverSignatureDataUrl: employees.signatureDataUrl,
       decisionNote: approvals.decisionNote,
       signatureUrl: approvals.signatureUrl,
       reviewedAt: approvals.reviewedAt,
@@ -103,7 +104,36 @@ export async function fetchApdRequestById(id: number) {
     .where(eq(approvals.apdRequestId, id))
     .orderBy(asc(approvals.level));
 
-  return { ...request, items, approvalHistory };
+  const allEmployeesWithSig = await db
+    .select({ id: employees.id, name: employees.name, sig: employees.signatureDataUrl, title: employees.jobTitle })
+    .from(employees)
+    .where(sql`${employees.signatureDataUrl} IS NOT NULL AND ${employees.signatureDataUrl} != ''`);
+
+  const empSigMap = new Map(allEmployeesWithSig.map((e) => [e.name.trim().toLowerCase(), e.sig]));
+  const empIdSigMap = new Map(allEmployeesWithSig.map((e) => [e.id, e.sig]));
+  const empTitleMap = new Map(allEmployeesWithSig.map((e) => [e.name.trim().toLowerCase(), e.title]));
+
+  const resolvedHistory = approvalHistory.map((step) => {
+    const rawSig =
+      step.signatureUrl ||
+      step.approverSignatureDataUrl ||
+      (step.approverEmployeeId ? empIdSigMap.get(step.approverEmployeeId) : null) ||
+      (step.approverName ? empSigMap.get(step.approverName.trim().toLowerCase()) : null) ||
+      null;
+
+    const rawTitle =
+      step.approverJobTitle ||
+      (step.approverName ? empTitleMap.get(step.approverName.trim().toLowerCase()) : null) ||
+      'Pemeriksa / Atasan';
+
+    return {
+      ...step,
+      signatureUrl: rawSig,
+      approverJobTitle: rawTitle,
+    };
+  });
+
+  return { ...request, items, approvalHistory: resolvedHistory };
 }
 
 export async function fetchApdItemOptions(category: ApdRequestCategory) {

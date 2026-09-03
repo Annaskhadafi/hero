@@ -5,6 +5,7 @@ import { fetchApdRequestById } from '@/lib/apd-data';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
 import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { parseApprovalNoteEntries } from '@/lib/approval-notes';
+import { ApdLiveSignatureListener } from '@/components/admin/apd-approval-dialog';
 
 export default async function PrintApdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -116,7 +117,7 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
         @media print {
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 0;
           }
           html, body {
             height: 100%;
@@ -129,34 +130,37 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
           }
           .pdf-wrapper {
             box-shadow: none !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            height: 100% !important;
-            max-height: 284mm !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
             overflow: hidden !important;
             page-break-after: avoid !important;
             page-break-inside: avoid !important;
             break-after: avoid !important;
             break-inside: avoid !important;
-            padding: 0 !important;
+            padding: 38mm 14mm 16mm 14mm !important;
           }
         }
       `}} />
 
       <div 
-        className="pdf-wrapper bg-white shadow-xl print:shadow-none w-[210mm] max-h-[297mm] min-h-[297mm] px-6 pt-5 pb-4 text-[8.5pt] font-sans mx-auto flex flex-col justify-between print:px-0 print:pt-1 print:pb-0 print:min-h-0 print:max-h-[284mm] print:h-[284mm]"
-        style={{ fontFamily: 'Arial, sans-serif' }}
+        className="pdf-wrapper relative bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] text-[8.5pt] font-sans mx-auto flex flex-col justify-start box-border overflow-hidden"
+        style={{
+          fontFamily: 'Arial, sans-serif',
+          backgroundImage: "url('/ChitraParatama_Stationery_Letterhead_jkt.jpg')",
+          backgroundSize: '210mm 297mm',
+          backgroundPosition: 'center top',
+          backgroundRepeat: 'no-repeat',
+          padding: '38mm 14mm 16mm 14mm',
+        }}
       >
-        <div>
-          {/* Header / Logo */}
-          <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-3">
-            <div className="w-1/4">
-              <Image src="/cp_logo-removebg-preview.png" alt="Logo" width={160} height={50} className="object-contain" />
-            </div>
-            <div className="w-3/4 text-center pr-10">
-              <h1 className="text-base font-bold tracking-wider uppercase">{formTitle}</h1>
-              <p className="text-xs font-semibold tracking-wide text-gray-800">PT. CHITRA PARATAMA</p>
-            </div>
+        <div className="relative z-10 flex flex-col">
+          {/* Document Title Header */}
+          <div className="text-center mb-3.5">
+            <h1 className="text-xs font-bold tracking-wider uppercase text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5">
+              {formTitle}
+            </h1>
           </div>
 
           {/* Info Grid */}
@@ -275,8 +279,8 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* Signatures - 2 Columns for APD (Pemohon & PJO Site) */}
-        <div>
+        {/* Signatures - Dynamic Columns for APD/Tools/Material (Pemohon & Approver Site) */}
+        <div className="mt-3">
           {(() => {
             const approverCount = effectiveApprovalHistory.length;
             const totalCols = 1 + approverCount; // Pemohon + PJO
@@ -285,17 +289,35 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
             for (const step of effectiveApprovalHistory) {
               notesMap.set(step.id, step.decisionNote ? parseApprovalNoteEntries(step.decisionNote, step.approverName || 'System') : []);
             }
+
+            const isAutoDefaultNote = (msg?: string) => {
+              if (!msg) return true;
+              const lower = msg.trim().toLowerCase();
+              return (
+                lower === 'keputusan approve' ||
+                lower === 'keputusan approve.' ||
+                lower === 'apd disetujui.' ||
+                lower === 'apd disetujui' ||
+                lower === 'pengajuan disetujui.' ||
+                lower === 'pengajuan disetujui' ||
+                lower === 'approved' ||
+                lower === 'disetujui' ||
+                lower === 'ok' ||
+                (lower.startsWith('keputusan ') && lower.endsWith('approve'))
+              );
+            };
+
             return (
-              <div className="break-inside-avoid">
-                <table className="w-full border-collapse border border-black text-center mt-1">
+              <div className="break-inside-avoid flex justify-center">
+                <table className="w-full max-w-[165mm] border-collapse border border-black text-center mx-auto">
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border border-black py-1 px-2 text-[7.5pt] font-bold" style={{ width: colWidth }}>
-                        Diajukan Oleh (Pemohon)
+                        Diajukan Oleh
                       </th>
                       {effectiveApprovalHistory.map((step) => (
                         <th key={step.id} className="border border-black py-1 px-2 text-[7.5pt] font-bold" style={{ width: colWidth }}>
-                          {getStepLabel(step.level)}
+                          Disetujui Oleh
                         </th>
                       ))}
                     </tr>
@@ -303,18 +325,22 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                   <tbody>
                     <tr>
                       {/* Pemohon cell */}
-                      <td className="border border-black p-1.5 h-[105px] relative align-bottom">
-                        {submitterSignatureUrl && (
-                          <div className="absolute inset-x-0 top-1.5 flex justify-center">
-                            <img src={submitterSignatureUrl} alt="Signature" className="object-contain h-[45px] w-auto max-w-[85%]" />
-                          </div>
-                        )}
-                        <div className="text-center pt-12">
-                          <div className="font-bold underline text-[8pt] text-gray-900 leading-tight">{data.employeeName}</div>
-                          <div className="text-[6.5pt] text-gray-600 font-medium">Karyawan</div>
-                          <div className="text-[6pt] text-gray-500 font-mono mt-0.5">
-                            {data.requestDate ? new Date(data.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(data.requestDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                          </div>
+                      <td className="border border-black p-2 h-[105px] align-top text-center relative">
+                        <div className="h-[48px] flex items-center justify-center pointer-events-none mb-1">
+                          {submitterSignatureUrl ? (
+                            <img src={submitterSignatureUrl} alt="Signature" className="object-contain h-[44px] w-auto max-w-[80%]" />
+                          ) : (
+                            <div className="h-[44px]" />
+                          )}
+                        </div>
+                        <div className="font-bold underline text-[8pt] text-gray-900 leading-tight">
+                          {data.employeeName}
+                        </div>
+                        <div className="text-[6.5pt] text-gray-600 font-medium leading-tight mt-0.5">
+                          Karyawan
+                        </div>
+                        <div className="text-[6pt] text-gray-500 font-mono mt-0.5 leading-tight">
+                          {data.requestDate ? new Date(data.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + new Date(data.requestDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
                         </div>
                       </td>
 
@@ -323,40 +349,38 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                         const stepNotes = notesMap.get(step.id) ?? [];
                         const lastNote = stepNotes[stepNotes.length - 1];
                         const isResolved = step.status === 'approved' || step.status === 'proses_order';
+                        const hasCustomNote = Boolean(lastNote?.message && !isAutoDefaultNote(lastNote.message));
+
                         return (
                           <td 
                             key={step.id} 
-                            className="border border-black p-1.5 h-[105px] relative align-bottom" 
+                            className="border border-black p-2 h-[105px] align-top text-center relative" 
                             id={`approver-cell-${i + 1}`}
                             data-resolved={isResolved ? 'true' : 'false'}
                           >
-                            {isResolved && (
-                              step.signatureUrl ? (
-                                <div className="absolute inset-x-0 top-1.5 flex justify-center approved-signature">
-                                  <img src={step.signatureUrl} alt="Signature" className="object-contain h-[45px] w-auto max-w-[85%]" />
-                                </div>
+                            <div className="h-[48px] flex items-center justify-center pointer-events-none mb-1">
+                              {isResolved && step.signatureUrl ? (
+                                <img src={step.signatureUrl} alt="Signature" className="object-contain h-[44px] w-auto max-w-[80%] approved-signature" />
                               ) : (
-                                <div className="absolute inset-x-0 top-3 flex justify-center approved-badge">
-                                  <span className="text-emerald-700/30 text-base font-bold -rotate-12 border border-emerald-700/30 rounded px-2 py-0.5">APPROVED</span>
-                                </div>
-                              )
-                            )}
-                            <div className="text-center pt-12">
-                              <div className="font-bold underline text-[8pt] text-gray-900 leading-tight">
-                                {step.approverName || "_______________________"}
-                              </div>
-                              <div className="text-[6.5pt] text-gray-600 font-medium">{(step as any).approverJobTitle || (isApd ? 'Pemeriksa / Atasan' : getStepLabel(step.level))}</div>
-                              {step.reviewedAt ? (
-                                <div className="text-[6pt] text-gray-500 font-mono mt-0.5">
-                                  {step.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {step.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                              ) : (
-                                <div className="text-[6pt] text-gray-400 italic mt-0.5 waiting-label">(Menunggu Persetujuan)</div>
-                              )}
-                              {lastNote?.message && (
-                                <div className="text-[5.5pt] text-gray-600 italic truncate max-w-[180px] mx-auto">Catatan: {lastNote.message}</div>
+                                <div className="h-[44px]" />
                               )}
                             </div>
+                            <div className="font-bold underline text-[8pt] text-gray-900 leading-tight">
+                              {step.approverName || "_______________________"}
+                            </div>
+                            <div className="text-[6.5pt] text-gray-600 font-medium leading-tight mt-0.5">
+                              {(step as any).approverJobTitle || (isApd ? 'Pemeriksa / Atasan' : getStepLabel(step.level))}
+                            </div>
+                            {step.reviewedAt ? (
+                              <div className="text-[6pt] text-gray-500 font-mono mt-0.5 leading-tight">
+                                {step.reviewedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, {step.reviewedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            ) : (
+                              <div className="text-[6pt] text-gray-400 italic mt-0.5 waiting-label leading-tight">(Menunggu Persetujuan)</div>
+                            )}
+                            {hasCustomNote && (
+                              <div className="text-[5.5pt] text-gray-600 italic truncate max-w-[180px] mx-auto mt-0.5">Catatan: {lastNote?.message}</div>
+                            )}
                           </td>
                         );
                       })}
@@ -367,54 +391,14 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
             );
           })()}
           
-          <div className="flex justify-between items-center text-gray-500 text-[7pt] mt-1.5">
+          <div className="flex justify-between items-center text-gray-500 text-[6.5pt] mt-2">
             <span>Dokumen dicetak otomatis via HERO System</span>
-            <span className="font-mono font-semibold">{isApd ? 'F.HSE.APD-01.00|1' : isMaterial ? 'F.HSE.MAT-01.00|1' : 'F.HSE.TLS-01.00|1'}</span>
+            <span className="font-mono font-semibold text-gray-700">{isApd ? 'F.HSE.APD-01.00|1' : isMaterial ? 'F.HSE.MAT-01.00|1' : 'F.HSE.TLS-01.00|1'}</span>
           </div>
         </div>
       </div>
 
-      <script dangerouslySetInnerHTML={{__html: `
-        window.addEventListener('message', function(event) {
-          if (event.data && event.data.type === 'previewSignature') {
-            const dataUrl = event.data.dataUrl;
-            let targetCell = null;
-            for (let i = 1; i <= 10; i++) {
-              const cell = document.getElementById('approver-cell-' + i);
-              if (cell && cell.getAttribute('data-resolved') !== 'true') {
-                targetCell = cell;
-                break;
-              }
-            }
-            if (!targetCell) {
-              for (let i = 1; i <= 10; i++) {
-                const cell = document.getElementById('approver-cell-' + i);
-                if (cell && !cell.innerHTML.includes('APPROVED')) {
-                  targetCell = cell;
-                  break;
-                }
-              }
-            }
-            
-            if (targetCell) {
-              const existingPreview = targetCell.querySelector('.live-preview-sig');
-              if (existingPreview) {
-                existingPreview.remove();
-              }
-              const waitingLabel = targetCell.querySelector('.waiting-label');
-              if (dataUrl) {
-                if (waitingLabel) waitingLabel.style.visibility = 'hidden';
-                const imgDiv = document.createElement('div');
-                imgDiv.className = 'absolute inset-x-0 top-1.5 flex justify-center pointer-events-none live-preview-sig';
-                imgDiv.innerHTML = '<img src="' + dataUrl + '" alt="Live Preview" class="object-contain h-[45px] w-auto max-w-[85%] live-preview-img" />';
-                targetCell.appendChild(imgDiv);
-              } else {
-                if (waitingLabel) waitingLabel.style.visibility = 'visible';
-              }
-            }
-          }
-        });
-      `}} />
+      <ApdLiveSignatureListener />
     </div>
   );
 }

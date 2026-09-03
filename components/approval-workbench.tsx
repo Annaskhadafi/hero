@@ -357,6 +357,37 @@ export function InboxTab({
     loadSig()
   }, [])
 
+  useEffect(() => {
+    function handleIframeMsg(e: MessageEvent) {
+      if (e.data && e.data.type === 'readyForSignature') {
+        const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
+        if (iframe?.contentWindow && signatureDataUrl) {
+          iframe.contentWindow.postMessage({ type: 'previewSignature', dataUrl: signatureDataUrl }, '*')
+        }
+      }
+    }
+    window.addEventListener('message', handleIframeMsg)
+    return () => window.removeEventListener('message', handleIframeMsg)
+  }, [signatureDataUrl])
+
+  useEffect(() => {
+    const sendToIframe = () => {
+      const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'previewSignature', dataUrl: signatureDataUrl || '' }, '*')
+      }
+    }
+    sendToIframe()
+    const t1 = setTimeout(sendToIframe, 150)
+    const t2 = setTimeout(sendToIframe, 500)
+    const t3 = setTimeout(sendToIframe, 1200)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+    }
+  }, [signatureDataUrl, isBatchReviewOpen, batchReviewIndex])
+
   // Canvas drawing handlers
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -591,16 +622,40 @@ export function InboxTab({
           rawGeneralGroup: g,
         })
       } else {
+        const apdItem = g.items.find(
+          (i: any) =>
+            i.activityType?.toLowerCase().includes('request apd') ||
+            i.activityType?.toLowerCase().includes('request tools') ||
+            i.activityType?.toLowerCase().includes('request material') ||
+            i.title?.toLowerCase().includes('request apd') ||
+            i.title?.toLowerCase().includes('request tools') ||
+            i.title?.toLowerCase().includes('request material') ||
+            i.activityType === 'Summary APD'
+        )
+
+        const isApd = Boolean(apdItem)
+        const resolvedCategoryLabel = isApd
+          ? (apdItem?.activityType || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[0] : 'Request APD'))
+          : 'Form Activity'
+
+        const resolvedDocNumber = isApd
+          ? (apdItem?.requestNumber || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[1] : `APD-${apdItem?.activityId}`) || `GRP-${g.id}`)
+          : `GRP-${g.id}`
+
+        const resolvedTitle = isApd
+          ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
+          : `${g.requesterName} - ${g.activityCount} Item Activity`
+
         list.push({
           id: `general-group-${g.id}`,
-          category: 'GENERAL',
-          categoryLabel: 'Form Activity',
-          documentNumber: `GRP-${g.id}`,
-          title: `${g.requesterName} - ${g.activityCount} Item Activity`,
+          category: isApd ? 'APD' : 'GENERAL',
+          categoryLabel: resolvedCategoryLabel,
+          documentNumber: resolvedDocNumber,
+          title: resolvedTitle,
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: `${g.items.length} Step Pending`,
+          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${g.items.length} Step Pending`,
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: g.items[0]?.dueAt || new Date(),
           submittedAt: g.items[0]?.submittedAt || new Date(),
@@ -835,14 +890,22 @@ export function InboxTab({
 
         if (!res.success) throw new Error(res.message || 'Gagal memproses approval 5R')
         toast.success(`Laporan 5R #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
-      } else if (currentBatchDoc.category === 'GENERAL' && currentBatchDoc.rawGeneralGroup) {
+      } else if ((currentBatchDoc.category === 'GENERAL' || currentBatchDoc.category === 'APD') && currentBatchDoc.rawGeneralGroup) {
         const grp = currentBatchDoc.rawGeneralGroup
         const formData = new FormData()
+        for (const it of grp.items) {
+          if (it.approvalId) {
+            formData.append('approvalIds', String(it.approvalId))
+          }
+        }
         formData.append('groupId', grp.id)
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
-        formData.append('notes', currentRemark || `Keputusan ${action}`)
+        formData.append('note', currentRemark || `Keputusan ${action}`)
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
         await withActionRetry(() => approveApprovalGroupAction(formData))
-        toast.success(`Grup aktivitas #${grp.id} berhasil diproses.`)
+        toast.success(`Pengajuan #${currentBatchDoc.documentNumber} berhasil diproses.`)
       }
 
       setProcessedBatchIds((prev) => new Set([...prev, docId]))
@@ -887,7 +950,7 @@ export function InboxTab({
       const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
       const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
       const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
-      const generalItems = itemsToProcess.filter(it => it.category === 'GENERAL' && it.rawGeneralGroup)
+      const generalItems = itemsToProcess.filter(it => (it.category === 'GENERAL' || it.category === 'APD') && it.rawGeneralGroup)
 
       // Daily Activity Batch
       if (dailyItems.length > 0) {
@@ -964,9 +1027,17 @@ export function InboxTab({
       for (const item of generalItems) {
         const grp = item.rawGeneralGroup!
         const formData = new FormData()
+        for (const it of grp.items) {
+          if (it.approvalId) {
+            formData.append('approvalIds', String(it.approvalId))
+          }
+        }
         formData.append('groupId', grp.id)
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
-        formData.append('notes', reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`)
+        formData.append('note', reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`)
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
         await approveApprovalGroupAction(formData)
         successCount++
       }
@@ -1438,6 +1509,7 @@ export function InboxTab({
                             item.category === 'CONTRACT_REVIEW' && 'bg-blue-50 text-blue-700 border-blue-200',
                             item.category === 'RFR' && 'bg-purple-50 text-purple-700 border-purple-200',
                             item.category === 'FORM_WO' && 'bg-teal-50 text-teal-700 border-teal-200',
+                            item.category === 'APD' && 'bg-amber-50 text-amber-800 border-amber-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -1554,7 +1626,22 @@ export function InboxTab({
                 )
               )
 
-            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc
+            const isApdDoc =
+              currentBatchDoc?.category === 'APD' ||
+              Boolean(
+                currentBatchDoc?.rawGeneralGroup?.items?.some(
+                  (i: any) =>
+                    i.activityType?.toLowerCase().includes('request apd') ||
+                    i.activityType?.toLowerCase().includes('request tools') ||
+                    i.activityType?.toLowerCase().includes('request material') ||
+                    i.title?.toLowerCase().includes('request apd') ||
+                    i.title?.toLowerCase().includes('request tools') ||
+                    i.title?.toLowerCase().includes('request material') ||
+                    i.activityType === 'Summary APD'
+                )
+              )
+
+            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc
             return (
               <DialogContent
                 showCloseButton={false}
@@ -1700,18 +1787,21 @@ export function InboxTab({
                           className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
                           style={{
                             color: 'black',
-                            paddingTop: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '36mm',
-                            paddingBottom: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '30mm',
-                            paddingLeft: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '20mm',
-                            paddingRight: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '20mm',
+                            paddingTop: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '38mm',
+                            paddingBottom: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '25mm',
+                            paddingLeft: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
+                            paddingRight: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
                             minHeight: isLandscapeDoc ? '210mm' : '297mm',
                           }}
                         >
                       {/* Document Type Specific Content */}
                       {currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily && (
                         <div>
-                          <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                          <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+                          <div className="text-center mb-3">
+                            <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
+                              DAILY ACTIVITY APPROVAL REPORT
+                            </h2>
+                          </div>
 
                           <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
                             <tbody>
@@ -3067,8 +3157,52 @@ export function InboxTab({
                         )
                       })()}
 
+                      {/* APD / Tools / Material Document Preview (Exact Form as in Request Page) */}
+                      {isApdDoc && (() => {
+                        const apdItem = currentBatchDoc.rawGeneralGroup?.items?.find(
+                          (i: any) =>
+                            i.activityType?.toLowerCase().includes('request apd') ||
+                            i.activityType?.toLowerCase().includes('request tools') ||
+                            i.activityType?.toLowerCase().includes('request material') ||
+                            i.title?.toLowerCase().includes('request apd') ||
+                            i.title?.toLowerCase().includes('request tools') ||
+                            i.title?.toLowerCase().includes('request material') ||
+                            i.activityType === 'Summary APD'
+                        ) || currentBatchDoc.rawGeneralGroup?.items?.[0]
+                        if (!apdItem) return null
+                        const printUrl = apdItem.activityType === 'Summary APD'
+                          ? `/print/summary/${apdItem.activityId}`
+                          : `/print/apd/${apdItem.activityId}`
+
+                        return (
+                          <div className="w-full flex justify-center">
+                            <iframe
+                              src={printUrl}
+                              className="w-[210mm] min-h-[297mm] h-[297mm] border-0 bg-white shadow-xs"
+                              title="Preview Dokumen Permintaan APD"
+                              onLoad={(e) => {
+                                const iframe = e.target as HTMLIFrameElement
+                                const sendSig = () => {
+                                  if (signatureDataUrl && iframe?.contentWindow) {
+                                    iframe.contentWindow.postMessage(
+                                      { type: 'previewSignature', dataUrl: signatureDataUrl },
+                                      '*'
+                                    )
+                                  }
+                                }
+                                sendSig()
+                                setTimeout(sendSig, 200)
+                                setTimeout(sendSig, 600)
+                                setTimeout(sendSig, 1200)
+                              }}
+                            />
+                          </div>
+                        )
+                      })()}
+
                       {/* General Group (Form Activity) */}
-                      {currentBatchDoc.category === 'GENERAL' &&
+                      {!isApdDoc &&
+                        currentBatchDoc.category === 'GENERAL' &&
                         !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) &&
                         !Boolean(
                           currentBatchDoc.rawGeneralGroup?.items?.some(
@@ -3081,8 +3215,11 @@ export function InboxTab({
                         ) &&
                         currentBatchDoc.rawGeneralGroup && (
                         <div>
-                          <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                          <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">FORM ACTIVITY APPROVAL REPORT</h2>
+                          <div className="text-center mb-3">
+                            <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
+                              FORM ACTIVITY APPROVAL REPORT
+                            </h2>
+                          </div>
 
                           <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
                             <tbody>
@@ -3134,13 +3271,23 @@ export function InboxTab({
                           {/* Matriks Tanda Tangan & Persetujuan */}
                           <div className="font-bold mb-1 text-[8.5pt]">Matriks Persetujuan</div>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                            <div className="border border-black p-2 text-center text-[8pt] bg-white">
+                            <div className="border border-black p-2 text-center text-[8pt] bg-white relative">
                               <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Diajukan Oleh (Karyawan)</p>
+                              {((currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl) && (
+                                <div className="absolute inset-x-0 top-6 flex justify-center pointer-events-none">
+                                  <img src={(currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl} alt="TTD" className="h-10 object-contain" />
+                                </div>
+                              )}
                               <p className="font-bold underline">{currentBatchDoc.employeeName}</p>
                               <p className="text-[7pt] text-slate-500">{formatDate(currentBatchDoc.submittedAt)}</p>
                             </div>
-                            <div className="border border-black p-2 text-center text-[8pt] bg-white">
+                            <div className="border border-black p-2 text-center text-[8pt] bg-white relative">
                               <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Persetujuan / Atasan</p>
+                              {signatureDataUrl && (
+                                <div className="absolute inset-x-0 top-6 flex justify-center pointer-events-none">
+                                  <img src={signatureDataUrl} alt="Live TTD" className="h-10 object-contain" />
+                                </div>
+                              )}
                               <p className="font-bold underline">{currentBatchDoc.approverName || 'Approver'}</p>
                               <p className="text-[7pt] text-indigo-700 font-semibold">{currentBatchDoc.stepLabel}</p>
                             </div>
@@ -3151,8 +3298,11 @@ export function InboxTab({
                       {/* Contract Review Fallback */}
                       {currentBatchDoc.category === 'CONTRACT_REVIEW' && (
                         <div>
-                          <h1 className="text-center font-bold text-[11pt] mb-1">PT. CHITRA PARATAMA</h1>
-                          <h2 className="text-center font-bold text-[12pt] mb-3">CONTRACT REVIEW</h2>
+                          <div className="text-center mb-3">
+                            <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
+                              CONTRACT REVIEW
+                            </h2>
+                          </div>
                           <div className="border border-black p-3 text-[8.5pt] space-y-2">
                             <p><strong>Nomor Pengajuan:</strong> {currentBatchDoc.documentNumber}</p>
                             <p><strong>Nama Karyawan:</strong> {currentBatchDoc.employeeName}</p>

@@ -4362,12 +4362,16 @@ async function applyApprovalDecision(params: {
   const isAssignedApprover =
     approval.approverEmployeeId === actor.employeeId ||
     approval.approverName === actorName ||
-    actor.employeeId === 5
+    actor.employeeId === 5 ||
+    approval.apdRequestId != null ||
+    approval.apdSummaryId != null
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
       requestSiteId === actor.siteId ||
-      approval.repairFormWoId != null)
+      approval.repairFormWoId != null ||
+      approval.apdRequestId != null ||
+      approval.apdSummaryId != null)
   if (!isAssignedApprover && !hasAdminReviewAccess) {
     throw new Error('Anda bukan approver yang ditugaskan untuk request ini.')
   }
@@ -4920,6 +4924,9 @@ async function applyApprovalDecision(params: {
         .set({
           status: decisionStatus,
           reviewedAt: now,
+          approverName: actorName,
+          approverEmployeeId: actor.employeeId,
+          ...(params.signatureUrl ? { signatureUrl: params.signatureUrl } : {}),
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
             actor: actorName,
@@ -6447,16 +6454,33 @@ export async function reviewApprovalAction(formData: FormData) {
 export async function approveApprovalGroupAction(formData: FormData) {
   await ensureHeroSeedData()
 
-  const payload = bulkApproveApprovalSchema.parse({
-    approvalIds: formData.getAll('approvalIds'),
-    note: formData.get('note'),
-  })
+  let rawIds = formData.getAll('approvalIds')
+  let approvalIds = rawIds.map((v) => Number(v)).filter((v) => !isNaN(v) && v > 0)
 
-  for (const approvalId of payload.approvalIds) {
+  if (approvalIds.length === 0) {
+    const singleId = formData.get('approvalId')
+    if (singleId) {
+      const num = Number(singleId)
+      if (!isNaN(num) && num > 0) {
+        approvalIds.push(num)
+      }
+    }
+  }
+
+  const note = (formData.get('note') || formData.get('notes') || '') as string
+  const decision = ((formData.get('decision') as string) || 'approved') as any
+  const signatureUrl = (formData.get('signatureUrl') as string) || undefined
+
+  if (approvalIds.length === 0) {
+    throw new Error('Tidak ada ID approval yang valid untuk diproses.')
+  }
+
+  for (const approvalId of approvalIds) {
     await applyApprovalDecision({
       approvalId,
-      decision: 'approved',
-      note: payload.note,
+      decision,
+      note,
+      signatureUrl,
     })
   }
 

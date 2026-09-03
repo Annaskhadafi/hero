@@ -683,8 +683,8 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
   const steps: ResolvedApprovalStep[] = []
   let stepOrder = 1
 
-  // For APD requests: 1-step routing (Admin CP / HSE / PJO)
-  if (context.transactionType === 'apd-request-apd' || context.transactionType === 'apd-request') {
+  // For APD / Tools / Material requests: 1-step routing (Admin CP by Section / HSE / PJO)
+  if (context.transactionType.startsWith('apd-request')) {
     // 1. Kategori Admin CP (13 Site)
     const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
     // 2. Kategori HSE (5 Site)
@@ -1448,41 +1448,30 @@ export async function resolveApprovalRouteForActivity(
   })
 
 
-  // For Material/Tools: if only 1 step from matrix, append dynamic Head Section step
-  if (
-    (selectedMatrix.transactionType === 'apd-request-material' || selectedMatrix.transactionType === 'apd-request-tools') &&
-    steps.length === 1 &&
-    context.sectionId
-  ) {
-    const sections = await db
-      .select({ headId: masterSections.headEmployeeId })
-      .from(masterSections)
-      .where(eq(masterSections.id, context.sectionId))
-      .limit(1)
+  // For APD / Material / Tools: Admin CP sites route to 1 specific admin based on section
+  if (context.transactionType.startsWith('apd-request')) {
+    const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
+    const siteId = context.siteId ?? 0
 
-    if (sections[0]?.headId) {
-      const headSection = await db
-        .select({ id: employees.id, name: employees.name })
+    if (adminCpSiteIds.includes(siteId)) {
+      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan
+      if (context.sectionId === 29) {
+        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+      } else if (context.sectionId === 37) {
+        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+      }
+
+      const [adminApprover] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
         .from(employees)
-        .where(and(eq(employees.id, sections[0].headId), eq(employees.isActive, true)))
+        .where(and(eq(employees.id, approverEmpId), eq(employees.isActive, true)))
         .limit(1)
 
-      if (headSection[0]) {
-        steps.push({
-          stepOrder: 2,
-          label: 'Head Section',
-          approverName: headSection[0].name,
-          approverEmployeeId: headSection[0].id,
-          approverNodeId: null,
-          approvalMatrixStepId: null,
-          approvalMode: 'sequential',
-          resolutionSource: 'apd_head_section',
-          canDelegate: true,
-          slaHours: 24,
-          nodeLabel: null,
-          fallbackLabel: null,
-          escalationLabel: null,
-        })
+      if (adminApprover && steps.length > 0) {
+        steps[0].approverEmployeeId = adminApprover.id
+        steps[0].approverName = adminApprover.name
+        steps[0].label = adminApprover.jobTitle || 'Admin CP Approver'
+        steps[0].nodeLabel = adminApprover.jobTitle
       }
     }
   }

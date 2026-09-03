@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { uploadFile } from "@/app/actions/upload";
 import { submitApdRequest } from "../actions";
-import { AlertCircle, Camera, CheckCircle2, Image as ImageIcon, Loader2, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Edit3, Image as ImageIcon, Loader2, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/signature-pad";
+import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature";
 import type { ApdRequestCategory } from "@/lib/apd-status";
 
 const APD_ITEMS = [
@@ -75,6 +76,21 @@ export function ApdRequestForm({
     { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
   ]);
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [profileSignature, setProfileSignature] = useState<string | null>(null);
+  const [isDrawingCustomSig, setIsDrawingCustomSig] = useState(false);
+  const [customSignatureDataUrl, setCustomSignatureDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    getUserSignatureAction().then((res) => {
+      if (isMounted && res.success && res.signatureDataUrl) {
+        setProfileSignature(res.signatureDataUrl);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
@@ -152,7 +168,11 @@ export function ApdRequestForm({
       }
 
       let signatureUrl = "";
-      if (signatureFile) {
+      if (!isDrawingCustomSig && profileSignature) {
+        signatureUrl = profileSignature;
+      } else if (customSignatureDataUrl) {
+        signatureUrl = customSignatureDataUrl;
+      } else if (signatureFile) {
         signatureUrl = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
@@ -429,10 +449,101 @@ export function ApdRequestForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Tanda Tangan Digital (Opsional)</Label>
-            <p className="text-sm text-muted-foreground">Tanda tangan langsung pada area di bawah ini</p>
-            <SignaturePad onSignatureChange={setSignatureFile} />
+          <div className="space-y-3 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label className="text-sm font-semibold text-foreground">Tanda Tangan Digital (Opsional)</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Tanda tangan verifikasi pemohon pengajuan barang.
+                </p>
+              </div>
+
+              {profileSignature && !isDrawingCustomSig && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDrawingCustomSig(true)}
+                  className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Edit3 className="size-3" /> Ubah / Gambar Manual
+                </Button>
+              )}
+
+              {profileSignature && isDrawingCustomSig && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsDrawingCustomSig(false);
+                    setCustomSignatureDataUrl(null);
+                  }}
+                  className="h-7 text-xs border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                >
+                  <CheckCircle2 className="size-3 text-emerald-600" /> Gunakan TTD Profil
+                </Button>
+              )}
+            </div>
+
+            {profileSignature && !isDrawingCustomSig ? (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-center min-h-[110px] relative shadow-2xs">
+                  <img
+                    src={profileSignature}
+                    alt="Tanda Tangan Profil HERO"
+                    className="max-h-20 w-auto object-contain"
+                  />
+                  <div className="absolute top-2 right-2">
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                      <CheckCircle2 className="size-3 text-emerald-700" /> TTD Profil HERO Aktif
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3 text-emerald-600 shrink-0" />
+                  Otomatis menggunakan tanda tangan akun profil Anda ({employeeName}).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <SignaturePad
+                  onSignatureChange={setSignatureFile}
+                  onDataUrlChange={setCustomSignatureDataUrl}
+                  height={150}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <span className="text-[11px] text-muted-foreground">
+                    Goreskan tanda tangan dengan mouse atau sentuhan jari.
+                  </span>
+                  {customSignatureDataUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!customSignatureDataUrl) return;
+                        try {
+                          const sRes = await saveUserSignatureAction(customSignatureDataUrl);
+                          if (sRes.success) {
+                            setProfileSignature(customSignatureDataUrl);
+                            setIsDrawingCustomSig(false);
+                            toast.success("Tanda tangan berhasil disimpan ke profil HERO Anda!");
+                          } else {
+                            toast.error(sRes.error || "Gagal menyimpan ke profil.");
+                          }
+                        } catch (e: any) {
+                          toast.error(e.message || "Gagal menyimpan ke profil.");
+                        }
+                      }}
+                      className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <ShieldCheck className="size-3.5 text-indigo-600" /> Simpan ke Profil HERO
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

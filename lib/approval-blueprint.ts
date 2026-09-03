@@ -3573,7 +3573,23 @@ export async function getWorkflowStudioConsoleData() {
       pjoId: approverByRole.pjo ?? null,
       sectionHeadId: approverByRole.section_head ?? null,
       departmentHeadId: approverByRole.department_head ?? null,
-      siteApprovals: relatedMatrices.map((matrix) => {
+      siteApprovals: [...relatedMatrices]
+        .sort((a, b) => {
+          const ORDERED_BLUEPRINT_SITE_IDS = [
+            '126', '142', '135', '132', '213', '212', '141', '148', '143', '147', '211', '146', '137',
+            '133', '131', '129', '128', '140',
+            '138', '144', '210', '150', '145', '125', '151', '134', '136', '149', '127', '139', '130'
+          ]
+          const aSite = a.siteId != null ? a.siteId.toString() : ''
+          const bSite = b.siteId != null ? b.siteId.toString() : ''
+          const aIdx = ORDERED_BLUEPRINT_SITE_IDS.indexOf(aSite)
+          const bIdx = ORDERED_BLUEPRINT_SITE_IDS.indexOf(bSite)
+          if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+          if (aIdx !== -1) return -1
+          if (bIdx !== -1) return 1
+          return (a.id ?? 0) - (b.id ?? 0)
+        })
+        .map((matrix) => {
         const steps = matrixSteps.filter((s) => s.matrixId === matrix.id)
         const approversByRole: Record<string, number | null> = {}
         for (const step of steps) {
