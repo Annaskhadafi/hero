@@ -881,7 +881,7 @@ export function OvertimeRequestApprovalForm({
                     <tbody className="divide-y divide-slate-100">
                       {participants.length > 0 ? (
                         participants.map((p, idx) => (
-                          <tr key={p.employeeId || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={p.id ? `spl-participant-${p.id}` : `spl-p-${p.employeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
                             <td className="py-2 px-3 font-semibold text-slate-900">{p.employeeName}</td>
                             <td className="py-2 px-2.5">
@@ -993,7 +993,7 @@ export function OvertimeRequestApprovalForm({
                     <tbody className="divide-y divide-slate-100">
                       {lineItems.length > 0 ? (
                         lineItems.map((item, idx) => (
-                          <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${item.employeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
                             <td className="py-2 px-3">
                               <Input
@@ -1080,7 +1080,7 @@ export function OvertimeRequestApprovalForm({
                 {approvalHistoryForDisplay.map((step, idx) => {
                   return (
                     <div
-                      key={`spl-status-step-${step.stepOrder}-${step.approverRole}`}
+                      key={`spl-status-step-${step.id || step.stepOrder}-${step.approverRole || 'role'}-${idx}`}
                       className={cn(
                         'flex items-center justify-between gap-3 rounded-xl border p-4 bg-white transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] border-slate-200/80'
                       )}
@@ -1532,8 +1532,8 @@ export function OvertimeRequestApprovalForm({
                     </tr>
                   </thead>
                   <tbody>
-                    {approvalHistoryForDisplay.map((step) => (
-                      <tr key={`spl-pdf-step-${step.stepOrder}-${step.approverRole}`}>
+                    {approvalHistoryForDisplay.map((step, idx) => (
+                      <tr key={`spl-pdf-step-${step.id || step.stepOrder}-${step.approverRole || 'role'}-${idx}`}>
                         <td>{step.stepOrder}</td>
                         <td className="text-left">{step.stepLabel}</td>
                         <td className="text-left">{step.approverName || '-'}</td>

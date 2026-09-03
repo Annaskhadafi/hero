@@ -289,7 +289,7 @@ function RfrInboxTab({ items }: { items: ApprovalCenterData['rfrInboxItems'] }) 
   )
 }
 
-function InboxTab({
+export function InboxTab({
   groups,
   rfrItems = [],
   dailyActivityItems = [],
@@ -3000,7 +3000,7 @@ function InboxTab({
   )
 }
 
-function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] }) {
+export function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] }) {
   if (groups.length === 0) {
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">

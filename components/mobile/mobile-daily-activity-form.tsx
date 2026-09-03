@@ -1812,91 +1812,14 @@ export function MobileDailyActivityForm({
             </div>
 
             <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-              {availableRouteFolders && availableRouteFolders.length > 0 ? (
-                <RouteFolderTree
-                  routeFolders={availableRouteFolders}
-                  availableLibraryMap={availableLibraryMap}
-                  selectedLibraryIds={selectedLibraryIds}
-                  toggleLibrarySelection={toggleLibrarySelection}
-                  toggleGroupSelection={toggleGroupSelection}
-                  librarySearch={librarySearch}
-                />
-              ) : filteredLibraries.length > 0 ? (
-                filteredLibraries.map((item) => {
-                  const isSelected = selectedLibraryIds.includes(`${item.id}`)
-                  const requirementBadges = [
-                    item.isGroupActivity ? 'Group' : null,
-                    item.requiresEquipmentNo ? 'Equipment' : null,
-                    item.requiresDuration ? 'Duration' : null,
-                    item.requiresMaterialUsed ? 'Material' : null,
-                    item.requiresPhoto ? 'Photo' : null,
-                  ].filter(Boolean)
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleLibrarySelection(`${item.id}`)}
-                      className={
-                        isSelected
-                          ? 'w-full rounded-[1rem] bg-[#003f78] px-4 py-4 text-left text-white shadow-[0_16px_30px_rgba(0,63,120,0.18)]'
-                          : 'w-full rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]'
-                      }
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-black">{item.activityCode}</p>
-                          <p className="mt-1 text-sm leading-5 font-semibold">
-                            {item.activityName}
-                          </p>
-                          <p
-                            className={
-                              isSelected
-                                ? 'mt-1 text-xs text-white/80'
-                                : 'mt-1 text-xs text-[#486275]'
-                            }
-                          >
-                            {item.basePoints} pts • max {item.maxPointsPerDay} pts / hari
-                          </p>
-                          {requirementBadges.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {requirementBadges.map((badge) => (
-                                <span
-                                  key={badge}
-                                  className={
-                                    isSelected
-                                      ? 'rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase'
-                                      : 'rounded-full bg-white px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase'
-                                  }
-                                >
-                                  {badge}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                        <span
-                          className={
-                            isSelected
-                              ? 'flex size-8 items-center justify-center rounded-full bg-white text-[#003f78]'
-                              : 'flex size-8 items-center justify-center rounded-full bg-white text-[#9eb6c5]'
-                          }
-                        >
-                          {isSelected ? (
-                            <Check className="size-4" />
-                          ) : (
-                            <ListFilter className="size-4" />
-                          )}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })
-              ) : (
-                <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
-                  Tidak ada activity library yang cocok dengan search.
-                </div>
-              )}
+              <RouteFolderTree
+                routeFolders={availableRouteFolders || []}
+                availableLibraryMap={availableLibraryMap}
+                selectedLibraryIds={selectedLibraryIds}
+                toggleLibrarySelection={toggleLibrarySelection}
+                toggleGroupSelection={toggleGroupSelection}
+                librarySearch={librarySearch}
+              />
             </div>
 
             <Button

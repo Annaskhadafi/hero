@@ -110,9 +110,10 @@ export function RfrApprovalDialog({ item, trigger }: RfrApprovalDialogProps) {
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
 
   useEffect(() => {
-    if (open && item.id) {
+    const targetRfrId = (item as any)?.rfrId || item?.id
+    if (open && targetRfrId) {
       setIsLoadingDetail(true)
-      getRfrDetail(item.id)
+      getRfrDetail(targetRfrId)
         .then((res) => {
           if (res) {
             setDetailData(res)
@@ -125,7 +126,7 @@ export function RfrApprovalDialog({ item, trigger }: RfrApprovalDialogProps) {
           setIsLoadingDetail(false)
         })
     }
-  }, [open, item.id])
+  }, [open, (item as any)?.rfrId, item?.id])
 
   const [pendingAction, setPendingAction] = useState<'approved' | 'reverted' | 'rejected' | null>(null)
   const currentStep = detailData?.approvals?.find((a) => a.stepOrder === item.stepOrder)

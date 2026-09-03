@@ -91,6 +91,7 @@ const BOOLEAN_FIELDS = [
   "approvalRequired",
   "autoApproveIfGpsValid",
   "isActive",
+  "isGroupActivity",
 ];
 
 const VALIDATION_FIELDS = [

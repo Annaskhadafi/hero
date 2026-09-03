@@ -2003,7 +2003,7 @@ async function getDailyActivityInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: isReverted ? `/dashboard/activity-hub/document/${row.sessionId}/approval` : `/review/daily-activity/${row.approvalToken}`,
+      url: `/review/daily-activity/${row.approvalToken}`,
       actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
       isReverted,
       status: isReverted ? 'reverted' : 'pending',
@@ -2258,7 +2258,7 @@ async function getOvertimeInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: isReverted ? `/dashboard/overtime-requests/${row.splId}/approval` : `/review/overtime/${row.approvalToken}`,
+      url: `/review/overtime/${row.approvalToken}`,
       actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
       isReverted,
       status: isReverted ? 'reverted' : 'pending',
@@ -2278,18 +2278,6 @@ async function getPtwInboxItems(
 ) {
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
-
-  try {
-    const allPermits = await db
-      .select({ id: hsePtwPermits.id, applicantName: hsePtwPermits.applicantName, fieldPicName: hsePtwPermits.fieldPicName, authorizedByName: hsePtwPermits.authorizedByName })
-      .from(hsePtwPermits)
-    for (const p of allPermits) {
-      await ensurePtwApprovalsExist(p.id)
-      await syncPtwApproverNames(p.id, p.applicantName || undefined, p.fieldPicName || undefined, p.authorizedByName || undefined)
-    }
-  } catch (err) {
-    console.error('[getPtwInboxItems] PTW approval sync error:', err)
-  }
 
   const rows = await db
     .select({
@@ -2688,7 +2676,7 @@ export async function getSopWinRequestInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: `/dashboard/approval`,
+      url: `/sop-win/request/${row.accessToken || row.approvalToken}`,
       approvals,
     }
   })

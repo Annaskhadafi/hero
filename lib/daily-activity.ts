@@ -2638,7 +2638,9 @@ export async function getDailyActivityEmployeeData(
           maxDailyCount: activityLibraries.maxDailyCount,
           maxPointsPerDay: activityLibraries.maxPointsPerDay,
           departmentId: activityLibraries.departmentId,
+          departmentIds: activityLibraries.departmentIds,
           sectionId: activityLibraries.sectionId,
+          sectionIds: activityLibraries.sectionIds,
           slaHours: activityLibraries.slaHours,
         })
         .from(activityLibraries)
