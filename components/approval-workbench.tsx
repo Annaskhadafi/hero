@@ -298,6 +298,7 @@ export function InboxTab({
   contractReviewItems = [],
   sopWinRequestItems = [],
   filterCategory,
+  viewMode = 'desktop',
 }: {
   groups: ApprovalCenterData['inboxGroups']
   rfrItems?: ApprovalCenterData['rfrInboxItems']
@@ -307,9 +308,11 @@ export function InboxTab({
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
   filterCategory?: string
+  viewMode?: 'desktop' | 'mobile'
 }) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [mobileSearch, setMobileSearch] = useState('')
 
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
@@ -1045,6 +1048,13 @@ export function InboxTab({
   }
 
   if (allUnifiedItems.length === 0) {
+    if (viewMode === 'mobile') {
+      return (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+          Belum ada pengajuan yang menunggu keputusan Anda.
+        </div>
+      )
+    }
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
@@ -1057,7 +1067,196 @@ export function InboxTab({
 
   const sites = Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
 
-  return (
+  const filteredMobileItems = useMemo(() => {
+    if (!mobileSearch.trim()) return allUnifiedItems
+    const q = mobileSearch.toLowerCase()
+    return allUnifiedItems.filter((item) => {
+      return (
+        item.employeeName?.toLowerCase().includes(q) ||
+        item.documentNumber?.toLowerCase().includes(q) ||
+        item.siteName?.toLowerCase().includes(q) ||
+        item.location?.toLowerCase().includes(q) ||
+        item.title?.toLowerCase().includes(q) ||
+        item.categoryLabel?.toLowerCase().includes(q) ||
+        item.stepLabel?.toLowerCase().includes(q)
+      )
+    })
+  }, [allUnifiedItems, mobileSearch])
+
+  const isAllMobileSelected =
+    filteredMobileItems.length > 0 &&
+    filteredMobileItems.every((item) => selectedIds.has(item.id))
+
+  const handleToggleMobileSelectAll = () => {
+    if (isAllMobileSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredMobileItems.map((item) => item.id)))
+    }
+  }
+
+  const content = viewMode === 'mobile' ? (
+    <div className="space-y-3">
+      {/* Search Input */}
+      <div className="relative">
+        <Search className="size-4 text-slate-400 absolute left-3.5 top-3.5" />
+        <input
+          type="text"
+          placeholder="Cari pemohon, nomor, unit, site..."
+          value={mobileSearch}
+          onChange={(e) => setMobileSearch(e.target.value)}
+          className="w-full bg-white border border-slate-200/80 rounded-2xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none shadow-xs focus:border-[#003461]"
+        />
+      </div>
+
+      {/* Select All & Batch Actions */}
+      <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
+        <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={isAllMobileSelected}
+            onChange={handleToggleMobileSelectAll}
+            className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer"
+          />
+          <span>Pilih Semua ({filteredMobileItems.length})</span>
+        </label>
+
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleOpenBatchReview}
+              className="h-8 text-xs font-bold bg-[#003461] hover:bg-[#00274a] text-white rounded-xl shadow-xs"
+            >
+              Review ({selectedIds.size})
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 text-xs font-bold text-slate-500 hover:text-slate-700 rounded-xl"
+            >
+              Batal
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Cards List */}
+      {filteredMobileItems.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+          Tidak ada dokumen approval yang cocok dengan pencarian.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredMobileItems.map((item) => {
+            const isSelected = selectedIds.has(item.id)
+            const isReverted = Boolean((item as any).isReverted)
+            const dueLabel =
+              item.dueState === 'overdue'
+                ? 'TERLAMBAT'
+                : item.dueState === 'due_soon'
+                  ? 'SEGERA JATUH TEMPO'
+                  : 'OPEN'
+            const dueColor =
+              item.dueState === 'overdue'
+                ? 'bg-rose-50 text-rose-700 border-rose-200/70'
+                : item.dueState === 'due_soon'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+
+            return (
+              <div
+                key={item.id}
+                className={cn(
+                  'rounded-2xl bg-white p-4 shadow-sm border border-slate-100/90 space-y-3 transition-all',
+                  isSelected && 'ring-2 ring-[#003461] bg-blue-50/20'
+                )}
+              >
+                {/* Top Row: Checkbox, Badge, Doc Number, Status Badge */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelect(item.id)}
+                      className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer shrink-0"
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/60 shrink-0">
+                        <FileText className="size-3" />
+                        {item.categoryLabel}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-600 font-mono truncate">
+                        {item.documentNumber}
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className={cn('rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider border shrink-0', dueColor)}>
+                    {dueLabel}
+                  </span>
+                </div>
+
+                {/* Requester Name & Location */}
+                <div className="space-y-0.5 pl-6.5">
+                  <p className="text-base font-black text-slate-900 leading-snug">
+                    {item.employeeName}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                    <MapPin className="size-3 text-slate-400" />
+                    <span>{item.siteName || item.location || 'Semua Site'}</span>
+                    {item.shiftCode && <span>• Shift {item.shiftCode}</span>}
+                  </p>
+                </div>
+
+                {/* Details Box */}
+                <div className="space-y-1.5 rounded-xl bg-slate-50/80 p-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Tahap Approval:</span>
+                    <span className="font-bold text-purple-700">{item.stepLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Batas Waktu:</span>
+                    <span className="font-bold text-slate-700">Due {formatDate(item.dueAt)}</span>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                {item.category === 'RFR' && item.rawRfr ? (
+                  <RfrApprovalDialog item={item.rawRfr} />
+                ) : ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) || (item as any).activityType === 'Summary APD' ? (
+                  <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
+                ) : isReverted ? (
+                  <Button
+                    size="sm"
+                    asChild
+                    className="w-full h-11 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
+                  >
+                    <a href={item.url || '#'}>
+                      Revisi Dokumen ↗
+                    </a>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setSelectedIds(new Set([item.id]))
+                      setBatchReviewIndex(0)
+                      setIsBatchReviewOpen(true)
+                    }}
+                    className="w-full h-11 text-sm font-black bg-[#003461] hover:bg-[#00274a] text-white rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.99]"
+                  >
+                    {item.actionLabel || 'BUKA TTD ↗'}
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  ) : (
     <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)] relative">
       <CardContent className="pt-6">
         <MinimalTableShell
@@ -1270,6 +1469,13 @@ export function InboxTab({
             </TableBody>
           </Table>
         </MinimalTableShell>
+      </CardContent>
+    </Card>
+  )
+
+  return (
+    <>
+      {content}
 
         {/* ── BATCH MULTI-DOCUMENT PREVIEW & APPROVAL MODAL ── */}
         <Dialog
@@ -1291,57 +1497,61 @@ export function InboxTab({
                 )}
               >
                 {/* Top Viewer Toolbar */}
-                <div className="bg-white px-6 py-3.5 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="size-9 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0">
-                      <FileText className="size-5" />
+                <div className="bg-white px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="size-8 sm:size-9 rounded-xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0">
+                      <FileText className="size-4 sm:size-5" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-sm text-slate-900 truncate">
-                        Review & Approval Dokumen • <span className="text-[#003461]">{currentBatchDoc?.documentNumber}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                        Review • <span className="text-[#003461]">{currentBatchDoc?.documentNumber}</span>
                       </p>
-                      <p className="text-xs text-slate-500 truncate">
-                        {currentBatchDoc?.employeeName} • {formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)} • Shift {currentBatchDoc?.shiftCode || 'ALL'}
+                      <p className="text-[10px] sm:text-xs text-slate-500 truncate">
+                        {currentBatchDoc?.employeeName} • {formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    {/* Stepper */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2.5 py-1 border border-slate-200 shadow-xs">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={batchReviewIndex === 0 || isBatchActionRunning}
-                        onClick={() => setBatchReviewIndex((prev) => Math.max(0, prev - 1))}
-                        className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
-                      >
-                        ‹
-                      </Button>
-                      <span className="text-xs font-mono font-semibold text-slate-700 px-1">
-                        Dokumen {batchReviewIndex + 1} dari {selectedItems.length}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={batchReviewIndex >= selectedItems.length - 1 || isBatchActionRunning}
-                        onClick={() => setBatchReviewIndex((prev) => Math.min(selectedItems.length - 1, prev + 1))}
-                        className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
-                      >
-                        ›
-                      </Button>
-                    </div>
+                  <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                    {/* Stepper (Only show if > 1 document) */}
+                    {selectedItems.length > 1 && (
+                      <div className="flex items-center gap-1 bg-slate-50 rounded-xl px-2 py-1 border border-slate-200 shadow-xs">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={batchReviewIndex === 0 || isBatchActionRunning}
+                          onClick={() => setBatchReviewIndex((prev) => Math.max(0, prev - 1))}
+                          className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
+                        >
+                          ‹
+                        </Button>
+                        <span className="text-[11px] font-mono font-semibold text-slate-700 px-1 whitespace-nowrap">
+                          {batchReviewIndex + 1}/{selectedItems.length}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={batchReviewIndex >= selectedItems.length - 1 || isBatchActionRunning}
+                          onClick={() => setBatchReviewIndex((prev) => Math.min(selectedItems.length - 1, prev + 1))}
+                          className="h-6 w-6 p-0 text-slate-600 hover:text-slate-900 rounded-lg disabled:opacity-30"
+                        >
+                          ›
+                        </Button>
+                      </div>
+                    )}
 
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-9 text-xs rounded-xl font-medium gap-1.5 border-slate-200 bg-[#e2e8f0] text-slate-800 hover:bg-slate-300 shadow-xs"
+                      className="h-8 sm:h-9 text-xs rounded-xl font-medium gap-1.5 border-slate-200 bg-[#e2e8f0] text-slate-800 hover:bg-slate-300 shadow-xs px-2 sm:px-3"
                       disabled={isDownloadingPdf}
                       onClick={() => currentBatchDoc && handleDownloadCurrentPdf(currentBatchDoc)}
+                      title="Unduh PDF"
                     >
-                      <Download className="size-3.5" /> UNDUH PDF
+                      <Download className="size-3.5" />
+                      <span className="hidden sm:inline">UNDUH PDF</span>
                     </Button>
 
                     <button
@@ -1354,10 +1564,10 @@ export function InboxTab({
                   </div>
                 </div>
 
-                {/* Body: Split 2 Columns */}
-                <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100">
-                  {/* Left Column: Live Letterhead PDF Preview */}
-                  <div className="flex-1 overflow-y-auto overflow-x-auto p-4 sm:p-6 flex justify-center items-start bg-slate-200/60 border-r border-slate-200/80">
+                {/* Body: 2 Columns on Desktop, Continuous Vertical Scroll on Mobile */}
+                <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row bg-slate-100 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                  {/* Top Section (Mobile) / Left Column (Desktop): Live Letterhead PDF Preview */}
+                  <div className="w-full lg:flex-1 p-2 sm:p-6 flex justify-center items-start bg-slate-200/60 overflow-x-auto shrink-0 lg:shrink">
                     {currentBatchDoc && (
                       <div
                         id="unified-batch-preview-sheet"
@@ -2685,7 +2895,7 @@ export function InboxTab({
                                 ...formWoRaw,
                                 steps: (currentBatchDoc as any).rawFormWo?.steps || formWoRaw.steps || [],
                               }}
-                              liveSignatureUrl={userSignature}
+                              liveSignatureUrl={signatureDataUrl}
                             />
                           </div>
                         )
@@ -2779,8 +2989,8 @@ export function InboxTab({
                 )}
               </div>
 
-              {/* Right Column: Reviewer Action Sidebar */}
-              <div className="w-full lg:w-96 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 p-4 sm:p-5 flex flex-col justify-between overflow-y-auto text-slate-800 space-y-4">
+              {/* Right Column (Desktop) / Bottom Section (Mobile): Reviewer Action Sidebar */}
+              <div className="w-full lg:w-96 shrink-0 bg-white p-4 sm:p-5 flex flex-col justify-between text-slate-800 space-y-4">
                 <div className="space-y-4">
                   {/* Card 1: Informasi Dokumen */}
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs space-y-2 relative">
@@ -2847,6 +3057,30 @@ export function InboxTab({
                         )}
                       </div>
                     )}
+                  </div>
+
+                  {/* Card: Tanda Tangan Approver */}
+                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="size-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                        <PenTool className="size-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800">Tanda Tangan Approver</p>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          {signatureDataUrl ? 'TTD Digital Aktif' : 'Belum Ada TTD'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsMissingSignatureDialogOpen(true)}
+                      className="h-8 text-xs font-bold border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl cursor-pointer"
+                    >
+                      UBAH TTD
+                    </Button>
                   </div>
 
                   {/* Card 2: Catatan Approval */}
@@ -2971,9 +3205,9 @@ export function InboxTab({
               </div>
             </div>
           </DialogContent>
-            )
-          })()}
-        </Dialog>
+        )
+      })()}
+    </Dialog>
 
         <MissingSignatureDialog
           isOpen={isMissingSignatureDialogOpen}
@@ -2995,13 +3229,25 @@ export function InboxTab({
             currentCanDownload={(currentBatchDoc.rawSopWinRequest as any).canDownload ?? true}
           />
         )}
-      </CardContent>
-    </Card>
+    </>
   )
 }
 
-export function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGroups'] }) {
+export function HistoryTab({
+  groups,
+  viewMode = 'desktop',
+}: {
+  groups: ApprovalCenterData['historyGroups']
+  viewMode?: 'desktop' | 'mobile'
+}) {
   if (groups.length === 0) {
+    if (viewMode === 'mobile') {
+      return (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+          Belum ada riwayat pengajuan yang tercatat.
+        </div>
+      )
+    }
     return (
       <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
@@ -3020,6 +3266,63 @@ export function HistoryTab({ groups }: { groups: ApprovalCenterData['historyGrou
   const statuses = Array.from(
     new Set(safeGroups.flatMap((group) => (group?.items || []).map((item) => item?.status || 'open')))
   ).sort()
+
+  const allHistoryItems = safeGroups.flatMap((group) =>
+    (group?.items || []).map((item) => ({ ...item, workDateLabel: group.workDateLabel }))
+  )
+
+  if (viewMode === 'mobile') {
+    return (
+      <div className="space-y-3">
+        {allHistoryItems.map((item) => (
+          <div
+            key={item.activityId}
+            className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100/90 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                  <FileText className="size-3" />
+                  {item.activityType || 'Dokumen'}
+                </span>
+                <p className="text-sm font-bold text-slate-900 leading-snug">
+                  {item.title}
+                </p>
+                <p className="text-xs text-slate-500 font-medium">
+                  {item.workDateLabel} • {item.siteName}
+                </p>
+              </div>
+
+              <div className="shrink-0">
+                <AdminStatusBadge value={item.status} />
+              </div>
+            </div>
+
+            <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
+                <span className="font-bold text-slate-700">{item.currentStage || 'Selesai'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Diajukan:</span>
+                <span className="font-semibold text-slate-600">{formatDate(item.submittedAt)}</span>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              asChild
+              className="w-full h-10 text-xs font-bold bg-[#003461] hover:bg-[#00274a] text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
+            >
+              <a href={`/dashboard/daily-activity/${item.activityId}`}>
+                Lihat Detail ↗
+              </a>
+            </Button>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">

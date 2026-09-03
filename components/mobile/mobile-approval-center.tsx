@@ -74,6 +74,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
 
         <TabsContent value="inbox" className="space-y-3">
           <InboxTab
+            viewMode="mobile"
             groups={data.inboxGroups || []}
             contractReviewItems={data.contractReviewInboxItems || []}
             rfrItems={data.rfrInboxItems || []}
@@ -85,7 +86,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         </TabsContent>
 
         <TabsContent value="history" className="space-y-3">
-          <HistoryTab groups={data.historyGroups || []} />
+          <HistoryTab viewMode="mobile" groups={data.historyGroups || []} />
         </TabsContent>
       </Tabs>
     </div>
