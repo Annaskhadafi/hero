@@ -1183,7 +1183,12 @@ export async function manageActivityLibraryAction(formData: FormData) {
       const existingTemplates = await db
         .select({ id: activityRouteTemplates.id })
         .from(activityRouteTemplates)
-        .where(eq(activityRouteTemplates.routeName, groupName))
+        .where(
+          or(
+            eq(activityRouteTemplates.routeCode, `GRP-${payload.activityCode}`),
+            eq(activityRouteTemplates.routeName, groupName)
+          )
+        )
         .limit(1)
 
       let autoTemplateId = existingTemplates[0]?.id
@@ -1193,10 +1198,25 @@ export async function manageActivityLibraryAction(formData: FormData) {
           routeName: groupName,
           description: `Auto-generated group for ${payload.activityName}`,
           isActive: true,
+          mobileEnabled: true,
+          siteId: siteIds[0] ?? null,
+          departmentId: departmentIds[0] ?? null,
+          sectionId: sectionIds[0] ?? null,
           createdAt: new Date(),
           updatedAt: new Date(),
         }).returning({ id: activityRouteTemplates.id })
         autoTemplateId = insertedTemplate[0]?.id
+      } else {
+        await db.update(activityRouteTemplates).set({
+          routeCode: `GRP-${payload.activityCode}`,
+          routeName: groupName,
+          isActive: true,
+          mobileEnabled: true,
+          siteId: siteIds[0] ?? null,
+          departmentId: departmentIds[0] ?? null,
+          sectionId: sectionIds[0] ?? null,
+          updatedAt: new Date(),
+        }).where(eq(activityRouteTemplates.id, autoTemplateId))
       }
 
       if (autoTemplateId) {
@@ -1217,6 +1237,11 @@ export async function manageActivityLibraryAction(formData: FormData) {
             updatedAt: new Date(),
           }).returning({ id: activityRouteGroups.id })
           autoGroupId = insertedGroup[0]?.id
+        } else {
+          await db.update(activityRouteGroups).set({
+            groupName: payload.activityName,
+            updatedAt: new Date(),
+          }).where(eq(activityRouteGroups.id, autoGroupId))
         }
 
         if (autoGroupId) {

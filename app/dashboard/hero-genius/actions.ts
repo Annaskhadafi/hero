@@ -17,6 +17,8 @@ import {
   sendRagFeedback,
   teachRagMemory,
   type RagChatRequest,
+  type RagChatResponse,
+  type RagSourceItem,
   type RagFeedbackPayload,
   type RagLearnMemoryPayload,
 } from "@/lib/hero-genius/client";
@@ -99,6 +101,119 @@ export async function getHeroGeniusOverviewAction() {
 }
 
 /**
+ * Direct RAG Generation fallback using pgvector search + internal OpenRouter LLM
+ */
+async function generateDirectRagChat(
+  query: string,
+  topK: number,
+  augmentedMessages: Array<{ role: string; content: string }>,
+  learnedFactsText?: string
+): Promise<RagChatResponse> {
+  const startTime = Date.now();
+
+  // 1. Retrieve most relevant chunks from Vision pgvector
+  let sources: RagSourceItem[] = [];
+  try {
+    const searchRes = await searchRagKnowledge(query, topK || 4);
+    if (searchRes.results && searchRes.results.length > 0) {
+      sources = searchRes.results.map((r: any, idx: number) => ({
+        source_id: idx + 1,
+        filename: r.filename,
+        heading: r.heading || null,
+        s3_url: r.s3_url || null,
+        similarity_score: r.similarity_score ?? r.score ?? 0,
+        chunk_id: r.chunk_id,
+        content: r.content,
+      }));
+    }
+  } catch (searchErr) {
+    console.warn("[generateDirectRagChat] Semantic vector search warning:", searchErr);
+  }
+
+  // 2. Build context text
+  const contextSnippet = sources
+    .map(
+      (s, i) =>
+        `[Dokumen Referensi #${i + 1}]: ${s.filename} ${s.heading ? `(${s.heading})` : ""}\n${s.content || ""}`
+    )
+    .join("\n\n---\n\n");
+
+  const systemPrompt = `Anda adalah Hero Genius, AI Asisten Operasional PT Chitra Paratama.
+Tugas Anda:
+1. Berikan jawaban yang tepat, jelas, profesional, dan terstruktur berdasarkan dokumen operasional, spesifikasi teknis ban, instruksi kerja (WIN/SOP), dan standar HSE PT Chitra Paratama berikut.
+2. Jika dokumen referensi menyediakan informasi teknis (torsi baut, ukuran ban, kode TRA, nomor part, langkah prosedur), sebutkan secara presisi.
+3. Gunakan Bahasa Indonesia yang baik dan komunikatif.
+
+${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\n\n` : ""}[DOKUMEN KNOWLEDGE BASE (PGVECTOR)]:\n${contextSnippet || "Tidak ada dokumen spesifik yang terindeks untuk query ini."}`;
+
+  // 3. Call working OpenRouter LLM (e.g. openai/gpt-4o-mini or xiaomi/mimo-v2.5)
+  const apiUrl =
+    process.env.MCU_AI_URL ||
+    process.env.OLLAMA_URL ||
+    "https://openrouter.ai/api/v1/chat/completions";
+  const apiKey =
+    process.env.MCU_AI_API_KEY ||
+    process.env.OLLAMA_API_KEY ||
+    process.env.TIRE_PATTERN_API_KEY ||
+    "";
+  const model =
+    process.env.MCU_AI_MODEL ||
+    process.env.OLLAMA_MODEL ||
+    "openai/gpt-4o-mini";
+
+  const conversationHistory = augmentedMessages
+    .filter((m) => m.role !== "system")
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  if (
+    conversationHistory.length === 0 ||
+    conversationHistory[conversationHistory.length - 1].content !== query
+  ) {
+    conversationHistory.push({ role: "user", content: query });
+  }
+
+  const llmRes = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer":
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "https://hero.chitraparatama.co.id",
+      "X-Title": "HERO Genius RAG Assistant",
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: systemPrompt }, ...conversationHistory],
+      temperature: 0.2,
+      max_tokens: 1500,
+    }),
+  });
+
+  if (!llmRes.ok) {
+    const errText = await llmRes.text();
+    throw new Error(`AI LLM generation failed (${llmRes.status}): ${errText}`);
+  }
+
+  const llmData = await llmRes.json();
+  const answer =
+    llmData.choices?.[0]?.message?.content ||
+    "Maaf, AI tidak dapat menghasilkan jawaban saat ini.";
+
+  const latencyMs = Date.now() - startTime;
+
+  return {
+    status: "success",
+    data: {
+      query,
+      answer,
+      sources,
+      retrieved_chunks_count: sources.length,
+      latency_ms: latencyMs,
+    },
+  };
+}
+
+/**
  * Send RAG Chat with automatic learned-facts context injection & session logging
  */
 export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
@@ -125,12 +240,12 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
       return src !== "auto_chat" && !src.includes("auto_chat");
     });
 
+    const memoryContext = validActiveFacts
+      .map((f, i) => `[Aturan/Fakta #${i + 1}] (${f.category}): ${f.fact}`)
+      .join("\n");
+
     const augmentedMessages = [...(payload.messages || [])];
     if (validActiveFacts.length > 0) {
-      const memoryContext = validActiveFacts
-        .map((f, i) => `[Aturan/Fakta #${i + 1}] (${f.category}): ${f.fact}`)
-        .join("\n");
-
       // Check if system message exists, else prepend
       const sysIdx = augmentedMessages.findIndex((m) => m.role === "system");
       const memoryPrompt = `\n\n[MEMORI PINTAR HERO GENIUS]:\nBerikut adalah aturan dan pengetahuan terkini yang telah diajarkan kepada sistem:\n${memoryContext}\nPrioritaskan aturan/fakta di atas dalam memberikan jawaban.`;
@@ -145,11 +260,25 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
       }
     }
 
-    const response = await sendRagChat({
-      ...payload,
-      session_id: sessionId,
-      messages: augmentedMessages,
-    });
+    let response: RagChatResponse;
+    try {
+      response = await sendRagChat({
+        ...payload,
+        session_id: sessionId,
+        messages: augmentedMessages,
+      });
+    } catch (ragChatErr) {
+      console.warn(
+        "[sendHeroGeniusChatAction] Remote Vision /rag/chat failed, gracefully activating direct RAG generator:",
+        ragChatErr
+      );
+      response = await generateDirectRagChat(
+        payload.query,
+        payload.top_k || 4,
+        augmentedMessages,
+        memoryContext
+      );
+    }
 
     // 2. Persist session and messages in background/async
     try {

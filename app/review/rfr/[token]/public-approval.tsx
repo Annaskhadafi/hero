@@ -32,6 +32,7 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
   const [rejected, setRejected] = useState(approval.status === 'rejected')
+  const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function getSignatureDataUrl() {
@@ -48,6 +49,7 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
 
   function handleClearSignature() {
     signatureRef.current?.clear()
+    setLiveSignatureUrl(null)
   }
 
   function handleApprove() {
@@ -186,6 +188,9 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
                   <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 p-2">
                     <SignatureCanvas
                       ref={(ref) => { signatureRef.current = ref }}
+                      onEnd={() => {
+                        setLiveSignatureUrl(getSignatureDataUrl() || null)
+                      }}
                       canvasProps={{
                         className: 'w-full h-44 bg-transparent cursor-crosshair',
                       }}

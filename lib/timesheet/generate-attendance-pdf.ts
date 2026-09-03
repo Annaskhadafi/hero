@@ -475,9 +475,17 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
     } else if (hasAttendance || hasOvertimeIntervals || day.isHoliday) {
-      const shouldRenderWorkTimes = !isAbsent && !day.isHoliday && (day.workingTimeFrom || day.clockIn) && !isOff
-      const workFrom = shouldRenderWorkTimes ? String(day.workingTimeFrom ?? day.clockIn ?? '').replace(':', '.') : ''
-      const workTo = shouldRenderWorkTimes ? String(day.workingTimeTo ?? day.clockOut ?? '').replace(':', '.') : ''
+      const shouldRenderWorkTimes =
+        !isAbsent &&
+        !day.isHoliday &&
+        Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
+        !isOff
+      const workFrom = shouldRenderWorkTimes
+        ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
+        : ''
+      const workTo = shouldRenderWorkTimes
+        ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
+        : ''
       const shouldRenderOtTimes =
         hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)
 

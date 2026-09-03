@@ -5253,13 +5253,13 @@ export function SchedulingTimesheetWorkspace({
       return {
         ...day,
         workingTimeFrom:
-          day.isHoliday || (isOffsiteOrAbsent && !hasManualClockIn)
+          day.isHoliday || isOffsiteOrAbsent
             ? ''
-            : day.clockIn || defaultWorkFrom,
+            : defaultWorkFrom,
         workingTimeTo:
-          day.isHoliday || (isOffsiteOrAbsent && !hasManualClockOut)
+          day.isHoliday || isOffsiteOrAbsent
             ? ''
-            : day.clockOut || defaultWorkTo,
+            : defaultWorkTo,
         configuredOvertimeIntervals:
           isOffsiteOrAbsent && !hasManualClockIn && !hasManualClockOut
             ? []
