@@ -6,6 +6,8 @@ import { user } from '@/db/schema/auth'
 import { and, eq, or, sql } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 
+export const dynamic = 'force-dynamic'
+
 function buildSnLookupVariants(sn: string) {
   const trimmedSn = sn.trim()
   const upperSn = trimmedSn.toUpperCase()

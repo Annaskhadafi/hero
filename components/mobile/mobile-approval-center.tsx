@@ -14,8 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SpeechTextarea as Textarea } from '@/components/ui/speech-textarea'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
 import Link from 'next/link'
+import { Search, CheckSquare, Square, Check, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>
@@ -31,6 +32,113 @@ function MobileInbox({
 }) {
   const router = useRouter()
   const [submittingKey, setSubmittingKey] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBatchApproving, setIsBatchApproving] = useState(false)
+
+  // Filter items based on search query
+  const filteredData = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) {
+      return {
+        groups,
+        contractReviewItems,
+        rfrItems,
+      }
+    }
+
+    const matchedRfr = rfrItems.filter((item) => {
+      const text = `${item.rfrNumber} ${item.positionTitle} ${item.requestorName} ${item.sectionDepartment} ${item.roleLabel}`.toLowerCase()
+      return text.includes(q)
+    })
+
+    const matchedContract = contractReviewItems.filter((item) => {
+      const text = `${item.employeeName} ${item.title} ${item.stepLabel} ${item.reviewType}`.toLowerCase()
+      return text.includes(q)
+    })
+
+    const matchedGroups = groups
+      .map((g) => {
+        const groupMatches = `${g.requesterName} ${g.siteName} ${g.requesterJobTitle || ''}`.toLowerCase().includes(q)
+        if (groupMatches) return g
+        const filteredItems = g.items.filter((item) => {
+          const itemText = `${item.title} ${item.activityType} ${item.unitNumber || ''} ${item.requestNumber || ''} ${item.activityCode || ''} ${(item as any).fiveRReport?.reportNumber || ''}`.toLowerCase()
+          return itemText.includes(q)
+        })
+        if (filteredItems.length > 0) {
+          return { ...g, items: filteredItems }
+        }
+        return null
+      })
+      .filter((g): g is typeof groups[number] => g !== null)
+
+    return {
+      groups: matchedGroups,
+      contractReviewItems: matchedContract,
+      rfrItems: matchedRfr,
+    }
+  }, [groups, contractReviewItems, rfrItems, searchQuery])
+
+  // Collect all selectable approval IDs from visible groups
+  const allSelectableApprovalIds = useMemo(() => {
+    const ids: number[] = []
+    for (const g of filteredData.groups) {
+      for (const item of g.items) {
+        if (item.approvalId) {
+          ids.push(item.approvalId)
+        }
+      }
+    }
+    return ids
+  }, [filteredData.groups])
+
+  const totalVisibleCount =
+    filteredData.rfrItems.length +
+    filteredData.contractReviewItems.length +
+    allSelectableApprovalIds.length
+
+  const isAllSelected =
+    allSelectableApprovalIds.length > 0 &&
+    allSelectableApprovalIds.every((id) => selectedIds.has(id))
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allSelectableApprovalIds))
+    }
+  }
+
+  const handleToggleItem = (approvalId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(approvalId)) {
+        next.delete(approvalId)
+      } else {
+        next.add(approvalId)
+      }
+      return next
+    })
+  }
+
+  async function handleBatchApprove() {
+    if (selectedIds.size === 0 || isBatchApproving) return
+    setIsBatchApproving(true)
+    try {
+      const formData = new FormData()
+      for (const id of selectedIds) {
+        formData.append('approvalIds', String(id))
+      }
+      await approveApprovalGroupAction(formData)
+      toast.success(`${selectedIds.size} pengajuan berhasil disetujui sekaligus.`)
+      setSelectedIds(new Set())
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal menyetujui pengajuan terpilih.')
+    } finally {
+      setIsBatchApproving(false)
+    }
+  }
 
   async function submitReview(formData: FormData, key: string, bulk = false) {
     if (submittingKey) return
@@ -55,12 +163,95 @@ function MobileInbox({
   }
 
   return (
-    <div className="space-y-3">
-      {rfrItems.map((item) => (
+    <div className="space-y-3 pb-16">
+      {/* Search Input Bar */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Cari pemohon, nomor, unit, site..."
+          className="w-full h-12 pl-10 pr-4 rounded-2xl bg-white border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003461]/20 focus:border-[#003461] transition-all shadow-[0_4px_12px_rgba(8,32,51,0.04)]"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-700 p-1"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Select All Checkbox Bar */}
+      {allSelectableApprovalIds.length > 0 && (
+        <div className="flex items-center justify-between rounded-2xl bg-white border border-slate-200 px-4 py-3.5 shadow-[0_4px_12px_rgba(8,32,51,0.04)]">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={handleToggleSelectAll}
+              className="size-5 rounded-md border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer accent-[#003461]"
+            />
+            <span className="text-sm font-bold text-slate-800">
+              Pilih Semua ({totalVisibleCount})
+            </span>
+          </label>
+          {selectedIds.size > 0 && (
+            <span className="text-xs font-bold text-[#003461] bg-[#eef5fa] border border-[#d6e7f5] px-2.5 py-1 rounded-lg">
+              {selectedIds.size} dipilih
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Floating Bottom Batch Approval Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl bg-slate-900/95 backdrop-blur-md px-4 py-3 text-white shadow-2xl flex items-center justify-between gap-3 border border-slate-700/80 animate-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-2">
+            <span className="flex size-6 items-center justify-center rounded-full bg-blue-500 text-xs font-black text-white">
+              {selectedIds.size}
+            </span>
+            <span className="text-xs font-bold text-slate-200">Item Terpilih</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="h-8 px-2.5 text-xs font-semibold text-slate-400 hover:text-white"
+            >
+              Batal
+            </button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleBatchApprove}
+              disabled={isBatchApproving}
+              className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+            >
+              {isBatchApproving ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Check className="size-3.5" />
+                  Setujui Semua ({selectedIds.size})
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {filteredData.rfrItems.map((item) => (
         <MobileRfrApprovalCard key={`rfr-${item.id}`} item={item} />
       ))}
 
-      {contractReviewItems.map((item) => (
+      {filteredData.contractReviewItems.map((item) => (
         <div
           key={item.id}
           className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]"
@@ -100,7 +291,7 @@ function MobileInbox({
         </div>
       ))}
 
-      {groups.map((group) => (
+      {filteredData.groups.map((group) => (
         <details
           key={group.id}
           open
@@ -142,7 +333,7 @@ function MobileInbox({
                 <Button
                   type="submit"
                   variant="outline"
-                  className="h-10 rounded-xl px-4"
+                  className="h-10 rounded-xl px-4 font-bold text-xs"
                   disabled={Boolean(submittingKey)}
                 >
                   {submittingKey === `group-${group.id}`
@@ -169,8 +360,23 @@ function MobileInbox({
                   item.title?.toLowerCase().includes('frmwo')
               )
 
+              const isSelected = selectedIds.has(item.approvalId)
+
               return (
                 <article key={item.approvalId} className="space-y-4 px-4 py-5">
+                  {/* Select Checkbox for individual item */}
+                  <div className="flex items-center justify-between pb-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleItem(item.approvalId)}
+                        className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer accent-[#003461]"
+                      />
+                      <span>Pilih Item</span>
+                    </label>
+                  </div>
+
                   {item.activityType === '5R Audit Report' || item.fiveRReport || item.title?.toLowerCase().includes('5r') ? (
                     <MobileFiveRApprovalCard item={item} group={group} />
                   ) : (item.activityType.startsWith('Request ') && (item.activityType.toUpperCase().includes('APD') || item.activityType.toUpperCase().includes('MATERIAL') || item.activityType.toUpperCase().includes('TOOLS'))) || item.activityType === 'Summary APD' ? (

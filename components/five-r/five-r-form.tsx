@@ -6,12 +6,14 @@ import {
   AlertCircle,
   Camera,
   CheckCircle2,
+  Edit3,
   Eye,
   FileText,
   Image as ImageIcon,
   Loader2,
   PenTool,
   Plus,
+  ShieldCheck,
   Trash2,
   Upload,
   ZoomIn,
@@ -26,6 +28,7 @@ import { SignaturePad } from '@/components/signature-pad'
 import { FiveRCameraModal } from './five-r-camera-modal'
 import { FiveRDetailDialog } from './five-r-detail-dialog'
 import { createFiveRReportAction, getPreviousOpenFindingsAction } from '@/app/dashboard/quality/5r/actions'
+import { getUserSignatureAction, saveUserSignatureAction } from '@/app/actions/user-signature'
 
 const MONTHS = [
   'January',
@@ -101,6 +104,8 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
     'ada_temuan' | 'after_temuan_sebelumnya' | 'tidak_ada_temuan'
   >('ada_temuan')
   const [auditorSignature, setAuditorSignature] = useState<string | null>(null)
+  const [profileSignature, setProfileSignature] = useState<string | null>(null)
+  const [isDrawingCustomSig, setIsDrawingCustomSig] = useState(false)
   const [createdReportId, setCreatedReportId] = useState<number | null>(null)
 
   // 5 Pillars State
@@ -135,6 +140,20 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null)
 
   const DRAFT_KEY = 'hero_5r_form_draft_v1'
+
+  // Auto-load signature from user's HERO Profile
+  useEffect(() => {
+    getUserSignatureAction().then((res) => {
+      if (res.success && res.signatureDataUrl) {
+        setAuditorSignature(res.signatureDataUrl)
+        setProfileSignature(res.signatureDataUrl)
+      } else {
+        setIsDrawingCustomSig(true)
+      }
+    }).catch(() => {
+      setIsDrawingCustomSig(true)
+    })
+  }, [])
 
   // Restore draft from localStorage on initial mount
   useEffect(() => {
@@ -386,6 +405,9 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
       })
 
       if (res.success) {
+        if (auditorSignature && !profileSignature) {
+          saveUserSignatureAction(auditorSignature).catch(() => {})
+        }
         try {
           localStorage.removeItem(DRAFT_KEY)
         } catch {}
@@ -407,7 +429,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
   }
 
   return (
-    <div className={isMobile ? 'space-y-4 pb-12' : 'mx-auto max-w-5xl space-y-6 pb-12'}>
+    <div className={isMobile ? 'space-y-4 pb-12' : 'w-full space-y-6 pb-12'}>
       {/* Draft Recovery Notification Banner */}
       {hasRestoredDraft && (
         <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs text-amber-900 shadow-2xs">
@@ -865,9 +887,7 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
                         Entry #{idx + 1}
-                        {reportType === 'ada_temuan' && (
-                          <span className="text-emerald-700">&bull; {row.category5r}</span>
-                        )}
+                        <span className="text-emerald-700">&bull; {row.category5r || 'Rapi'}</span>
                       </span>
                       <button
                         type="button"
@@ -878,22 +898,20 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                       </button>
                     </div>
 
-                    {reportType === 'ada_temuan' && (
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-slate-700">Kategori 5R</Label>
-                        <select
-                          value={row.category5r}
-                          onChange={(e) => updateRow(idx, 'category5r', e.target.value as any)}
-                          className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs focus:outline-none focus:border-slate-800"
-                        >
-                          <option value="Rapi">Rapi</option>
-                          <option value="Ringkas">Ringkas</option>
-                          <option value="Resik">Resik</option>
-                          <option value="Rawat">Rawat</option>
-                          <option value="Rajin">Rajin</option>
-                        </select>
-                      </div>
-                    )}
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-slate-700">Kategori 5R</Label>
+                      <select
+                        value={row.category5r || 'Rapi'}
+                        onChange={(e) => updateRow(idx, 'category5r', e.target.value as any)}
+                        className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs focus:outline-none focus:border-slate-800"
+                      >
+                        <option value="Rapi">Rapi</option>
+                        <option value="Ringkas">Ringkas</option>
+                        <option value="Resik">Resik</option>
+                        <option value="Rawat">Rawat</option>
+                        <option value="Rajin">Rajin</option>
+                      </select>
+                    </div>
 
                     <div className="space-y-1">
                       <Label className="text-[11px] font-semibold text-slate-700">Lokasi / Area Spesifik</Label>
@@ -1007,33 +1025,31 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
             </div>
 
             {/* Desktop Table View */}
-            <div className={isMobile ? "hidden" : "hidden sm:block overflow-x-auto rounded-lg border border-slate-200 bg-white"}>
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+            <div className={isMobile ? "hidden" : "hidden sm:block rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs"}>
+              <table className="w-full table-fixed text-left text-xs border-collapse">
+                <thead className="bg-slate-100/90 text-slate-700 border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3 font-semibold w-12 text-center">Row ID</th>
-                    {reportType === 'ada_temuan' && (
-                      <th className="py-2.5 px-3 font-semibold w-28">Kategori 5R</th>
-                    )}
-                    <th className="py-2.5 px-3 font-semibold min-w-[140px]">Area</th>
+                    <th className="py-2.5 px-2 font-semibold w-10 text-center">No</th>
+                    <th className="py-2.5 px-2 font-semibold w-24">Kategori 5R</th>
+                    <th className="py-2.5 px-2 font-semibold w-[16%]">Area</th>
                     {reportType === 'ada_temuan' && (
                       <>
-                        <th className="py-2.5 px-3 font-semibold min-w-[160px]">Temuan</th>
-                        <th className="py-2.5 px-3 font-semibold min-w-[130px]">Foto Temuan</th>
+                        <th className="py-2.5 px-2 font-semibold w-[23%]">Temuan</th>
+                        <th className="py-2.5 px-2 font-semibold w-28">Foto Temuan</th>
                       </>
                     )}
                     {reportType !== 'tidak_ada_temuan' && (
                       <>
-                        <th className="py-2.5 px-3 font-semibold min-w-[160px]">Tindakan</th>
-                        <th className="py-2.5 px-3 font-semibold min-w-[130px]">Foto Tindakan</th>
+                        <th className="py-2.5 px-2 font-semibold w-[23%]">Tindakan</th>
+                        <th className="py-2.5 px-2 font-semibold w-28">Foto Tindakan</th>
                       </>
                     )}
                     {reportType === 'tidak_ada_temuan' && (
-                      <th className="py-2.5 px-3 font-semibold min-w-[200px]">
+                      <th className="py-2.5 px-2 font-semibold">
                         Foto Bukti Tidak Ada Temuan
                       </th>
                     )}
-                    <th className="py-2.5 px-2 w-10 text-center"></th>
+                    <th className="py-2.5 px-1.5 w-8 text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1048,38 +1064,36 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                     </tr>
                   ) : (
                     findings.map((row, idx) => (
-                      <tr key={row.id} className="hover:bg-slate-50/70">
+                      <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
                         {/* Row ID */}
-                        <td className="py-2.5 px-3 text-center font-medium text-slate-500">
+                        <td className="py-2 px-2 text-center font-medium text-slate-500">
                           {idx + 1}
                         </td>
 
                         {/* Kategori 5R */}
-                        {reportType === 'ada_temuan' && (
-                          <td className="py-2.5 px-3">
-                            <select
-                              value={row.category5r}
-                              onChange={(e) =>
-                                updateRow(idx, 'category5r', e.target.value as any)
-                              }
-                              className="h-8 w-full rounded border border-slate-300 bg-white px-2 text-xs"
-                            >
-                              <option value="Rapi">Rapi</option>
-                              <option value="Ringkas">Ringkas</option>
-                              <option value="Resik">Resik</option>
-                              <option value="Rawat">Rawat</option>
-                              <option value="Rajin">Rajin</option>
-                            </select>
-                          </td>
-                        )}
+                        <td className="py-2 px-2">
+                          <select
+                            value={row.category5r || 'Rapi'}
+                            onChange={(e) =>
+                              updateRow(idx, 'category5r', e.target.value as any)
+                            }
+                            className="h-8 w-full rounded border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-slate-800"
+                          >
+                            <option value="Rapi">Rapi</option>
+                            <option value="Ringkas">Ringkas</option>
+                            <option value="Resik">Resik</option>
+                            <option value="Rawat">Rawat</option>
+                            <option value="Rajin">Rajin</option>
+                          </select>
+                        </td>
 
                         {/* Area */}
-                        <td className="py-2.5 px-3">
+                        <td className="py-2 px-2">
                           <Input
                             value={row.area}
                             onChange={(e) => updateRow(idx, 'area', e.target.value)}
                             placeholder="Lokasi / Area spesifik"
-                            className="h-8 text-xs"
+                            className="h-8 text-xs w-full px-2"
                             required
                           />
                         </td>
@@ -1087,17 +1101,17 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                         {/* Temuan & Foto Temuan (Ada Temuan) */}
                         {reportType === 'ada_temuan' && (
                           <>
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2">
                               <Input
                                 value={row.findingDescription}
                                 onChange={(e) =>
                                   updateRow(idx, 'findingDescription', e.target.value)
                                 }
                                 placeholder="Uraian temuan 5R"
-                                className="h-8 text-xs"
+                                className="h-8 text-xs w-full px-2"
                               />
                             </td>
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2">
                               <PhotoCell
                                 photoUrl={row.findingPhotoUrl}
                                 onPreview={() =>
@@ -1122,24 +1136,24 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                         {/* Tindakan & Foto Tindakan */}
                         {reportType !== 'tidak_ada_temuan' && (
                           <>
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2">
                               <Input
                                 value={row.actionDescription}
                                 onChange={(e) =>
                                   updateRow(idx, 'actionDescription', e.target.value)
                                 }
                                 placeholder="Tindakan korektif"
-                                className="h-8 text-xs"
+                                className="h-8 text-xs w-full px-2"
                               />
                             </td>
-                            <td className="py-2.5 px-3">
+                            <td className="py-2 px-2">
                               <PhotoCell
                                 photoUrl={row.actionPhotoUrl}
                                 onPreview={() =>
                                   row.actionPhotoUrl &&
                                   setPreviewImage({
                                     url: row.actionPhotoUrl,
-                                    title: `Foto Tindakan Perbaikan (Baris ${idx + 1} - ${row.area || 'Area'})`,
+                                    title: `Foto Tindakan 5R (Baris ${idx + 1} - ${row.area || 'Area'})`,
                                   })
                                 }
                                 onCaptureClick={() =>
@@ -1154,9 +1168,9 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                           </>
                         )}
 
-                        {/* Foto Bukti Tidak Ada Temuan */}
+                        {/* Foto Bukti (Tidak Ada Temuan) */}
                         {reportType === 'tidak_ada_temuan' && (
-                          <td className="py-2.5 px-3">
+                          <td className="py-2 px-2">
                             <PhotoCell
                               photoUrl={row.noFindingPhotoUrl}
                               onPreview={() =>
@@ -1177,13 +1191,13 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
                           </td>
                         )}
 
-                        {/* Delete Row Button */}
-                        <td className="py-2.5 px-2 text-center">
+                        {/* Action Hapus Baris */}
+                        <td className="py-2 px-1.5 text-center">
                           <button
                             type="button"
                             onClick={() => removeEntry(idx)}
-                            className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                            title="Hapus Baris"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors inline-flex items-center justify-center"
+                            title="Hapus Baris Ini"
                           >
                             <Trash2 className="size-3.5" />
                           </button>
@@ -1223,23 +1237,103 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
           </div>
 
           {/* Tanda Tangan Digital Auditor */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
-            <div className="border-b border-slate-100 pb-2.5">
-              <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <PenTool className="size-4 text-emerald-600" />
-                Tanda Tangan Digital Auditor <span className="text-rose-500 font-normal italic text-xs">(Wajib Dibubuhkan)</span>
-              </Label>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Bubuhkan tanda tangan Anda sebagai pengesahan dokumen 5R resmi yang akan dicantumkan pada lembar cetak A4.
-              </p>
+          <div className="max-w-xl rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div>
+                <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-emerald-600" />
+                  Tanda Tangan Digital Auditor <span className="text-rose-500 font-normal italic text-xs">(Wajib Dibubuhkan)</span>
+                </Label>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tanda tangan resmi cetak A4 Laporan 5R.
+                </p>
+              </div>
+
+              {profileSignature && !isDrawingCustomSig && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDrawingCustomSig(true)}
+                  className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Edit3 className="size-3" /> Ubah / Gambar Manual
+                </Button>
+              )}
+
+              {profileSignature && isDrawingCustomSig && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsDrawingCustomSig(false)
+                    setAuditorSignature(profileSignature)
+                  }}
+                  className="h-7 text-xs border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                >
+                  <CheckCircle2 className="size-3 text-emerald-600" /> Gunakan TTD Profil
+                </Button>
+              )}
             </div>
 
-            <div className="max-w-md">
-              <SignaturePad
-                onDataUrlChange={(url) => setAuditorSignature(url)}
-                height={160}
-              />
-            </div>
+            {profileSignature && !isDrawingCustomSig ? (
+              <div className="space-y-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-center min-h-[110px] relative shadow-2xs">
+                  <img
+                    src={profileSignature}
+                    alt="Tanda Tangan Profil HERO"
+                    className="max-h-20 w-auto object-contain"
+                  />
+                  <div className="absolute top-2 right-2">
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                      <CheckCircle2 className="size-3 text-emerald-700" /> TTD Profil HERO Aktif
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3 text-emerald-600 shrink-0" />
+                  Otomatis menggunakan tanda tangan akun profil Anda ({auditorName || currentUser.name}).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <SignaturePad
+                  onDataUrlChange={(url) => setAuditorSignature(url)}
+                  height={160}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <span className="text-[11px] text-slate-500">
+                    Goreskan tanda tangan dengan mouse atau sentuhan jari.
+                  </span>
+                  {auditorSignature && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!auditorSignature) return
+                        try {
+                          const sRes = await saveUserSignatureAction(auditorSignature)
+                          if (sRes.success) {
+                            setProfileSignature(auditorSignature)
+                            setIsDrawingCustomSig(false)
+                            toast.success('Tanda tangan berhasil disimpan ke profil HERO Anda!')
+                          } else {
+                            toast.error(sRes.error || 'Gagal menyimpan ke profil.')
+                          }
+                        } catch (e: any) {
+                          toast.error(e.message || 'Gagal menyimpan ke profil.')
+                        }
+                      }}
+                      className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <ShieldCheck className="size-3.5 text-indigo-600" /> Simpan ke Profil HERO
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Submit Action Bar */}
@@ -1419,10 +1513,10 @@ function PhotoCell({
         size="sm"
         variant="outline"
         onClick={() => fileInputRef.current?.click()}
-        className="h-7 px-2 text-[11px] border-slate-300 hover:bg-slate-100"
+        className="h-7 px-1.5 text-[10px] border-slate-300 hover:bg-slate-100 shrink-0 font-medium"
         title="Upload File Foto"
       >
-        <Upload className="size-3 mr-1" />
+        <Upload className="size-3 mr-0.5" />
         File
       </Button>
       <Button
@@ -1430,10 +1524,10 @@ function PhotoCell({
         size="sm"
         variant="outline"
         onClick={onCaptureClick}
-        className="h-7 px-2 text-[11px] border-slate-300 hover:bg-slate-100 text-emerald-700"
+        className="h-7 px-1.5 text-[10px] border-slate-300 hover:bg-slate-100 text-emerald-700 shrink-0 font-medium"
         title="Buka Kamera HP/Tablet"
       >
-        <Camera className="size-3 mr-1" />
+        <Camera className="size-3 mr-0.5" />
         Kamera
       </Button>
     </div>

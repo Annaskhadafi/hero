@@ -67,6 +67,12 @@ import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
 import { FiveRApprovalDialog } from '@/components/admin/five-r-approval-dialog'
+import { FiveRDocumentPreview } from '@/components/five-r/five-r-document-preview'
+import {
+  approveFiveRReportAction,
+  revertFiveRReportAction,
+  rejectFiveRReportAction,
+} from '@/app/dashboard/quality/5r/actions'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
 import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
@@ -781,6 +787,50 @@ function InboxTab({
         )
         if (!res.success) throw new Error(res.error || 'Gagal memproses permohonan dokumen SOP/WIN')
         toast.success(`Permintaan dokumen #${req.documentNumber} berhasil diproses (${action}).`)
+      } else if (
+        currentBatchDoc.category === 'QUALITY_5R' ||
+        Boolean((currentBatchDoc as any).rawFiveR) ||
+        Boolean((currentBatchDoc as any).fiveRReport) ||
+        Boolean(
+          currentBatchDoc.rawGeneralGroup?.items?.some(
+            (i: any) =>
+              i.fiveRReport ||
+              i.activityType === '5R Audit Report' ||
+              (i as any).requestKindLabel === '5R Audit' ||
+              i.title?.toLowerCase().includes('5r')
+          )
+        )
+      ) {
+        const fiveRItem =
+          (currentBatchDoc as any).rawFiveR ||
+          (currentBatchDoc as any).fiveRReport ||
+          currentBatchDoc.rawGeneralGroup?.items?.find(
+            (i: any) =>
+              i.fiveRReport ||
+              i.activityType === '5R Audit Report' ||
+              (i as any).requestKindLabel === '5R Audit' ||
+              i.title?.toLowerCase().includes('5r')
+          )?.fiveRReport
+
+        const reportId =
+          fiveRItem?.report?.id ||
+          fiveRItem?.id ||
+          (currentBatchDoc as any).fiveRReportId ||
+          Number(currentBatchDoc.id)
+
+        if (!reportId) throw new Error('ID Laporan 5R tidak valid')
+
+        let res: { success: boolean; message?: string }
+        if (action === 'approve') {
+          res = await approveFiveRReportAction(reportId, currentRemark, signatureDataUrl || undefined)
+        } else if (action === 'revert') {
+          res = await revertFiveRReportAction(reportId, currentRemark)
+        } else {
+          res = await rejectFiveRReportAction(reportId, currentRemark)
+        }
+
+        if (!res.success) throw new Error(res.message || 'Gagal memproses approval 5R')
+        toast.success(`Laporan 5R #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
       } else if (currentBatchDoc.category === 'GENERAL' && currentBatchDoc.rawGeneralGroup) {
         const grp = currentBatchDoc.rawGeneralGroup
         const formData = new FormData()
@@ -1282,6 +1332,22 @@ function InboxTab({
               currentBatchDoc?.category === 'FORM_WO' ||
               Boolean((currentBatchDoc as any)?.rawFormWo) ||
               Boolean(currentBatchDoc?.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO'))
+
+            const isFiveRDoc =
+              currentBatchDoc?.category === 'QUALITY_5R' ||
+              Boolean((currentBatchDoc as any)?.rawFiveR) ||
+              Boolean((currentBatchDoc as any)?.fiveRReport) ||
+              Boolean(
+                currentBatchDoc?.rawGeneralGroup?.items?.some(
+                  (i: any) =>
+                    i.fiveRReport ||
+                    i.activityType === '5R Audit Report' ||
+                    (i as any).requestKindLabel === '5R Audit' ||
+                    i.title?.toLowerCase().includes('5r')
+                )
+              )
+
+            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc
             return (
               <DialogContent
                 showCloseButton={false}
@@ -1366,7 +1432,7 @@ function InboxTab({
                           isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
                         )}
                         style={{
-                          backgroundImage: isLandscapeDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                          backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
                           backgroundSize: '100% 100%',
                         }}
                       >
@@ -1374,10 +1440,10 @@ function InboxTab({
                           className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
                           style={{
                             color: 'black',
-                            paddingTop: isLandscapeDoc ? '4mm' : '36mm',
-                            paddingBottom: isLandscapeDoc ? '4mm' : '30mm',
-                            paddingLeft: isLandscapeDoc ? '4mm' : '20mm',
-                            paddingRight: isLandscapeDoc ? '4mm' : '20mm',
+                            paddingTop: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '36mm',
+                            paddingBottom: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '30mm',
+                            paddingLeft: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '20mm',
+                            paddingRight: isCleanCustomDoc ? (isFiveRDoc ? '0mm' : '4mm') : '20mm',
                             minHeight: isLandscapeDoc ? '210mm' : '297mm',
                           }}
                         >
@@ -2685,14 +2751,75 @@ function InboxTab({
                                 ...formWoRaw,
                                 steps: (currentBatchDoc as any).rawFormWo?.steps || formWoRaw.steps || [],
                               }}
-                              liveSignatureUrl={userSignature}
+                              liveSignatureUrl={signatureDataUrl}
+                            />
+                          </div>
+                        )
+                      })()}
+
+                      {/* Laporan Audit 5R Document (Standard A4 / Official CPI Document) */}
+                      {(currentBatchDoc.category === 'QUALITY_5R' ||
+                        Boolean((currentBatchDoc as any).rawFiveR) ||
+                        Boolean((currentBatchDoc as any).fiveRReport) ||
+                        Boolean(
+                          currentBatchDoc.rawGeneralGroup?.items?.some(
+                            (i: any) =>
+                              i.fiveRReport ||
+                              i.activityType === '5R Audit Report' ||
+                              (i as any).requestKindLabel === '5R Audit' ||
+                              i.title?.toLowerCase().includes('5r')
+                          )
+                        )) && (() => {
+                        const fiveRItem =
+                          (currentBatchDoc as any).rawFiveR ||
+                          (currentBatchDoc as any).fiveRReport ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find(
+                            (i: any) =>
+                              i.fiveRReport ||
+                              i.activityType === '5R Audit Report' ||
+                              (i as any).requestKindLabel === '5R Audit' ||
+                              i.title?.toLowerCase().includes('5r')
+                          )?.fiveRReport
+
+                        if (!fiveRItem) return null
+
+                        const reportObj = fiveRItem.report || fiveRItem
+                        const findingsList = reportObj.findings || fiveRItem.findings || []
+                        const logsList = reportObj.approvalLogs || fiveRItem.approvalLogs || []
+                        const routeSteps = reportObj.steps || reportObj.approvalRoute || fiveRItem.steps || []
+                        const activeStepLevel =
+                          (reportObj as any).currentApprovalLevel ||
+                          (reportObj as any).currentStepLevel ||
+                          (reportObj.status === 'pending_bardynia' || reportObj.status === 'pending_step_2' ? 2 : 1)
+
+                        return (
+                          <div className="w-full">
+                            <FiveRDocumentPreview
+                              report={reportObj}
+                              findings={findingsList}
+                              approvalLogs={logsList}
+                              approvalRoute={routeSteps}
+                              currentStepLevel={activeStepLevel}
+                              liveSignatureUrl={signatureDataUrl}
+                              isEmbedded={true}
                             />
                           </div>
                         )
                       })()}
 
                       {/* General Group (Form Activity) */}
-                      {currentBatchDoc.category === 'GENERAL' && !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) && currentBatchDoc.rawGeneralGroup && (
+                      {currentBatchDoc.category === 'GENERAL' &&
+                        !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) &&
+                        !Boolean(
+                          currentBatchDoc.rawGeneralGroup?.items?.some(
+                            (i: any) =>
+                              i.fiveRReport ||
+                              i.activityType === '5R Audit Report' ||
+                              (i as any).requestKindLabel === '5R Audit' ||
+                              i.title?.toLowerCase().includes('5r')
+                          )
+                        ) &&
+                        currentBatchDoc.rawGeneralGroup && (
                         <div>
                           <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
                           <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">FORM ACTIVITY APPROVAL REPORT</h2>

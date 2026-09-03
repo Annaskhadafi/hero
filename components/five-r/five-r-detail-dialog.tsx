@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   CheckCircle2,
   Clock,
+  Download,
   ExternalLink,
   FileText,
   Loader2,
@@ -22,6 +23,7 @@ import {
   getFiveRReportDetailAction,
   resubmitFiveRReportAction,
 } from '@/app/dashboard/quality/5r/actions'
+import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { FiveRDocumentPreview } from './five-r-document-preview'
 
 export function FiveRDetailDialog({
@@ -67,6 +69,30 @@ export function FiveRDetailDialog({
       toast.error(err?.message ?? 'Gagal mengajukan ulang laporan.')
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownloadPdf = async () => {
+    const docElem = document.querySelector('.pdf-wrapper') as HTMLElement | null
+    if (!docElem) {
+      toast.warning('Silakan buka tab Dokumen A4 terlebih dahulu.')
+      return
+    }
+    setIsDownloading(true)
+    try {
+      await downloadElementAsPdf(
+        docElem,
+        `Laporan-Audit-5R-${data?.report?.reportNumber || 'Doc'}.pdf`,
+        { orientation: 'portrait' }
+      )
+      toast.success('File PDF berhasil didownload!')
+    } catch (err: any) {
+      console.error('Download PDF error:', err)
+      toast.error(err?.message || 'Gagal mendownload PDF.')
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -178,10 +204,31 @@ export function FiveRDetailDialog({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={handlePrintInPlace}
-                className="h-8 text-xs border-slate-300 cursor-pointer"
+                disabled={isDownloading}
+                onClick={handleDownloadPdf}
+                className="h-8 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer font-semibold gap-1.5 shadow-2xs"
               >
-                <Printer className="mr-1.5 size-3.5" />
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Mengunduh...
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-3.5" />
+                    Download PDF
+                  </>
+                )}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePrintInPlace}
+                className="h-8 text-xs border-slate-300 cursor-pointer gap-1.5"
+              >
+                <Printer className="size-3.5" />
                 Cetak PDF
               </Button>
 
@@ -219,6 +266,7 @@ export function FiveRDetailDialog({
                     findings={findings}
                     approvalLogs={approvalLogs}
                     approvalRoute={approvalRoute}
+                    hideToolbar={true}
                   />
                 </div>
               </div>

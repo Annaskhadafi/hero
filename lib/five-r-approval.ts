@@ -394,6 +394,7 @@ export async function initializeFiveRApprovals(report: typeof fiveRReports.$infe
 export async function sendFiveREmailNotification(params: {
   templateCode: string
   recipientEmail: string
+  ccEmails?: string | string[] | null
   variables: Record<string, string>
 }) {
   try {
@@ -459,6 +460,7 @@ export async function sendFiveREmailNotification(params: {
         recipient: params.recipientEmail,
         payloadSnapshot: JSON.stringify({
           subject,
+          cc: params.ccEmails,
           variables: unifiedVars,
         }),
         deliveryStatus: 'pending',
@@ -469,6 +471,7 @@ export async function sendFiveREmailNotification(params: {
     // 2. Send email through central workflow email helper with await to ensure delivery completes
     const emailResult = await sendWorkflowEmail({
       to: params.recipientEmail,
+      cc: params.ccEmails,
       templateCode: tpl?.templateCode ?? params.templateCode,
       templateName: tpl?.name ?? 'Notifikasi Persetujuan Laporan 5R',
       variables: unifiedVars,

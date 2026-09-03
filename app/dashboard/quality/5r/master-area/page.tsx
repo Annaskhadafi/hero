@@ -5,7 +5,9 @@ import { getMasterAreasAction } from '@/app/dashboard/quality/5r/actions'
 import { FiveRMasterArea } from '@/components/five-r/five-r-master-area'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
+// Route: /dashboard/quality/5r/master-area
 export default async function MasterAreaPage() {
   const masterAreasRes = await getMasterAreasAction()
 

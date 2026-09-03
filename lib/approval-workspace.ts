@@ -12,6 +12,8 @@ import {
   approvalMatrixSteps,
   approvals,
   employees,
+  fiveRApprovalLogs,
+  fiveRFindings,
   fiveRReports,
   formSubmissions,
   formTemplates,
@@ -547,14 +549,55 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       rawRows.map((row) => row.fiveRReportId).filter((value): value is number => value != null)
     )
   )
-  const fiveRRows =
+  const [fiveRRows, fiveRFindingsRows, fiveRLogsRows, fiveRApprovalStepsRows] =
     fiveRIds.length === 0
-      ? []
-      : await db
-          .select()
-          .from(fiveRReports)
-          .where(inArray(fiveRReports.id, fiveRIds))
-  const fiveRMap = new Map(fiveRRows.map((row) => [row.id, row]))
+      ? [[], [], [], []]
+      : await Promise.all([
+          db.select().from(fiveRReports).where(inArray(fiveRReports.id, fiveRIds)),
+          db
+            .select()
+            .from(fiveRFindings)
+            .where(inArray(fiveRFindings.reportId, fiveRIds))
+            .orderBy(fiveRFindings.rowOrder),
+          db
+            .select()
+            .from(fiveRApprovalLogs)
+            .where(inArray(fiveRApprovalLogs.reportId, fiveRIds))
+            .orderBy(fiveRApprovalLogs.level),
+          db
+            .select()
+            .from(approvals)
+            .where(inArray(approvals.fiveRReportId, fiveRIds))
+            .orderBy(approvals.level),
+        ])
+
+  const fiveRMap = new Map(
+    fiveRRows.map((row) => {
+      const reportFindings = fiveRFindingsRows.filter((f) => f.reportId === row.id)
+      const reportLogs = fiveRLogsRows.filter((l) => l.reportId === row.id)
+      const reportSteps = fiveRApprovalStepsRows
+        .filter((s) => s.fiveRReportId === row.id)
+        .map((s) => ({
+          level: s.level,
+          name: s.approverName,
+          approverName: s.approverName,
+          status: s.status,
+          signatureUrl: s.signatureUrl,
+          actedAt: s.actedAt,
+          notes: s.notes,
+        }))
+
+      return [
+        row.id,
+        {
+          ...row,
+          findings: reportFindings,
+          approvalLogs: reportLogs,
+          steps: reportSteps,
+        },
+      ]
+    })
+  )
 
   const requesterIds = Array.from(
     new Set(

@@ -6,7 +6,9 @@ import { FiveRForm } from '@/components/five-r/five-r-form'
 import { getServerSession } from '@/lib/auth-session'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
+// Route: /dashboard/quality/5r/create
 export default async function CreateFiveRReportPage() {
   const session = await getServerSession()
   const masterAreasRes = await getMasterAreasAction()

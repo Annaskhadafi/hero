@@ -32,7 +32,7 @@ export default async function FiveRReportsPage() {
 
   return (
     <div className="p-6">
-      <FiveRList initialReports={res.data as any} currentUser={currentUser} />
+      <FiveRList initialReports={(res?.data || []) as any} currentUser={currentUser} />
     </div>
   )
 }

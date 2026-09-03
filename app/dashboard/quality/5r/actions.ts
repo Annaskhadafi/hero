@@ -547,7 +547,18 @@ export async function approveFiveRReportAction(reportId: number, notes?: string,
         })
       }
     } else if (nextStatus === 'approved') {
-      // Cari email PIC Area jika ada
+      // 1. Dapatkan email Pemohon / Auditor
+      let auditorEmail = report.auditorEmail
+      if (!auditorEmail && report.auditorId) {
+        const [auditorEmp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, report.auditorId))
+          .limit(1)
+        auditorEmail = auditorEmp?.email ?? ''
+      }
+
+      // 2. Cari email PIC Area jika ada
       let picEmail: string | null = null
       if (report.masterAreaId) {
         const [areaRow] = await db
@@ -566,15 +577,17 @@ export async function approveFiveRReportAction(reportId: number, notes?: string,
         }
       }
 
-      const recipients = [report.auditorEmail, picEmail].filter(
-        (e): e is string => !!e && e.includes('@')
-      )
       const appUrl = getAppUrl()
+      const primaryEmail = auditorEmail || picEmail || ''
+      const ccList = [auditorEmail, picEmail].filter(
+        (e): e is string => !!e && e.includes('@') && e !== primaryEmail
+      )
 
-      for (const recEmail of recipients) {
+      if (primaryEmail) {
         await sendFiveREmailNotification({
           templateCode: 'workflow_five_r_report_approved',
-          recipientEmail: recEmail,
+          recipientEmail: primaryEmail,
+          ccEmails: ccList.length > 0 ? ccList : null,
           variables: {
             requestNumber: report.reportNumber,
             reportNumber: report.reportNumber,
@@ -768,7 +781,31 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
       })
       .where(eq(fiveRReports.id, reportId))
 
-    // Cari email PIC Area jika ada
+    // 1. Dapatkan rute approval 5R
+    const route = await resolveFiveRApprovalRoute({
+      auditorId: report.auditorId,
+      siteId: report.siteId,
+      areaId: report.masterAreaId,
+    })
+
+    // 2. Cari email approver tahap-tahap sebelumnya (misal: Tahap 1 yang sudah approve)
+    const previousStepApprovers = route.steps
+      .filter((s) => s.level < report.currentApprovalLevel)
+      .map((s) => s.approverEmail)
+      .filter((e): e is string => !!e && e.includes('@'))
+
+    // 3. Cari email Pemohon / Auditor
+    let auditorEmail = report.auditorEmail
+    if (!auditorEmail && report.auditorId) {
+      const [auditorEmp] = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, report.auditorId))
+        .limit(1)
+      auditorEmail = auditorEmp?.email ?? ''
+    }
+
+    // 4. Cari email PIC Area jika ada
     let picEmail: string | null = null
     if (report.masterAreaId) {
       const [areaRow] = await db
@@ -787,15 +824,20 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
       }
     }
 
-    const recipients = [report.auditorEmail, picEmail].filter(
-      (e): e is string => !!e && e.includes('@')
-    )
     const appUrl = getAppUrl()
+    const ccList = Array.from(
+      new Set(
+        [...previousStepApprovers, picEmail].filter(
+          (e): e is string => !!e && e.includes('@') && e !== auditorEmail
+        )
+      )
+    )
 
-    for (const recEmail of recipients) {
+    if (auditorEmail) {
       await sendFiveREmailNotification({
         templateCode: 'workflow_five_r_report_returned_rejected',
-        recipientEmail: recEmail,
+        recipientEmail: auditorEmail,
+        ccEmails: ccList.length > 0 ? ccList : null,
         variables: {
           requestNumber: report.reportNumber,
           reportNumber: report.reportNumber,
@@ -804,7 +846,7 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
           auditorName: report.auditorName,
           picAreaName: report.picAreaName,
           status: 'Needs Revision (Dikembalikan untuk Perbaikan)',
-          rejectedBy: session?.user?.name || 'Approver',
+          rejectedBy: session?.user?.name || `Approver Tahap ${report.currentApprovalLevel}`,
           decisionNote: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
           rejectionReason: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
           notes: notes || 'Laporan dikembalikan dan memerlukan perbaikan.',
@@ -826,9 +868,7 @@ export async function revertFiveRReportAction(reportId: number, notes: string) {
 }
 
 /**
- * Ajukan Ulang Laporan 5R setelah Revisi:
- * Langsung menuju tahap yang memberi revisi (revertedFromLevel)!
- * Tanda tangan tahap sebelumnya tetap aman dan tidak hilang.
+ * Resubmit / Ajukan Ulang Laporan 5R yang Telah Direvisi
  */
 export async function resubmitFiveRReportAction(reportId: number, notes?: string) {
   try {
@@ -885,19 +925,33 @@ export async function resubmitFiveRReportAction(reportId: number, notes?: string
       notes: notes || 'Laporan telah direvisi dan diajukan ulang langsung ke tahap yang meminta revisi.',
     })
 
-    // Kirim notifikasi email langsung ke approver tahap target
+    // Kirim notifikasi email ke approver tahap target dengan CC ke approver tahap sebelumnya
     const route = await resolveFiveRApprovalRoute({
       auditorId: report.auditorId,
       siteId: report.siteId,
       areaId: report.masterAreaId,
     })
+
     const targetStep = route.steps.find((s) => s.level === targetLevel)
+    const previousStepApprovers = route.steps
+      .filter((s) => s.level < targetLevel)
+      .map((s) => s.approverEmail)
+      .filter((e): e is string => !!e && e.includes('@'))
 
     if (targetStep?.approverEmail) {
       const appUrl = getAppUrl()
+      const ccList = Array.from(
+        new Set(
+          [...previousStepApprovers, report.auditorEmail].filter(
+            (e): e is string => !!e && e.includes('@') && e !== targetStep.approverEmail
+          )
+        )
+      )
+
       await sendFiveREmailNotification({
         templateCode: 'five_r_approval_request',
         recipientEmail: targetStep.approverEmail,
+        ccEmails: ccList.length > 0 ? ccList : null,
         variables: {
           approverName: targetStep.approverName,
           recipientName: targetStep.approverName,
