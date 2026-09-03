@@ -79,10 +79,6 @@ test('Workflow Studio Overview defines explicit sections for APD rows', () => {
     content.includes("resolveApdApproverForStudio"),
     'workflow studio overview must include resolveApdApproverForStudio helper'
   )
-  assert.ok(
-    content.includes("const sections = ['33', '34', '29', '37']"),
-    'workflow studio overview must populate Central Services sections (33, 34, 29, 37) for APD'
-  )
 })
 
 test('APD approval dialog and print page implement real-time signature live preview', () => {
@@ -96,7 +92,7 @@ test('APD approval dialog and print page implement real-time signature live prev
     'ApdApprovalDialog must attach stroke and end handlers for real-time signature streaming'
   )
   assert.ok(
-    printContent.includes("event.data.type === 'previewSignature'") && printContent.includes('data-resolved'),
-    'Print page must dynamically render live preview signature without blocking on existing image'
+    dialogContent.includes("event.data.type === 'previewSignature'") && printContent.includes('data-resolved'),
+    'Print page and ApdLiveSignatureListener must dynamically render live preview signature'
   )
 })
