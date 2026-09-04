@@ -30,6 +30,8 @@ import {
   User,
   X,
   XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
@@ -61,7 +63,8 @@ import {
   batchRevertPtwPermitsAction,
   batchRejectPtwPermitsAction,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked, getPermitSubTypes } from '@/lib/ptw-helpers'
+import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
@@ -342,6 +345,9 @@ export function InboxTab({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasDrawn, setHasDrawn] = useState(false)
+
+  // Document Preview Scaling & Zoom State (Matching Mobile Daily Activity approval)
+  const [previewZoom, setPreviewZoom] = useState<number>(1.0)
 
   useEffect(() => {
     async function loadSig() {
@@ -1646,8 +1652,10 @@ export function InboxTab({
               <DialogContent
                 showCloseButton={false}
                 className={cn(
-                  "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
-                  isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl"
+                  viewMode === 'mobile'
+                    ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+                    : "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
+                  viewMode !== 'mobile' && (isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl")
                 )}
               >
                 {/* Top Viewer Toolbar */}
@@ -1757,43 +1765,92 @@ export function InboxTab({
                 </div>
 
                 {/* Body: 2 Columns on Desktop, Continuous Vertical Scroll on Mobile */}
-                <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row bg-slate-100 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                <div
+                  className={cn(
+                    "flex-1 overflow-y-auto bg-slate-100",
+                    viewMode === 'mobile'
+                      ? "overflow-x-hidden p-2 sm:p-3 space-y-3 flex flex-col"
+                      : "flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-200"
+                  )}
+                >
                   {/* Top Section (Mobile) / Left Column (Desktop): Live Letterhead PDF Preview */}
-                  <div className={cn(
-                    "w-full lg:flex-1 p-2 sm:p-6 flex justify-center items-start bg-slate-200/60 shrink-0 lg:shrink",
-                    viewMode === 'mobile' ? "overflow-hidden" : "overflow-x-auto"
-                  )}>
-                    {currentBatchDoc && (
-                      <div
-                        id="unified-batch-preview-sheet"
-                        className={cn(
-                          "relative mx-auto shrink-0 overflow-hidden bg-white shadow-md border border-slate-200/90 rounded-sm transition-transform duration-150 origin-top",
-                          isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                  <div
+                    className={cn(
+                      "flex flex-col items-center",
+                      viewMode === 'mobile'
+                        ? "w-full p-0 shrink-0 space-y-3"
+                        : "w-full lg:flex-1 p-2 sm:p-4 bg-slate-200/70 overflow-x-hidden shrink-0 lg:shrink"
+                    )}
+                  >
+                    {/* Zoom Action Bar */}
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-white/90 backdrop-blur-xs rounded-xl border border-slate-200 shadow-2xs max-w-lg w-full mb-2 mx-auto">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewerZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          title="Zoom Out"
+                        >
+                          -
+                        </Button>
+                        <span className="text-[11px] font-mono font-bold text-slate-600 px-1 min-w-10 text-center">
+                          {Math.round(viewerZoom * 100)}%
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewerZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
+                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          title="Zoom In"
+                        >
+                          +
+                        </Button>
+                        {viewerZoom !== 1.0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewerZoom(1.0)}
+                            className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+                          >
+                            Reset
+                          </Button>
                         )}
-                        style={{
-                          backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                          backgroundSize: '100% 100%',
-                          transform: viewMode === 'mobile'
-                            ? `scale(${isLandscapeDoc ? 0.32 * viewerZoom : 0.44 * viewerZoom})`
-                            : viewerZoom !== 1.0
-                            ? `scale(${viewerZoom})`
-                            : undefined,
-                          marginBottom: viewMode === 'mobile'
-                            ? `${(isLandscapeDoc ? -145 : -165) + (viewerZoom - 1.0) * 125}mm`
-                            : undefined,
-                        }}
-                      >
+                      </div>
+                    </div>
+
+                    {/* 1. PDF Letterhead Document Preview Container */}
+                    {currentBatchDoc && (
+                      <div className="flex justify-center items-start overflow-hidden p-1 w-full max-w-full">
                         <div
-                          className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
+                          id="unified-batch-preview-sheet"
+                          className={cn(
+                            "relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-200",
+                            isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                          )}
                           style={{
-                            color: 'black',
-                            paddingTop: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '38mm',
-                            paddingBottom: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '25mm',
-                            paddingLeft: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
-                            paddingRight: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
-                            minHeight: isLandscapeDoc ? '210mm' : '297mm',
+                            backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                            backgroundSize: '100% 100%',
+                            transform: `scale(${ (isLandscapeDoc ? 0.31 : 0.44) * viewerZoom })`,
+                            marginBottom: `${(isLandscapeDoc ? -135 : -160) + (viewerZoom - 1.0) * 125}mm`,
                           }}
                         >
+                          <div
+                            className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
+                            style={{
+                              paddingTop: isLandscapeDoc ? '4mm' : '38mm',
+                              paddingBottom: isLandscapeDoc ? '4mm' : '35mm',
+                              paddingLeft: isLandscapeDoc ? '4mm' : '20mm',
+                              paddingRight: isLandscapeDoc ? '4mm' : '20mm',
+                              minHeight: isLandscapeDoc ? '210mm' : '297mm',
+                            }}
+                          >
                       {/* Document Type Specific Content */}
                       {currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily && (
                         <div>
@@ -2375,209 +2432,19 @@ export function InboxTab({
                               JENIS PEKERJAAN
                             </div>
 
-                            {/* ── DYNAMIC COLUMNS FOR PERMIT TYPES ── */}
+                            {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
                             {(() => {
                               const checkedEquipment: string[] = doc.controlSteps
                                 ? doc.controlSteps.split('\n').map((l: string) => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
                                 : (Array.isArray(doc.ppe) ? doc.ppe : [])
 
                               return (
-                                <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-                                  {columnsToShow.includes('HOT') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Hot Work Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('CONFINED') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Confined Space Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('DIGGING') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Digging Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('COLD') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Cold Work Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('ELECTRICAL') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Electrical / Mechanical Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                <PtwChecklistTable
+                                  permitType={doc.permitType}
+                                  subTypes={(currentBatchDoc as any)?.rawPtw?.subTypes || (currentBatchDoc as any)?.subTypes || (doc as any)?.subTypes}
+                                  checkedEquipment={checkedEquipment}
+                                  columnsToShow={columnsToShow}
+                                />
                               )
                             })()}
 
@@ -2600,21 +2467,19 @@ export function InboxTab({
                               </div>
                             </div>
 
+                            {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+                            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+                              <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+                                PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                              </span>
+                              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
+                                {(doc as any)?.additionalNotes || (currentBatchDoc as any)?.rawPtw?.additionalNotes || doc?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+                              </div>
+                            </div>
+
                             {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
                             <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
-                              {/* 1. Catatan Pelaksana Pekerjaan */}
-                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
-                                <div>
-                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
-                                    CATATAN PELAKSANA PEKERJAAN
-                                  </span>
-                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 2. Catatan Pemberi Kerja */}
+                              {/* 1. Catatan Pemberi Kerja */}
                               <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
                                 <div>
                                   <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
@@ -2622,6 +2487,18 @@ export function InboxTab({
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
                                     {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 2. Catatan Pelaksana Pekerjaan */}
+                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                                <div>
+                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                    CATATAN PELAKSANA PEKERJAAN
+                                  </span>
+                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
                                   </div>
                                 </div>
                               </div>
@@ -2680,55 +2557,58 @@ export function InboxTab({
                               </div>
                             </div>
 
-                            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+                            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
                             <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
-                              <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                                <div className="h-14 flex flex-col items-center justify-center my-1">
-                                  {step1?.signatureDataUrl ? (
-                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
-                                  ) : null}
-                                  {step1?.status === 'rejected' ? (
-                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : step1?.status === 'reverted' ? (
-                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : step1?.status === 'approved' && !step1?.signatureDataUrl ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : !step1?.signatureDataUrl ? (
-                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
-                                  ) : null}
-                                </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold">
-                                  {step1?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
-                                </div>
-                              </div>
-
+                              {/* 1. PEMBERI KERJA */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
                                 <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
                                 <div className="h-14 flex flex-col items-center justify-center my-1">
-                                  {step2?.status === 'rejected' ? (
+                                  {step1?.status === 'rejected' ? (
                                     <>
-                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
-                                  ) : step2?.status === 'reverted' ? (
+                                  ) : step1?.status === 'reverted' ? (
                                     <>
-                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
-                                  ) : step2?.signatureDataUrl ? (
-                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
-                                  ) : step2?.status === 'approved' ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step1?.signatureDataUrl ? (
+                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                  ) : step1?.status === 'approved' ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
                                   ) : (
                                     <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
                                   )}
                                 </div>
                                 <div className="border-t border-slate-900 pt-1 font-bold">
-                                  {step2?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
+                                  {step1?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
 
+                              {/* 2. PELAKSANA PEKERJAAN */}
+                              <div className="p-1.5 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                                  {step2?.signatureDataUrl ? (
+                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                                  ) : null}
+                                  {step2?.status === 'rejected' ? (
+                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step2?.status === 'reverted' ? (
+                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step2?.status === 'approved' && !step2?.signatureDataUrl ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : !step2?.signatureDataUrl ? (
+                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                  ) : null}
+                                </div>
+                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                  {step2?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+                                </div>
+                              </div>
+
+                              {/* 3. VERIFIKASI (SAFETY DEPT) */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
                                 <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
                                 <div className="h-14 flex flex-col items-center justify-center my-1">
@@ -3311,13 +3191,21 @@ export function InboxTab({
                           </div>
                         </div>
                       )}
-                    </div>
+                            </div>
+                          </div>
+                        </div>
+                    )}
                   </div>
-                )}
-              </div>
 
               {/* Right Column (Desktop) / Bottom Section (Mobile): Reviewer Action Sidebar */}
-              <div className="w-full lg:w-96 shrink-0 bg-white p-4 sm:p-5 flex flex-col justify-between text-slate-800 space-y-4">
+              <div
+                className={cn(
+                  "bg-white text-slate-800",
+                  viewMode === 'mobile'
+                    ? "w-full max-w-lg mx-auto p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3"
+                    : "w-full lg:w-96 shrink-0 p-4 sm:p-5 flex flex-col justify-between space-y-4"
+                )}
+              >
                 <div className="space-y-4">
                   {/* Card 1: Informasi Dokumen */}
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs space-y-2 relative">

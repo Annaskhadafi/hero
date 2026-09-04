@@ -138,6 +138,9 @@ export async function saveMobilePtwPermit(params: {
   applicantName?: string
   fieldPicName?: string
   authorizedByName?: string
+  ppe?: string[]
+  subTypes?: Record<string, string[]> | string[]
+  additionalNotes?: string
   gasTestRequired?: boolean
   isolationRequired?: boolean
   hiradcEntryId?: number | null
@@ -145,7 +148,7 @@ export async function saveMobilePtwPermit(params: {
   const access = await requirePtwPermission('edit')
   await ensurePtwTable()
   const actorId = await getScopedPtwActorId(access)
-  const payload = {
+  const payload: Record<string, any> = {
     projectName: params.projectName.trim(),
     permitType: params.permitType || 'Hot Work',
     location: params.location || '',
@@ -154,6 +157,7 @@ export async function saveMobilePtwPermit(params: {
     riskLevel: params.riskLevel || 'Medium',
     description: params.description || '',
     controlSteps: params.controlSteps || '',
+    additionalNotes: params.additionalNotes || '',
     applicantName: params.applicantName || '',
     fieldPicName: params.fieldPicName || '',
     authorizedByName: params.authorizedByName || '',
@@ -162,6 +166,9 @@ export async function saveMobilePtwPermit(params: {
     hiradcEntryId: params.hiradcEntryId ?? null,
     updatedAt: new Date(),
   }
+  if (params.ppe !== undefined) payload.ppe = params.ppe
+  if (params.subTypes !== undefined) payload.subTypes = params.subTypes
+  if (params.additionalNotes !== undefined) payload.additionalNotes = params.additionalNotes
   if (!payload.projectName) throw new Error('Nama pekerjaan wajib diisi.')
 
   if (params.id) {

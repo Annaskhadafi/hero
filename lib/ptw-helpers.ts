@@ -179,3 +179,32 @@ export function isItemChecked(itemLabel: string, checkedList: string[]): boolean
     return cleanC === cleanLabel || cleanC.includes(cleanLabel) || cleanLabel.includes(cleanC)
   })
 }
+
+export function getDefaultSubTypes(permitTypeStr?: string): Record<string, string[]> {
+  const defaults: Record<string, string[]> = {}
+  for (const [key, val] of Object.entries(EQUIPMENT_CHECKLIST_PER_TYPE)) {
+    defaults[key] = [...(val.subTypes || [])]
+  }
+  return defaults
+}
+
+export function getPermitSubTypes(
+  permitType: string,
+  customSubTypes?: Record<string, string[]> | string[] | null
+): string[] {
+  const normKey = normalizePermitType(permitType)
+  if (customSubTypes) {
+    if (!Array.isArray(customSubTypes) && typeof customSubTypes === 'object') {
+      if (Array.isArray(customSubTypes[normKey]) && customSubTypes[normKey].length > 0) {
+        return customSubTypes[normKey]
+      }
+      if (Array.isArray(customSubTypes[permitType]) && customSubTypes[permitType].length > 0) {
+        return customSubTypes[permitType]
+      }
+    } else if (Array.isArray(customSubTypes) && customSubTypes.length > 0) {
+      return customSubTypes
+    }
+  }
+  return EQUIPMENT_CHECKLIST_PER_TYPE[normKey]?.subTypes || EQUIPMENT_CHECKLIST_PER_TYPE[permitType]?.subTypes || []
+}
+

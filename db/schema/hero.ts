@@ -2870,6 +2870,8 @@ export const hsePtwPermits = pgTable('hero_hse_ptw_permits', {
   description: text('description').notNull().default(''),
   controlSteps: text('control_steps').notNull().default(''),
   ppe: jsonb('ppe').$type<string[]>().notNull().default([]),
+  subTypes: jsonb('sub_types').$type<Record<string, string[]> | string[]>().notNull().default([]),
+  additionalNotes: text('additional_notes').notNull().default(''),
   gasTestRequired: boolean('gas_test_required').notNull().default(false),
   isolationRequired: boolean('isolation_required').notNull().default(false),
   hiradcEntryId: integer('hiradc_entry_id').references(() => hiradcEntries.id, {

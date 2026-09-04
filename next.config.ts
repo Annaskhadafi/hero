@@ -94,6 +94,106 @@ const nextConfig: NextConfig = {
         destination: '/dashboard/scheduling-timesheet',
         permanent: false,
       },
+      {
+        source: '/dashboard/hse/izin-kerja%20ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin-kerja%20ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin-kerja ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin-kerja ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin%20kerja%20ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin%20kerja%20ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin kerja ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin kerja ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin%20kerja/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin%20kerja',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin kerja/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin kerja',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin_kerja/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin_kerja',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin_kerja_ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin_kerja_ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin-kerja/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/izin-kerja',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/ptw/:path*',
+        destination: '/dashboard/hse/izin-kerja-ptw/:path*',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/hse/ptw',
+        destination: '/dashboard/hse/izin-kerja-ptw',
+        permanent: false,
+      },
     ]
   },
   async rewrites() {

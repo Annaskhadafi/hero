@@ -31,7 +31,11 @@ import {
   getActivePermitTypeKeys,
   getDefaultEquipmentItems,
   isItemChecked,
+  getDefaultSubTypes,
+  getPermitSubTypes,
 } from '@/lib/ptw-helpers'
+import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
+import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { Badge } from '@/components/ui/badge'
@@ -263,6 +267,7 @@ export function PtwApprovalForm({
   const [status, setStatus] = useState(data.status || 'Submitted')
   const [selectedAuthorized, setSelectedAuthorized] = useState(data.authorizedByName || '')
   const [riskLevel, setRiskLevel] = useState(data.riskLevel || 'Medium')
+  const [additionalNotes, setAdditionalNotes] = useState((data as any).additionalNotes || '')
   const [gasTestRequired, setGasTestRequired] = useState<boolean>(Boolean(data.gasTestRequired))
   const [ppe, setPpe] = useState<string[]>(() => {
     if (data.ppe && Array.isArray(data.ppe) && data.ppe.length > 0) {
@@ -272,6 +277,12 @@ export function PtwApprovalForm({
     return ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness']
   })
   const [customApdInput, setCustomApdInput] = useState('')
+  const [formSubTypes, setFormSubTypes] = useState<Record<string, string[]>>(() => {
+    if (data.subTypes && typeof data.subTypes === 'object' && !Array.isArray(data.subTypes)) {
+      return { ...getDefaultSubTypes(), ...data.subTypes }
+    }
+    return getDefaultSubTypes()
+  })
   const [checkedEquipment, setCheckedEquipment] = useState<string[]>(() => {
     if (data.controlSteps) {
       const lines = data.controlSteps
@@ -383,7 +394,9 @@ export function PtwApprovalForm({
         riskLevel,
         description: finalDescription,
         controlSteps: formattedControlSteps,
+        additionalNotes,
         ppe,
+        subTypes: formSubTypes,
         signatures: signaturesByStepId,
         stepRemarks,
       })
@@ -423,6 +436,7 @@ export function PtwApprovalForm({
         riskLevel,
         description,
         controlSteps: formattedControlSteps,
+        additionalNotes,
         ppe,
       })
 
@@ -762,6 +776,13 @@ export function PtwApprovalForm({
                   </div>
                 </div>
 
+                {/* Sub-Jenis Pekerjaan (Aktivitas Pekerjaan) Manual CRUD */}
+                <PtwSubTypesEditor
+                  activePermitTypes={getActivePermitTypeKeys(permitType)}
+                  subTypes={formSubTypes}
+                  onChange={setFormSubTypes}
+                />
+
                 {/* Dynamic Item Check / Checklist K3 per Selected Permit Type */}
                 {(() => {
                   const activeTypes = getActivePermitTypeKeys(permitType)
@@ -893,48 +914,7 @@ export function PtwApprovalForm({
                   />
                 </div>
 
-                {/* Row 1: 1. Pelaksana kerja | Status persetujuan */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja</Label>
-                      {isStep1Locked && (
-                        <span className="text-[10px] text-amber-800 bg-amber-50 font-bold px-2 py-0.5 rounded-full border border-amber-200 inline-flex items-center gap-1">
-                          <Lock className="size-3 text-amber-600" /> Disetujui / Terkunci
-                        </span>
-                      )}
-                    </div>
-                    <SearchableSelect
-                      label="Pelaksana Kerja"
-                      placeholder="PILIH PELAKSANA KERJA..."
-                      value={selectedApplicant}
-                      onValueChange={setSelectedApplicant}
-                      disabled={isStep1Locked}
-                      options={employeesProp.map((e) => ({
-                        value: e.name,
-                        label: `${e.name} — ${e.jobTitle || e.rank || e.role || 'Technician'}`,
-                      }))}
-                      widthClassName="w-full"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Status persetujuan</Label>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
-                    >
-                      <option value="Pending Approval">Pending Approval</option>
-                      <option value="Submitted">Submitted</option>
-                      <option value="Approved">Approved</option>
-                      <option value="Rejected">Rejected</option>
-                      <option value="Draft">Draft</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 2: 2. Pemberi kerja | Risk level */}
+                {/* Row 1: Pemberi Kerja | Status persetujuan */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -960,21 +940,75 @@ export function PtwApprovalForm({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Risk level</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Status persetujuan</Label>
                     <select
-                      value={riskLevel}
-                      onChange={(e) => setRiskLevel(e.target.value)}
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
                       className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
                     >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                      <option value="Critical">Critical</option>
+                      <option value="Pending Approval">Pending Approval</option>
+                      <option value="Submitted">Submitted</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Draft">Draft</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Row 3: 3. Safety dept | APD wajib */}
+                {/* Row 2: Pelaksana Kerja (Multi-Person) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja (Multi-person)</Label>
+                    <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-bold">
+                      {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
+                    {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean) : []).map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
+                      >
+                        <span>{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = selectedApplicant.split(',').map(s => s.trim()).filter(Boolean)
+                            const next = current.filter(n => n !== name)
+                            setSelectedApplicant(next.join(', '))
+                          }}
+                          className="hover:text-rose-300 font-bold ml-1 text-xs"
+                          title={`Hapus ${name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <div className="flex-1 min-w-[220px]">
+                      <SearchableSelect
+                        label="Tambah Pelaksana"
+                        placeholder="+ PILIH / TAMBAH PELAKSANA KERJA..."
+                        value=""
+                        onValueChange={(val) => {
+                          if (!val) return
+                          const clean = val.includes(' — ') ? val.split(' — ')[0].trim() : val.trim()
+                          const current = selectedApplicant.split(',').map(s => s.trim()).filter(Boolean)
+                          if (clean && !current.includes(clean)) {
+                            const next = [...current, clean]
+                            setSelectedApplicant(next.join(', '))
+                          }
+                        }}
+                        options={employeesProp.map((e) => ({
+                          value: e.name,
+                          label: `${e.name} — ${e.jobTitle || e.rank || e.role || 'Technician'}`,
+                        }))}
+                        widthClassName="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 3: Safety Dept | Risk level */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -1000,86 +1034,113 @@ export function PtwApprovalForm({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">APD wajib</Label>
-                    <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
-                      {ppe.map((item) => (
-                        <span
-                          key={item}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-teal-600 text-white border border-teal-700 shadow-xs"
-                        >
-                          ✓ {item}
-                          <button
-                            type="button"
-                            onClick={() => setPpe((prev) => prev.filter((p) => p !== item))}
-                            className="ml-0.5 rounded hover:bg-teal-700 p-0.5"
-                            title={`Hapus ${item}`}
-                          >
-                            <X className="size-3" />
-                          </button>
-                        </span>
-                      ))}
+                    <Label className="text-xs font-semibold text-slate-700">Risk level</Label>
+                    <select
+                      value={riskLevel}
+                      onChange={(e) => setRiskLevel(e.target.value)}
+                      className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                      <option value="Critical">Critical</option>
+                    </select>
+                  </div>
+                </div>
 
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-white text-slate-700 border border-dashed border-slate-300 hover:border-teal-500 hover:text-teal-700 transition-colors shadow-xs"
-                          >
-                            <Plus className="size-3 text-teal-600" /> Tambah APD
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-60 p-2.5 rounded-xl shadow-lg" align="start">
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-1">
-                            Pilih / Tambah APD
-                          </div>
-                          <div className="max-h-44 overflow-y-auto space-y-0.5">
-                            {APD_OPTIONS.filter((opt) => !ppe.includes(opt)).map((opt) => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => {
-                                  if (!ppe.includes(opt)) setPpe((prev) => [...prev, opt])
-                                }}
-                                className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors"
-                              >
-                                + {opt}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="pt-2 mt-2 border-t border-slate-100 flex gap-1.5">
-                            <Input
-                              placeholder="APD Kustom..."
-                              value={customApdInput}
-                              onChange={(e) => setCustomApdInput(e.target.value)}
-                              className="h-7 text-xs bg-slate-50"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  if (customApdInput.trim() && !ppe.includes(customApdInput.trim())) {
-                                    setPpe((prev) => [...prev, customApdInput.trim()])
-                                    setCustomApdInput('')
-                                  }
-                                }
-                              }}
-                            />
-                            <Button
+                {/* Row 4: APD wajib */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">APD wajib</Label>
+                  <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
+                    {ppe.map((item) => (
+                      <span
+                        key={item}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-teal-600 text-white border border-teal-700 shadow-xs"
+                      >
+                        ✓ {item}
+                        <button
+                          type="button"
+                          onClick={() => setPpe((prev) => prev.filter((p) => p !== item))}
+                          className="ml-0.5 rounded hover:bg-teal-700 p-0.5"
+                          title={`Hapus ${item}`}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-white text-slate-700 border border-dashed border-slate-300 hover:border-teal-500 hover:text-teal-700 transition-colors shadow-xs"
+                        >
+                          <Plus className="size-3 text-teal-600" /> Tambah APD
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-60 p-2.5 rounded-xl shadow-lg" align="start">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-1">
+                          Pilih / Tambah APD
+                        </div>
+                        <div className="max-h-44 overflow-y-auto space-y-0.5">
+                          {APD_OPTIONS.filter((opt) => !ppe.includes(opt)).map((opt) => (
+                            <button
+                              key={opt}
                               type="button"
-                              size="sm"
-                              className="h-7 px-2 text-xs bg-teal-600 hover:bg-teal-700 text-white shrink-0"
                               onClick={() => {
+                                if (!ppe.includes(opt)) setPpe((prev) => [...prev, opt])
+                              }}
+                              className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-teal-50 hover:text-teal-800 transition-colors"
+                            >
+                              + {opt}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pt-2 mt-2 border-t border-slate-100 flex gap-1.5">
+                          <Input
+                            placeholder="APD Kustom..."
+                            value={customApdInput}
+                            onChange={(e) => setCustomApdInput(e.target.value)}
+                            className="h-7 text-xs bg-slate-50"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
                                 if (customApdInput.trim() && !ppe.includes(customApdInput.trim())) {
                                   setPpe((prev) => [...prev, customApdInput.trim()])
                                   setCustomApdInput('')
                                 }
-                              }}
-                            >
-                              Tambah
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2 text-xs bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                            onClick={() => {
+                              if (customApdInput.trim() && !ppe.includes(customApdInput.trim())) {
+                                setPpe((prev) => [...prev, customApdInput.trim()])
+                                setCustomApdInput('')
+                              }
+                            }}
+                          >
+                            Tambah
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
+                </div>
+
+                {/* Row 5: Penjelasan Tambahan / Detail Pekerjaan */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Penjelasan Tambahan / Detail Pekerjaan</Label>
+                  <Textarea
+                    value={additionalNotes}
+                    onChange={(e) => setAdditionalNotes(e.target.value)}
+                    placeholder="Ketik penjelasan tambahan mengenai aktivitas khusus, kondisi lapangan, atau langkah pekerjaan..."
+                    rows={3}
+                    className="bg-slate-50/70 border-slate-200 text-xs leading-relaxed"
+                  />
                 </div>
 
 
@@ -1327,7 +1388,6 @@ export function PtwApprovalForm({
               }}
             />
           </div>
-
           {/* ── RIGHT: Live Landscape PDF Preview ── */}
           <div className={cn("rounded-[1.1rem] bg-slate-100 p-4 shadow-sm border border-slate-200 print:hidden overflow-auto", activeView === 'form' ? 'hidden xl:block' : 'block')}>
             {/* ponytail: landscape_a4_wrapper - standard A4 landscape dimensions (1122px x 793px @ 96dpi) */}
@@ -1384,278 +1444,69 @@ export function PtwApprovalForm({
                 JENIS PEKERJAAN
               </div>
 
-              {/* ── DYNAMIC COLUMNS FOR SELECTED PERMIT TYPES ONLY ── */}
-              {(() => {
-                const activeKeys = getActivePermitTypeKeys(permitType)
-                const columnsToShow = activeKeys.length > 0
-                  ? activeKeys.map((k) => {
-                      if (k.includes('Hot')) return 'HOT'
-                      if (k.includes('Confined')) return 'CONFINED'
-                      if (k.includes('Digging')) return 'DIGGING'
-                      if (k.includes('Cold')) return 'COLD'
-                      return 'ELECTRICAL'
-                    })
-                  : ['HOT']
-
-                const gridColsClass =
-                  columnsToShow.length === 1
-                    ? 'grid-cols-1'
-                    : columnsToShow.length === 2
-                    ? 'grid-cols-2'
-                    : columnsToShow.length === 3
-                    ? 'grid-cols-3'
-                    : columnsToShow.length === 4
-                    ? 'grid-cols-4'
-                    : 'grid-cols-5'
-
-                return (
-                  <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-                    {/* Column 1: Hot Work Permit (Red Header) */}
-                    {columnsToShow.includes('HOT') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Hot Work Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Welding</div>
-                            <div>- Cutting torch</div>
-                            <div>- Grinding</div>
-                            <div>- Brazing</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item) => {
-                                const isChecked = checkIsItemChecked(item.label)
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Column 2: Confined Space Permit (Yellow Header) */}
-                    {columnsToShow.includes('CONFINED') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Confined Space Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Pekerjaan Tangki</div>
-                            <div>- Chute</div>
-                            <div>- Sewer / Saluran air</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item) => {
-                                const isChecked = checkIsItemChecked(item.label)
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Column 3: Digging Permit (Green Header) */}
-                    {columnsToShow.includes('DIGGING') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Digging Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Penggalian parit</div>
-                            <div>- Pembuatan pondasi</div>
-                            <div>- Penggalian jalur kabel listrik/telepon</div>
-                            <div>- Penggalian jalur pipa air</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item) => {
-                                const isChecked = checkIsItemChecked(item.label)
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Column 4: Cold Work Permit (Cyan Header) */}
-                    {columnsToShow.includes('COLD') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Cold Work Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Pekerjaan Perbaikan Sipil</div>
-                            <div>- Inspeksi & Maintenance Umum</div>
-                            <div>- Penataan & Kebersihan Area</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item) => {
-                                const isChecked = checkIsItemChecked(item.label)
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Column 5: Electrical / Mechanical Permit (Blue Header) */}
-                    {columnsToShow.includes('ELECTRICAL') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Electrical / Mechanical Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Perbaikan Drainase & Kabel</div>
-                            <div>- Pembuatan pondasi & Pompa</div>
-                            <div>- Maintenance / LOTO Boiler</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item) => {
-                                const isChecked = checkIsItemChecked(item.label)
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+              {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
+              <PtwChecklistTable
+                permitType={permitType}
+                subTypes={formSubTypes}
+                checkedEquipment={checkedEquipment}
+              />
+              {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
+              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
+                <div>
+                  <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+                  <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                    {ppe && ppe.length > 0 ? (
+                      ppe.map((apd) => (
+                        <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                          ☑ {apd}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
                     )}
                   </div>
-                )
-              })()}
+                </div>
+                <div className="flex items-center gap-4 font-bold text-[7.5pt] text-slate-800 shrink-0">
+                  <span>Gas Test: <strong className="text-emerald-700">{gasTestRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+                  <span>Risk Level: <strong className="text-rose-700 uppercase">{riskLevel || 'MEDIUM'}</strong></span>
+                </div>
+              </div>
 
-              {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
-              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
-                <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
-                <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
-                  {ppe && ppe.length > 0 ? (
-                    ppe.map((apd) => (
-                      <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
-                        ☑ {apd}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
-                  )}
+              {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+                <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+                  PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                </span>
+                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
+                  {additionalNotes || controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
                 </div>
               </div>
 
               {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
               <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
-                {/* 1. Catatan Pelaksana Pekerjaan */}
-                <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
-                  <div>
-                    <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
-                      CATATAN PELAKSANA PEKERJAAN
-                    </span>
-                    <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                      {(step1?.id ? stepRemarks[step1.id] : undefined) || step1?.remarks || (
-                        <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Catatan Pemberi Kerja */}
+                {/* 1. Catatan Pemberi Kerja */}
                 <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
                   <div>
                     <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
                       CATATAN PEMBERI KERJA
                     </span>
                     <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                      {(step2?.id ? stepRemarks[step2.id] : undefined) || step2?.remarks || (
+                      {(step1?.id ? stepRemarks[step1.id] : undefined) || step1?.remarks || (
                         <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Catatan Pelaksana Pekerjaan */}
+                <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                  <div>
+                    <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                      CATATAN PELAKSANA PEKERJAAN
+                    </span>
+                    <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                      {(step2?.id ? stepRemarks[step2.id] : undefined) || step2?.remarks || (
+                        <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>
                       )}
                     </div>
                   </div>
@@ -1717,51 +1568,54 @@ export function PtwApprovalForm({
                 </div>
               </div>
 
-              {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+              {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
               <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
-                <div className="p-1.5 text-center flex flex-col justify-between">
-                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                  <div className="h-14 flex flex-col items-center justify-center my-1">
-                    {step1Sig || step1?.signatureDataUrl ? (
-                      <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-10 object-contain" />
-                    ) : null}
-                    {step1?.status === 'rejected' ? (
-                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-                    ) : step1?.status === 'reverted' ? (
-                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                    ) : step1?.status === 'approved' && !step1Sig && !step1?.signatureDataUrl ? (
-                      <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
-                    ) : !step1Sig && !step1?.signatureDataUrl ? (
-                      <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
-                    ) : null}
-                  </div>
-                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedApplicant || step1?.approverName || 'NAMA & TANDA TANGAN'}</div>
-                </div>
-
+                {/* 1. PEMBERI KERJA */}
                 <div className="p-1.5 text-center flex flex-col justify-between">
                   <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
                   <div className="h-14 flex flex-col items-center justify-center my-1">
-                    {step2?.status === 'rejected' ? (
+                    {step1?.status === 'rejected' ? (
                       <>
-                        {(step2Sig || step2?.signatureDataUrl) && <img src={(step2Sig || step2?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
+                        {(step1Sig || step1?.signatureDataUrl) && <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
                         <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
                       </>
-                    ) : step2?.status === 'reverted' ? (
+                    ) : step1?.status === 'reverted' ? (
                       <>
-                        {(step2Sig || step2?.signatureDataUrl) && <img src={(step2Sig || step2?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
+                        {(step1Sig || step1?.signatureDataUrl) && <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
                         <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
                       </>
-                    ) : (step2Sig || step2?.signatureDataUrl) ? (
-                      <img src={(step2Sig || step2?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-12 object-contain" />
-                    ) : step2?.status === 'approved' ? (
+                    ) : (step1Sig || step1?.signatureDataUrl) ? (
+                      <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-12 object-contain" />
+                    ) : step1?.status === 'approved' ? (
                       <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
                     ) : (
                       <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
                     )}
                   </div>
-                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedFieldPic || step2?.approverName || 'NAMA & TANDA TANGAN'}</div>
+                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedFieldPic || step1?.approverName || 'NAMA & TANDA TANGAN'}</div>
                 </div>
 
+                {/* 2. PELAKSANA PEKERJAAN (MULTI) */}
+                <div className="p-1.5 text-center flex flex-col justify-between">
+                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                  <div className="h-14 flex flex-col items-center justify-center my-1">
+                    {step2Sig || step2?.signatureDataUrl ? (
+                      <img src={(step2Sig || step2?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-10 object-contain" />
+                    ) : null}
+                    {step2?.status === 'rejected' ? (
+                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                    ) : step2?.status === 'reverted' ? (
+                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                    ) : step2?.status === 'approved' && !step2Sig && !step2?.signatureDataUrl ? (
+                      <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                    ) : !step2Sig && !step2?.signatureDataUrl ? (
+                      <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                    ) : null}
+                  </div>
+                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedApplicant || step2?.approverName || 'NAMA & TANDA TANGAN'}</div>
+                </div>
+
+                {/* 3. VERIFIKASI (SAFETY DEPT) */}
                 <div className="p-1.5 text-center flex flex-col justify-between">
                   <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
                   <div className="h-14 flex flex-col items-center justify-center my-1">

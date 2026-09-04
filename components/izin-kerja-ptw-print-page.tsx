@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getPermitSubTypes } from "@/lib/ptw-helpers";
+import { PtwChecklistTable } from "@/components/ptw-checklist-table";
 
 export type PtwPrintRecord = {
   id: string;
@@ -23,6 +25,8 @@ export type PtwPrintRecord = {
   description: string;
   controlSteps: string;
   ppe: string[];
+  subTypes?: Record<string, string[]> | string[];
+  additionalNotes?: string;
   gasTestRequired: boolean;
   isolationRequired: boolean;
   attachmentName: string;
@@ -167,207 +171,12 @@ export function IzinKerjaPtwPrintPage() {
             JENIS PEKERJAAN
           </div>
 
-          {/* ── DYNAMIC COLUMNS FOR SELECTED PERMIT TYPES ONLY ── */}
-          {(() => {
-            const activeUpper = (record.permitType || "").toUpperCase();
-            const activeTypes: string[] = [];
-            if (activeUpper.includes("HOT")) activeTypes.push("HOT");
-            if (activeUpper.includes("CONFINED")) activeTypes.push("CONFINED");
-            if (activeUpper.includes("DIGGING")) activeTypes.push("DIGGING");
-            if (activeUpper.includes("COLD")) activeTypes.push("COLD");
-            if (activeUpper.includes("ELECTRICAL") || activeUpper.includes("MECHANICAL")) activeTypes.push("ELECTRICAL");
-
-            const columnsToShow = activeTypes.length > 0 ? activeTypes : ["HOT", "CONFINED", "DIGGING", "COLD", "ELECTRICAL"];
-            const gridColsClass =
-              columnsToShow.length === 1
-                ? "grid-cols-1"
-                : columnsToShow.length === 2
-                ? "grid-cols-2"
-                : columnsToShow.length === 3
-                ? "grid-cols-3"
-                : columnsToShow.length === 4
-                ? "grid-cols-4"
-                : "grid-cols-5";
-
-            return (
-              <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-                {columnsToShow.includes("HOT") && (
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                        Hot Work Permit
-                      </div>
-                      <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                        <div>- Welding</div>
-                        <div>- Cutting torch</div>
-                        <div>- Grinding</div>
-                        <div>- Brazing</div>
-                      </div>
-                      <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                        Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                      </div>
-                      <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                        <thead>
-                          <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                            <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr><td>1 Daerah kerja bebas dari bahan terbakar</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>2 Tersedia APAR</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>3 Apakah daerah kerja dilokalisir?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>4 Welding Glove</td><td className="text-center">{ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td></tr>
-                          <tr><td>5 Welding Cloth/Appron</td><td className="text-center">{ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Welding Gloves") ? "☑" : "☐"}</td></tr>
-                          <tr><td>6 Face Shield</td><td className="text-center">{ppeList.includes("Face Shield") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Face Shield") ? "☑" : "☐"}</td></tr>
-                          <tr><td>7 Respirator</td><td className="text-center">{ppeList.includes("Respirator") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Respirator") ? "☑" : "☐"}</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {columnsToShow.includes("CONFINED") && (
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                        Confined Space Permit
-                      </div>
-                      <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                        <div>- Pekerjaan Tangki</div>
-                        <div>- Chute</div>
-                        <div>- Sewer / Saluran air</div>
-                      </div>
-                      <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                        Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                      </div>
-                      <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                        <thead>
-                          <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                            <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr><td>1 Breathing Set diperlukan?</td><td className="text-center">{record.gasTestRequired ? "☑" : "☐"}</td><td className="text-center">{!record.gasTestRequired ? "☑" : "☐"}</td></tr>
-                          <tr><td>2 Disposal Respirator</td><td className="text-center">{ppeList.includes("Respirator") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Respirator") ? "☑" : "☐"}</td></tr>
-                          <tr><td>3 Peralatan bebas percikan api</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>4 Safety harness & lifeline diperlukan?</td><td className="text-center">{ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td></tr>
-                          <tr><td>5 Ventilasi telah memadai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>6 Pemeriksaan O2 dilakukan?</td><td className="text-center">{record.gasTestRequired ? "☑" : "☐"}</td><td className="text-center">{!record.gasTestRequired ? "☑" : "☐"}</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {columnsToShow.includes("DIGGING") && (
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                        Digging Permit
-                      </div>
-                      <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                        <div>- Penggalian parit</div>
-                        <div>- Pembuatan pondasi</div>
-                        <div>- Penggalian jalur kabel listrik/telepon</div>
-                        <div>- Penggalian jalur pipa air</div>
-                      </div>
-                      <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                        Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                      </div>
-                      <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                        <thead>
-                          <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                            <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr><td>1 Peta / gambar tersedia?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>2 Penggalian dilakukan dengan Alat?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>3 Penggalian dilakukan dengan manual?</td><td className="text-center">☐</td><td className="text-center">☑</td></tr>
-                          <tr><td>4 Tanda / barricade telah tersedia?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>5 Hand glove</td><td className="text-center">{ppeList.some(p => p.toLowerCase().includes("glove")) ? "☑" : "☐"}</td><td className="text-center">{!ppeList.some(p => p.toLowerCase().includes("glove")) ? "☑" : "☐"}</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {columnsToShow.includes("COLD") && (
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                        Cold Work Permit
-                      </div>
-                      <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                        <div>- Pekerjaan Perbaikan Sipil</div>
-                        <div>- Inspeksi & Maintenance Umum</div>
-                        <div>- Penataan & Kebersihan Area</div>
-                      </div>
-                      <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                        Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                      </div>
-                      <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                        <thead>
-                          <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                            <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr><td>1 Peralatan kerja layak pakai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>2 APD sesuai standar K3?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>3 Penerangan area memadai?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>4 Pengamanan area kerja?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>5 Housekeeping / Kebersihan?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {columnsToShow.includes("ELECTRICAL") && (
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                        Electrical / Mechanical Permit
-                      </div>
-                      <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                        <div>- Perbaikan Drainase & Kabel</div>
-                        <div>- Pembuatan pondasi & Pompa</div>
-                        <div>- Maintenance / LOTO Boiler</div>
-                      </div>
-                      <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                        Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                      </div>
-                      <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                        <thead>
-                          <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                            <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                            <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr><td>1 Body Harness untuk Ketinggian?</td><td className="text-center">{ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td><td className="text-center">{!ppeList.includes("Full Body Harness") ? "☑" : "☐"}</td></tr>
-                          <tr><td>2 Alat potong kupas kabel layak?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>3 Isolasi / LOTO layak?</td><td className="text-center">{record.isolationRequired ? "☑" : "☐"}</td><td className="text-center">{!record.isolationRequired ? "☑" : "☐"}</td></tr>
-                          <tr><td>4 APAR tersedia di area kerja?</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                          <tr><td>5 APD yang sesuai pekerjaan</td><td className="text-center">☑</td><td className="text-center">☐</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
+          <PtwChecklistTable
+            permitType={record.permitType}
+            subTypes={record.subTypes as any}
+            checkedEquipment={record.ppe}
+          />
 
           {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
           <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
@@ -382,6 +191,16 @@ export function IzinKerjaPtwPrintPage() {
               ) : (
                 <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
               )}
+            </div>
+          </div>
+
+          {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+          <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+            <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+              PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+            </span>
+            <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
+              {record.additionalNotes || (record as any).controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
             </div>
           </div>
 
@@ -439,8 +258,9 @@ export function IzinKerjaPtwPrintPage() {
             </div>
           </div>
 
-          {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+          {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
           <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
+            {/* 1. PEMBERI KERJA */}
             <div className="p-1.5 text-center flex flex-col justify-between">
               <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
               <div className="h-14 flex items-center justify-center my-1">
@@ -450,9 +270,10 @@ export function IzinKerjaPtwPrintPage() {
                   <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
                 )}
               </div>
-              <div className="border-t border-slate-900 pt-1 font-bold">{record.applicant || "NAMA & TANDA TANGAN"}</div>
+              <div className="border-t border-slate-900 pt-1 font-bold">{record.fieldPic || "NAMA & TANDA TANGAN"}</div>
             </div>
 
+            {/* 2. PELAKSANA PEKERJAAN */}
             <div className="p-1.5 text-center flex flex-col justify-between">
               <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
               <div className="h-14 flex items-center justify-center my-1">
@@ -462,9 +283,10 @@ export function IzinKerjaPtwPrintPage() {
                   <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
                 )}
               </div>
-              <div className="border-t border-slate-900 pt-1 font-bold">{record.fieldPic || "NAMA & TANDA TANGAN"}</div>
+              <div className="border-t border-slate-900 pt-1 font-bold">{record.applicant || "NAMA & TANDA TANGAN"}</div>
             </div>
 
+            {/* 3. VERIFIKASI (SAFETY DEPT) */}
             <div className="p-1.5 text-center flex flex-col justify-between">
               <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
               <div className="h-14 flex items-center justify-center my-1">

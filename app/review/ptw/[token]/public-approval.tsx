@@ -8,7 +8,8 @@ import {
   revertPtwStepByToken,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes } from '@/lib/ptw-helpers'
+import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -717,230 +718,12 @@ export function PtwPublicApproval({
                 JENIS PEKERJAAN
               </div>
 
-              {/* ── DYNAMIC COLUMNS FOR SELECTED PERMIT TYPES ONLY ── */}
-              {(() => {
-                const activeKeys = getActivePermitTypeKeys(data?.permitType)
-                const columnsToShow = activeKeys.length > 0
-                  ? activeKeys.map((k) => {
-                      if (k.includes('Hot')) return 'HOT'
-                      if (k.includes('Confined')) return 'CONFINED'
-                      if (k.includes('Digging')) return 'DIGGING'
-                      if (k.includes('Cold')) return 'COLD'
-                      return 'ELECTRICAL'
-                    })
-                  : ['HOT']
-
-                const gridColsClass =
-                  columnsToShow.length === 1
-                    ? 'grid-cols-1'
-                    : columnsToShow.length === 2
-                    ? 'grid-cols-2'
-                    : columnsToShow.length === 3
-                    ? 'grid-cols-3'
-                    : columnsToShow.length === 4
-                    ? 'grid-cols-4'
-                    : 'grid-cols-5'
-
-                return (
-                  <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-                    {columnsToShow.includes('HOT') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Hot Work Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Welding</div>
-                            <div>- Cutting torch</div>
-                            <div>- Grinding</div>
-                            <div>- Brazing</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item) => {
-                                const checked = selectedApd && selectedApd.length > 0 ? isItemChecked(item.label, selectedApd) : true
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{checked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!checked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {columnsToShow.includes('CONFINED') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Confined Space Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Pekerjaan Tangki</div>
-                            <div>- Chute</div>
-                            <div>- Sewer / Saluran air</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item) => {
-                                const checked = selectedApd && selectedApd.length > 0 ? isItemChecked(item.label, selectedApd) : true
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{checked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!checked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {columnsToShow.includes('DIGGING') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Digging Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Penggalian parit</div>
-                            <div>- Pembuatan pondasi</div>
-                            <div>- Pekerjaan tiang listrik</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item) => {
-                                const checked = selectedApd && selectedApd.length > 0 ? isItemChecked(item.label, selectedApd) : true
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{checked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!checked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {columnsToShow.includes('COLD') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#38bdf8] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Cold Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Perbaikan Drainase & Saluran</div>
-                            <div>- Pembersihan area workshop</div>
-                            <div>- Maintenance umum tanpa percikan</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item) => {
-                                const checked = selectedApd && selectedApd.length > 0 ? isItemChecked(item.label, selectedApd) : true
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{checked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!checked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {columnsToShow.includes('ELECTRICAL') && (
-                      <div className="flex flex-col justify-between">
-                        <div>
-                          <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                            Electrical / Mechanical Permit
-                          </div>
-                          <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                            <div>- Perbaikan Drainase & Kabel</div>
-                            <div>- Pembuatan pondasi & Pompa</div>
-                            <div>- Maintenance / LOTO Boiler</div>
-                          </div>
-                          <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                            Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-                          </div>
-                          <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                            <thead>
-                              <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item) => {
-                                const checked = selectedApd && selectedApd.length > 0 ? isItemChecked(item.label, selectedApd) : true
-                                return (
-                                  <tr key={item.id}>
-                                    <td>{item.label}</td>
-                                    <td className="text-center">{checked ? '☑' : '☐'}</td>
-                                    <td className="text-center">{!checked ? '☑' : '☐'}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
+              <PtwChecklistTable
+                permitType={data?.permitType}
+                subTypes={data?.subTypes}
+                checkedEquipment={selectedApd}
+              />
 
               {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
               <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
@@ -958,31 +741,22 @@ export function PtwPublicApproval({
                 </div>
               </div>
 
+              {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+                <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+                  PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                </span>
+                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
+                  {(data as any)?.additionalNotes || data?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+                </div>
+              </div>
+
               {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
               <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
-                {/* 1. Catatan Pelaksana Kerja */}
+                {/* 1. Catatan Pemberi Kerja */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 1 || x.approverRole === 'applicant')
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 1 || x.approverRole === 'field_pic' || x.approverRole === 'pemberi_kerja' || x.approverRole === 'safety_officer')
                   const isCur = approval?.stepOrder === 1
-                  const rem = (isCur && remarks) || s?.remarks
-                  return (
-                    <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
-                      <div>
-                        <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
-                          CATATAN PELAKSANA KERJA
-                        </span>
-                        <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                          {rem || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* 2. Catatan Pemberi Kerja */}
-                {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'safety_officer')
-                  const isCur = approval?.stepOrder === 2
                   const rem = (isCur && remarks) || s?.remarks
                   return (
                     <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
@@ -998,9 +772,28 @@ export function PtwPublicApproval({
                   )
                 })()}
 
+                {/* 2. Catatan Pelaksana Kerja */}
+                {(() => {
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'applicant' || x.approverRole === 'pelaksana')
+                  const isCur = approval?.stepOrder === 2
+                  const rem = (isCur && remarks) || s?.remarks
+                  return (
+                    <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                      <div>
+                        <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                          CATATAN PELAKSANA KERJA
+                        </span>
+                        <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                          {rem || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* 3. Catatan Safety Dept */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'field_pic' || x.approverRole === 'authorized')
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'authorized' || x.approverRole === 'safety_dept')
                   const isCur = approval?.stepOrder === 3
                   const rem = (isCur && remarks) || s?.remarks
                   return (
@@ -1059,30 +852,12 @@ export function PtwPublicApproval({
                 </div>
               </div>
 
-              {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+              {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
               <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
-                {/* 1. Pelaksana Kerja */}
+                {/* 1. Pemberi Kerja */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 1 || x.approverRole === 'applicant')
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 1 || x.approverRole === 'field_pic' || x.approverRole === 'pemberi_kerja' || x.approverRole === 'safety_officer')
                   const isCur = approval?.stepOrder === 1
-                  const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
-                  return (
-                    <div className="p-1.5 text-center flex flex-col justify-between">
-                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
-                      <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" /> : <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>}
-                      </div>
-                      <div className="border-t border-slate-900 pt-1 font-bold">
-                        {s?.approverName || data?.applicantName || 'NAMA & TANDA TANGAN'}
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* 2. Pemberi Kerja */}
-                {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'safety_officer')
-                  const isCur = approval?.stepOrder === 2
                   const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
                   return (
                     <div className="p-1.5 text-center flex flex-col justify-between">
@@ -1097,9 +872,27 @@ export function PtwPublicApproval({
                   )
                 })()}
 
+                {/* 2. Pelaksana Kerja */}
+                {(() => {
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'applicant' || x.approverRole === 'pelaksana')
+                  const isCur = approval?.stepOrder === 2
+                  const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
+                  return (
+                    <div className="p-1.5 text-center flex flex-col justify-between">
+                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
+                      <div className="h-14 flex items-center justify-center my-1">
+                        {sigUrl ? <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" /> : <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>}
+                      </div>
+                      <div className="border-t border-slate-900 pt-1 font-bold">
+                        {s?.approverName || data?.applicantName || 'NAMA & TANDA TANGAN'}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* 3. Safety Dept */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'field_pic' || x.approverRole === 'authorized')
+                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'authorized' || x.approverRole === 'safety_dept')
                   const isCur = approval?.stepOrder === 3
                   const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
                   return (
