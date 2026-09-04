@@ -32,6 +32,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useLanguage } from '@/components/language-provider'
 import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1323,6 +1324,7 @@ export function SchedulingTimesheetWorkspace({
   canDelete?: boolean
 }) {
   const router = useRouter()
+  const { isIndonesian, t } = useLanguage()
   const [period, setPeriod] = useState(currentMonthPeriod)
   const userDefaultSiteId = useMemo(() => {
     return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
@@ -4188,7 +4190,7 @@ export function SchedulingTimesheetWorkspace({
           }
         >
           {iconOnly ? <FileText className="size-4" /> : <Download className="mr-2 size-4" />}
-          {iconOnly ? <span className="sr-only">Export PDF</span> : 'Export PDF'}
+          {iconOnly ? <span className="sr-only">Export PDF</span> : (isIndonesian ? 'Ekspor PDF' : 'Export PDF')}
         </Button>
         <Button
           size={iconOnly ? 'icon' : 'sm'}
@@ -4210,9 +4212,9 @@ export function SchedulingTimesheetWorkspace({
           {iconOnly ? (
             <span className="sr-only">Export {excelInsteadOfCsv ? 'Excel' : 'CSV'}</span>
           ) : excelInsteadOfCsv ? (
-            'Export Excel'
+            (isIndonesian ? 'Ekspor Excel' : 'Export Excel')
           ) : (
-            'Export CSV'
+            (isIndonesian ? 'Ekspor CSV' : 'Export CSV')
           )}
         </Button>
       </div>
@@ -8369,7 +8371,7 @@ export function SchedulingTimesheetWorkspace({
                       onClick={() => void saveSiteConfig()}
                       className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
                     >
-                      <Save className="size-4" /> Simpan Konfigurasi TTD
+                      <Save className="size-4" /> {isIndonesian ? 'Simpan Konfigurasi TTD' : 'Save Signature Config'}
                     </Button>
                   </div>
                 </div>
@@ -8386,21 +8388,21 @@ export function SchedulingTimesheetWorkspace({
               variant={setupVariableTab === 'roster' ? 'default' : 'ghost'}
               onClick={() => setSetupVariableTab('roster')}
             >
-              Roster Config
+              {isIndonesian ? 'Konfigurasi Roster' : 'Roster Config'}
             </Button>
             <Button
               size="sm"
               variant={setupVariableTab === 'allowance' ? 'default' : 'ghost'}
               onClick={() => setSetupVariableTab('allowance')}
             >
-              MSA / Meals
+              {isIndonesian ? 'MSA / Uang Makan' : 'MSA / Meals'}
             </Button>
             <Button
               size="sm"
               variant={setupVariableTab === 'overtime' ? 'default' : 'ghost'}
               onClick={() => setSetupVariableTab('overtime')}
             >
-              Setup Overtime
+              {isIndonesian ? 'Setup Lembur' : 'Setup Overtime'}
             </Button>
           </div>
 
@@ -8409,25 +8411,25 @@ export function SchedulingTimesheetWorkspace({
               <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                 <div>
                   <p className="font-display text-foreground text-base font-semibold">
-                    List Konfigurasi Roster per Site
+                    {isIndonesian ? 'List Konfigurasi Roster per Site' : 'Roster Configuration List per Site'}
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    Pilih site/lokasi, lalu atur konfigurasi di popup.
+                    {isIndonesian ? 'Pilih site/lokasi, lalu atur konfigurasi di popup.' : 'Select site/location, then adjust configuration in modal.'}
                   </p>
                 </div>
-                <Badge variant="outline">{siteSettingRows.length} site</Badge>
+                <Badge variant="outline">{siteSettingRows.length} {isIndonesian ? 'site' : 'sites'}</Badge>
               </div>
               <div className="overflow-auto">
                 <table className="w-full min-w-[920px] text-sm">
                   <thead>
                     <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
-                      <th className="px-4 py-3 font-medium">Site</th>
-                      <th className="px-4 py-3 font-medium">Lokasi</th>
-                      <th className="px-4 py-3 font-medium">Karyawan</th>
-                      <th className="px-4 py-3 font-medium">Tipe Shift</th>
-                      <th className="px-4 py-3 font-medium">Roster</th>
-                      <th className="px-4 py-3 font-medium">Status Config</th>
-                      <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Site' : 'Site'}</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Lokasi' : 'Location'}</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Karyawan' : 'Employees'}</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Tipe Shift' : 'Shift Type'}</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Roster' : 'Roster'}</th>
+                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Status Config' : 'Config Status'}</th>
+                      <th className="px-4 py-3 text-right font-medium">{isIndonesian ? 'Aksi' : 'Action'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -8443,7 +8445,9 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3">{row.rosterType}</td>
                         <td className="px-4 py-3">
                           <Badge variant={row.hasConfig ? 'default' : 'secondary'}>
-                            {row.hasConfig ? 'Sudah setting' : 'Belum setting'}
+                            {row.hasConfig
+                              ? (isIndonesian ? 'Sudah setting' : 'Configured')
+                              : (isIndonesian ? 'Belum setting' : 'Not configured')}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -8455,7 +8459,9 @@ export function SchedulingTimesheetWorkspace({
                               setSiteConfigDialogOpen(true)
                             }}
                           >
-                            {row.hasConfig ? 'Edit Config' : 'Tambah Config'}
+                            {row.hasConfig
+                              ? (isIndonesian ? 'Edit Config' : 'Edit Config')
+                              : (isIndonesian ? 'Tambah Config' : 'Add Config')}
                           </Button>
                         </td>
                       </tr>

@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban, TrendingUp, Mail } from 'lucide-react'
+import { Eye, Pencil, ShieldBan, ShieldCheck, Trash2, Save, UserCog, Key, Ban, TrendingUp, Mail, CheckCircle2 } from 'lucide-react'
 import { manageSecurityUserAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
 import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
@@ -147,12 +147,18 @@ export function SecurityUserRowActions({
 
   useEffect(() => {
     if (state.status === 'success') {
-      if (state.message.toLowerCase().includes('dihapus')) {
-        setOpen(false)
-      }
+      const msg = state.message.toLowerCase()
       if (
-        state.message.toLowerCase().includes('role') &&
-        state.message.toLowerCase().includes('diubah')
+        msg.includes('dihapus') ||
+        msg.includes('hapus') ||
+        msg.includes('nonaktif') ||
+        msg.includes('diaktifkan') ||
+        msg.includes('aktifkan') ||
+        msg.includes('activated') ||
+        msg.includes('banned') ||
+        msg.includes('deactivated') ||
+        msg.includes('deleted') ||
+        (msg.includes('role') && msg.includes('diubah'))
       ) {
         setOpen(false)
       }
@@ -209,7 +215,19 @@ export function SecurityUserRowActions({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="profile" className="min-w-0 space-y-4">
+        {state.status !== 'idle' ? (
+          <Alert
+            className={
+              state.status === 'error'
+                ? 'border-destructive/30 bg-destructive/10 text-destructive mt-3'
+                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mt-3'
+            }
+          >
+            <AlertDescription>{state.message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <Tabs defaultValue="profile" className="min-w-0 space-y-4 mt-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile">Profil</TabsTrigger>
             <TabsTrigger value="access">Akses</TabsTrigger>
@@ -306,17 +324,6 @@ export function SecurityUserRowActions({
                 </TableBody>
               </Table>
             </div>
-            {state.status !== 'idle' ? (
-              <Alert
-                className={
-                  state.status === 'error'
-                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                }
-              >
-                <AlertDescription>{state.message}</AlertDescription>
-              </Alert>
-            ) : null}
 
             {canEdit && (
               <form
@@ -545,42 +552,52 @@ export function SecurityUserRowActions({
                 </div>
               </form>
             )}
+          </TabsContent>
 
+          <TabsContent value="access" className="mt-0 space-y-4">
+            {canEdit ? (
+              <form
+                action={formAction}
+                className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
+              >
+                <input type="hidden" name="intent" value="change-role" />
+                <input type="hidden" name="employeeId" value={user.id} />
+                <div className="flex items-center gap-2">
+                  <Pencil className="text-muted-foreground size-4" />
+                  <p className="font-medium">Ganti Peran Akses</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Peran Akses</Label>
+                  <Select name="accessRole" defaultValue={user.accessRole}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Pilih peran" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roleOptions.map((role) => (
+                        <SelectItem key={role.id} value={role.name}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end">
+                  <SubmitButton>
+                    <UserCog className="mr-2 size-4" />
+                    Ganti Peran
+                  </SubmitButton>
+                </div>
+              </form>
+            ) : (
+              <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm">
+                Anda tidak memiliki hak untuk mengubah peran akses pengguna ini.
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="security" className="mt-0 space-y-4">
             {canEdit && (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <form
-                  action={formAction}
-                  className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
-                >
-                  <input type="hidden" name="intent" value="change-role" />
-                  <input type="hidden" name="employeeId" value={user.id} />
-                  <div className="flex items-center gap-2">
-                    <Pencil className="text-muted-foreground size-4" />
-                    <p className="font-medium">Ganti Peran</p>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Peran Akses</Label>
-                    <Select name="accessRole" defaultValue={user.accessRole}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Pilih peran" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {roleOptions.map((role) => (
-                          <SelectItem key={role.id} value={role.name}>
-                            {role.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex justify-end">
-                    <SubmitButton>
-                      <UserCog className="mr-2 size-4" />
-                      Ganti Peran
-                    </SubmitButton>
-                  </div>
-                </form>
-
+              <div className="space-y-4">
                 <form
                   action={formAction}
                   className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
@@ -588,8 +605,8 @@ export function SecurityUserRowActions({
                   <input type="hidden" name="intent" value="change-password" />
                   <input type="hidden" name="employeeId" value={user.id} />
                   <div className="flex items-center gap-2">
-                    <ShieldBan className="text-muted-foreground size-4" />
-                    <p className="font-medium">Ganti Password</p>
+                    <Key className="text-muted-foreground size-4" />
+                    <p className="font-medium">Reset / Ganti Password</p>
                   </div>
                   <label className="grid gap-2">
                     <Label>Password Baru</Label>
@@ -602,43 +619,86 @@ export function SecurityUserRowActions({
                     </SubmitButton>
                   </div>
                 </form>
+
+                <form action={formAction} className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4">
+                  <input type="hidden" name="intent" value="resend-invitation" />
+                  <input type="hidden" name="employeeId" value={user.id} />
+                  <div className="flex items-center gap-2">
+                    <Mail className="text-muted-foreground size-4" />
+                    <p className="font-medium">Kirim Ulang Invitation</p>
+                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    Kirim ulang email aktivasi akun untuk pengguna ini ke <span className="font-medium">{user.email}</span>.
+                  </p>
+                  <div className="flex justify-end">
+                    <SubmitButton variant="outline">
+                      <Mail className="mr-2 size-4" />
+                      Kirim Ulang Invitation
+                    </SubmitButton>
+                  </div>
+                </form>
               </div>
             )}
+          </TabsContent>
 
-            {(canEdit || canDelete) && (
+          <TabsContent value="danger" className="mt-0 space-y-4">
+            {(canEdit || canDelete) ? (
               <div className="grid gap-4 lg:grid-cols-2">
                 {canEdit && (
-                  <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fffbeb] p-4">
-                    <input type="hidden" name="intent" value="ban-user" />
-                    <input type="hidden" name="employeeId" value={user.id} />
-                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                      <ShieldBan className="size-4" />
-                      <p className="font-medium">Nonaktifkan Pengguna</p>
-                    </div>
-                    <p className="text-muted-foreground text-sm">
-                      Menonaktifkan akses login dan mengakhiri sesi aktif pengguna.
-                    </p>
-                    <div className="flex justify-end">
-                      <SubmitButton variant="outline">
-                        <Ban className="mr-2 size-4" />
-                        Nonaktifkan Pengguna
-                      </SubmitButton>
-                    </div>
-                  </form>
+                  (() => {
+                    const isUserActive = user.isActive !== false && !user.status?.toLowerCase().includes('inactive') && !user.status?.toLowerCase().includes('non');
+                    return isUserActive ? (
+                      <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fffbeb] dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 p-5">
+                        <input type="hidden" name="intent" value="ban-user" />
+                        <input type="hidden" name="employeeId" value={user.id} />
+                        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                          <ShieldBan className="size-5" />
+                          <p className="font-semibold text-base">Nonaktifkan Pengguna</p>
+                        </div>
+                        <p className="text-muted-foreground text-xs leading-relaxed">
+                          Menonaktifkan akses login dan mengakhiri seluruh sesi aktif pengguna di semua perangkat.
+                        </p>
+                        <div className="pt-2 flex justify-end">
+                          <SubmitButton variant="outline">
+                            <Ban className="mr-2 size-4" />
+                            Nonaktifkan Pengguna
+                          </SubmitButton>
+                        </div>
+                      </form>
+                    ) : (
+                      <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 p-5">
+                        <input type="hidden" name="intent" value="activate-user" />
+                        <input type="hidden" name="employeeId" value={user.id} />
+                        <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                          <ShieldCheck className="size-5" />
+                          <p className="font-semibold text-base">Aktifkan Pengguna</p>
+                        </div>
+                        <p className="text-muted-foreground text-xs leading-relaxed">
+                          Mengaktifkan kembali akun pengguna agar dapat login dan mengakses dashboard HERO.
+                        </p>
+                        <div className="pt-2 flex justify-end">
+                          <SubmitButton variant="default">
+                            <CheckCircle2 className="mr-2 size-4" />
+                            Aktifkan Pengguna
+                          </SubmitButton>
+                        </div>
+                      </form>
+                    );
+                  })()
                 )}
 
                 {canDelete && (
-                  <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fef2f2] p-4">
+                  <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fef2f2] dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 p-5">
                     <input type="hidden" name="intent" value="delete-user" />
                     <input type="hidden" name="employeeId" value={user.id} />
                     <div className="text-destructive flex items-center gap-2">
-                      <Trash2 className="size-4" />
-                      <p className="font-medium">Hapus Pengguna</p>
+                      <Trash2 className="size-5" />
+                      <p className="font-semibold text-base">Hapus Pengguna</p>
                     </div>
-                    <p className="text-muted-foreground text-sm">
-                      Hapus pengguna dari daftar karyawan dan akun login terkait.
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Hapus pengguna dari daftar karyawan dan akun login terkait secara permanen dari sistem.
                     </p>
-                    <div className="flex justify-end">
+                    <div className="pt-2 flex justify-end">
                       <SubmitButton variant="destructive">
                         <Trash2 className="mr-2 size-4" />
                         Hapus Pengguna
@@ -647,59 +707,11 @@ export function SecurityUserRowActions({
                   </form>
                 )}
               </div>
+            ) : (
+              <div className="rounded-[1.2rem] bg-surface-container-low p-4 text-sm text-muted-foreground">
+                Anda tidak memiliki hak untuk menonaktifkan atau menghapus pengguna.
+              </div>
             )}
-          </TabsContent>
-          <TabsContent
-            value="access"
-            className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm"
-          >
-            Ganti peran tersedia di bagian profil pengguna.
-          </TabsContent>
-          <TabsContent
-            value="security"
-            className="mt-0 space-y-4"
-          >
-            {state.status !== 'idle' ? (
-              <Alert
-                className={
-                  state.status === 'error'
-                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                }
-              >
-                <AlertDescription>{state.message}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            {canEdit && (
-              <form action={formAction} className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4">
-                <input type="hidden" name="intent" value="resend-invitation" />
-                <input type="hidden" name="employeeId" value={user.id} />
-                <div className="flex items-center gap-2">
-                  <Mail className="text-muted-foreground size-4" />
-                  <p className="font-medium">Kirim Ulang Invitation</p>
-                </div>
-                <p className="text-muted-foreground text-sm">
-                  Kirim ulang email aktivasi akun untuk pengguna ini ke <span className="font-medium">{user.email}</span>.
-                </p>
-                <div className="flex justify-end">
-                  <SubmitButton variant="outline">
-                    <Mail className="mr-2 size-4" />
-                    Kirim Ulang Invitation
-                  </SubmitButton>
-                </div>
-              </form>
-            )}
-
-            <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm">
-              Reset password tersedia di bagian profil pengguna.
-            </div>
-          </TabsContent>
-          <TabsContent
-            value="danger"
-            className="text-destructive rounded-[1.2rem] bg-[#fef2f2] p-4 text-sm"
-          >
-            Nonaktifkan dan hapus pengguna tersedia di bagian profil pengguna.
           </TabsContent>
         </Tabs>
         </div>

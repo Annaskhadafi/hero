@@ -3264,6 +3264,8 @@ const manageSecurityUserSchema = z.object({
     'resend-invitation',
     'update-profile',
     'ban-user',
+    'unban-user',
+    'activate-user',
     'delete-user',
     'change-role',
     'change-password',
@@ -5760,7 +5762,11 @@ function normalizeAuthEmail(email: string) {
 
 function buildDefaultUserManagementPassword(employeeSn: string | null | undefined) {
   const normalizedSn = (employeeSn ?? '').trim().replace(/^emp[-]?/i, '')
-  return `Chitra#${normalizedSn}`
+  const base = `Chitra#${normalizedSn}`
+  if (base.length < 8) {
+    return `Chitra#${normalizedSn.padStart(4, '0')}`
+  }
+  return base
 }
 
 async function upsertCredentialAccount({
@@ -5786,7 +5792,7 @@ async function upsertCredentialAccount({
       .where(
         and(
           eq(account.providerId, 'credential'),
-          or(eq(account.userId, authUserId), eq(account.accountId, accountId))
+          eq(account.accountId, accountId)
         )
       )
       .limit(1)
@@ -7494,8 +7500,19 @@ export async function manageSecurityUserAction(
             )
           )
           .limit(1),
-        db.select().from(securityRoles).where(eq(securityRoles.name, payload.accessRole)).limit(1),
+        db
+          .select()
+          .from(securityRoles)
+          .where(
+            or(
+              eq(securityRoles.name, payload.accessRole),
+              sql`lower(trim(${securityRoles.name})) = lower(trim(${payload.accessRole}))`
+            )
+          )
+          .limit(1),
       ])
+
+      const finalRole = role || (await db.select().from(securityRoles).limit(1))[0]
 
       const existingEmployee = existingEmployeeBySn || existingEmployeeByEmail
       // Hanya dianggap duplicate jika sudah ada akun login aktif (authUser atau credential account).
@@ -7520,8 +7537,8 @@ export async function manageSecurityUserAction(
         }
       }
 
-      if (!role) {
-        return { status: 'error', message: 'Selected role is invalid.' }
+      if (!finalRole) {
+        return { status: 'error', message: 'Peran akses (role) tidak valid atau belum tersedia.' }
       }
 
       const defaultSite = selectedSite ?? currentDefaultSite
@@ -7611,7 +7628,7 @@ export async function manageSecurityUserAction(
             phoneNumber: payload.phoneNumber?.trim() || '',
             employmentStatus: normalizedStatus.status,
             employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-            accessRole: role.name,
+            accessRole: finalRole.name,
             levelName: 'Rookie',
             isActive: true,
           })
@@ -7645,7 +7662,7 @@ export async function manageSecurityUserAction(
             phoneNumber: payload.phoneNumber?.trim() || '',
             employmentStatus: normalizedStatus.status,
             employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-            accessRole: role.name,
+            accessRole: finalRole.name,
             levelName: 'Rookie',
             totalPoints: 0,
             fitStatus: 'fit',
@@ -7911,27 +7928,67 @@ export async function manageSecurityUserAction(
       })
 
       // Notify user
-      await notifyAccountBanned({
-        employeeId: employee.id,
-        employeeName: employee.name,
-        bannedByName: 'Admin',
-      })
+      try {
+        await notifyAccountBanned({
+          employeeId: employee.id,
+          employeeName: employee.name,
+          bannedByName: 'Admin',
+        })
+      } catch (notifyErr) {
+        console.error('Failed to notify banned user:', notifyErr)
+      }
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: 'User banned successfully.' }
+      return { status: 'success', message: `Pengguna ${employee.name} berhasil dinonaktifkan.` }
     }
 
-    if (payload.intent === 'delete-user') {
+    if (payload.intent === 'unban-user' || payload.intent === 'activate-user') {
       await db
         .update(employees)
         .set({
-          isActive: false,
-          employmentStatus: 'inactive',
+          isActive: true,
+          employmentStatus: 'active',
         })
         .where(eq(employees.id, employee.id))
 
+      // Audit log
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.activated',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Activated user ${employee.name} (${employee.email})`,
+        severity: 'normal',
+      })
+
+      revalidateAdminSurfaces()
+      return { status: 'success', message: `Pengguna ${employee.name} berhasil diaktifkan kembali.` }
+    }
+
+    if (payload.intent === 'delete-user') {
       if (employee.authUserId) {
-        await db.delete(session).where(eq(session.userId, employee.authUserId))
+        try {
+          await db.delete(session).where(eq(session.userId, employee.authUserId))
+          await db.delete(account).where(eq(account.userId, employee.authUserId))
+          await db.delete(user).where(eq(user.id, employee.authUserId))
+        } catch (authDeleteError) {
+          console.error('Failed to clean up auth records during user deletion:', authDeleteError)
+        }
+      }
+
+      try {
+        await db.delete(employees).where(eq(employees.id, employee.id))
+      } catch (deleteError) {
+        console.warn('Hard delete of employee restricted by foreign keys, soft deleting:', deleteError)
+        await db
+          .update(employees)
+          .set({
+            authUserId: null,
+            isActive: false,
+            employmentStatus: 'inactive',
+          })
+          .where(eq(employees.id, employee.id))
       }
 
       const actorEmail = await getCurrentActorEmail()
@@ -7940,12 +7997,12 @@ export async function manageSecurityUserAction(
         action: 'user.deleted',
         entityType: 'user',
         entityLabel: employee.name,
-        description: `Deactivated user ${employee.name} (${employee.email}) and revoked sessions.`,
+        description: `Deleted user ${employee.name} (${employee.email}).`,
         severity: 'critical',
       })
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: 'User deactivated successfully.' }
+      return { status: 'success', message: `Pengguna ${employee.name} berhasil dihapus.` }
     }
 
     if (payload.intent === 'change-role') {
@@ -7956,7 +8013,12 @@ export async function manageSecurityUserAction(
       const [role] = await db
         .select()
         .from(securityRoles)
-        .where(eq(securityRoles.name, payload.accessRole))
+        .where(
+          or(
+            eq(securityRoles.name, payload.accessRole),
+            sql`lower(trim(${securityRoles.name})) = lower(trim(${payload.accessRole}))`
+          )
+        )
         .limit(1)
 
       if (!role) {
@@ -7982,13 +8044,17 @@ export async function manageSecurityUserAction(
       })
 
       // Notify user
-      await notifyRoleChanged({
-        employeeId: employee.id,
-        employeeName: employee.name,
-        oldRole: employee.accessRole,
-        newRole: role.name,
-        changedByName: 'Admin',
-      })
+      try {
+        await notifyRoleChanged({
+          employeeId: employee.id,
+          employeeName: employee.name,
+          oldRole: employee.accessRole,
+          newRole: role.name,
+          changedByName: 'Admin',
+        })
+      } catch (roleNotifyErr) {
+        console.error('Failed to notify role change:', roleNotifyErr)
+      }
 
       revalidateAdminSurfaces()
       return {

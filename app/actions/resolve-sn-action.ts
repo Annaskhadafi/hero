@@ -88,25 +88,45 @@ export async function resolveSnAction(sn: string) {
   try {
     // 1. Check employees table joined with user auth
     const [matched] = await db
-      .select({ id: employees.id, employeeSn: employees.employeeSn, email: user.email, fullName: employees.name })
+      .select({
+        id: employees.id,
+        employeeSn: employees.employeeSn,
+        email: user.email,
+        fullName: employees.name,
+        isActive: employees.isActive,
+        employmentStatus: employees.employmentStatus,
+      })
       .from(employees)
       .leftJoin(user, eq(employees.authUserId, user.id))
       .where(and(snMatches(employees.employeeSn, snVariants), sql`${user.email} is not null`))
       .limit(1)
 
     if (matched?.email) {
+      if (matched.isActive === false || matched.employmentStatus === 'inactive') {
+        return { success: false, error: 'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.' }
+      }
       await ensureEmployeeAuthProvisioned(matched.id, matched.employeeSn, matched.email, matched.fullName)
       return { success: true, email: matched.email, name: matched.fullName }
     }
 
     // 2. Direct employees table email lookup
     const [empDirect] = await db
-      .select({ id: employees.id, employeeSn: employees.employeeSn, email: employees.email, fullName: employees.name })
+      .select({
+        id: employees.id,
+        employeeSn: employees.employeeSn,
+        email: employees.email,
+        fullName: employees.name,
+        isActive: employees.isActive,
+        employmentStatus: employees.employmentStatus,
+      })
       .from(employees)
       .where(snMatches(employees.employeeSn, snVariants))
       .limit(1)
 
     if (empDirect?.email) {
+      if (empDirect.isActive === false || empDirect.employmentStatus === 'inactive') {
+        return { success: false, error: 'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.' }
+      }
       await ensureEmployeeAuthProvisioned(empDirect.id, empDirect.employeeSn, empDirect.email, empDirect.fullName)
       return { success: true, email: empDirect.email, name: empDirect.fullName }
     }

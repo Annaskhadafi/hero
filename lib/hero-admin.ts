@@ -186,18 +186,41 @@ export async function getSecurityUserReferenceData() {
       .from(hrDepartments)
       .where(eq(hrDepartments.isActive, true))
       .orderBy(asc(hrDepartments.name)),
-    db
-      .select({
-        id: hrPositions.id,
-        code: hrPositions.code,
-        name: hrPositions.rankName,
-        siteLocation: sql<string>`''`.as('site_location'),
-        level: sql<number>`1`.as('level'),
-        departmentId: sql<number | null>`null`.as('department_id'),
+    Promise.all([
+      db
+        .select({
+          id: masterPositions.id,
+          code: masterPositions.code,
+          name: masterPositions.name,
+          siteLocation: masterPositions.siteLocation,
+          level: masterPositions.level,
+          departmentId: masterPositions.departmentId,
+        })
+        .from(masterPositions)
+        .where(eq(masterPositions.isActive, true))
+        .orderBy(asc(masterPositions.name)),
+      db
+        .select({
+          id: hrPositions.id,
+          code: hrPositions.code,
+          name: hrPositions.rankName,
+          siteLocation: sql<string>`''`.as('site_location'),
+          level: sql<number>`1`.as('level'),
+          departmentId: sql<number | null>`null`.as('department_id'),
+        })
+        .from(hrPositions)
+        .where(eq(hrPositions.isActive, true))
+        .orderBy(asc(hrPositions.rankName), asc(hrPositions.levelName)),
+    ]).then(([masterList, hrList]) => {
+      const combined = [...masterList, ...hrList]
+      const seen = new Set<string>()
+      return combined.filter((p) => {
+        const key = `${p.name?.trim().toLowerCase()}-${p.departmentId ?? ''}`
+        if (!p.name || seen.has(key)) return false
+        seen.add(key)
+        return true
       })
-      .from(hrPositions)
-      .where(eq(hrPositions.isActive, true))
-      .orderBy(asc(hrPositions.rankName), asc(hrPositions.levelName)),
+    }),
     db
       .select({
         id: sites.id,
@@ -7764,6 +7787,8 @@ export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDis
           workLocation: employees.workLocation,
           faceRegisteredAt: employees.faceRegisteredAt,
           faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
+          isActive: employees.isActive,
+          employmentStatus: employees.employmentStatus,
         })
         .from(employees)
         .leftJoin(authUser, eq(employees.authUserId, authUser.id))

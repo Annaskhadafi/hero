@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useLanguage } from '@/components/language-provider'
 import { cn } from '@/lib/utils'
 
 const MONTH_LOOKUP: Record<string, number> = {
@@ -314,6 +315,7 @@ export function MinimalTableShell({
   tableViewportClassName,
   dateFilter = 'auto',
 }: MinimalTableShellProps) {
+  const { language } = useLanguage()
   const shellRef = React.useRef<HTMLDivElement>(null)
   const [query, setQuery] = React.useState('')
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>()
@@ -563,7 +565,7 @@ export function MinimalTableShell({
         )}
       >
         <div className="flex items-center gap-2">
-          <span>Rows</span>
+          <span suppressHydrationWarning>{language === 'en' ? 'Rows' : 'Baris'}</span>
           <select
             value={pageSize}
             onChange={(event) => setPageSize(Number(event.target.value))}
@@ -576,9 +578,10 @@ export function MinimalTableShell({
           </select>
         </div>
         <div className="flex flex-col gap-1 text-left sm:items-center sm:text-center">
-          <span className="tabular-nums">
-            Showing {pageStart}-{pageEnd} of {filteredCount} {label}
-            {filteredCount !== totalCount ? ` (total ${totalCount})` : ''}
+          <span className="tabular-nums" suppressHydrationWarning>
+            {language === 'en'
+              ? `Showing ${pageStart}-${pageEnd} of ${filteredCount} ${label}${filteredCount !== totalCount ? ` (total ${totalCount})` : ''}`
+              : `Menampilkan ${pageStart}-${pageEnd} dari ${filteredCount} ${label === 'users' ? 'pengguna' : label}${filteredCount !== totalCount ? ` (total ${totalCount})` : ''}`}
           </span>
           {dateFilterSupported && dateRange?.from ? (
             <Badge variant="outline" className="bg-surface-container-low w-fit rounded-full border-0 px-3 py-1">
@@ -590,8 +593,8 @@ export function MinimalTableShell({
         </div>
         {filteredCount > 0 ? (
           <div className="flex items-center justify-end gap-2">
-            <span className="text-muted-foreground text-xs font-medium tabular-nums">
-              Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
+            <span className="text-muted-foreground text-xs font-medium tabular-nums" suppressHydrationWarning>
+              {language === 'en' ? 'Page' : 'Halaman'} {Math.min(pageIndex + 1, totalPages)} / {totalPages}
             </span>
             <Button
               type="button" variant="outline" size="sm"
@@ -599,7 +602,7 @@ export function MinimalTableShell({
               onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
               className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
             >
-              <IconChevronLeft className="size-4" /> Prev
+              <IconChevronLeft className="size-4" /> <span suppressHydrationWarning>{language === 'en' ? 'Prev' : 'Sebelumnya'}</span>
             </Button>
             <Button
               type="button" variant="outline" size="sm"
@@ -607,7 +610,7 @@ export function MinimalTableShell({
               onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
               className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
             >
-              Next <IconChevronRight className="size-4" />
+              <span suppressHydrationWarning>{language === 'en' ? 'Next' : 'Berikutnya'}</span> <IconChevronRight className="size-4" />
             </Button>
           </div>
         ) : null}

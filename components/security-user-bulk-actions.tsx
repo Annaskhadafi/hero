@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { bulkUserActionsAction } from '@/app/dashboard/admin-actions'
+import { useLanguage } from '@/components/language-provider'
 
 export function SecurityUserBulkActions({
   selectedIds,
@@ -39,6 +40,7 @@ export function SecurityUserBulkActions({
   sections: Array<{ id: number; name: string }>
   sites: Array<{ id: number; name: string }>
 }) {
+  const { isIndonesian } = useLanguage()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -83,11 +85,13 @@ export function SecurityUserBulkActions({
   return (
     <>
       <div className="bg-primary/10 flex items-center gap-2 rounded-xl px-4 py-2">
-        <span className="text-sm font-medium">{selectedIds.length} user dipilih</span>
+        <span className="text-sm font-medium">
+          {selectedIds.length} {isIndonesian ? 'user dipilih' : 'users selected'}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" disabled={isPending}>
-              Bulk Actions
+              {isIndonesian ? 'Aksi Masal' : 'Bulk Actions'}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -96,32 +100,36 @@ export function SecurityUserBulkActions({
                 setConfirmDialog({
                   open: true,
                   action: 'activate',
-                  title: 'Aktifkan Users',
-                  description: `Aktifkan ${selectedIds.length} user yang dipilih?`,
+                  title: isIndonesian ? 'Aktifkan Users' : 'Activate Users',
+                  description: isIndonesian
+                    ? `Aktifkan ${selectedIds.length} user yang dipilih?`
+                    : `Activate ${selectedIds.length} selected users?`,
                 })
               }
             >
               <CheckCircle className="mr-2 size-4" />
-              Aktifkan
+              {isIndonesian ? 'Aktifkan' : 'Activate'}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 setConfirmDialog({
                   open: true,
                   action: 'ban',
-                  title: 'Nonaktifkan Users',
-                  description: `Nonaktifkan ${selectedIds.length} user yang dipilih?`,
+                  title: isIndonesian ? 'Nonaktifkan Users' : 'Deactivate Users',
+                  description: isIndonesian
+                    ? `Nonaktifkan ${selectedIds.length} user yang dipilih?`
+                    : `Deactivate ${selectedIds.length} selected users?`,
                 })
               }
             >
               <Ban className="mr-2 size-4" />
-              Nonaktifkan
+              {isIndonesian ? 'Nonaktifkan' : 'Deactivate'}
             </DropdownMenuItem>
 
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Building2 className="mr-2 size-4" />
-                Ubah Section
+                {isIndonesian ? 'Ubah Seksi' : 'Change Section'}
               </DropdownMenuSubTrigger>
               <DropdownMenuPortal>
                 <DropdownMenuSubContent>
@@ -132,8 +140,10 @@ export function SecurityUserBulkActions({
                         setConfirmDialog({
                           open: true,
                           action: 'change-section',
-                          title: 'Ubah Section Users',
-                          description: `Ubah section ${selectedIds.length} user ke "${section.name}"?`,
+                          title: isIndonesian ? 'Ubah Seksi Users' : 'Change Section',
+                          description: isIndonesian
+                            ? `Ubah seksi ${selectedIds.length} user ke "${section.name}"?`
+                            : `Change section of ${selectedIds.length} users to "${section.name}"?`,
                           sectionId: section.id,
                           sectionName: section.name,
                         })
@@ -149,7 +159,7 @@ export function SecurityUserBulkActions({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <MapPin className="mr-2 size-4" />
-                Ubah Lokasi Site
+                {isIndonesian ? 'Ubah Lokasi Site' : 'Change Site Location'}
               </DropdownMenuSubTrigger>
               <DropdownMenuPortal>
                 <DropdownMenuSubContent>
@@ -160,8 +170,10 @@ export function SecurityUserBulkActions({
                         setConfirmDialog({
                           open: true,
                           action: 'change-site',
-                          title: 'Ubah Lokasi Site Users',
-                          description: `Ubah lokasi site ${selectedIds.length} user ke "${site.name}"?`,
+                          title: isIndonesian ? 'Ubah Lokasi Site Users' : 'Change Site Location',
+                          description: isIndonesian
+                            ? `Ubah lokasi site ${selectedIds.length} user ke "${site.name}"?`
+                            : `Change site location of ${selectedIds.length} users to "${site.name}"?`,
                           siteId: site.id,
                           siteName: site.name,
                         })
@@ -181,14 +193,16 @@ export function SecurityUserBulkActions({
                   setConfirmDialog({
                     open: true,
                     action: 'change-role',
-                    title: 'Ubah Role Users',
-                    description: `Ubah ${selectedIds.length} user ke role ${role.name}? User perlu login ulang.`,
+                    title: isIndonesian ? 'Ubah Peran Users' : 'Change Role',
+                    description: isIndonesian
+                      ? `Ubah ${selectedIds.length} user ke peran ${role.name}? User perlu login ulang.`
+                      : `Change ${selectedIds.length} users to role ${role.name}? Users must re-login.`,
                     roleId: role.id,
                   })
                 }
               >
                 <UserCog className="mr-2 size-4" />
-                Role: {role.name}
+                {isIndonesian ? 'Peran: ' : 'Role: '}{role.name}
               </DropdownMenuItem>
             ))}
             <DropdownMenuItem
@@ -196,19 +210,21 @@ export function SecurityUserBulkActions({
                 setConfirmDialog({
                   open: true,
                   action: 'delete',
-                  title: 'Hapus Users',
-                  description: `Hapus ${selectedIds.length} user yang dipilih? Aksi ini tidak bisa dibatalkan.`,
+                  title: isIndonesian ? 'Hapus Users' : 'Delete Users',
+                  description: isIndonesian
+                    ? `Hapus ${selectedIds.length} user yang dipilih? Aksi ini tidak bisa dibatalkan.`
+                    : `Delete ${selectedIds.length} selected users? This action cannot be undone.`,
                 })
               }
               className="text-destructive"
             >
               <Trash2 className="mr-2 size-4" />
-              Hapus
+              {isIndonesian ? 'Hapus' : 'Delete'}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" onClick={onClearSelection}>
-          Clear
+          {isIndonesian ? 'Bersihkan' : 'Clear'}
         </Button>
       </div>
 
@@ -222,7 +238,7 @@ export function SecurityUserBulkActions({
             <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel>{isIndonesian ? 'Batal' : 'Cancel'}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
                 handleBulkAction(confirmDialog.action, {
@@ -234,7 +250,7 @@ export function SecurityUserBulkActions({
                 })
               }
             >
-              Konfirmasi
+              {isIndonesian ? 'Konfirmasi' : 'Confirm'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

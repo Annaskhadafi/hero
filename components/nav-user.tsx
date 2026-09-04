@@ -32,6 +32,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useLanguage } from "@/components/language-provider"
 
 export function NavUser({
   user,
@@ -44,6 +45,7 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const { t } = useLanguage()
   const router = useRouter()
   const [isSigningOut, setIsSigningOut] = useState(false)
 
@@ -68,10 +70,10 @@ export function NavUser({
       <SidebarMenuItem className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
         <SidebarMenuButton
           asChild
-          tooltip="Notifications"
+          tooltip={t('notifications.title', 'Notifications')}
           className="relative size-11 shrink-0 rounded-2xl justify-center group-data-[collapsible=icon]:size-10!"
         >
-          <Link href="/dashboard/notifications" aria-label="Notifications">
+          <Link href="/dashboard/notifications" aria-label={t('notifications.title', 'Notifications')}>
             <IconNotification className="size-4" />
             {user.unreadNotifications && user.unreadNotifications > 0 ? (
               <span className="absolute right-2 top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
@@ -124,18 +126,18 @@ export function NavUser({
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/profile" className="flex items-center gap-2">
                   <IconUserCircle />
-                  Akun
+                  {t('auth.account', 'Akun')}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconCreditCard />
-                Tagihan
+                {t('auth.billing', 'Tagihan')}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
               <IconLogout />
-              {isSigningOut ? "Keluar..." : "Keluar"}
+              {isSigningOut ? t('auth.logging_out', 'Keluar...') : t('auth.logout', 'Keluar')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

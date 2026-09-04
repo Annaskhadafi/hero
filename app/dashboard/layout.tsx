@@ -46,6 +46,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
     getGroupLabelStyles(),
   ])
 
+  if (employeeDisplay && (employeeDisplay.isActive === false || employeeDisplay.employmentStatus === 'inactive')) {
+    try {
+      cookieStore.delete('better-auth.session_token')
+      cookieStore.delete('better-auth.session_data')
+    } catch {}
+    redirect('/sign-in?error=account_deactivated')
+  }
+
   return (
     <SidebarProvider
       defaultOpen={defaultOpen}

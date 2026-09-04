@@ -46,6 +46,7 @@ import {
   EyeOff,
 } from "lucide-react"
 import type { IndividualDashboardData } from "@/lib/analytics-dashboard-data"
+import { cn } from "@/lib/utils"
 import { submitAttendance } from "@/app/actions/attendance"
 import { verifyAndSubmitFaceAttendanceAction } from "@/app/actions/face-attendance-actions"
 import { FaceAttendanceV2Client } from "@/app/mobile/attendance/face-v2/face-v2-client"
@@ -776,8 +777,15 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                   >
                     <Lock className="h-3.5 w-3.5" />
                   </button>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 px-2.5 py-0.5 text-xs font-extrabold ml-1">
-                    Status: Aktif
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-extrabold ml-1",
+                      (userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive')
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-400"
+                    )}
+                  >
+                    Status: {(userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive') ? "Aktif" : "Nonaktif"}
                   </span>
                 </div>
               </div>

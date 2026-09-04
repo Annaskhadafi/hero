@@ -38,6 +38,7 @@ import {
 import { SimpleThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useLanguage } from "@/components/language-provider";
+import { translateMenuTitle, translateSectionTitle } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogoutButton } from "@/components/logout-button";
@@ -146,7 +147,7 @@ export function HeaderThemeControls({
 }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [open, setOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -266,13 +267,16 @@ export function HeaderThemeControls({
   }, []);
 
   const desktopGroups = React.useMemo(() => {
-    const desktopItems = [...(navMain || []), ...(navSecondary || [])].map((item) => ({
-      section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
-      title: item.title,
-      url: item.url,
-      sortOrder: item.sortOrder ?? 999,
-      icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
-    }));
+    const desktopItems = [...(navMain || []), ...(navSecondary || [])].map((item) => {
+      const rawSection = sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu";
+      return {
+        section: rawSection,
+        title: translateMenuTitle(item.title, language),
+        url: item.url,
+        sortOrder: item.sortOrder ?? 999,
+        icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
+      };
+    });
 
     const extraSections = Array.from(
       new Set(
@@ -286,7 +290,7 @@ export function HeaderThemeControls({
 
     const groups = orderedSections
       .map((section) => ({
-        title: section,
+        title: translateSectionTitle(section, language),
         icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
         items: desktopItems
           .filter((item) => item.section === section)
@@ -294,7 +298,7 @@ export function HeaderThemeControls({
       }))
       .filter((group) => group.items.length > 0);
     return groups;
-  }, [navMain, navSecondary]);
+  }, [navMain, navSecondary, language]);
 
   const isDark = resolvedTheme === "dark";
   const glassButtonClassName = isDark
@@ -337,39 +341,39 @@ export function HeaderThemeControls({
           <CommandEmpty>{t("search.no_results", "Tidak ada hasil.")}</CommandEmpty>
           {desktopGroups.length === 0 ? (
             <>
-              <CommandGroup heading="Portal Chitra">
+              <CommandGroup heading={translateSectionTitle("Portal Chitra", language)}>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}>
                   <IconDashboard className="mr-2 h-4 w-4" />
-                  <span>Analytics</span>
+                  <span>{translateMenuTitle("Analytics", language)}</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading="Aktivitas Harian">
+              <CommandGroup heading={translateSectionTitle("Aktivitas Harian", language)}>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/my-day"))}>
                   <IconChecklist className="mr-2 h-4 w-4" />
-                  <span>Input Aktivitas Harian</span>
+                  <span>{translateMenuTitle("Input Aktivitas Harian", language)}</span>
                 </CommandItem>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/library"))}>
                   <IconDatabase className="mr-2 h-4 w-4" />
-                  <span>Kamus Aktivitas</span>
+                  <span>{translateMenuTitle("Kamus Aktivitas", language)}</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading="Data Induk">
+              <CommandGroup heading={translateSectionTitle("Data Induk", language)}>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/master-data"))}>
                   <IconDatabase className="mr-2 h-4 w-4" />
-                  <span>Master Data</span>
+                  <span>{translateMenuTitle("Master Data", language)}</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading="Pengaturan">
+              <CommandGroup heading={translateSectionTitle("Pengaturan", language)}>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/users"))}>
                   <IconUsers className="mr-2 h-4 w-4" />
-                  <span>User Management</span>
+                  <span>{translateMenuTitle("User Management", language)}</span>
                 </CommandItem>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/roles"))}>
                   <IconShieldHalfFilled className="mr-2 h-4 w-4" />
-                  <span>Role Management</span>
+                  <span>{translateMenuTitle("Role Management", language)}</span>
                 </CommandItem>
               </CommandGroup>
             </>
@@ -420,7 +424,7 @@ export function HeaderThemeControls({
           <div className="surface-module-card rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="industrial-label">Signal Queue</p>
+                <p className="industrial-label">{t("notifications.signal_queue", "Signal Queue")}</p>
                 <h4 className="mt-1 font-display text-lg font-semibold">{t("notifications.title", "Notifications")}</h4>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">

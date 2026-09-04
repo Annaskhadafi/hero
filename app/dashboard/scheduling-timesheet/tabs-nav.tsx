@@ -10,6 +10,8 @@ import {
   LayoutDashboard,
   Users,
 } from 'lucide-react'
+import { useLanguage } from '@/components/language-provider'
+import { translateMenuTitle } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 const tabs = [
@@ -53,6 +55,7 @@ const tabs = [
 
 export function SchedulingTabs({ permittedHrefs }: { permittedHrefs?: string[] }) {
   const pathname = usePathname()
+  const { language } = useLanguage()
 
   const visibleTabs = permittedHrefs
     ? tabs.filter((tab) => permittedHrefs.includes(tab.href))
@@ -70,6 +73,7 @@ export function SchedulingTabs({ permittedHrefs }: { permittedHrefs?: string[] }
       {visibleTabs.map((tab) => {
         const active = isActive(tab.href)
         const Icon = tab.icon
+        const displayLabel = translateMenuTitle(tab.label, language)
         return (
           <Link
             key={tab.href}
@@ -89,10 +93,19 @@ export function SchedulingTabs({ permittedHrefs }: { permittedHrefs?: string[] }
               )}
               aria-hidden="true"
             />
-            <span>{tab.label}</span>
+            <span>{displayLabel}</span>
           </Link>
         )
       })}
     </nav>
+  )
+}
+
+export function SchedulingHeaderTitle() {
+  const { isIndonesian } = useLanguage()
+  return (
+    <h1 className="font-display text-foreground mt-1 text-[1.75rem] leading-tight font-semibold sm:text-[2rem]">
+      {isIndonesian ? 'Roster & Jadwal' : 'Roster & Schedule'}
+    </h1>
   )
 }

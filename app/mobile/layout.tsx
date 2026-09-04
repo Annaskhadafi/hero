@@ -75,10 +75,16 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   if (session.user.email) {
     try {
       const empData = await getEmployeeDisplayDataByEmail(session.user.email);
+      if (empData && (empData.isActive === false || empData.employmentStatus === 'inactive')) {
+        redirect('/sign-in?error=account_deactivated');
+      }
       isFaceRegistered = !!(empData?.faceRegisteredAt || empData?.faceRarayRegisteredAt);
       employeeId = empData?.id;
       siteId = empData?.siteId;
     } catch (err) {
+      if ((err as any)?.digest?.startsWith('NEXT_REDIRECT')) {
+        throw err;
+      }
       console.error("[mobile/layout] getEmployeeDisplayDataByEmail failed:", err);
     }
   }

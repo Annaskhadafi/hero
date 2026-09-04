@@ -66,18 +66,18 @@ export function MobileDashboardHeader({
           <div>
             <Badge className="border-0 bg-white/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-md">
               <Trophy className="mr-1 size-3 text-[#f4b183]" />
-              {currentLevel.toUpperCase()} RANK
+              {currentLevel.toUpperCase()} {isIndonesian ? "PERINGKAT" : "RANK"}
             </Badge>
             <div className="mt-3 flex items-baseline gap-1">
               <p className="text-3xl font-black leading-none tracking-tight">
-                {totalPoints.toLocaleString("id-ID")}
+                {totalPoints.toLocaleString(isIndonesian ? "id-ID" : "en-US")}
               </p>
               <span className="text-[10px] font-black uppercase tracking-wider text-sky-200">PTS</span>
             </div>
           </div>
 
           <div className="text-right">
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/80">Pro Progress</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/80">{isIndonesian ? "Kemajuan Pro" : "Pro Progress"}</p>
             <p className="text-xs font-black text-white mt-1">Level {Math.floor(totalPoints / 100) + 1}</p>
           </div>
         </div>

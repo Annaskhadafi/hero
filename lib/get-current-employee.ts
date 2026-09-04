@@ -2,6 +2,7 @@ import { eq, or, sql, asc } from "drizzle-orm"
 import { db } from "@/db"
 import { employees } from "@/db/schema/hero"
 import { getServerSession } from "@/lib/auth-session"
+import { isSuperAdminRole, getCurrentMenuPermission } from "@/lib/hero-access"
 
 export async function getCurrentEmployee() {
   const session = await getServerSession()
@@ -57,7 +58,12 @@ export async function getCurrentEmployeeAccessRole(): Promise<string | null> {
 
 export async function requireAdminOrHcManagerRole(): Promise<void> {
   const role = await getCurrentEmployeeAccessRole()
-  if (!role || (role !== 'Super Admin' && role !== 'HC Manager')) {
-    throw new Error('Akses ditolak. Hanya Super Admin dan HC Manager yang dapat mengelola pengguna.')
+  if (role && (isSuperAdminRole(role) || role === 'HC Manager' || role === 'Admin' || role === 'Administrator' || role.toLowerCase().includes('admin') || role.toLowerCase().includes('hc manager'))) {
+    return
   }
+  const perm = await getCurrentMenuPermission('security_users')
+  if (perm.canEdit || perm.canDelete || perm.canSelectAll) {
+    return
+  }
+  throw new Error('Akses ditolak. Anda tidak memiliki izin untuk mengelola pengguna.')
 }

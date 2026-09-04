@@ -25,6 +25,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import { useLanguage } from "@/components/language-provider"
 import { cn } from "@/lib/utils"
 
 function isMenuItemActive(pathname: string, url: string) {
@@ -134,6 +135,7 @@ export function NavMain({
   groupLabelColor?: string
 }) {
   const pathname = usePathname()
+  const { t } = useLanguage()
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       (groups || []).map((group) => [
@@ -202,12 +204,12 @@ export function NavMain({
             <SidebarMenuItem className="flex items-center gap-2">
               <SidebarMenuButton
                 asChild
-                tooltip="Aksi cepat"
+                tooltip={t('sidebar.quick_action', 'Aksi cepat')}
                 className="min-h-9 min-w-8 rounded-md bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] px-2 text-[13px] text-primary-foreground shadow-none duration-200 ease-linear hover:text-primary-foreground active:text-primary-foreground"
               >
                 <Link href="/dashboard/activity-hub/my-day">
                   <IconCirclePlusFilled />
-                  <span>Tambah Aktivitas</span>
+                  <span>{t('sidebar.add_activity', 'Tambah Aktivitas')}</span>
                 </Link>
               </SidebarMenuButton>
 
@@ -239,7 +241,7 @@ export function NavMain({
                       className="min-h-9 rounded-md px-2 text-[13px] font-medium"
                     >
                       {group.icon && <group.icon />}
-                      <span>{group.title}</span>
+                      <span suppressHydrationWarning>{group.title}</span>
                       <IconChevronRight
                         className={cn(
                           "ml-auto transition-transform duration-200 group-data-[collapsible=icon]:hidden",
