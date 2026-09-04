@@ -512,7 +512,7 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
   } = data
   
   const [quotation] = await db.insert(service360Quotations).values({
@@ -544,6 +544,7 @@ export async function createQuotation(data: any) {
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
+    includeRoster: includeRoster ?? false,
   }).returning()
 
   if (items && items.length > 0) {
@@ -577,7 +578,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast
+    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
   } = data
   
   const [quotation] = await db.update(service360Quotations).set({
@@ -609,6 +610,7 @@ export async function updateQuotation(id: number, data: any) {
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
+    includeRoster: includeRoster ?? false,
     updatedAt: new Date()
   }).where(eq(service360Quotations.id, id)).returning()
 
@@ -641,7 +643,20 @@ export async function updateQuotation(id: number, data: any) {
   await saveFormHistory(customerId, { attn, cc, fromName, subject })
 
   revalidatePath("/dashboard/360-service/quotations")
+  revalidatePath(`/dashboard/360-service/quotations/${id}`)
   return quotation
+}
+
+export async function toggleQuotationOption(id: number, options: { includeRoster?: boolean; includeBast?: boolean }) {
+  const updateData: any = { updatedAt: new Date() }
+  if (options.includeRoster !== undefined) updateData.includeRoster = options.includeRoster
+  if (options.includeBast !== undefined) updateData.includeBast = options.includeBast
+
+  await db.update(service360Quotations).set(updateData).where(eq(service360Quotations.id, id))
+
+  revalidatePath(`/dashboard/360-service/quotations/${id}`)
+  revalidatePath("/dashboard/360-service/quotations")
+  return { success: true }
 }
 
 export async function deleteQuotation(id: number) {

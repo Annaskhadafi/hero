@@ -1,11 +1,15 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { jsPDF } from "jspdf"
 import html2canvas from "html2canvas-pro"
-import { Download, Loader2 } from "lucide-react"
+import { Download, Loader2, Grid, FileText } from "lucide-react"
+import { toggleQuotationOption } from "@/app/actions/service360"
+import { toast } from "sonner"
 
 function balanceQuotationPages() {
   const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-quotation-page]'))
@@ -95,10 +99,66 @@ function balanceBastPages() {
   overflowPage.classList.remove('hidden')
 }
 
-export function PrintButton() {
+interface PrintButtonProps {
+  quotationId?: number
+  initialIncludeBast?: boolean
+  initialIncludeRoster?: boolean
+}
+
+export function PrintButton({
+  quotationId,
+  initialIncludeBast = false,
+  initialIncludeRoster = false,
+}: PrintButtonProps) {
   const searchParams = useSearchParams()
+  const [includeBast, setIncludeBast] = useState(initialIncludeBast)
+  const [includeRoster, setIncludeRoster] = useState(initialIncludeRoster)
   const [isGenerating, setIsGenerating] = useState(false)
   const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false)
+
+  const handleToggleRoster = async (checked: boolean) => {
+    setIncludeRoster(checked)
+    const rosterEl = document.querySelector<HTMLElement>('[data-roster-page]')
+    if (rosterEl) {
+      if (checked) {
+        rosterEl.classList.remove('hidden')
+      } else {
+        rosterEl.classList.add('hidden')
+      }
+    }
+    if (quotationId) {
+      try {
+        await toggleQuotationOption(quotationId, { includeRoster: checked })
+        toast.success(checked ? "Halaman Roster diaktifkan" : "Halaman Roster disembunyikan")
+      } catch {
+        toast.error("Gagal menyimpan status Roster")
+      }
+    }
+  }
+
+  const handleToggleBast = async (checked: boolean) => {
+    setIncludeBast(checked)
+    const bastEl = document.querySelector<HTMLElement>('[data-bast-page]')
+    const bastOverflowEl = document.querySelector<HTMLElement>('[data-bast-overflow-page]')
+    if (bastEl) {
+      if (checked) {
+        bastEl.classList.remove('hidden')
+      } else {
+        bastEl.classList.add('hidden')
+      }
+    }
+    if (bastOverflowEl && !checked) {
+      bastOverflowEl.classList.add('hidden')
+    }
+    if (quotationId) {
+      try {
+        await toggleQuotationOption(quotationId, { includeBast: checked })
+        toast.success(checked ? "Halaman BAST diaktifkan" : "Halaman BAST disembunyikan")
+      } catch {
+        toast.error("Gagal menyimpan status BAST")
+      }
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -141,7 +201,8 @@ export function PrintButton() {
       }
       balanceQuotationPages()
       balanceBastPages()
-      const pages = document.querySelectorAll('.pdf-wrapper')
+      const allPages = Array.from(document.querySelectorAll<HTMLElement>('.pdf-wrapper'))
+      const pages = allPages.filter((el) => !el.classList.contains('hidden') && el.offsetParent !== null)
       
       if (!pages || pages.length === 0) {
         alert("No pages found to generate PDF")
@@ -159,6 +220,8 @@ export function PrintButton() {
         const page = pages[i] as HTMLElement
         await waitForImagesToLoad(page)
         
+        const isLandscape = page.classList.contains('roster-landscape-page') || page.offsetWidth > page.offsetHeight
+        
         const canvas = await html2canvas(page, {
           scale: 2, 
           logging: false,
@@ -166,7 +229,8 @@ export function PrintButton() {
           allowTaint: true,
           imageTimeout: 15000,
           onclone: (clonedDoc) => {
-            const clonedPage = clonedDoc.querySelectorAll('.pdf-wrapper')[i] as HTMLElement
+            const clonedWrappers = Array.from(clonedDoc.querySelectorAll<HTMLElement>('.pdf-wrapper')).filter(el => !el.classList.contains('hidden'))
+            const clonedPage = clonedWrappers[i]
             if (clonedPage) {
               clonedPage.style.boxShadow = 'none'
               clonedPage.style.transform = 'none'
@@ -174,13 +238,25 @@ export function PrintButton() {
           }
         })
         
-        const imgData = canvas.toDataURL('image/jpeg', 1.0)
+        const imgData = canvas.toDataURL('image/jpeg', 0.95)
         
-        if (i > 0) {
-          pdf.addPage()
+        if (i === 0) {
+          if (isLandscape) {
+            pdf.deletePage(1)
+            pdf.addPage('a4', 'landscape')
+            pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210)
+          } else {
+            pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+          }
+        } else {
+          if (isLandscape) {
+            pdf.addPage('a4', 'landscape')
+            pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210)
+          } else {
+            pdf.addPage('a4', 'portrait')
+            pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+          }
         }
-        
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
       }
       
       let fileName = "Quotation.pdf"
@@ -214,22 +290,55 @@ export function PrintButton() {
   }, [searchParams, hasAutoDownloaded])
 
   return (
-    <Button 
-      onClick={handleDownload} 
-      disabled={isGenerating}
-      className="bg-teal-600 hover:bg-teal-700 text-white"
-    >
-      {isGenerating ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Generating...
-        </>
-      ) : (
-        <>
-          <Download className="mr-2 h-4 w-4" />
-          Download PDF
-        </>
-      )}
-    </Button>
+    <div className="flex flex-wrap items-center gap-3">
+      {/* Switch BAST */}
+      <div className="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+        <FileText className="h-3.5 w-3.5 text-slate-500" />
+        <Label htmlFor="preview-switch-bast" className="text-xs font-semibold text-slate-700 cursor-pointer">
+          Include BAST
+        </Label>
+        <Switch
+          id="preview-switch-bast"
+          checked={includeBast}
+          onCheckedChange={handleToggleBast}
+        />
+      </div>
+
+      {/* Switch Roster */}
+      <div className="flex items-center gap-2 bg-blue-50/80 px-2.5 py-1.5 rounded-lg border border-blue-200">
+        <Grid className="h-3.5 w-3.5 text-blue-600" />
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="preview-switch-roster" className="text-xs font-bold text-blue-900 cursor-pointer">
+            Include Roster
+          </Label>
+          <span className="text-[9px] uppercase font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded leading-none">
+            Landscape
+          </span>
+        </div>
+        <Switch
+          id="preview-switch-roster"
+          checked={includeRoster}
+          onCheckedChange={handleToggleRoster}
+        />
+      </div>
+
+      <Button 
+        onClick={handleDownload} 
+        disabled={isGenerating}
+        className="bg-teal-600 hover:bg-teal-700 text-white shadow-sm font-medium"
+      >
+        {isGenerating ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Generating...
+          </>
+        ) : (
+          <>
+            <Download className="mr-2 h-4 w-4" />
+            Download PDF
+          </>
+        )}
+      </Button>
+    </div>
   )
 }

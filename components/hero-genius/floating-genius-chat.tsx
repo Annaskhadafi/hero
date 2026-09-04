@@ -39,6 +39,9 @@ const STARTER_PROMPTS = [
 
 export function FloatingGeniusChat() {
   const pathname = usePathname();
+  if (pathname?.includes('/quotations/')) {
+    return null;
+  }
   const [mounted, setMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
