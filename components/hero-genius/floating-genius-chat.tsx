@@ -19,13 +19,15 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SourceCitations } from "./source-citations";
 import { MarkdownRenderer } from "./markdown-renderer";
-import type { RagSourceItem } from "@/lib/hero-genius/client";
+import { AttachedImagesGallery } from "./attached-images-gallery";
+import type { RagSourceItem, RagAttachedImageItem } from "@/lib/hero-genius/client";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources?: RagSourceItem[];
+  attached_images?: RagAttachedImageItem[];
   latency_ms?: number;
   timestamp: Date;
 }
@@ -224,6 +226,7 @@ export function FloatingGeniusChat() {
         role: "assistant",
         content: data.content || "Tidak ada jawaban yang ditemukan.",
         sources: data.sources || [],
+        attached_images: data.attached_images || [],
         latency_ms: data.latency_ms,
         timestamp: new Date(),
       };
@@ -395,6 +398,10 @@ export function FloatingGeniusChat() {
                     }`}
                   >
                     <MarkdownRenderer content={msg.content} />
+
+                    {msg.attached_images && msg.attached_images.length > 0 && (
+                      <AttachedImagesGallery images={msg.attached_images} />
+                    )}
 
                     {msg.sources && msg.sources.length > 0 && (
                       <SourceCitations sources={msg.sources} />

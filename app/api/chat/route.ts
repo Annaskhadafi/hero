@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       role: "assistant",
       content: res.data.answer,
       sources: res.data.sources,
+      attached_images: (res.data as any).attached_images || [],
       latency_ms: res.data.latency_ms,
       session_id: res.data.session_id,
       message_id: (res.data as any).message_id,

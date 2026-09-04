@@ -26,8 +26,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { MarkdownRenderer } from "@/components/hero-genius/markdown-renderer";
+import { AttachedImagesGallery } from "@/components/hero-genius/attached-images-gallery";
 import { DocumentPreviewModal } from "@/components/hero-genius/document-preview-modal";
-import { resolveRagDocumentUrl, type RagSourceItem } from "@/lib/hero-genius/client";
+import { resolveRagDocumentUrl, type RagSourceItem, type RagAttachedImageItem } from "@/lib/hero-genius/client";
 import {
   getHeroGeniusSessionMessagesAction,
   getHeroGeniusSessionsAction,
@@ -40,6 +41,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: RagSourceItem[];
+  attached_images?: RagAttachedImageItem[];
   latency_ms?: number;
   message_id?: string | number;
   userQuery?: string;
@@ -218,6 +220,7 @@ export function MobileGeniusChat({
         role: "assistant",
         content: data.content || "Tidak ada jawaban yang ditemukan.",
         sources: data.sources || [],
+        attached_images: data.attached_images || [],
         latency_ms: data.latency_ms,
         message_id: data.message_id,
         userQuery: textToSend,
@@ -397,6 +400,11 @@ export function MobileGeniusChat({
                 }`}
               >
                 <MarkdownRenderer content={msg.content} />
+
+                {/* Attached Images Gallery */}
+                {msg.attached_images && msg.attached_images.length > 0 && (
+                  <AttachedImagesGallery images={msg.attached_images} />
+                )}
 
                 {/* Sources pill button */}
                 {msg.sources && msg.sources.length > 0 && (

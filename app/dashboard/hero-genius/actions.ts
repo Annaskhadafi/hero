@@ -16,6 +16,7 @@ import {
   sendRagChat,
   sendRagFeedback,
   teachRagMemory,
+  resolveRagDocumentUrl,
   type RagChatRequest,
   type RagChatResponse,
   type RagSourceItem,
@@ -138,11 +139,32 @@ async function generateDirectRagChat(
     )
     .join("\n\n---\n\n");
 
+  // Extract any attached images from retrieved sources
+  const directAttachedImages: any[] = [];
+  const seenDirectUrls = new Set<string>();
+  for (const s of sources) {
+    const text = s.content || "";
+    for (const m of Array.from(text.matchAll(/!\[(.*?)\]\((.*?)\)/g))) {
+      const alt = m[1] || "Gambar Dokumen";
+      const u = m[2]?.trim();
+      if (u && !seenDirectUrls.has(u)) {
+        seenDirectUrls.add(u);
+        directAttachedImages.push({
+          alt,
+          url: resolveRagDocumentUrl(u),
+          source_doc: s.filename,
+          heading: s.heading,
+        });
+      }
+    }
+  }
+
   const systemPrompt = `Anda adalah Hero Genius, AI Asisten Operasional PT Chitra Paratama.
 Tugas Anda:
 1. Berikan jawaban yang tepat, jelas, profesional, dan terstruktur berdasarkan dokumen operasional, spesifikasi teknis ban, instruksi kerja (WIN/SOP), dan standar HSE PT Chitra Paratama berikut.
 2. Jika dokumen referensi menyediakan informasi teknis (torsi baut, ukuran ban, kode TRA, nomor part, langkah prosedur), sebutkan secara presisi.
 3. Gunakan Bahasa Indonesia yang baik dan komunikatif.
+4. Jika dokumen referensi menyediakan tautan gambar/diagram (![alt](url)), sertakan tag gambar Markdown tersebut di respons Anda agar pengguna dapat melihat diagram visualnya secara langsung.
 
 ${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\n\n` : ""}[DOKUMEN KNOWLEDGE BASE (PGVECTOR)]:\n${contextSnippet || "Tidak ada dokumen spesifik yang terindeks untuk query ini."}`;
 
@@ -218,6 +240,7 @@ ${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\
       query,
       answer,
       sources,
+      attached_images: directAttachedImages,
       retrieved_chunks_count: sources.length,
       latency_ms: latencyMs,
     },
@@ -339,20 +362,56 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
         })
         .returning({ id: heroGeniusMessages.id });
 
+      // Ensure all attached_images have resolved URLs
+      const rawAttachedImages = (response.data as any).attached_images || [];
+      const resolvedAttachedImages = rawAttachedImages.map((img: any) => ({
+        ...img,
+        url: resolveRagDocumentUrl(img.url),
+      }));
+
+      // Fallback: if response didn't include attached_images, extract from sources
+      if (resolvedAttachedImages.length === 0 && response.data.sources) {
+        const seen = new Set<string>();
+        for (const s of response.data.sources) {
+          const text = s.content || "";
+          for (const m of Array.from(text.matchAll(/!\[(.*?)\]\((.*?)\)/g))) {
+            const u = m[2]?.trim();
+            if (u && !seen.has(u)) {
+              seen.add(u);
+              resolvedAttachedImages.push({
+                alt: m[1] || "Gambar Dokumen",
+                url: resolveRagDocumentUrl(u),
+                source_doc: s.filename,
+                heading: s.heading,
+              });
+            }
+          }
+        }
+      }
+
       return {
         success: true,
         data: {
           ...response.data,
+          attached_images: resolvedAttachedImages,
           session_id: sessionId,
           message_id: astMessage?.id,
         },
       };
     } catch (dbErr) {
       console.warn("[sendHeroGeniusChatAction] DB session logging warning:", dbErr);
+
+      const rawAttachedImages = (response.data as any).attached_images || [];
+      const resolvedAttachedImages = rawAttachedImages.map((img: any) => ({
+        ...img,
+        url: resolveRagDocumentUrl(img.url),
+      }));
+
       return {
         success: true,
         data: {
           ...response.data,
+          attached_images: resolvedAttachedImages,
           session_id: sessionId,
         },
       };

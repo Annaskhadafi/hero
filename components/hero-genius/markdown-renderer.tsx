@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Check, Copy, Maximize2, X, Download, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { resolveRagDocumentUrl } from "@/lib/hero-genius/client";
 
 interface MarkdownRendererProps {
   content: string;
@@ -498,8 +499,8 @@ function renderInlineFormatting(text: string): React.ReactNode {
   const tokens: React.ReactNode[] = [];
   let keyIdx = 0;
 
-  // Regex matching **bold**, `code`, *italic*, or [link](url)
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  // Regex matching ![alt](url), **bold**, `code`, *italic*, or [link](url)
+  const pattern = /(!\[[^\]]*\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
 
   let match: RegExpExecArray | null;
   let lastIndex = 0;
@@ -511,7 +512,23 @@ function renderInlineFormatting(text: string): React.ReactNode {
 
     const matchedStr = match[0];
 
-    if (matchedStr.startsWith("**") && matchedStr.endsWith("**")) {
+    if (matchedStr.startsWith("![") && matchedStr.includes("](")) {
+      const imgMatch = matchedStr.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+      if (imgMatch) {
+        const alt = imgMatch[1] || "Gambar Dokumen";
+        const rawUrl = imgMatch[2];
+        const resolvedUrl = resolveRagDocumentUrl(rawUrl);
+        tokens.push(
+          <InlineImageItem
+            key={keyIdx++}
+            src={resolvedUrl}
+            alt={alt}
+          />
+        );
+      } else {
+        tokens.push(matchedStr);
+      }
+    } else if (matchedStr.startsWith("**") && matchedStr.endsWith("**")) {
       const inner = matchedStr.slice(2, -2);
       tokens.push(
         <strong
@@ -567,4 +584,141 @@ function renderInlineFormatting(text: string): React.ReactNode {
   }
 
   return tokens.length > 0 ? <>{tokens}</> : text;
+}
+
+function InlineImageItem({ src, alt }: { src: string; alt: string; key?: React.Key }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+        setZoom(1);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  if (hasError) return null;
+
+  return (
+    <>
+      <span className="my-2.5 block max-w-full">
+        <span
+          onClick={() => {
+            setIsOpen(true);
+            setZoom(1);
+          }}
+          className="group relative inline-block cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 bg-slate-950 shadow-xs transition hover:border-sky-400 hover:shadow-md dark:border-slate-800"
+        >
+          <img
+            src={src}
+            alt={alt}
+            onError={() => setHasError(true)}
+            className="max-h-72 max-w-full rounded-lg object-contain transition duration-200 group-hover:scale-[1.02]"
+            loading="lazy"
+          />
+          <span className="absolute inset-0 flex items-center justify-center bg-slate-950/40 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="flex items-center gap-1 rounded-md bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-white shadow">
+              <Maximize2 className="size-3" /> Klik untuk memperbesar
+            </span>
+          </span>
+        </span>
+        <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+          🖼️ {alt}
+        </span>
+      </span>
+
+      {/* Lightbox Dialog */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+          onClick={() => {
+            setIsOpen(false);
+            setZoom(1);
+          }}
+        >
+          <div
+            className="relative flex max-h-[92vh] max-w-[92vw] w-[950px] flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900 text-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/90 px-4 py-2.5">
+              <span className="truncate text-xs font-bold text-slate-200 max-w-md">
+                🖼️ {alt}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+                  className="rounded bg-slate-800 p-1.5 text-xs font-bold hover:bg-slate-700"
+                  title="Perkecil (-)"
+                >
+                  <ZoomOut className="size-3.5" />
+                </button>
+                <span className="w-11 text-center font-mono text-xs text-slate-300">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
+                  className="rounded bg-slate-800 p-1.5 text-xs font-bold hover:bg-slate-700"
+                  title="Perbesar (+)"
+                >
+                  <ZoomIn className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoom(1)}
+                  className="rounded bg-slate-800 p-1.5 text-xs hover:bg-slate-700"
+                  title="Reset Zoom"
+                >
+                  <RotateCcw className="size-3.5" />
+                </button>
+                <a
+                  href={src}
+                  target="_blank"
+                  rel="noreferrer"
+                  download
+                  className="inline-flex items-center gap-1 rounded bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sky-500"
+                  title="Buka di Tab Baru / Unduh"
+                >
+                  <Download className="size-3" />
+                  <span className="hidden sm:inline">Unduh</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setZoom(1);
+                  }}
+                  className="rounded bg-rose-600 p-1.5 text-xs font-bold text-white hover:bg-rose-500"
+                  title="Tutup (Esc)"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            </div>
+            <div
+              className="flex flex-1 items-center justify-center overflow-auto p-4 bg-slate-950 min-h-[350px]"
+              onClick={() => {
+                setIsOpen(false);
+                setZoom(1);
+              }}
+            >
+              <img
+                src={src}
+                alt={alt}
+                style={{ transform: `scale(${zoom})` }}
+                className="max-h-[75vh] max-w-full object-contain transition-transform duration-150 rounded"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

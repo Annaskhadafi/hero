@@ -39,7 +39,8 @@ import {
 import { toast } from "sonner";
 import { SourceCitations } from "./source-citations";
 import { MarkdownRenderer } from "./markdown-renderer";
-import type { RagSourceItem } from "@/lib/hero-genius/client";
+import { AttachedImagesGallery } from "./attached-images-gallery";
+import type { RagSourceItem, RagAttachedImageItem } from "@/lib/hero-genius/client";
 import {
   learnHeroGeniusFactAction,
   sendHeroGeniusFeedbackAction,
@@ -50,6 +51,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: RagSourceItem[];
+  attached_images?: RagAttachedImageItem[];
   latency_ms?: number;
   message_id?: string | number;
   userQuery?: string;
@@ -178,6 +180,7 @@ export function GeniusChatWorkspace({
         role: "assistant",
         content: data.content || "Maaf, tidak ada respons yang dihasilkan.",
         sources: data.sources || [],
+        attached_images: data.attached_images || [],
         latency_ms: data.latency_ms,
         message_id: data.message_id,
         userQuery: queryText,
@@ -423,6 +426,11 @@ export function GeniusChatWorkspace({
               >
                 {/* Content Renderer with Markdown formatting */}
                 <MarkdownRenderer content={msg.content} />
+
+                {/* Attached Images Gallery if available */}
+                {msg.attached_images && msg.attached_images.length > 0 && (
+                  <AttachedImagesGallery images={msg.attached_images} />
+                )}
 
                 {/* Sources & Citations if available */}
                 {msg.sources && msg.sources.length > 0 && (
