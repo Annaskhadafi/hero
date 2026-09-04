@@ -93,6 +93,7 @@ export interface RagChatRequest {
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
   top_k?: number
   session_id?: string | null
+  document_id?: string | null
 }
 
 export interface RagChatResponse {
@@ -234,9 +235,10 @@ export async function sendRagChat(payload: RagChatRequest): Promise<RagChatRespo
       messages: payload.messages || [],
       top_k: payload.top_k || 4,
       session_id: payload.session_id || undefined,
+      document_id: payload.document_id || undefined,
     }),
     cache: 'no-store',
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(120000),
   })
 
   if (!res.ok) {
@@ -260,6 +262,7 @@ export async function searchRagKnowledge(query: string, top_k = 4): Promise<RagS
     },
     body: JSON.stringify({ query, top_k }),
     cache: 'no-store',
+    signal: AbortSignal.timeout(30000),
   })
 
   if (!res.ok) {

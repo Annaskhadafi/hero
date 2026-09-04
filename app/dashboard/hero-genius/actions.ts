@@ -189,15 +189,26 @@ ${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\
     }),
   });
 
+  let answer = "Maaf, AI tidak dapat menghasilkan jawaban saat ini.";
+
   if (!llmRes.ok) {
     const errText = await llmRes.text();
-    throw new Error(`AI LLM generation failed (${llmRes.status}): ${errText}`);
+    console.warn(`[generateDirectRagChat] LLM API call failed (${llmRes.status}): ${errText}`);
+    if (sources.length > 0) {
+      const docSnippets = sources
+        .slice(0, 3)
+        .map((s, idx) => `**${idx + 1}. Dokumen: ${s.filename}**\n${s.content || s.heading || "Informasi terkait tersedia dalam dokumen."}`)
+        .join("\n\n---\n\n");
+      answer = `Berikut adalah referensi dokumen operasional yang berhasil ditemukan terkait pertanyaan Anda:\n\n${docSnippets}`;
+    } else {
+      throw new Error(`AI LLM generation failed (${llmRes.status}): ${errText}`);
+    }
+  } else {
+    const llmData = await llmRes.json();
+    answer =
+      llmData.choices?.[0]?.message?.content ||
+      "Maaf, AI tidak dapat menghasilkan jawaban saat ini.";
   }
-
-  const llmData = await llmRes.json();
-  const answer =
-    llmData.choices?.[0]?.message?.content ||
-    "Maaf, AI tidak dapat menghasilkan jawaban saat ini.";
 
   const latencyMs = Date.now() - startTime;
 

@@ -13,11 +13,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message/query is required" }, { status: 400 });
     }
 
+    const documentId = body.document_id || body.documentId || undefined;
+
     const res = await sendHeroGeniusChatAction({
       query,
       messages,
       top_k: topK,
       session_id: sessionId,
+      document_id: documentId,
     });
 
     if (!res.success || !res.data) {
