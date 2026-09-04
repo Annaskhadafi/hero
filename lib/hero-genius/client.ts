@@ -20,21 +20,21 @@ export function resolveRagDocumentUrl(rawUrl?: string | null): string {
   const trimmed = rawUrl.trim()
   if (!trimmed) return ''
 
-  const filename = trimmed.split('/').pop() || ''
-
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    if (trimmed.includes('vision.chitraparatama.com')) {
-      if (trimmed.includes('/api/v1/uploads/')) {
-        return trimmed.replace('/api/v1/uploads/', '/uploads/')
-      }
-      return trimmed
-    }
-    // Route cloudhost or other storage through working Vision uploads endpoint
-    return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
+  // If already pointing to vision's api/v1/uploads endpoint, return as is
+  if (trimmed.includes('vision.chitraparatama.com/api/v1/uploads/')) {
+    return trimmed
+  }
+  if (trimmed.includes('vision.chitraparatama.com/uploads/')) {
+    return trimmed.replace('/uploads/', '/api/v1/uploads/')
   }
 
-  return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
+  // Extract clean filename without query parameters
+  const cleanFilename = decodeURIComponent(trimmed.split('?')[0].split('/').pop() || '')
+  if (!cleanFilename) return trimmed
+
+  return `https://vision.chitraparatama.com/api/v1/uploads/${encodeURIComponent(cleanFilename)}`
 }
+
 
 
 function getAuthHeaders(): HeadersInit {
