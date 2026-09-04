@@ -322,6 +322,7 @@ export function InboxTab({
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [mobileSearch, setMobileSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string>(filterCategory || 'ALL')
 
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
@@ -707,6 +708,38 @@ export function InboxTab({
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
 
+  // Adaptive category summary dynamically computed from all items (only categories with count > 0)
+  const categorySummary = useMemo(() => {
+    const map = new Map<string, { label: string; count: number }>()
+    for (const item of allUnifiedItems) {
+      const catKey = item.category || 'OTHER'
+      const label = item.categoryLabel || catKey
+      const existing = map.get(catKey)
+      if (existing) {
+        existing.count += 1
+      } else {
+        map.set(catKey, { label, count: 1 })
+      }
+    }
+    return Array.from(map.entries()).map(([key, value]) => ({
+      key,
+      label: value.label,
+      count: value.count,
+    }))
+  }, [allUnifiedItems])
+
+  // Automatically reset selected category to 'ALL' if the active category no longer exists
+  useEffect(() => {
+    if (selectedCategory !== 'ALL' && !categorySummary.some((c) => c.key === selectedCategory)) {
+      setSelectedCategory('ALL')
+    }
+  }, [categorySummary, selectedCategory])
+
+  const categoryFilteredItems = useMemo(() => {
+    if (selectedCategory === 'ALL') return allUnifiedItems
+    return allUnifiedItems.filter((it) => it.category === selectedCategory)
+  }, [allUnifiedItems, selectedCategory])
+
   const selectedItems = useMemo(() => {
     return allUnifiedItems.filter((it) => selectedIds.has(it.id))
   }, [allUnifiedItems, selectedIds])
@@ -754,13 +787,13 @@ export function InboxTab({
 
   const currentBatchDoc = selectedItems[batchReviewIndex] || null
 
-  const isAllSelected = allUnifiedItems.length > 0 && selectedIds.size === allUnifiedItems.length
+  const isAllSelected = categoryFilteredItems.length > 0 && categoryFilteredItems.every((it) => selectedIds.has(it.id))
 
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(allUnifiedItems.map((it) => it.id)))
+      setSelectedIds(new Set(categoryFilteredItems.map((it) => it.id)))
     }
   }
 
@@ -1196,9 +1229,9 @@ export function InboxTab({
   const sites = Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
 
   const filteredMobileItems = useMemo(() => {
-    if (!mobileSearch.trim()) return allUnifiedItems
+    if (!mobileSearch.trim()) return categoryFilteredItems
     const q = mobileSearch.toLowerCase()
-    return allUnifiedItems.filter((item) => {
+    return categoryFilteredItems.filter((item) => {
       return (
         item.employeeName?.toLowerCase().includes(q) ||
         item.documentNumber?.toLowerCase().includes(q) ||
@@ -1209,7 +1242,7 @@ export function InboxTab({
         item.stepLabel?.toLowerCase().includes(q)
       )
     })
-  }, [allUnifiedItems, mobileSearch])
+  }, [categoryFilteredItems, mobileSearch])
 
   const isAllMobileSelected =
     filteredMobileItems.length > 0 &&
@@ -1236,6 +1269,62 @@ export function InboxTab({
           className="w-full bg-white border border-slate-200/80 rounded-2xl pl-10 pr-4 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none shadow-xs focus:border-[#003461]"
         />
       </div>
+
+      {/* Adaptive Category Filter Chips */}
+      {categorySummary.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none select-none">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('ALL')}
+            className={cn(
+              "shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+              selectedCategory === 'ALL'
+                ? "bg-[#003461] text-white shadow-xs ring-1 ring-[#003461]"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
+            )}
+          >
+            <span>Semua</span>
+            <span
+              className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                selectedCategory === 'ALL'
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {allUnifiedItems.length}
+            </span>
+          </button>
+          {categorySummary.map((cat) => {
+            const isSelected = selectedCategory === cat.key
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => setSelectedCategory(cat.key)}
+                className={cn(
+                  "shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  isSelected
+                    ? "bg-[#003461] text-white shadow-xs ring-1 ring-[#003461]"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
+                )}
+              >
+                <span>{cat.label}</span>
+                <span
+                  className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                    isSelected
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  )}
+                >
+                  {cat.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Select All & Batch Actions */}
       <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
@@ -1410,13 +1499,69 @@ export function InboxTab({
             />
           }
         >
+          {/* Adaptive Category Filter Chips for Desktop */}
+          {categorySummary.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 select-none">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('ALL')}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  selectedCategory === 'ALL'
+                    ? "bg-[#003461] text-white shadow-xs"
+                    : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60 shadow-2xs"
+                )}
+              >
+                <span>Semua</span>
+                <span
+                  className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                    selectedCategory === 'ALL'
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-200 text-slate-700"
+                  )}
+                >
+                  {allUnifiedItems.length}
+                </span>
+              </button>
+              {categorySummary.map((cat) => {
+                const isSelected = selectedCategory === cat.key
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.key)}
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                      isSelected
+                        ? "bg-[#003461] text-white shadow-xs"
+                        : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60 shadow-2xs"
+                    )}
+                  >
+                    <span>{cat.label}</span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                        isSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200 text-slate-700"
+                      )}
+                    >
+                      {cat.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {/* ── TOP INLINE MULTI-SELECT ACTION BAR (BELOW ROWS CONTROLS) ── */}
           {selectedIds.size > 0 && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl bg-[#EEF2FF] border border-indigo-100/90 shadow-2xs transition-all animate-in fade-in slide-in-from-top-2 duration-200 select-none">
               <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs sm:text-sm tracking-tight">
                 <Check className="size-4 text-[#4F46E5] stroke-[3] shrink-0" />
                 <span>
-                  {selectedIds.size} dari {allUnifiedItems.length} aktivitas terpilih
+                  {selectedIds.size} dari {categoryFilteredItems.length} aktivitas terpilih
                 </span>
               </div>
 
@@ -1482,7 +1627,7 @@ export function InboxTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allUnifiedItems.map((item) => {
+              {categoryFilteredItems.map((item) => {
                 const isSelected = selectedIds.has(item.id)
                 return (
                   <TableRow

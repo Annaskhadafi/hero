@@ -4407,15 +4407,16 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 }
 
 async function ensureHeroGovernanceTables() {
-  await db.execute(sql`
-    create table if not exists hero_security_roles (
-      id serial primary key,
-      name text not null,
-      description text not null default '',
-      scope text not null default 'site',
-      created_at timestamp not null default now()
-    );
-  `)
+  try {
+    await db.execute(sql`
+      create table if not exists hero_security_roles (
+        id serial primary key,
+        name text not null,
+        description text not null default '',
+        scope text not null default 'site',
+        created_at timestamp not null default now()
+      );
+    `)
 
   await db.execute(sql`
     create table if not exists hero_security_permissions (
@@ -4998,7 +4999,10 @@ async function ensureHeroGovernanceTables() {
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists decision_note text not null default '';
-  `)
+  `);
+  } catch (error) {
+    console.warn('[ensureHeroGovernanceTables] Schema check skipped or timed out:', error);
+  }
 }
 
 export async function ensureVirtualRelativeEmployees() {
@@ -5037,8 +5041,8 @@ export async function ensureHeroSeedData() {
     await ensureDepartmentSectionSeedData()
     await ensureVirtualRelativeEmployees()
   })().catch((error) => {
+    console.warn('[ensureHeroSeedData] Seed check failed or timed out:', error)
     globalThis.heroSeedDataPromise = undefined
-    throw error
   })
 
   return globalThis.heroSeedDataPromise
@@ -5477,8 +5481,8 @@ export async function ensureHeroGovernanceSeedData() {
 
     globalThis.heroGovernanceSeeded = true
   })().catch((error) => {
+    console.warn('[ensureHeroGovernanceSeedData] Seed check failed or timed out:', error)
     globalThis.heroGovernanceSeedDataPromise = undefined
-    throw error
   })
 
   return globalThis.heroGovernanceSeedDataPromise
