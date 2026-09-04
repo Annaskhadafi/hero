@@ -4919,6 +4919,16 @@ async function applyApprovalDecision(params: {
             ? 'pending_approval'
             : 'proses_order'
 
+      let resolvedSignatureUrl = params.signatureUrl || null
+      if (!resolvedSignatureUrl && actor.employeeId) {
+        const [emp] = await tx
+          .select({ signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(eq(employees.id, actor.employeeId))
+          .limit(1)
+        resolvedSignatureUrl = emp?.signatureDataUrl || null
+      }
+
       await tx
         .update(approvals)
         .set({
@@ -4926,12 +4936,12 @@ async function applyApprovalDecision(params: {
           reviewedAt: now,
           approverName: actorName,
           approverEmployeeId: actor.employeeId,
-          ...(params.signatureUrl ? { signatureUrl: params.signatureUrl } : {}),
+          ...(resolvedSignatureUrl ? { signatureUrl: resolvedSignatureUrl } : {}),
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
             actor: actorName,
             message:
-              trimmedNote || (params.decision === 'approved' ? 'APD disetujui.' : 'APD ditolak.'),
+              trimmedNote || (params.decision === 'approved' ? 'Disetujui.' : 'Ditolak.'),
             at: now.toISOString(),
           }),
         })
@@ -5042,25 +5052,55 @@ async function applyApprovalDecision(params: {
           .then(res => res[0]);
 
         if (reqInfo?.requesterEmail) {
-          const { getApdNotificationConfigData } = await import('@/lib/hero-admin');
-          const apdConfig = await getApdNotificationConfigData();
-          let ccEmails: string[] = [];
-          
-          if (apdConfig.isActive) {
-             const parseEmails = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean);
-             ccEmails = [...parseEmails(apdConfig.recipientEmails), ...parseEmails(apdConfig.ccEmails)];
-          }
+          if (reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS') {
+            const { sendMaterialToolsApprovedEmail } = await import('@/lib/apd-email');
+            sendMaterialToolsApprovedEmail({
+              requesterEmail: reqInfo.requesterEmail,
+              requesterName: reqInfo.requesterName,
+              requestNumber: reqInfo.requestNumber,
+              approverName: actorName,
+              requestType: reqInfo.requestCategory,
+            }).catch(console.error);
 
-          const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email');
-          // Send asynchronously
-          sendApdRequestApprovedEmail({
-            requesterEmail: reqInfo.requesterEmail,
-            requesterName: reqInfo.requesterName,
-            requestNumber: reqInfo.requestNumber,
-            approverName: actorName,
-            requestType: reqInfo.requestCategory,
-            ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
-          }).catch(console.error);
+            notifyWorkflowBellRecipients({
+              recipientEmails: [reqInfo.requesterEmail, 'muhammad.akbar@chitraparatama.co.id'],
+              eventType: 'material_tools_request_approved',
+              category: 'approval_status',
+              title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
+              body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
+              url: `/dashboard/apd`,
+              tagPrefix: 'apd',
+            }).catch(console.error);
+          } else {
+            const { getApdNotificationConfigData } = await import('@/lib/hero-admin');
+            const apdConfig = await getApdNotificationConfigData();
+            let ccEmails: string[] = [];
+            
+            if (apdConfig.isActive) {
+               const parseEmails = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean);
+               ccEmails = [...parseEmails(apdConfig.recipientEmails), ...parseEmails(apdConfig.ccEmails)];
+            }
+
+            const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email');
+            sendApdRequestApprovedEmail({
+              requesterEmail: reqInfo.requesterEmail,
+              requesterName: reqInfo.requesterName,
+              requestNumber: reqInfo.requestNumber,
+              approverName: actorName,
+              requestType: reqInfo.requestCategory,
+              ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+            }).catch(console.error);
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [reqInfo.requesterEmail],
+              eventType: 'apd_request_approved',
+              category: 'approval_status',
+              title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
+              body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
+              url: `/dashboard/apd`,
+              tagPrefix: 'apd',
+            }).catch(console.error);
+          }
         }
       }
 

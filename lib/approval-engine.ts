@@ -683,7 +683,58 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
   const steps: ResolvedApprovalStep[] = []
   let stepOrder = 1
 
-  // For APD / Tools / Material requests: 1-step routing (Admin CP by Section / HSE / PJO)
+  // For Material & Tools: Direct 1-Stage Approval to Section Head
+  if (context.transactionType === 'apd-request-material' || context.transactionType === 'apd-request-tools') {
+    let sectionHeadEmpId: number | null = null
+    if (context.sectionId) {
+      const [sec] = await db
+        .select({ headEmployeeId: masterSections.headEmployeeId })
+        .from(masterSections)
+        .where(eq(masterSections.id, context.sectionId))
+        .limit(1)
+      sectionHeadEmpId = sec?.headEmployeeId ?? null
+    }
+
+    if (!sectionHeadEmpId) {
+      sectionHeadEmpId = context.directManagerId ?? context.requesterDirectManagerId ?? 955
+    }
+
+    const [sectionHead] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+      .from(employees)
+      .where(and(eq(employees.id, sectionHeadEmpId), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (sectionHead) {
+      steps.push({
+        stepOrder: 1,
+        label: 'Section Head',
+        approverName: sectionHead.name,
+        approverEmployeeId: sectionHead.id,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: 'single',
+        resolutionSource: 'section_head',
+        canDelegate: true,
+        slaHours: 24,
+        nodeLabel: sectionHead.jobTitle || 'Section Head',
+        fallbackLabel: null,
+        escalationLabel: null,
+      })
+    }
+
+    return {
+      matrixId: 0,
+      matrixName: context.transactionType === 'apd-request-material' ? 'Request Material - Section Head' : 'Request Tools - Section Head',
+      structureId: 0,
+      structureName: 'Section Head 1-Stage Approval',
+      transactionType: context.transactionType,
+      warnings: [],
+      steps,
+    }
+  }
+
+  // For APD requests: 1-step routing (Admin CP by Section / HSE / PJO)
   if (context.transactionType.startsWith('apd-request')) {
     // 1. Kategori Admin CP (13 Site)
     const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
@@ -1165,6 +1216,13 @@ export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input)
+
+  if (
+    context.transactionType === 'apd-request-material' ||
+    context.transactionType === 'apd-request-tools'
+  ) {
+    return resolveApdApprovalRoute(context)
+  }
 
   const matrixCandidates = await db
     .select({

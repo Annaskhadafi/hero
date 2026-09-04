@@ -3548,6 +3548,17 @@ export async function getWorkflowStudioConsoleData() {
           ? 'Matrix'
           : item.sourceType
 
+    const siteSecKeySet = new Set<string>()
+    let actualDuplicateCount = 0
+    for (const m of relatedMatrices) {
+      const key = `${m.siteId ?? 'all'}-${m.sectionId ?? 'all'}`
+      if (siteSecKeySet.has(key)) {
+        actualDuplicateCount++
+      } else {
+        siteSecKeySet.add(key)
+      }
+    }
+
     return {
       id: item.key,
       name: item.name,
@@ -3561,8 +3572,10 @@ export async function getWorkflowStudioConsoleData() {
       cancel: counts.cancel,
       status: isActive ? 'Active' : 'Nonactive',
       updatedAt: dateIso(latestVersion?.updatedAt ?? relatedMatrices[0]?.updatedAt ?? null),
-      stepCount: matrixStepCount || stepRules.filter((step) => step.workflowVersionId === latestVersion?.id).length,
-      duplicateActiveCount: relatedMatrices.length,
+      stepCount:
+        matrixStepCount ||
+        stepRules.filter((step) => step.workflowVersionId === latestVersion?.id).length,
+      duplicateActiveCount: actualDuplicateCount,
       matrixId: primaryMatrix?.id ?? null,
       siteId: primaryMatrix?.siteId ?? null,
       mode: primaryMatrixSteps[0]?.approvalMode ?? 'sequential',

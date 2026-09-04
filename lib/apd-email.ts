@@ -6,9 +6,11 @@ export async function sendApdRequestSubmittedEmail(params: {
   approverEmail: string
   approverName: string
   requestType: string
+  ccEmails?: string[]
 }) {
   return sendWorkflowEmail({
     to: params.approverEmail,
+    cc: params.ccEmails,
     templateCode: "apd_request_submitted",
     variables: {
       employeeName: params.employeeName,
@@ -19,6 +21,56 @@ export async function sendApdRequestSubmittedEmail(params: {
     fallbackSubject: `Permohonan ${params.requestType} Baru: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan ${params.requestType} dengan nomor tiket <b>${params.requestNumber}</b>. Silakan login ke dashboard untuk melakukan persetujuan.<br><br>Terima kasih.`,
     fallbackText: `Halo ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} dengan nomor tiket ${params.requestNumber}. Silakan login ke dashboard untuk melakukan persetujuan.\n\nTerima kasih.`,
+  })
+}
+
+export async function sendMaterialToolsRequestSubmittedEmail(params: {
+  employeeName: string
+  requestNumber: string
+  approverEmail: string
+  approverName: string
+  requestType: string
+  sectionName?: string
+}) {
+  return sendWorkflowEmail({
+    to: params.approverEmail,
+    cc: ["muhammad.akbar@chitraparatama.co.id"],
+    templateCode: "material_tools_request_submitted",
+    variables: {
+      employeeName: params.employeeName,
+      requestNumber: params.requestNumber,
+      approverName: params.approverName,
+      requestType: params.requestType,
+      sectionName: params.sectionName ?? "-",
+    },
+    fallbackSubject: `[${params.requestType}] Permohonan Baru: ${params.requestNumber} - ${params.employeeName}`,
+    fallbackHtml: `Halo ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan <b>${params.requestType}</b> (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.<br><br>Silakan login ke dashboard HERO untuk melakukan review dan persetujuan.<br><br>CC: Muhammad Taufik Akbar<br>Terima kasih.`,
+    fallbackText: `Halo ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.\n\nSilakan login ke dashboard HERO untuk melakukan review dan persetujuan.\n\nCC: Muhammad Taufik Akbar\nTerima kasih.`,
+  })
+}
+
+export async function sendMaterialToolsApprovedEmail(params: {
+  requesterEmail: string
+  requesterName: string
+  requestNumber: string
+  approverName: string
+  requestType: string
+  sectionName?: string
+}) {
+  return sendWorkflowEmail({
+    to: params.requesterEmail,
+    cc: ["muhammad.akbar@chitraparatama.co.id"],
+    templateCode: "material_tools_request_approved",
+    variables: {
+      employeeName: params.requesterName,
+      requestNumber: params.requestNumber,
+      approverName: params.approverName,
+      requestType: params.requestType,
+      sectionName: params.sectionName ?? "-",
+    },
+    fallbackSubject: `[${params.requestType}] Permohonan Disetujui: ${params.requestNumber}`,
+    fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan <b>${params.requestType}</b> Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DISETUJUI</b> oleh Section Head (${params.approverName}).<br><br>Notifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.<br><br>Terima kasih.`,
+    fallbackText: `Halo ${params.requesterName},\n\nPermohonan ${params.requestType} Anda dengan nomor tiket ${params.requestNumber} telah DISETUJUI oleh Section Head (${params.approverName}).\n\nNotifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.\n\nTerima kasih.`,
   })
 }
 

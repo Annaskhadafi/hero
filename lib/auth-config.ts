@@ -55,14 +55,24 @@ function getConfiguredAuthOrigins() {
         process.env.VERCEL_PROJECT_PRODUCTION_URL,
         process.env.VERCEL_URL,
         "https://hero.chitraparatama.com",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ]
         .map(normalizeOrigin)
         .filter((value): value is string => Boolean(value))
-        .filter((value) => process.env.NODE_ENV !== "production" || isProductionAuthOrigin(value))
         .filter((value, index, list): value is string => list.indexOf(value) === index);
 }
 
 export function getServerAuthBaseUrl() {
+    const configured = normalizeOrigin(
+        process.env.BETTER_AUTH_URL ||
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
+        process.env.APP_URL ||
+        process.env.NEXT_PUBLIC_APP_URL
+    );
+    if (configured) {
+        return configured;
+    }
     const origins = getConfiguredAuthOrigins();
     if (origins.length > 0) {
         return origins[0];

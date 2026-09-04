@@ -10,7 +10,7 @@ import {
 } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
-import { sendApdRequestSubmittedEmail } from '@/lib/apd-email'
+import { sendApdRequestSubmittedEmail, sendMaterialToolsRequestSubmittedEmail } from '@/lib/apd-email'
 import { and, eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
@@ -133,30 +133,50 @@ export async function submitApdRequest(formData: FormData) {
         submittedAt: new Date(),
       })
 
-      // 5. Send Email if there is an approver
+      // 5. Send Email and Bell Notification if there is an approver
       if (firstStep?.approverEmployeeId) {
         const [approverEmailRec] = await tx
           .select({ email: employees.email })
           .from(employees)
           .where(eq(employees.id, firstStep.approverEmployeeId))
         if (approverEmailRec?.email) {
-          sendApdRequestSubmittedEmail({
-            employeeName: currentEmployee.name,
-            requestNumber,
-            approverEmail: approverEmailRec.email,
-            approverName: firstStep.approverName,
-            requestType: requestCategory,
-          }).catch(console.error)
+          if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
+            sendMaterialToolsRequestSubmittedEmail({
+              employeeName: currentEmployee.name,
+              requestNumber,
+              approverEmail: approverEmailRec.email,
+              approverName: firstStep.approverName,
+              requestType: requestCategory,
+            }).catch(console.error)
 
-          notifyWorkflowBellRecipients({
-            recipientEmails: [approverEmailRec.email],
-            eventType: 'apd_request_review',
-            category: 'approval_requests',
-            title: `Review Permintaan ${requestCategory}`,
-            body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
-            url: `/dashboard/approval`,
-            tagPrefix: 'apd',
-          }).catch(console.error)
+            notifyWorkflowBellRecipients({
+              recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id'],
+              eventType: 'material_tools_request_review',
+              category: 'approval_requests',
+              title: `Review Permintaan ${requestCategory}`,
+              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Section Head. (CC: Muhammad Taufik Akbar)`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'apd',
+            }).catch(console.error)
+          } else {
+            sendApdRequestSubmittedEmail({
+              employeeName: currentEmployee.name,
+              requestNumber,
+              approverEmail: approverEmailRec.email,
+              approverName: firstStep.approverName,
+              requestType: requestCategory,
+            }).catch(console.error)
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [approverEmailRec.email],
+              eventType: 'apd_request_review',
+              category: 'approval_requests',
+              title: `Review Permintaan ${requestCategory}`,
+              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'apd',
+            }).catch(console.error)
+          }
         }
       }
     } else {

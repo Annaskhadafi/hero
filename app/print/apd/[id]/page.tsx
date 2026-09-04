@@ -61,7 +61,7 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
   const isMaterial = data.requestCategory === 'MATERIAL';
   const isTools = data.requestCategory === 'TOOLS';
 
-  // APD, Material, and Tools strictly use only 1 approver (PJO / HSE / Admin Site Leader)
+  // APD, Material, and Tools strictly use only 1 approver
   const effectiveApprovalHistory = approvalHistory.filter((step) => step.level === 1);
 
   // Dynamic title based on category
@@ -73,10 +73,21 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
 
   // Dynamic table headers based on category
   const tableHeaders = isApd
-    ? ['Jenis Item', 'Permintaan', 'Qty', 'Foto Bukti (Pergantian)', 'Keterangan']
+    ? ['Jenis APD', 'Permintaan', 'Qty', 'Keterangan']
     : isMaterial
-      ? ['Nama Material', 'Spesifikasi', 'Qty', 'Keterangan']
-      : ['Nama Tools', 'Merek/Type', 'Qty', 'Keterangan'];
+      ? ['Nama Material', 'Permintaan', 'Spesifikasi', 'Qty', 'Keterangan']
+      : ['Nama Tools', 'Permintaan', 'Merek/Tipe', 'Qty', 'Keterangan'];
+
+  // Flatten all evidence photos for display below the table
+  const allEvidencePhotos = itemsWithPhotos.flatMap((item) =>
+    (item.photoUrls || []).map((url, idx) => ({
+      url,
+      itemName: item.itemType,
+      index: idx + 1,
+      totalItemPhotos: item.photoUrls.length,
+      requestType: item.requestType,
+    }))
+  );
 
   // Dynamic notes based on category
   const notes = isApd
@@ -86,12 +97,14 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
       ]
     : isMaterial
       ? [
-          'Pengajuan material harus sesuai dengan kebutuhan proyek.',
-          'Material yang sudah dikeluarkan tidak dapat dikembalikan tanpa persetujuan atasan.',
+          'Pengajuan material harus sesuai dengan kebutuhan operasional / pekerjaan proyek.',
+          'Bagi pengajuan pergantian material rusak/lama, wajib melampirkan foto bukti fisik barang.',
+          'Material yang sudah dikeluarkan tidak dapat dikembalikan tanpa persetujuan Section Head.',
         ]
       : [
-          'Pengajuan tools harus sesuai dengan kebutuhan pekerjaan.',
-          'Tools yang sudah dikeluarkan menjadi tanggung jawab karyawan yang bersangkutan.',
+          'Pengajuan tools harus sesuai dengan kebutuhan pekerjaan dan spesifikasi teknis.',
+          'Bagi pengajuan pergantian tools rusak/lama, wajib melampirkan foto bukti fisik barang.',
+          'Tools yang sudah dikeluarkan menjadi tanggung jawab pemegang tools yang bersangkutan.',
         ];
 
   // Parse step labels
@@ -105,7 +118,7 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
 
   function getStepLabel(level: number) {
     if (isApd) return 'Disetujui Oleh (PJO / HSE Site / Atasan Site)';
-    return stepLabelByOrder.get(level) ?? (level === 1 ? 'Disetujui Oleh (PJO / HSE Site / Atasan Site)' : 'Disetujui Oleh (Section Head)');
+    return stepLabelByOrder.get(level) ?? 'Disetujui Oleh (Section Head)';
   }
 
   return (
@@ -209,8 +222,9 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
               {itemsWithPhotos.length > 0 ? (
                 itemsWithPhotos.map((item, index) => {
                   const isPergantian = item.requestType.toLowerCase().includes('ganti') || item.requestType.toLowerCase().includes('pergantian');
+                  const hasPhotos = Boolean(item.photoUrls && item.photoUrls.length > 0);
                   return (
-                    <tr key={index} className="h-8">
+                    <tr key={index} className="h-7">
                       <td className="border border-black py-1 px-2 text-center font-medium">{index + 1}</td>
                       <td className="border border-black py-1 px-2 font-semibold">{item.itemType}</td>
                       <td className="border border-black py-1 px-2 capitalize">
@@ -218,53 +232,64 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                           {item.requestType}
                         </span>
                       </td>
-                      <td className="border border-black py-1 px-2 text-center font-bold">{item.quantity}</td>
-                      {isApd && (
-                        <td className="border border-black py-1 px-1.5 text-center align-middle">
-                          {item.photoUrls && item.photoUrls.length > 0 ? (
-                            <div className="flex items-center justify-center gap-1 py-0.5">
-                              {item.photoUrls.slice(0, 3).map((url, pIdx) => (
-                                <img
-                                  key={pIdx}
-                                  src={url}
-                                  alt={`Bukti ${item.itemType} ${pIdx + 1}`}
-                                  className="h-7 w-7 object-cover rounded border border-gray-400 shadow-xs"
-                                />
-                              ))}
-                              {item.photoUrls.length > 3 && (
-                                <span className="text-[6pt] text-gray-500 font-bold">+{item.photoUrls.length - 3}</span>
-                              )}
-                            </div>
-                          ) : isPergantian ? (
-                            <span className="text-[7pt] text-gray-400 italic">(Tanpa Foto)</span>
-                          ) : (
-                            <span className="text-[7pt] text-gray-400">-</span>
-                          )}
-                        </td>
+                      {(isMaterial || isTools) && (
+                        <td className="border border-black py-1 px-2 text-gray-700">{item.notes || '-'}</td>
                       )}
-                      <td className="border border-black py-1 px-2 text-gray-700">{item.notes || '-'}</td>
+                      <td className="border border-black py-1 px-2 text-center font-bold">{item.quantity}</td>
+                      <td className="border border-black py-1 px-2 text-gray-700">
+                        {isApd 
+                          ? (item.notes || (hasPhotos ? 'Foto bukti terlampir di bawah' : '-')) 
+                          : (hasPhotos ? 'Foto bukti terlampir di bawah' : '-')}
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={isApd ? 6 : 5} className="border border-black p-3 text-center italic">Belum ada item permintaan.</td>
+                  <td colSpan={tableHeaders.length + 1} className="border border-black p-3 text-center italic">Belum ada item permintaan.</td>
                 </tr>
               )}
               
               {/* Empty fill rows for layout balance */}
-              {Array.from({ length: Math.max(0, Math.min(3, 4 - itemsWithPhotos.length)) }).map((_, i) => (
+              {Array.from({ length: Math.max(0, Math.min(3, (allEvidencePhotos.length > 0 ? 2 : 4) - itemsWithPhotos.length)) }).map((_, i) => (
                 <tr key={`empty-${i}`} className="h-6">
                   <td className="border border-black p-1 text-center text-gray-300">-</td>
-                  <td className="border border-black p-1"></td>
-                  <td className="border border-black p-1"></td>
-                  <td className="border border-black p-1"></td>
-                  {isApd && <td className="border border-black p-1"></td>}
-                  <td className="border border-black p-1"></td>
+                  {tableHeaders.map((_, hIdx) => (
+                    <td key={hIdx} className="border border-black p-1"></td>
+                  ))}
                 </tr>
               ))}
             </tbody>
           </table>
+
+          {/* Lampiran Foto Bukti Fisik (Barang Rusak / Pergantian) */}
+          {allEvidencePhotos.length > 0 && (
+            <div className="mt-1 mb-2 p-2 border border-gray-400 rounded bg-gray-50/80">
+              <div className="text-[7.5pt] font-bold text-gray-800 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span>📷</span>
+                  <span>Lampiran Foto Bukti Fisik (Barang Rusak / Pergantian)</span>
+                </span>
+                <span className="text-[6.5pt] font-normal text-gray-500">
+                  Total {allEvidencePhotos.length} foto terlampir
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3 items-start">
+                {allEvidencePhotos.map((photo, idx) => (
+                  <div key={idx} className="flex flex-col items-center bg-white p-1 rounded border border-gray-300 shadow-xs">
+                    <img
+                      src={photo.url}
+                      alt={`Bukti ${photo.itemName}`}
+                      className="h-24 w-32 object-cover rounded border border-gray-200"
+                    />
+                    <span className="text-[7pt] font-semibold text-gray-800 mt-1 max-w-[128px] truncate text-center">
+                      {photo.itemName} {photo.totalItemPhotos > 1 ? `(#${photo.index})` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="mt-1 mb-2">

@@ -96,3 +96,35 @@ test('APD approval dialog and print page implement real-time signature live prev
     'Print page and ApdLiveSignatureListener must dynamically render live preview signature'
   )
 })
+
+test('Material and Tools requests route directly to Section Head with 1-stage approval', () => {
+  const enginePath = path.join(process.cwd(), 'lib/approval-engine.ts')
+  const engineContent = fs.readFileSync(enginePath, 'utf8')
+
+  assert.ok(
+    engineContent.includes("context.transactionType === 'apd-request-material' || context.transactionType === 'apd-request-tools'"),
+    'Approval engine must route Material and Tools requests to Section Head'
+  )
+  assert.ok(
+    engineContent.includes("headEmployeeId: masterSections.headEmployeeId"),
+    'Approval engine must look up Section Head from masterSections'
+  )
+})
+
+test('Material and Tools email handlers include CC to Muhammad Taufik Akbar', () => {
+  const emailPath = path.join(process.cwd(), 'lib/apd-email.ts')
+  const emailContent = fs.readFileSync(emailPath, 'utf8')
+
+  assert.ok(
+    emailContent.includes('sendMaterialToolsRequestSubmittedEmail'),
+    'apd-email.ts must define sendMaterialToolsRequestSubmittedEmail'
+  )
+  assert.ok(
+    emailContent.includes('sendMaterialToolsApprovedEmail'),
+    'apd-email.ts must define sendMaterialToolsApprovedEmail'
+  )
+  assert.ok(
+    emailContent.includes('muhammad.akbar@chitraparatama.co.id'),
+    'Material and Tools emails must CC muhammad.akbar@chitraparatama.co.id'
+  )
+})

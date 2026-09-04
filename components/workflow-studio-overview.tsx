@@ -699,6 +699,14 @@ function WorkflowBuilderDialog({
 
   const WORKFLOW_PRESETS = [
     {
+      key: "material-tools-section-head",
+      name: "Material & Tools (3 Section ke Section Head)",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Section Head", type: "employee" as const },
+      ]
+    },
+    {
       key: "3-col-service-te",
       name: "3 Kolom Jalur (Service MVC, Service Others, TE)",
       steps: [
@@ -747,6 +755,34 @@ function WorkflowBuilderDialog({
       type: s.type
     }))
     setApprovalSteps(newSteps)
+
+    if (presetKey === 'material-tools-section-head') {
+      const autoRows: any[] = []
+      let rIndex = 0
+      const CS_SECTIONS = [
+        { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
+        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+      ]
+
+      const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
+
+      for (const site of sitesList) {
+        for (const sec of CS_SECTIONS) {
+          autoRows.push({
+            key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
+            siteId: site.id.toString(),
+            departmentId: '',
+            values: {
+              'step-0': sec.id,
+              'step-1': sec.headId,
+            },
+          })
+        }
+      }
+      setSiteData(autoRows)
+      return
+    }
 
     if (presetKey === '3-col-service-te') {
       const autoRows = MASTER_CATEGORIZED_SITES.map((site, index) => {
@@ -816,9 +852,8 @@ function WorkflowBuilderDialog({
   ]
 
   const materialToolsDefaults: ApprovalStep[] = [
-    { id: 'step-1', label: 'Service MVC', type: 'employee' },
-    { id: 'step-2', label: 'Service Others', type: 'employee' },
-    { id: 'step-3', label: 'TE', type: 'employee' },
+    { id: 'step-0', label: 'Section', type: 'section' },
+    { id: 'step-1', label: 'Section Head', type: 'employee' },
   ]
 
   const apdDefaults: ApprovalStep[] = [
@@ -870,6 +905,10 @@ function WorkflowBuilderDialog({
               ? apdDefaults
               : generalDefaults
 
+    if (isMaterialOrToolsMenu()) {
+      return materialToolsDefaults
+    }
+
     if (!initial?.globalSteps || initial.globalSteps.length === 0) {
       return defaults
     }
@@ -896,10 +935,7 @@ function WorkflowBuilderDialog({
 
     const is3ColWorkflow =
       isApd ||
-      isMaterialOrToolsMenu() ||
       (selectedMenuKey || initial?.id || '').toLowerCase().includes('apd') ||
-      (selectedMenuKey || initial?.id || '').toLowerCase().includes('material') ||
-      (selectedMenuKey || initial?.id || '').toLowerCase().includes('tools') ||
       existing.some((s) => {
         const l = s.label.toLowerCase()
         return l.includes('mvc') || l.includes('other') || l.includes('te')
@@ -1059,6 +1095,31 @@ function WorkflowBuilderDialog({
       })
     }
 
+    if (isMaterialOrToolsMenu()) {
+      const autoRows: SiteData[] = []
+      let rIndex = 0
+      const CS_SECTIONS = [
+        { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
+        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+      ]
+
+      for (const site of MASTER_CATEGORIZED_SITES) {
+        for (const sec of CS_SECTIONS) {
+          autoRows.push({
+            key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
+            siteId: site.id.toString(),
+            departmentId: '',
+            values: {
+              'step-0': sec.id,
+              'step-1': sec.headId,
+            },
+          })
+        }
+      }
+      return autoRows
+    }
+
     if (initial?.siteApprovals && initial.siteApprovals.length > 0) {
       return initial.siteApprovals.map((sa, i) => {
         const values: Record<string, string> = {}
@@ -1121,7 +1182,34 @@ function WorkflowBuilderDialog({
     }
 
     // Default auto-population if initial siteApprovals is empty
-    if (menuKeyLower.includes('material') || menuKeyLower.includes('tools') || menuKeyLower.includes('apd')) {
+    if (menuKeyLower.includes('material') || menuKeyLower.includes('tools')) {
+      const autoRows: SiteData[] = []
+      let rIndex = 0
+      const CS_SECTIONS = [
+        { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
+        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+      ]
+
+      const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
+
+      for (const site of sitesList) {
+        for (const sec of CS_SECTIONS) {
+          autoRows.push({
+            key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
+            siteId: site.id.toString(),
+            departmentId: '',
+            values: {
+              'step-0': sec.id,
+              'step-1': sec.headId,
+            },
+          })
+        }
+      }
+      return autoRows
+    }
+
+    if (menuKeyLower.includes('apd')) {
       return MASTER_CATEGORIZED_SITES.map((site, index) => {
         const isAdminCp = site.category === 'Admin CP'
         return {
@@ -1497,7 +1585,33 @@ function WorkflowBuilderDialog({
                         }
                       }
                       setSiteData(autoRows)
-                    } else if (newKey.toLowerCase().includes('material') || newKey.toLowerCase().includes('tools') || newKey.toLowerCase().includes('apd')) {
+                    } else if (newKey.toLowerCase().includes('material') || newKey.toLowerCase().includes('tools')) {
+                      setApprovalSteps(materialToolsDefaults)
+                      const autoRows: any[] = []
+                      let rIndex = 0
+                      const CS_SECTIONS = [
+                        { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
+                        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+                        { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+                      ]
+
+                      const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
+
+                      for (const site of sitesList) {
+                        for (const sec of CS_SECTIONS) {
+                          autoRows.push({
+                            key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
+                            siteId: site.id.toString(),
+                            departmentId: '',
+                            values: {
+                              'step-0': sec.id,
+                              'step-1': sec.headId,
+                            },
+                          })
+                        }
+                      }
+                      setSiteData(autoRows)
+                    } else if (newKey.toLowerCase().includes('apd')) {
                       setApprovalSteps(apdDefaults)
                       const autoRows = MASTER_CATEGORIZED_SITES.map((site, index) => {
                         const isAdminCp = site.category === 'Admin CP'

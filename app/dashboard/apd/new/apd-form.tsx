@@ -14,6 +14,7 @@ import { AlertCircle, Camera, CheckCircle2, Edit3, Image as ImageIcon, Loader2, 
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/signature-pad";
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature";
+import { FiveRCameraModal } from "@/components/five-r/five-r-camera-modal";
 import type { ApdRequestCategory } from "@/lib/apd-status";
 
 const APD_ITEMS = [
@@ -79,6 +80,34 @@ export function ApdRequestForm({
   const [profileSignature, setProfileSignature] = useState<string | null>(null);
   const [isDrawingCustomSig, setIsDrawingCustomSig] = useState(false);
   const [customSignatureDataUrl, setCustomSignatureDataUrl] = useState<string | null>(null);
+  const [activeCameraItemId, setActiveCameraItemId] = useState<string | null>(null);
+
+  function dataURLtoFile(dataurl: string, filename: string): File {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  }
+
+  const handleCapturePhoto = (id: string, dataUrl: string) => {
+    const file = dataURLtoFile(dataUrl, `bukti_apd_${Date.now()}.jpg`);
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          photoFiles: [...item.photoFiles, file],
+          photoPreviews: [...(item.photoPreviews || []), dataUrl],
+        };
+      })
+    );
+    toast.success("Foto berhasil diambil dari kamera!");
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -389,8 +418,37 @@ export function ApdRequestForm({
                       </div>
                     </div>
 
+                    {/* Action buttons bar */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveCameraItemId(item.id)}
+                        className="bg-white border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs font-semibold gap-1.5 shadow-xs"
+                      >
+                        <Camera className="size-4 text-rose-600" />
+                        Buka Kamera (Foto Langsung)
+                      </Button>
+
+                      <label className="inline-flex items-center justify-center rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-white hover:bg-slate-50 text-slate-700 h-9 px-3 py-2 cursor-pointer gap-1.5 shadow-xs">
+                        <ImageIcon className="size-4 text-slate-600" />
+                        Pilih dari File / Galeri
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            handleAddPhotos(item.id, e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+
                     {/* Previews grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1">
                       {(item.photoPreviews || []).map((previewUrl, pIdx) => (
                         <div key={pIdx} className="relative group rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs aspect-square flex items-center justify-center">
                           <img
@@ -412,14 +470,29 @@ export function ApdRequestForm({
                         </div>
                       ))}
 
-                      {/* Add photo trigger button */}
-                      <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white/80 hover:bg-white rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs">
-                        <Camera className="size-5 text-slate-500" />
-                        <span className="text-[10px] font-semibold text-slate-700">
-                          {(item.photoFiles || []).length === 0 ? "Pilih 3+ Foto" : "+ Tambah Foto"}
+                      {/* Add photo trigger card: Kamera */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveCameraItemId(item.id)}
+                        className="border-2 border-dashed border-rose-300 hover:border-rose-400 bg-rose-50/50 hover:bg-rose-50 rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs text-rose-800"
+                      >
+                        <Camera className="size-5 text-rose-600" />
+                        <span className="text-[10px] font-bold">
+                          Ambil Kamera
                         </span>
-                        <span className="text-[8.5pt] text-slate-400">
-                          {(item.photoFiles || []).length < 3 ? `(Wajib ${3 - (item.photoFiles || []).length} lagi)` : "(Bisa tambah)"}
+                        <span className="text-[8pt] text-rose-600/70">
+                          (Foto Langsung)
+                        </span>
+                      </button>
+
+                      {/* Add photo trigger card: Galeri/File */}
+                      <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white/80 hover:bg-white rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs">
+                        <ImageIcon className="size-5 text-slate-500" />
+                        <span className="text-[10px] font-semibold text-slate-700">
+                          Upload File
+                        </span>
+                        <span className="text-[8pt] text-slate-400">
+                          {(item.photoFiles || []).length < 3 ? `(Wajib ${3 - (item.photoFiles || []).length} lagi)` : "(Galeri)"}
                         </span>
                         <input
                           type="file"
@@ -557,6 +630,17 @@ export function ApdRequestForm({
           Kirim Permohonan
         </Button>
       </div>
+
+      <FiveRCameraModal
+        isOpen={Boolean(activeCameraItemId)}
+        onClose={() => setActiveCameraItemId(null)}
+        onCapture={(dataUrl) => {
+          if (activeCameraItemId) {
+            handleCapturePhoto(activeCameraItemId, dataUrl);
+          }
+        }}
+        title="Ambil Foto Bukti Barang Rusak/Lama"
+      />
     </form>
   );
 }
