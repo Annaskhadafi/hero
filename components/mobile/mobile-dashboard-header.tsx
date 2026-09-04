@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/components/language-provider";
 import { 
   Trophy, 
   CloudSun, 
@@ -22,13 +23,14 @@ export function MobileDashboardHeader({
   totalPoints, 
   currentLevel 
 }: DashboardHeaderProps) {
+  const { isIndonesian } = useLanguage();
   
   function getGreeting() {
     const hour = new Date().getHours();
-    if (hour < 11) return "Selamat Pagi";
-    if (hour < 15) return "Selamat Siang";
-    if (hour < 19) return "Selamat Sore";
-    return "Selamat Malam";
+    if (hour < 11) return isIndonesian ? "Selamat Pagi" : "Good Morning";
+    if (hour < 15) return isIndonesian ? "Selamat Siang" : "Good Afternoon";
+    if (hour < 19) return isIndonesian ? "Selamat Sore" : "Good Evening";
+    return isIndonesian ? "Selamat Malam" : "Good Night";
   }
 
   function firstName(name: string) {
@@ -49,7 +51,7 @@ export function MobileDashboardHeader({
         </div>
         <div className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-bold text-amber-700">
           <CloudSun className="size-3.5" />
-          <span>Shift Pagi · Balikpapan 29°C</span>
+          <span>{isIndonesian ? "Shift Pagi · Balikpapan 29°C" : "Morning Shift · Balikpapan 29°C"}</span>
         </div>
       </section>
 

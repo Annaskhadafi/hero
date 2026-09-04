@@ -1433,6 +1433,7 @@ export function SchedulingTimesheetWorkspace({
   const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
   const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
   const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
+  const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
   const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
     'overtime_summary',
@@ -3617,7 +3618,7 @@ export function SchedulingTimesheetWorkspace({
     reader.readAsDataURL(file)
   }
 
-  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical') {
+  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical' | 'hse') {
     if (siteId === 'all') return
 
     const siteName = (site?.name || '').trim().toUpperCase()
@@ -3648,6 +3649,18 @@ export function SchedulingTimesheetWorkspace({
     const abian =
       employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
       'Muhammad Abian Husain'
+    const fathurrahman =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes('fathurrahman sufi') ||
+          e.name.toLowerCase().includes('fathurrahman')
+      )?.name ?? 'Fathurrahman Sufi'
+    const andiSafari =
+      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ??
+      'Andi Safari'
+    const rendra =
+      employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
+      'Rendra Rachman'
 
     setSiteConfigs((current) => {
       const currentConfig = current[siteId] ?? defaultSiteConfig
@@ -3677,6 +3690,14 @@ export function SchedulingTimesheetWorkspace({
           approvedBy: romy,
           hrName: kesuma,
         }
+      } else if (presetKey === 'hse') {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: fathurrahman,
+          pjoLeader: andiSafari,
+          approvedBy: rendra,
+          hrName: kesuma,
+        }
       }
 
       return {
@@ -3692,6 +3713,7 @@ export function SchedulingTimesheetWorkspace({
       repair: 'Repair TTD',
       services: 'Services TTD',
       technical: 'Technical TTD',
+      hse: 'HSE TTD',
     }
     toast.success(`Preset ${presetLabels[presetKey]} berhasil diterapkan!`)
   }
@@ -5025,8 +5047,15 @@ export function SchedulingTimesheetWorkspace({
   function getEmployeeSectionCategory(employee?: {
     section?: string | null
     role?: string | null
-  }): 'Repair' | 'Services' | 'Technical' | 'Lainnya' {
-    const s = (employee?.section || employee?.role || '').toLowerCase()
+    department?: string | null
+  }): 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' {
+    const s = (
+      employee?.section ||
+      employee?.role ||
+      employee?.department ||
+      ''
+    ).toLowerCase()
+    if (s.includes('hse') || s.includes('safety') || s.includes('k3') || s.includes('lingkungan')) return 'HSE'
     if (s.includes('repair') || s.includes('retread')) return 'Repair'
     if (s.includes('service') || s.includes('servis')) return 'Services'
     if (s.includes('tech') || s.includes('teknis')) return 'Technical'
@@ -5034,10 +5063,10 @@ export function SchedulingTimesheetWorkspace({
   }
 
   const availableSiteSectionCategories = useMemo(() => {
-    const cats = new Set<'Repair' | 'Services' | 'Technical'>()
+    const cats = new Set<'Repair' | 'Services' | 'Technical' | 'HSE'>()
     for (const row of rows) {
       const cat = getEmployeeSectionCategory(row.employee)
-      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical') {
+      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical' || cat === 'HSE') {
         cats.add(cat)
       }
     }
@@ -5050,7 +5079,13 @@ export function SchedulingTimesheetWorkspace({
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
     const baseSignatures = customSignatures ?? pdfSignatures
-    const normSection = (sectionName || employee?.section || employee?.role || '').toLowerCase()
+    const normSection = (
+      sectionName ||
+      employee?.section ||
+      employee?.role ||
+      employee?.department ||
+      ''
+    ).toLowerCase()
     const siteName = (site?.name || '').trim().toUpperCase()
     const isCkSite =
       siteName.startsWith('CK') || (site?.location || '').trim().toUpperCase().startsWith('CK')
@@ -5078,16 +5113,51 @@ export function SchedulingTimesheetWorkspace({
     const abian =
       employees.find((e) => e.name.toLowerCase().includes('abian husain'))?.name ??
       'Muhammad Abian Husain'
+    const fathurrahman =
+      employees.find(
+        (e) =>
+          e.name.toLowerCase().includes('fathurrahman sufi') ||
+          e.name.toLowerCase().includes('fathurrahman')
+      )?.name ?? 'Fathurrahman Sufi'
+    const andiSafari =
+      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ??
+      'Andi Safari'
+    const rendra =
+      employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
+      'Rendra Rachman'
 
     const cfg = siteConfig.pdfConfig
+
+    const isPlaceholderApprovedBy = (val?: string) =>
+      !val || val.trim().toLowerCase().startsWith('plant. spv department')
+
+    const cfgPreparedBy = cfg.preparedBy?.trim() || ''
+    const cfgPjo = cfg.pjoLeader?.trim() || ''
+    const cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy) ? (cfg.approvedBy?.trim() || '') : ''
+    const cfgHr = cfg.hrName?.trim() || ''
+
+    if (
+      normSection.includes('hse') ||
+      normSection.includes('safety') ||
+      normSection.includes('k3') ||
+      normSection.includes('lingkungan')
+    ) {
+      return {
+        ...baseSignatures,
+        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
+        pjoLeader: cfgPjo || andiSafari,
+        approvedBy: cfgApprovedBy || rendra,
+        hrName: cfgHr || kesuma,
+      }
+    }
 
     if (normSection.includes('repair') || normSection.includes('retread')) {
       return {
         ...baseSignatures,
-        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || ary,
-        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
-        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
+        pjoLeader: cfgPjo || ary,
+        approvedBy: cfgApprovedBy || romy,
+        hrName: cfgHr || kesuma,
       }
     }
 
@@ -5095,47 +5165,48 @@ export function SchedulingTimesheetWorkspace({
       const defaultPjo = isCkSite ? apriyanto : junaidi
       return {
         ...baseSignatures,
-        preparedBy: cfg.preparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || defaultPjo,
-        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
-        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
+        pjoLeader: cfgPjo || defaultPjo,
+        approvedBy: cfgApprovedBy || romy,
+        hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('tech') || normSection.includes('teknis')) {
       return {
         ...baseSignatures,
-        preparedBy: employee?.name || cfg.preparedBy || baseSignatures.preparedBy,
-        pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader || abian,
-        approvedBy: cfg.approvedBy || baseSignatures.approvedBy || romy,
-        hrName: cfg.hrName || baseSignatures.hrName || kesuma,
+        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
+        pjoLeader: cfgPjo || abian,
+        approvedBy: cfgApprovedBy || romy,
+        hrName: cfgHr || kesuma,
       }
     }
 
     return {
       ...baseSignatures,
-      preparedBy: cfg.preparedBy || baseSignatures.preparedBy,
-      pjoLeader: cfg.pjoLeader || baseSignatures.pjoLeader,
-      approvedBy: cfg.approvedBy || baseSignatures.approvedBy,
-      hrName: cfg.hrName || baseSignatures.hrName,
+      preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
+      pjoLeader: cfgPjo || baseSignatures.pjoLeader,
+      approvedBy: cfgApprovedBy || baseSignatures.approvedBy,
+      hrName: cfgHr || baseSignatures.hrName,
     }
   }
 
   function getMajoritySectionSignatures(
-    employeesList: Array<{ section?: string | null; role?: string | null; id?: number; name?: string }>,
+    employeesList: Array<{ section?: string | null; role?: string | null; department?: string | null; id?: number; name?: string }>,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
-    const counts = { Repair: 0, Services: 0, Technical: 0 }
+    const counts = { Repair: 0, Services: 0, Technical: 0, HSE: 0 }
     for (const emp of employeesList) {
       const cat = getEmployeeSectionCategory(emp)
       if (cat === 'Repair') counts.Repair++
       else if (cat === 'Services') counts.Services++
       else if (cat === 'Technical') counts.Technical++
+      else if (cat === 'HSE') counts.HSE++
     }
 
-    let majorityCategory: 'Repair' | 'Services' | 'Technical' = 'Services'
+    let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' = 'Services'
     let maxCount = -1
-    for (const [cat, count] of Object.entries(counts) as Array<['Repair' | 'Services' | 'Technical', number]>) {
+    for (const [cat, count] of Object.entries(counts) as Array<['Repair' | 'Services' | 'Technical' | 'HSE', number]>) {
       if (count > maxCount) {
         maxCount = count
         majorityCategory = cat
@@ -5169,10 +5240,14 @@ export function SchedulingTimesheetWorkspace({
         hrName: '',
         useExternalOnly: true,
         omitExternal: false,
+        logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
+        customSigners: cfg.customSigners || baseSignatures.customSigners,
       }
     }
     return {
       ...baseSignatures,
+      logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
+      customSigners: cfg.customSigners || baseSignatures.customSigners,
       useExternalOnly: false,
       omitExternal: true,
     }
@@ -5359,6 +5434,7 @@ export function SchedulingTimesheetWorkspace({
         if (cat === 'Repair' && !pdfIncludeRepair) return false
         if (cat === 'Services' && !pdfIncludeServices) return false
         if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        if (cat === 'HSE' && !pdfIncludeHse) return false
         return true
       })
     }
@@ -5535,7 +5611,7 @@ export function SchedulingTimesheetWorkspace({
 
   async function downloadSummaryPdf(view: SummaryView) {
     try {
-      if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+      if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
@@ -5547,6 +5623,7 @@ export function SchedulingTimesheetWorkspace({
           if (cat === 'Repair' && !pdfIncludeRepair) return false
           if (cat === 'Services' && !pdfIncludeServices) return false
           if (cat === 'Technical' && !pdfIncludeTechnical) return false
+          if (cat === 'HSE' && !pdfIncludeHse) return false
         }
         return true
       })
@@ -5577,6 +5654,7 @@ export function SchedulingTimesheetWorkspace({
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
         pdfIncludeTechnical ? 'Technical' : '',
+        pdfIncludeHse ? 'HSE' : '',
       ]
         .filter(Boolean)
         .join('_')
@@ -5620,7 +5698,7 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
-    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -5631,6 +5709,7 @@ export function SchedulingTimesheetWorkspace({
         if (cat === 'Repair' && !pdfIncludeRepair) return false
         if (cat === 'Services' && !pdfIncludeServices) return false
         if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        if (cat === 'HSE' && !pdfIncludeHse) return false
       }
       return true
     })
@@ -5709,6 +5788,7 @@ export function SchedulingTimesheetWorkspace({
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
         pdfIncludeTechnical ? 'Technical' : '',
+        pdfIncludeHse ? 'HSE' : '',
       ]
         .filter(Boolean)
         .join('_')
@@ -5842,6 +5922,7 @@ export function SchedulingTimesheetWorkspace({
 
       const { generateDailyActivityPdf } =
         await import('@/lib/timesheet/generate-daily-activity-pdf')
+      const secSigs = getSectionSignatures(employee.section, employee)
       const pdf = await generateDailyActivityPdf({
         period,
         employeeName: employee.name,
@@ -5849,7 +5930,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
-        signatures: { ...pdfSignatures, preparedBy: employee.name },
+        signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
         activities: monthActivities,
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
@@ -5890,7 +5971,7 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
-    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical) {
+    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -5901,6 +5982,7 @@ export function SchedulingTimesheetWorkspace({
         if (cat === 'Repair' && !pdfIncludeRepair) return false
         if (cat === 'Services' && !pdfIncludeServices) return false
         if (cat === 'Technical' && !pdfIncludeTechnical) return false
+        if (cat === 'HSE' && !pdfIncludeHse) return false
       }
       return true
     })
@@ -5974,6 +6056,7 @@ export function SchedulingTimesheetWorkspace({
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
         pdfIncludeTechnical ? 'Technical' : '',
+        pdfIncludeHse ? 'HSE' : '',
       ]
         .filter(Boolean)
         .join(', ')
@@ -8025,7 +8108,12 @@ export function SchedulingTimesheetWorkspace({
                       </Label>
                       <Select
                         onValueChange={(val) => {
-                          if (val === 'repair' || val === 'services' || val === 'technical') {
+                          if (
+                            val === 'repair' ||
+                            val === 'services' ||
+                            val === 'technical' ||
+                            val === 'hse'
+                          ) {
                             applySignaturePreset(val)
                           }
                         }}
@@ -8042,6 +8130,9 @@ export function SchedulingTimesheetWorkspace({
                           </SelectItem>
                           <SelectItem value="technical" className="text-xs font-medium cursor-pointer">
                             Technical TTD
+                          </SelectItem>
+                          <SelectItem value="hse" className="text-xs font-medium cursor-pointer">
+                            HSE TTD
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -9054,6 +9145,22 @@ export function SchedulingTimesheetWorkspace({
                                   title="Sertakan karyawan Technical"
                                 >
                                   Technical
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('HSE') && (
+                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-hse-pdf"
+                                  checked={pdfIncludeHse}
+                                  onCheckedChange={setPdfIncludeHse}
+                                />
+                                <label
+                                  htmlFor="toggle-hse-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan HSE / Safety"
+                                >
+                                  HSE
                                 </label>
                               </div>
                             )}
