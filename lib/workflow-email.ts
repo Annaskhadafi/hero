@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { emailSmtpSettings, emailTemplates, employees } from '@/db/schema/hero'
+import { emailSmtpSettings, emailTemplates, employees, masterSections, sites } from '@/db/schema/hero'
 import { sendEmailViaSmtp, logEmailDeliveryRecord, type EmailAttachment } from '@/lib/email-delivery'
 import { getPublicAppUrl } from '@/lib/auth-config'
 
@@ -513,14 +513,235 @@ export async function getOperationalApprovalRecipientEmails(siteId?: number | nu
   return uniqueEmails(rows.map((row) => row.email))
 }
 
-export async function getAttendancePermissionRecipientEmails(siteId?: number | null) {
-  const pjoEmails = await getOperationalApprovalRecipientEmails(siteId)
-  const hrEmails = await getHumanCapitalRecipientEmails()
+export const ATTENDANCE_PERMISSION_HC_CC_EMAILS = [
+  'adila.arizona@chitraparatama.co.id',
+  'kesuma.bagaskara@chitraparatama.co.id',
+  'muhammad.iqbal@chitraparatama.co.id',
+  'putri.fitriana@chitraparatama.co.id',
+]
+
+export const ATTENDANCE_SITE_ROUTING_MAP: Record<
+  string,
+  {
+    category: 'PJO' | 'HSE'
+    approverName: string
+    approverEmail: string
+    approverTitle: string
+  }
+> = {
+  // PJO Sites (13 Sites)
+  'amm mifa holing': { category: 'PJO', approverName: 'Adit Prasetyo', approverEmail: 'adit.prasetyo@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'amm tabang': { category: 'PJO', approverName: 'Singgih Wiyono', approverEmail: 'singgih.wiyono@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'buma tanjung': { category: 'PJO', approverName: 'Dowy Pratama Sita', approverEmail: 'dowy.pratama@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'cde - bengkulu': { category: 'PJO', approverName: 'Rakha Dwi Saputra', approverEmail: 'rakhasyaputra86@gmail.com', approverTitle: 'Repairman' },
+  'ck mifa': { category: 'PJO', approverName: 'Fachri Husein', approverEmail: 'ryfhry28@gmail.com', approverTitle: 'Serviceman' },
+  'jakarta': { category: 'PJO', approverName: 'Ade Saharu', approverEmail: '77170@chitraparatama.co.id', approverTitle: 'HSE Officer' },
+  'makassar': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
+  'palembang': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
+  'pekanbaru': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
+  'ppa bib': { category: 'PJO', approverName: 'Muchamat Nurkolis Majid', approverEmail: 'm.nurkolis@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'sangatta': { category: 'PJO', approverName: 'Saipudin', approverEmail: 'saipudin@chitraparatama.co.id', approverTitle: 'HSE Leader' },
+  'sebamban': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
+  'tj. adaro': { category: 'PJO', approverName: 'Tommy Indra Aldiny Rambe', approverEmail: 'tommy.indra@chitraparatama.co.id', approverTitle: 'Technical Leader' },
+
+  // HSE Sites (5 Sites)
+  'ck bib': { category: 'HSE', approverName: 'Fathurrahman Sufi', approverEmail: '77169@chitraparatama.co.id', approverTitle: 'HSE Officer' },
+  'ck bmb': { category: 'HSE', approverName: 'Danny Hangga Irawan', approverEmail: 'danny.hangga@chitraparatama.co.id', approverTitle: 'HSE Officer' },
+  'ck kim': { category: 'HSE', approverName: 'Rizky Rahmadani', approverEmail: '77477@chitraparatama.co.id', approverTitle: 'HSE Officer' },
+  'ck mhu': { category: 'HSE', approverName: 'Irfan Rivai Remba', approverEmail: 'irfan.rifai@chitraparatama.co.id', approverTitle: 'HSE' },
+  'vale - sorowako': { category: 'HSE', approverName: 'Muhammad Wahyu Ichsan', approverEmail: 'muhammad.w.ichsan@chitraparatama.co.id', approverTitle: 'HSE Officer' },
+}
+
+export const ATTENDANCE_ADMIN_CP_APPROVERS = {
+  repairRetread: {
+    category: 'HEAD_SECTION' as const,
+    approverName: 'Ary Maulana',
+    approverEmail: 'ary.maulana@chitraparatama.co.id',
+    approverTitle: 'SPV Repair & Retread Operation',
+  },
+  technicalEngineer: {
+    category: 'HEAD_SECTION' as const,
+    approverName: 'Muhammad Abian Husain',
+    approverEmail: 'abian.husain@chitraparatama.co.id',
+    approverTitle: 'Technical Coordinator',
+  },
+  serviceOthers: {
+    category: 'HEAD_SECTION' as const,
+    approverName: 'Junaidi',
+    approverEmail: 'junaidi.syamsudin@chitraparatama.co.id',
+    approverTitle: 'Service Operation Others Coordinator',
+  },
+  productAccessories: {
+    category: 'HEAD_SECTION' as const,
+    approverName: 'Luthfi Mahendra Yudistira',
+    approverEmail: 'luthfi.yudistira@chitraparatama.co.id',
+    approverTitle: 'Product Accessories Coordinator',
+  },
+  mvcOthers: {
+    category: 'HEAD_SECTION' as const,
+    approverName: 'Apriyanto',
+    approverEmail: 'apriyanto.lastam@chitraparatama.co.id',
+    approverTitle: 'Head of Service MVC',
+  },
+}
+
+export type ResolvedAttendanceApprover = {
+  category: 'PJO' | 'HSE' | 'Admin CP' | 'HEAD_SECTION'
+  approverName: string
+  approverEmail: string
+  approverTitle: string
+}
+
+export async function resolveAttendancePermissionApprover(input: {
+  employeeId?: number | null
+  siteId?: number | null
+  siteName?: string | null
+  sectionId?: number | null
+  sectionName?: string | null
+  jobTitle?: string | null
+}): Promise<ResolvedAttendanceApprover> {
+  let resolvedSiteName = (input.siteName || '').trim().toLowerCase()
+  let resolvedSection = (input.sectionName || '').trim().toLowerCase()
+  let resolvedJobTitle = (input.jobTitle || '').trim().toLowerCase()
+
+  if (input.employeeId && (!resolvedSiteName || !resolvedSection || !resolvedJobTitle)) {
+    const [emp] = await db
+      .select({
+        siteId: employees.siteId,
+        sectionId: employees.sectionId,
+        section: employees.section,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(eq(employees.id, input.employeeId))
+      .limit(1)
+
+    if (emp) {
+      if (!input.siteId && emp.siteId) {
+        input.siteId = emp.siteId
+      }
+      if (!resolvedSection) {
+        resolvedSection = (emp.section || emp.department || '').toLowerCase()
+      }
+      if (!resolvedJobTitle) {
+        resolvedJobTitle = (emp.jobTitle || '').toLowerCase()
+      }
+    }
+  }
+
+  if (input.siteId && !resolvedSiteName) {
+    const [siteRow] = await db
+      .select({ name: sites.name })
+      .from(sites)
+      .where(eq(sites.id, input.siteId))
+      .limit(1)
+
+    if (siteRow?.name) {
+      resolvedSiteName = siteRow.name.trim().toLowerCase()
+    }
+  }
+
+  // 1. Direct match with PJO / HSE mapping
+  if (resolvedSiteName && ATTENDANCE_SITE_ROUTING_MAP[resolvedSiteName]) {
+    const mapped = ATTENDANCE_SITE_ROUTING_MAP[resolvedSiteName]
+    return {
+      category: mapped.category,
+      approverName: mapped.approverName,
+      approverEmail: mapped.approverEmail,
+      approverTitle: mapped.approverTitle,
+    }
+  }
+
+  // 2. Admin CP Sites / Stream based routing (Central Service Section Heads)
+  if (
+    resolvedSection.includes('repair') ||
+    resolvedSection.includes('retread') ||
+    resolvedJobTitle.includes('repair') ||
+    resolvedJobTitle.includes('retread')
+  ) {
+    return ATTENDANCE_ADMIN_CP_APPROVERS.repairRetread
+  }
+
+  if (
+    resolvedSection.includes('technical') ||
+    resolvedSection.includes('engineering') ||
+    resolvedSection.includes('te') ||
+    resolvedJobTitle.includes('technical') ||
+    resolvedJobTitle.includes('engineer')
+  ) {
+    return ATTENDANCE_ADMIN_CP_APPROVERS.technicalEngineer
+  }
+
+  if (
+    resolvedSection.includes('service operation others') ||
+    resolvedSection.includes('service others')
+  ) {
+    return ATTENDANCE_ADMIN_CP_APPROVERS.serviceOthers
+  }
+
+  if (
+    resolvedSection.includes('product accessories') ||
+    resolvedSection.includes('accessories')
+  ) {
+    return ATTENDANCE_ADMIN_CP_APPROVERS.productAccessories
+  }
+
+  // 3. Check section head fallback for office/other sections if sectionId exists
+  if (input.sectionId) {
+    const [sec] = await db
+      .select({ headEmployeeId: masterSections.headEmployeeId })
+      .from(masterSections)
+      .where(eq(masterSections.id, input.sectionId))
+      .limit(1)
+
+    if (sec?.headEmployeeId) {
+      const [headEmp] = await db
+        .select({ name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
+        .from(employees)
+        .where(and(eq(employees.id, sec.headEmployeeId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (headEmp?.email) {
+        return {
+          category: 'HEAD_SECTION',
+          approverName: headEmp.name,
+          approverEmail: headEmp.email,
+          approverTitle: headEmp.jobTitle || 'Head of Section',
+        }
+      }
+    }
+  }
+
+  // 4. Default Admin CP / Head of Service MVC (Apriyanto)
+  return ATTENDANCE_ADMIN_CP_APPROVERS.mvcOthers
+}
+
+export async function getAttendancePermissionRecipientEmails(
+  siteId?: number | null,
+  context?: {
+    employeeId?: number | null
+    siteName?: string | null
+    sectionId?: number | null
+    sectionName?: string | null
+    jobTitle?: string | null
+  }
+) {
+  const approver = await resolveAttendancePermissionApprover({
+    siteId,
+    employeeId: context?.employeeId,
+    siteName: context?.siteName,
+    sectionId: context?.sectionId,
+    sectionName: context?.sectionName,
+    jobTitle: context?.jobTitle,
+  })
+
   const template = await getActiveTemplate('attendance_permission_reminder')
   const templateCcEmails = splitEmails(template?.ccEmail)
-  const combined = [...pjoEmails, ...hrEmails, ...templateCcEmails]
+  const ccEmails = uniqueEmails([...ATTENDANCE_PERMISSION_HC_CC_EMAILS, ...templateCcEmails])
+  const toEmails = approver?.approverEmail ? [approver.approverEmail] : []
 
-  return Array.from(new Set(combined)).filter((email): email is string => Boolean(email && email.includes('@')))
+  return uniqueEmails([...toEmails, ...ccEmails])
 }
 
 export async function getEmployeeEmailById(employeeId: number) {

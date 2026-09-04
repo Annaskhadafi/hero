@@ -23,12 +23,11 @@ import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access
 import {
   buildWorkflowEmailContent,
   getAttendancePermissionRecipientEmails,
+  resolveAttendancePermissionApprover,
+  ATTENDANCE_PERMISSION_HC_CC_EMAILS,
   getEmployeeContactById,
   getAppUrl,
-  getHumanCapitalRecipientEmails,
-  getOperationalApprovalRecipientEmails,
   sendWorkflowEmail,
-  sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import {
@@ -353,18 +352,30 @@ function formatAttendancePermissionRange(startDate: string, endDate: string) {
 
 
 async function notifyAttendancePermissionSubmitted(input: {
+  employeeId?: number | null
   employeeName: string
   employeeEmail: string
-  siteId: number
+  siteId?: number | null
+  siteName?: string | null
+  sectionId?: number | null
+  sectionName?: string | null
+  jobTitle?: string | null
   permissionType: string
   startDate: string
   endDate: string
   reason: string
   actorEmail?: string
 }) {
-  const recipientEmails = await getAttendancePermissionRecipientEmails(input.siteId)
+  const approver = await resolveAttendancePermissionApprover({
+    employeeId: input.employeeId,
+    siteId: input.siteId,
+    siteName: input.siteName,
+    sectionId: input.sectionId,
+    sectionName: input.sectionName,
+    jobTitle: input.jobTitle,
+  })
 
-  if (recipientEmails.length === 0) {
+  if (!approver?.approverEmail) {
     return
   }
 
@@ -372,19 +383,22 @@ async function notifyAttendancePermissionSubmitted(input: {
   const requestDate = formatAttendancePermissionRange(input.startDate, input.endDate)
   const emailContent = buildWorkflowEmailContent({
     title: `Pengajuan ${permissionLabel} baru`,
-    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu persetujuan.`,
+    greeting: `Halo ${approver.approverName},`,
+    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu persetujuan Anda (${approver.approverTitle || approver.category}).`,
     details: [
       `Karyawan: ${input.employeeName}`,
       `Jenis Izin: ${permissionLabel}`,
       `Tanggal: ${requestDate}`,
       input.reason ? `Alasan: ${input.reason}` : null,
+      `Approver (${approver.category}): ${approver.approverName} (${approver.approverTitle})`,
     ],
     ctaLabel: 'Buka Dashboard Izin',
     ctaUrl: getAppUrl('/dashboard/hc/permission'),
   })
 
-  await sendWorkflowEmailToMany({
-    recipients: recipientEmails,
+  await sendWorkflowEmail({
+    to: approver.approverEmail,
+    cc: ATTENDANCE_PERMISSION_HC_CC_EMAILS,
     actorEmail: input.actorEmail,
     templateCode: 'attendance_permission_reminder',
     templateName: 'Attendance Permission Reminder',
@@ -393,6 +407,8 @@ async function notifyAttendancePermissionSubmitted(input: {
       permissionType: permissionLabel,
       requestDate,
       reason: input.reason || '-',
+      approverName: approver.approverName,
+      approverRole: approver.approverTitle || approver.category,
     },
     fallbackSubject: `Pengajuan ${permissionLabel} baru - ${input.employeeName}`,
     fallbackHtml: emailContent.html,
@@ -799,9 +815,14 @@ export async function submitAttendancePermission(formData: FormData) {
 
     try {
       await notifyAttendancePermissionSubmitted({
+        employeeId: employee.id,
         employeeName: employee.name,
         employeeEmail: employee.email,
         siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
         permissionType,
         startDate: requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
@@ -813,11 +834,21 @@ export async function submitAttendancePermission(formData: FormData) {
     }
 
     try {
+      const approver = await resolveAttendancePermissionApprover({
+        employeeId: employee.id,
+        siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
+      })
+
       const bellRecipients = Array.from(
-        new Set([
-          ...(await getHumanCapitalRecipientEmails()),
-          ...(await getOperationalApprovalRecipientEmails(employee.siteId)),
-        ])
+        new Set(
+          [approver?.approverEmail, ...ATTENDANCE_PERMISSION_HC_CC_EMAILS].filter(
+            (email): email is string => Boolean(email && email.includes('@'))
+          )
+        )
       )
       await notifyAttendancePermissionBell({
         recipientEmails: bellRecipients,
@@ -829,6 +860,8 @@ export async function submitAttendancePermission(formData: FormData) {
           permissionType,
           requestDate: formattedRequestDate,
           employeeName: employee.name,
+          approverName: approver?.approverName,
+          approverCategory: approver?.category,
         },
       })
     } catch (notificationError) {
