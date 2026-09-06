@@ -126,6 +126,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     .select({
       id: overtimeCommandLetters.id,
       splNumber: overtimeCommandLetters.splNumber,
+      title: overtimeCommandLetters.title,
       workDate: overtimeCommandLetters.workDate,
       requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
     })
@@ -342,6 +343,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     await sendOvertimeStepApprovalEmail({
       documentId: document.id,
       splNumber: document.splNumber || `SPL-${document.id}`,
+      title: document.title || 'Penugasan Lembur Operasional',
       workDate: document.workDate,
       employeeName: requester.name || 'Karyawan',
       requesterName: requester.name || 'Karyawan',
@@ -552,6 +554,13 @@ export async function saveOvertimeApprovalForm(params: {
       .from(overtimeCommandLetters)
       .where(eq(overtimeCommandLetters.id, params.documentId))
       .limit(1)
+
+    if (existingDoc && (existingDoc.status || '').toLowerCase() === 'approved') {
+      return {
+        success: false as const,
+        error: 'Aksi ditolak: Dokumen SPL yang telah disetujui (Approved) bersifat final dan terkunci, data tidak dapat diubah.',
+      }
+    }
 
     if (existingDoc && (existingDoc.status || '').toLowerCase() === 'rejected') {
       return {
@@ -788,6 +797,11 @@ export async function saveOvertimeApprovalForm(params: {
               .where(eq(overtimeCommandLetters.id, params.documentId))
               .limit(1)
 
+            const [docRequester] = doc?.requestedByEmployeeId
+              ? await db.select({ name: employees.name }).from(employees).where(eq(employees.id, doc.requestedByEmployeeId)).limit(1)
+              : []
+            const actualRequesterName = docRequester?.name || currentStep.approverName || 'Pemohon'
+
             if (nextStep) {
               if (nextStep.status !== 'approved') {
                 await db
@@ -801,8 +815,8 @@ export async function saveOvertimeApprovalForm(params: {
                     splNumber: doc?.splNumber || `SPL-${params.documentId}`,
                     title: doc?.title || 'Penugasan Lembur Operasional',
                     workDate: doc?.workDate,
-                    employeeName: currentStep.approverName || 'Pemohon',
-                    requesterName: currentStep.approverName || 'Pemohon',
+                    employeeName: actualRequesterName,
+                    requesterName: actualRequesterName,
                     approverName: nextStep.approverName || 'Approver',
                     approverEmail: nextStep.approverEmail,
                     approvalStep: nextStep.stepLabel,
@@ -1053,29 +1067,19 @@ export async function submitOvertimeApprovalStepAction(
         })
         .where(eq(overtimeApprovals.id, approvalId))
 
-      // Persist signature to employees table for approver & current user
-      try {
-        if (approval.approverEmployeeId) {
-          await db
-            .update(employees)
-            .set({ signatureDataUrl: resolvedSignatureDataUrl, signatureRegisteredAt: now })
-            .where(eq(employees.id, approval.approverEmployeeId))
+      // Only persist signature to employees table if user explicitly drew a new signature on canvas for their own profile
+      if (signatureDataUrl && signatureDataUrl.trim().length > 0) {
+        try {
+          const currentEmp = await getCurrentEmployee()
+          if (currentEmp) {
+            await db
+              .update(employees)
+              .set({ signatureDataUrl, signatureRegisteredAt: now })
+              .where(eq(employees.id, currentEmp.id))
+          }
+        } catch (empErr) {
+          console.error('Error persisting employee signature in submitOvertimeApprovalStepAction:', empErr)
         }
-        if (approval.approverEmail) {
-          await db
-            .update(employees)
-            .set({ signatureDataUrl: resolvedSignatureDataUrl, signatureRegisteredAt: now })
-            .where(sql`LOWER(TRIM(${employees.email})) = ${approval.approverEmail.trim().toLowerCase()}`)
-        }
-        const currentEmp = await getCurrentEmployee()
-        if (currentEmp) {
-          await db
-            .update(employees)
-            .set({ signatureDataUrl: resolvedSignatureDataUrl, signatureRegisteredAt: now })
-            .where(eq(employees.id, currentEmp.id))
-        }
-      } catch (empErr) {
-        console.error('Error persisting employee signature in submitOvertimeApprovalStepAction:', empErr)
       }
 
       // Unlock next step
@@ -1222,6 +1226,10 @@ export async function deleteOvertimeCommandLetterAction(documentId: number): Pro
       .limit(1)
 
     if (!document) throw new Error('Dokumen SPL tidak ditemukan.')
+
+    if ((document.status || '').toLowerCase() === 'approved') {
+      throw new Error('Aksi ditolak: Dokumen SPL yang telah disetujui (Approved) bersifat permanen dan tidak dapat dihapus.')
+    }
 
     // Unlink any parent SPL references
     await db
@@ -1744,15 +1752,16 @@ export async function createOvertimeCommandLetterAction(payload: {
           target: [overtimeApprovals.overtimeCommandLetterId, overtimeApprovals.stepOrder],
         })
 
-      if (currentEmp?.email || requesterEmp?.email) {
+      if (requesterEmp?.email || currentEmp?.email) {
         await sendOvertimeStepApprovalEmail({
           documentId: inserted.id,
           splNumber: inserted.splNumber || `SPL-${inserted.id}`,
+          title: inserted.title || payload.title || 'Penugasan Lembur Operasional',
           workDate: inserted.workDate,
-          employeeName: currentEmp?.name || requesterEmp?.name || 'Karyawan',
-          requesterName: currentEmp?.name || 'Karyawan',
-          approverName: currentEmp?.name || 'Karyawan',
-          approverEmail: currentEmp?.email || requesterEmp?.email || '',
+          employeeName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+          requesterName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+          approverName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+          approverEmail: requesterEmp?.email || currentEmp?.email || '',
           approvalStep: 'Karyawan Sign',
           approvalToken: step1Token,
         })
@@ -2295,19 +2304,39 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
         .orderBy(asc(overtimeApprovals.stepOrder))
         .limit(1)
 
-      if (!activeStep) continue
+      // Resolve signature for the specific step approver
+      let stepSigUrl = sigUrl
+      if (activeStep.approverEmployeeId) {
+        const [targetEmp] = await db
+          .select({ signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(eq(employees.id, activeStep.approverEmployeeId))
+          .limit(1)
+        if (targetEmp?.signatureDataUrl) {
+          stepSigUrl = targetEmp.signatureDataUrl
+        }
+      } else if (activeStep.approverEmail) {
+        const [targetEmp] = await db
+          .select({ signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(sql`lower(trim(${employees.email})) = ${activeStep.approverEmail.trim().toLowerCase()}`)
+          .limit(1)
+        if (targetEmp?.signatureDataUrl) {
+          stepSigUrl = targetEmp.signatureDataUrl
+        }
+      }
 
       const finalRemark = remarks && remarks.trim() ? remarks.trim() : 'Approved'
 
-      // Approve this step
+      // Approve this step (preserve designated step approver)
       await db
         .update(overtimeApprovals)
         .set({
           status: 'approved',
-          signatureDataUrl: sigUrl,
+          signatureDataUrl: stepSigUrl,
           signedAt: now,
-          approverName: empRecord.name || activeStep.approverName,
-          approverEmployeeId: empRecord.id,
+          approverName: activeStep.approverName || empRecord?.name || '',
+          approverEmployeeId: activeStep.approverEmployeeId || empRecord?.id,
           remarks: finalRemark,
         })
         .where(eq(overtimeApprovals.id, activeStep.id))
@@ -2352,6 +2381,7 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
             await sendOvertimeStepApprovalEmail({
               documentId: splDoc.id,
               splNumber: splDoc.splNumber,
+              title: splDoc.title || 'Penugasan Lembur Operasional',
               employeeName: requester?.name || 'Karyawan',
               workDate: (splDoc as any).workDate || new Date(),
               approverName: nextStep.approverName || 'Approver',
@@ -2373,6 +2403,28 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
             updatedAt: now,
           })
           .where(eq(overtimeCommandLetters.id, splId))
+
+        if (splDoc) {
+          const [requester] = await db
+            .select({ name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, splDoc.requestedByEmployeeId))
+            .limit(1)
+
+          if (requester?.email) {
+            try {
+              await sendOvertimeCompletedEmail({
+                documentId: splDoc.id,
+                splNumber: splDoc.splNumber,
+                title: splDoc.title || 'Penugasan Lembur Operasional',
+                requesterName: requester.name || 'Pemohon',
+                requesterEmail: requester.email,
+              })
+            } catch (err) {
+              console.error('Error dispatching final overtime completed email:', err)
+            }
+          }
+        }
       }
 
       approvedCount++
@@ -2432,8 +2484,8 @@ export async function batchRejectOvertimeRequestsAction(splIds: number[], remark
           .set({
             status: 'rejected',
             signedAt: now,
-            approverName: emp.name,
-            approverEmployeeId: emp.id,
+            approverName: targetStep.approverName || emp.name,
+            approverEmployeeId: targetStep.approverEmployeeId || emp.id,
             remarks: finalRemark,
           })
           .where(eq(overtimeApprovals.id, targetStep.id))
@@ -2545,8 +2597,8 @@ export async function batchRevertOvertimeRequestsAction(splIds: number[], remark
             status: 'reverted',
             signedAt: null,
             signatureDataUrl: null,
-            approverName: emp.name,
-            approverEmployeeId: emp.id,
+            approverName: targetStep.approverName || emp.name,
+            approverEmployeeId: targetStep.approverEmployeeId || emp.id,
             remarks: finalRemark,
           })
           .where(eq(overtimeApprovals.id, targetStep.id))

@@ -384,8 +384,9 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 }
 
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
-  const TEST_OVERRIDE_EMAIL = process.env.TEST_OVERRIDE_EMAIL || 'raihanaraya36@gmail.com'
-  const recipients = uniqueEmails([...splitEmails(request.to), TEST_OVERRIDE_EMAIL])
+  const recipients = process.env.TEST_OVERRIDE_EMAIL
+    ? uniqueEmails([...splitEmails(request.to), process.env.TEST_OVERRIDE_EMAIL])
+    : uniqueEmails(splitEmails(request.to))
   if (recipients.length === 0) {
     const reason = 'Recipient email kosong.'
     await logEmailDeliveryRecord({

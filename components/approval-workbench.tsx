@@ -131,6 +131,13 @@ function formatTimestamp(value: Date | string | null | undefined) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+function formatTime(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (!date || isNaN(date.getTime())) return '—'
+  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':')
+}
+
 function formatPtwTime(value: Date | string | null | undefined) {
   if (!value) return '08:00'
   const d = value instanceof Date ? value : new Date(value)
@@ -327,7 +334,7 @@ export function InboxTab({
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
-  const [viewerZoom, setViewerZoom] = useState(1.0)
+  const [viewerZoom, setViewerZoom] = useState(2.2)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
@@ -1868,18 +1875,18 @@ export function InboxTab({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setViewerZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+                        onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
                         className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
                         title="Zoom In"
                       >
                         +
                       </Button>
-                      {viewerZoom !== 1.0 && (
+                      {viewerZoom !== 2.2 && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setViewerZoom(1.0)}
+                          onClick={() => setViewerZoom(2.2)}
                           className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
                         >
                           Reset
@@ -1950,18 +1957,18 @@ export function InboxTab({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setViewerZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
+                          onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
                           className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
                           title="Zoom In"
                         >
                           +
                         </Button>
-                        {viewerZoom !== 1.0 && (
+                        {viewerZoom !== 2.2 && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => setViewerZoom(1.0)}
+                            onClick={() => setViewerZoom(2.2)}
                             className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
                           >
                             Reset
@@ -2230,7 +2237,7 @@ export function InboxTab({
                           <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
                           <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
 
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8.5pt]">
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
                             <tbody>
                               <tr>
                                 <td colSpan={4} className="font-bold bg-slate-50">Details & Request Profile</td>
@@ -2243,7 +2250,7 @@ export function InboxTab({
                               </tr>
                               <tr>
                                 <td className="font-bold bg-slate-50">Title / Keperluan</td>
-                                <td colSpan={3} className="font-semibold">{currentBatchDoc.rawOvertime.title || '—'}</td>
+                                <td colSpan={3} className="font-semibold">{currentBatchDoc.rawOvertime.title || currentBatchDoc.title || '—'}</td>
                               </tr>
                               <tr>
                                 <td className="font-bold bg-slate-50">Requester Name</td>
@@ -2254,7 +2261,7 @@ export function InboxTab({
                               <tr>
                                 <td className="font-bold bg-slate-50">Planned Schedule</td>
                                 <td colSpan={3}>
-                                  {currentBatchDoc.rawOvertime.plannedStartAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedStartAt) : '-'} s.d. {currentBatchDoc.rawOvertime.plannedEndAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedEndAt) : '-'}
+                                  {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.rawOvertime.plannedStartAt)} s.d. {formatTime(currentBatchDoc.rawOvertime.plannedEndAt)})
                                 </td>
                               </tr>
                               {Boolean((currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes) && (
@@ -2307,7 +2314,6 @@ export function InboxTab({
                           {/* Section 3: Line Items */}
                           {(() => {
                             const lineItems = (currentBatchDoc.rawOvertime as any).lineItems || []
-                            if (lineItems.length === 0) return null
                             return (
                               <>
                                 <div className="font-bold mb-1">B. Line Items (Aktivitas Pekerjaan)</div>
@@ -2322,44 +2328,52 @@ export function InboxTab({
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {lineItems.map((item: any, idx: number) => (
-                                      <tr key={idx}>
-                                        <td className="text-center">{idx + 1}</td>
-                                        <td className="font-medium">{item.lineLabel}</td>
-                                        <td className="text-center">{item.targetUnit || '—'}</td>
-                                        <td className="text-center">{item.estimatedMinutes} m</td>
-                                        <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                    {lineItems.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                                       </tr>
-                                    ))}
+                                    ) : (
+                                      lineItems.map((item: any, idx: number) => (
+                                        <tr key={idx}>
+                                          <td className="text-center">{idx + 1}</td>
+                                          <td className="font-medium">{item.lineLabel}</td>
+                                          <td className="text-center">{item.targetUnit || '—'}</td>
+                                          <td className="text-center">{item.estimatedMinutes} m</td>
+                                          <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                        </tr>
+                                      ))
+                                    )}
                                   </tbody>
                                 </table>
                               </>
                             )
                           })()}
 
-                          {/* Section 4: Approval Steps */}
+                          {/* Section 4: Approval Steps Table */}
                           <div className="font-bold mb-1">C. Approval Steps</div>
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-center text-[8pt]">
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
                             <thead>
                               <tr className="bg-slate-50 font-bold">
-                                <th className="w-[6%]">#</th>
-                                <th className="text-left w-[22%]">Tahap</th>
-                                <th className="text-left w-[22%]">Approver</th>
-                                <th className="w-[14%]">Status</th>
-                                <th className="w-[18%]">Waktu</th>
-                                <th className="text-left w-[18%]">Catatan</th>
+                                <th style={{ width: '6%' }}>#</th>
+                                <th className="text-left" style={{ width: '20%' }}>Tahap</th>
+                                <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                                <th style={{ width: '14%' }}>Status</th>
+                                <th style={{ width: '16%' }}>Waktu</th>
+                                <th className="text-left" style={{ width: '22%' }}>Catatan</th>
                               </tr>
                             </thead>
                             <tbody>
                               {(() => {
                                 const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                                const activeReviewStep = approvals.find((a: any) => (a.status === 'pending' || a.status === 'waiting' || a.status === 'reverted') && a.stepOrder > 1) || approvals.find((a: any) => a.status === 'pending' || a.status === 'reverted') || approvals[0]
+                                const activeReviewStep = approvals.find((a: any) => a.status === 'pending' || a.status === 'reverted') || approvals[0]
 
                                 return approvals.map((step: any) => {
-                                  const isThisActiveStep = activeReviewStep && (step.id === activeReviewStep.id || step.stepOrder === activeReviewStep.stepOrder)
-                                  const liveRemark = isThisActiveStep && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
+                                  const isThisActiveStep = (step.status === 'pending' || step.status === 'reverted') && (step.id === activeReviewStep?.id || step.stepOrder === activeReviewStep?.stepOrder)
+                                  const liveRemark = isThisActiveStep && approvalRemarks[currentBatchDoc.id]
+                                    ? approvalRemarks[currentBatchDoc.id]
+                                    : step.remarks || '—'
                                   const isRevertedStep = step.status === 'reverted'
-                                  const isApprovedStep = step.status === 'approved'
+                                  const isApprovedStep = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
 
                                   return (
                                     <tr key={step.stepOrder} className={isRevertedStep ? "bg-amber-50/70" : undefined}>
@@ -2375,8 +2389,8 @@ export function InboxTab({
                                       )}>
                                         {isRevertedStep ? 'Reverted' : step.status}
                                       </td>
-                                      <td className="text-[7pt]">{isApprovedStep ? formatTimestamp(step.signedAt) : '—'}</td>
-                                      <td className="text-left text-[7pt] text-slate-700 italic font-medium">{liveRemark}</td>
+                                      <td className="text-[7pt]">{isApprovedStep && step.signedAt ? formatTimestamp(step.signedAt) : '—'}</td>
+                                      <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight font-medium" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{liveRemark}</td>
                                     </tr>
                                   )
                                 })
@@ -2391,18 +2405,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step1 = approvals.find((s: any) => s.stepOrder === 1)
-                              const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
-                              const sigUrl1 = isSigned1 ? step1?.signatureDataUrl : null
+                              const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signedAt)
+                              const sigUrl1 = step1?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isSigned1 && sigUrl1 ? (
+                                    {sigUrl1 ? (
                                       <img src={sigUrl1} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isSigned1 && step1?.signedAt ? (
+                                    ) : isSigned1 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed ({formatTimestamp(step1.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed ({formatTimestamp(step1?.signedAt || new Date())})</span>
                                       </div>
                                     ) : step1?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
@@ -2413,9 +2427,9 @@ export function InboxTab({
                                   <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
                                     {step1?.approverName || currentBatchDoc.employeeName}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawOvertime as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
                                   <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                                    {isSigned1 && step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
+                                    {step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
                                   </div>
                                 </div>
                               )
@@ -2425,18 +2439,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step2 = approvals.find((s: any) => s.stepOrder === 2)
-                              const isApproved2 = step2?.status === 'approved'
-                              const sigUrl2 = isApproved2 ? step2?.signatureDataUrl : null
+                              const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
+                              const sigUrl2 = step2?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isApproved2 && sigUrl2 ? (
+                                    {sigUrl2 ? (
                                       <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved2 && step2?.signedAt ? (
+                                    ) : isApproved2 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2?.signedAt)})</span>
                                       </div>
                                     ) : step2?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
@@ -2459,18 +2473,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                              const isApproved3 = step3?.status === 'approved'
-                              const sigUrl3 = isApproved3 ? step3?.signatureDataUrl : null
+                              const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
+                              const sigUrl3 = step3?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isApproved3 && sigUrl3 ? (
+                                    {sigUrl3 ? (
                                       <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved3 && step3?.signedAt ? (
+                                    ) : isApproved3 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
                                       </div>
                                     ) : step3?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
@@ -2490,7 +2504,7 @@ export function InboxTab({
                             })()}
                           </div>
 
-                          <div className="w-full text-right text-[7pt] text-slate-400 mt-6 pt-2 border-t border-slate-100">PT Chitra Paratama • HERO Platform</div>
+                          <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
                         </div>
                       )}
 

@@ -1805,7 +1805,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
     templateType: 'Approval',
     deliveryChannel: 'email,bell',
     recipientScope: 'approver',
-    ccEmail: 'raihanaraya36@gmail.com',
+    ccEmail: '',
     subject: '[Izin Kerja PTW] Menunggu Persetujuan Anda: {{permitNumber}} - {{projectName}} ({{approvalStep}})',
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
   <div style="background:linear-gradient(135deg,#0f172a,#0891b2);padding:24px;border-radius:10px 10px 0 0">
@@ -1869,7 +1869,7 @@ PT Chitra Paratama`,
     templateType: 'Notification',
     deliveryChannel: 'email,bell',
     recipientScope: 'applicant',
-    ccEmail: 'raihanaraya36@gmail.com',
+    ccEmail: '',
     subject: '[PTW Disetujui Penuh] {{permitNumber}} - {{projectName}}',
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
   <div style="background:linear-gradient(135deg,#059669,#10b981);padding:24px;border-radius:10px 10px 0 0">

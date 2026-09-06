@@ -241,7 +241,6 @@ export function checkIsAdmin(
     return true
   }
   if (
-    normalizedEmail === 'raihanaraya36@gmail.com' ||
     normalizedEmail === 'chitra.operation.hero@gmail.com' ||
     normalizedEmail === 'admin@chitraparatama.com' ||
     normalizedEmail.startsWith('admin.') ||
@@ -1898,7 +1897,6 @@ async function getDailyActivityInboxItems(
       const emailMatches =
         normalizedEmail && (
           normalizedEmail === normalizeMatchValue(row.employeeEmail) ||
-          normalizedEmail === "raihanaraya36@gmail.com" ||
           normalizedEmail === "chitra.operation.hero@gmail.com"
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
@@ -1929,7 +1927,6 @@ async function getDailyActivityInboxItems(
     const emailMatches =
       normalizedEmail &&
       ((rowAppEmail && rowAppEmail === normalizedEmail) ||
-        normalizedEmail === 'raihanaraya36@gmail.com' ||
         normalizedEmail === 'chitra.operation.hero@gmail.com')
     const employeeMatches =
       currentEmployee?.id != null &&
@@ -2180,7 +2177,6 @@ async function getOvertimeInboxItems(
       const emailMatches =
         normalizedEmail && (
           normalizedEmail === normalizeMatchValue(row.requesterEmail) ||
-          normalizedEmail === "raihanaraya36@gmail.com" ||
           normalizedEmail === "chitra.operation.hero@gmail.com"
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
@@ -2205,7 +2201,6 @@ async function getOvertimeInboxItems(
     const emailMatches =
       normalizedEmail && (
         rowAppEmail === normalizedEmail ||
-        normalizedEmail === "raihanaraya36@gmail.com" ||
         normalizedEmail === "chitra.operation.hero@gmail.com"
       )
     const employeeMatches =
@@ -2263,6 +2258,28 @@ async function getOvertimeInboxItems(
     participantsMap.set(p.splId, list)
   }
 
+  const allLineItems = splIds.length > 0
+    ? await db
+        .select({
+          id: overtimeCommandLetterItems.id,
+          splId: overtimeCommandLetterItems.overtimeCommandLetterId,
+          lineLabel: overtimeCommandLetterItems.lineLabel,
+          lineDescription: overtimeCommandLetterItems.lineDescription,
+          targetUnit: overtimeCommandLetterItems.targetUnit,
+          estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+          plannedPoints: overtimeCommandLetterItems.plannedPoints,
+        })
+        .from(overtimeCommandLetterItems)
+        .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
+    : []
+
+  const lineItemsMap = new Map<number, any[]>()
+  for (const item of allLineItems) {
+    const list = lineItemsMap.get(item.splId) || []
+    list.push(item)
+    lineItemsMap.set(item.splId, list)
+  }
+
   return filtered.map((row) => {
     const workDate = row.workDate ? new Date(row.workDate) : (row.createdAt ? new Date(row.createdAt) : new Date())
     const dueAt = new Date(workDate.getTime() + 24 * 60 * 60 * 1000)
@@ -2280,6 +2297,7 @@ async function getOvertimeInboxItems(
       },
     ]
     const participants = participantsMap.get(row.splId) || []
+    const lineItems = lineItemsMap.get(row.splId) || []
     const isReverted = row.stepStatus === 'reverted' || (row.splStatus || '').toLowerCase() === 'reverted'
 
     return {
@@ -2311,6 +2329,7 @@ async function getOvertimeInboxItems(
       requestNotes: row.requestNotes || '',
       approvals,
       participants,
+      lineItems,
     }
   })
 }
@@ -2366,9 +2385,7 @@ async function getPtwInboxItems(
     const emailMatches =
       normalizedEmail &&
       rowAppEmail.length > 0 &&
-      (rowAppEmail === normalizedEmail ||
-        (normalizedEmail === "raihanaraya36@gmail.com" &&
-          (rowAppEmail === "raihanaraya36@gmail.com" || rowAppEmail === "safety.officer@chitraparatama.com")))
+      rowAppEmail === normalizedEmail
 
     const employeeMatches =
       currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
@@ -2621,7 +2638,6 @@ export async function getSopWinRequestInboxItems(
       const rowReqName = normalizeMatchValue(row.requesterName);
 
       const emailMatches = normalizedEmail && (
-        normalizedEmail === "raihanaraya36@gmail.com" ||
         normalizedEmail === rowReqEmail
       );
       const employeeMatches = currentEmployee?.id != null && (
@@ -2646,7 +2662,7 @@ export async function getSopWinRequestInboxItems(
 
     const emailMatches =
       normalizedEmail &&
-      (rowAppEmail === normalizedEmail || normalizedEmail === "raihanaraya36@gmail.com");
+      (rowAppEmail === normalizedEmail);
 
     const employeeMatches =
       currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id;

@@ -1092,7 +1092,7 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
     }
   }
 
-  // Fallback: default active employee (raihanaraya36@gmail.com / 712011 / first active)
+  // Fallback: default active employee (mochamad.khadafi@chitraparatama.co.id / 71261 / first active)
   const [defaultEmp] = await db
     .select({
       id: employees.id,
@@ -1143,7 +1143,7 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       education: employees.education,
     })
     .from(employees)
-    .where(or(eq(employees.email, 'raihanaraya36@gmail.com'), eq(employees.employeeSn, '712011')))
+    .where(or(eq(employees.email, 'mochamad.khadafi@chitraparatama.co.id'), eq(employees.employeeSn, '71261')))
     .limit(1)
 
   if (defaultEmp) return defaultEmp

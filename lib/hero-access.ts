@@ -75,8 +75,8 @@ export async function getCurrentEmployeeAccessRole() {
     .from(employees)
     .where(
       or(
-        eq(employees.email, 'raihanaraya36@gmail.com'),
-        eq(employees.employeeSn, '712011')
+        eq(employees.email, 'mochamad.khadafi@chitraparatama.co.id'),
+        eq(employees.employeeSn, '71261')
       )
     )
     .limit(1)

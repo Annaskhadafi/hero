@@ -309,8 +309,10 @@ export function OvertimeRequestApprovalForm({
     return matched?.jobTitle || matched?.rank || matched?.position || 'Department Head / Manager'
   })
 
+  const isApproved = (data.status || '').toLowerCase() === 'approved'
   const isReverted = (data.status || '').toLowerCase() === 'reverted' || (data.status || '').toLowerCase() === 'needs_revision'
   const isRejected = (data.status || '').toLowerCase() === 'rejected'
+  const isLocked = isApproved || isRejected
 
   const [activeView, setActiveView] = useState<'form' | 'preview'>('form')
 
@@ -631,16 +633,16 @@ export function OvertimeRequestApprovalForm({
   const sectionHeadSig = approvalHistoryForDisplay[2]
 
   const employeeSigImage = (employeeSig?.status === 'approved' || employeeSig?.status === 'signed' || employeeSig?.status === 'completed')
-    ? (signaturesByStepId[employeeSig?.id || 1] || employeeSig?.signatureDataUrl || (activeStepId === employeeSig?.id && previewSig ? previewSig : null))
-    : (activeStepId === employeeSig?.id && previewSig ? previewSig : null)
+    ? (signaturesByStepId[employeeSig?.id || 1] || employeeSig?.signatureDataUrl || null)
+    : (isMyTurn && activeStepId === employeeSig?.id && previewSig ? previewSig : null)
 
   const leaderSigImage = leaderSig?.status === 'approved'
-    ? (signaturesByStepId[leaderSig?.id || 2] || leaderSig?.signatureDataUrl || (activeStepId === leaderSig?.id && previewSig ? previewSig : null))
-    : (activeStepId === leaderSig?.id && previewSig ? previewSig : null)
+    ? (signaturesByStepId[leaderSig?.id || 2] || leaderSig?.signatureDataUrl || null)
+    : (isMyTurn && activeStepId === leaderSig?.id && previewSig ? previewSig : null)
 
   const sectionHeadSigImage = sectionHeadSig?.status === 'approved'
-    ? (signaturesByStepId[sectionHeadSig?.id || 3] || sectionHeadSig?.signatureDataUrl || (activeStepId === sectionHeadSig?.id && previewSig ? previewSig : null))
-    : (activeStepId === sectionHeadSig?.id && previewSig ? previewSig : null)
+    ? (signaturesByStepId[sectionHeadSig?.id || 3] || sectionHeadSig?.signatureDataUrl || null)
+    : (isMyTurn && activeStepId === sectionHeadSig?.id && previewSig ? previewSig : null)
 
   function renderApprovalMeta(step: any) {
     if (!step?.signedAt) return null
@@ -686,6 +688,18 @@ export function OvertimeRequestApprovalForm({
           {/* ── LEFT: Form Input ── */}
           <div className={cn('flex flex-col gap-6 print:hidden', activeView === 'preview' ? 'hidden xl:flex' : 'flex')}>
             {/* Status Alert Banners */}
+            {isApproved && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-emerald-900 flex items-start gap-3 shadow-xs">
+                <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm text-emerald-950">Dokumen Telah Disetujui Penuh (Approved)</p>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    Surat Perintah Lembur ini telah disetujui lengkap oleh seluruh approver dan statusnya terkunci (final). Rincian peserta, jam lembur, dan tanda tangan tidak dapat diubah.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {isRejected && (
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 flex items-start gap-3 shadow-xs">
                 <AlertTriangle className="size-5 text-rose-600 shrink-0 mt-0.5" />
@@ -709,8 +723,8 @@ export function OvertimeRequestApprovalForm({
               </div>
             )}
 
-            {/* Top Action Bar (Contract Review Parity) */}
-            <div className="flex gap-3">
+            {/* Top Action Bar */}
+            <div className="flex flex-wrap items-center gap-3">
               <Button asChild variant="outline">
                 <Link href="/dashboard/overtime-requests">
                   <ArrowLeft className="mr-2 size-4" /> Kembali
@@ -719,7 +733,7 @@ export function OvertimeRequestApprovalForm({
               <Button onClick={handleDownloadPdf} disabled={isDownloading} variant="secondary" className="gap-2">
                 <Download className="size-4" /> {isDownloading ? 'Mengunduh...' : 'Unduh PDF'}
               </Button>
-              {!isRejected && (
+              {!isLocked && (
                 <Button
                   onClick={handleSaveForm}
                   disabled={isPending}
@@ -746,7 +760,7 @@ export function OvertimeRequestApprovalForm({
               <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-bold text-slate-900">Details & Profile</CardTitle>
-                  <Badge variant="outline" className="capitalize text-xs font-semibold">{status}</Badge>
+                  <Badge variant="outline" className={cn("capitalize text-xs font-semibold", isApproved && "bg-emerald-50 text-emerald-700 border-emerald-300")}>{status}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2 text-xs pt-4">
@@ -759,17 +773,19 @@ export function OvertimeRequestApprovalForm({
                   <Input
                     type="date"
                     value={workDate}
+                    disabled={isLocked}
                     onChange={(e) => setWorkDate(e.target.value)}
-                    className="bg-slate-50/70 border-slate-200 h-10 text-xs font-medium"
+                    className={cn("h-10 text-xs font-medium", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                   />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Judul / Keperluan Lembur (Title)</Label>
                   <Input
                     value={title}
+                    disabled={isLocked}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Contoh: Overtime Emergency Tire Repair Dump Body"
-                    className="bg-slate-50/70 border-slate-200 h-10 text-xs font-medium"
+                    className={cn("h-10 text-xs font-medium", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -786,14 +802,16 @@ export function OvertimeRequestApprovalForm({
                     <Input
                       type="date"
                       value={startDate}
+                      disabled={isLocked}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="bg-slate-50/70 border-slate-200 h-10 text-xs w-2/3"
+                      className={cn("h-10 text-xs w-2/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                     />
                     <Input
                       type="time"
                       value={startTime}
+                      disabled={isLocked}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="bg-slate-50/70 border-slate-200 h-10 text-xs w-1/3"
+                      className={cn("h-10 text-xs w-1/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                     />
                   </div>
                 </div>
@@ -803,14 +821,16 @@ export function OvertimeRequestApprovalForm({
                     <Input
                       type="date"
                       value={endDate}
+                      disabled={isLocked}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="bg-slate-50/70 border-slate-200 h-10 text-xs w-2/3"
+                      className={cn("h-10 text-xs w-2/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                     />
                     <Input
                       type="time"
                       value={endTime}
+                      disabled={isLocked}
                       onChange={(e) => setEndTime(e.target.value)}
-                      className="bg-slate-50/70 border-slate-200 h-10 text-xs w-1/3"
+                      className={cn("h-10 text-xs w-1/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                     />
                   </div>
                 </div>
@@ -819,9 +839,10 @@ export function OvertimeRequestApprovalForm({
                   <Textarea
                     rows={2}
                     value={requestNotes}
+                    disabled={isLocked}
                     onChange={(e) => setRequestNotes(e.target.value)}
                     placeholder="Instruksi keselamatan, nomor SPK terkait, atau catatan operasional..."
-                    className="bg-slate-50/70 border-slate-200 text-xs"
+                    className={cn("text-xs", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
                   />
                 </div>
               </CardContent>
@@ -844,27 +865,29 @@ export function OvertimeRequestApprovalForm({
               </CardHeader>
               <CardContent className="p-0">
                 {/* Worker Selector Header */}
-                <div className="p-3 border-b border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
-                  <SearchableSelect
-                    label="Tambah Peserta"
-                    placeholder="PILIH KARYAWAN UNTUK DITAMBAHKAN..."
-                    value={selectedAddWorkerId}
-                    onValueChange={(val) => setSelectedAddWorkerId(val)}
-                    options={employeesProp.map((e) => ({
-                      value: String(e.id),
-                      label: `${e.name} (${e.employeeSn || e.employeeId || '-'}) — ${e.jobTitle || e.department || 'Technician'}`,
-                    }))}
-                    widthClassName="w-full"
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleAddWorker}
-                    className="h-9 text-xs font-bold gap-1.5 bg-slate-900 hover:bg-slate-800 text-white shadow-2xs"
-                  >
-                    <UserPlus className="size-3.5" /> TAMBAH
-                  </Button>
-                </div>
+                {!isLocked && (
+                  <div className="p-3 border-b border-slate-100 bg-white grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
+                    <SearchableSelect
+                      label="Tambah Peserta"
+                      placeholder="PILIH KARYAWAN UNTUK DITAMBAHKAN..."
+                      value={selectedAddWorkerId}
+                      onValueChange={(val) => setSelectedAddWorkerId(val)}
+                      options={employeesProp.map((e) => ({
+                        value: String(e.id),
+                        label: `${e.name} (${e.employeeSn || e.employeeId || '-'}) — ${e.jobTitle || e.department || 'Technician'}`,
+                      }))}
+                      widthClassName="w-full"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddWorker}
+                      className="h-9 text-xs font-bold gap-1.5 bg-slate-900 hover:bg-slate-800 text-white shadow-2xs"
+                    >
+                      <UserPlus className="size-3.5" /> TAMBAH
+                    </Button>
+                  </div>
+                )}
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left border-collapse">
@@ -875,7 +898,7 @@ export function OvertimeRequestApprovalForm({
                         <th className="py-2.5 px-2.5 w-24 text-center">Shift</th>
                         <th className="py-2.5 px-2.5 w-24 text-center">Roster</th>
                         <th className="py-2.5 px-3 min-w-[160px]">Category</th>
-                        <th className="py-2.5 px-2 w-10 text-center"></th>
+                        {!isLocked && <th className="py-2.5 px-2 w-10 text-center"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -887,12 +910,13 @@ export function OvertimeRequestApprovalForm({
                             <td className="py-2 px-2.5">
                               <select
                                 value={p.shiftCode}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newP = [...participants]
                                   newP[idx].shiftCode = e.target.value
                                   setParticipants(newP)
                                 }}
-                                className="w-full h-8 text-xs font-semibold border border-slate-200 rounded-md px-2 bg-white text-center"
+                                className={cn("w-full h-8 text-xs font-semibold border rounded-md px-2 text-center", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               >
                                 <option value="DS">DS (Day)</option>
                                 <option value="NS">NS (Night)</option>
@@ -902,12 +926,13 @@ export function OvertimeRequestApprovalForm({
                             <td className="py-2 px-2.5">
                               <select
                                 value={p.rosterType}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newP = [...participants]
                                   newP[idx].rosterType = e.target.value
                                   setParticipants(newP)
                                 }}
-                                className="w-full h-8 text-xs font-semibold border border-slate-200 rounded-md px-2 bg-white text-center"
+                                className={cn("w-full h-8 text-xs font-semibold border rounded-md px-2 text-center", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               >
                                 <option value="5:2">5:2</option>
                                 <option value="6:1">6:1</option>
@@ -918,35 +943,38 @@ export function OvertimeRequestApprovalForm({
                             <td className="py-2 px-3">
                               <select
                                 value={p.category}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newP = [...participants]
                                   newP[idx].category = e.target.value
                                   setParticipants(newP)
                                 }}
-                                className="w-full h-8 text-xs font-semibold border border-slate-200 rounded-md px-2 bg-white capitalize"
+                                className={cn("w-full h-8 text-xs font-semibold border rounded-md px-2 capitalize", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               >
                                 <option value="after_mandatory_ot">After Mandatory OT</option>
                                 <option value="off_day_ot">Off Day OT</option>
                                 <option value="emergency_callout">Emergency Callout</option>
                               </select>
                             </td>
-                            <td className="py-2 px-2 text-center">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleRemoveWorker(p.employeeId)}
-                                className="size-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </td>
+                            {!isLocked && (
+                              <td className="py-2 px-2 text-center">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleRemoveWorker(p.employeeId)}
+                                  className="size-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
-                            Belum ada peserta lembur. Pilih karyawan di atas lalu klik <span className="font-semibold text-slate-700">"TAMBAH"</span>.
+                          <td colSpan={isLocked ? 5 : 6} className="py-6 text-center text-xs text-slate-400">
+                            Belum ada peserta lembur.
                           </td>
                         </tr>
                       )}
@@ -966,15 +994,17 @@ export function OvertimeRequestApprovalForm({
                       Rincian aktivitas lembur & target unit (format sesuai tabel PDF).
                     </CardDescription>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddLineItem}
-                    className="h-8 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-50 shadow-2xs"
-                  >
-                    <Plus className="size-3.5" /> Tambah Aktivitas
-                  </Button>
+                  {!isLocked && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddLineItem}
+                      className="h-8 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-50 shadow-2xs"
+                    >
+                      <Plus className="size-3.5" /> Tambah Aktivitas
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="p-0">
@@ -987,7 +1017,7 @@ export function OvertimeRequestApprovalForm({
                         <th className="py-2.5 px-2.5 w-28 text-center">Target</th>
                         <th className="py-2.5 px-2.5 w-24 text-center">Minutes</th>
                         <th className="py-2.5 px-2.5 w-20 text-center">Points</th>
-                        <th className="py-2.5 px-2 w-10 text-center"></th>
+                        {!isLocked && <th className="py-2.5 px-2 w-10 text-center"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -998,69 +1028,75 @@ export function OvertimeRequestApprovalForm({
                             <td className="py-2 px-3">
                               <Input
                                 value={item.lineLabel}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newItems = [...lineItems]
                                   newItems[idx].lineLabel = e.target.value
                                   setLineItems(newItems)
                                 }}
                                 placeholder="Nama aktivitas..."
-                                className="h-8 text-xs bg-white border-slate-200 font-medium"
+                                className={cn("h-8 text-xs font-medium", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               />
                             </td>
                             <td className="py-2 px-2.5">
                               <Input
                                 value={item.targetUnit || ''}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newItems = [...lineItems]
                                   newItems[idx].targetUnit = e.target.value
                                   setLineItems(newItems)
                                 }}
                                 placeholder="4 Unit / -"
-                                className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                className={cn("h-8 text-xs text-center font-mono", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               />
                             </td>
                             <td className="py-2 px-2.5">
                               <Input
                                 type="number"
                                 value={item.estimatedMinutes}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newItems = [...lineItems]
                                   newItems[idx].estimatedMinutes = Number(e.target.value) || 0
                                   setLineItems(newItems)
                                 }}
                                 placeholder="60"
-                                className="h-8 text-xs bg-white border-slate-200 text-center font-medium"
+                                className={cn("h-8 text-xs text-center font-medium", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
                               />
                             </td>
                             <td className="py-2 px-2.5">
                               <Input
                                 type="number"
                                 value={item.plannedPoints}
+                                disabled={isLocked}
                                 onChange={(e) => {
                                   const newItems = [...lineItems]
                                   newItems[idx].plannedPoints = Number(e.target.value) || 0
                                   setLineItems(newItems)
                                 }}
                                 placeholder="10"
-                                className="h-8 text-xs bg-white border-slate-200 text-center font-bold text-slate-800"
+                                className={cn("h-8 text-xs text-center font-bold", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200 text-slate-800")}
                               />
                             </td>
-                            <td className="py-2 px-2 text-center">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleRemoveLineItem(idx)}
-                                className="size-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </td>
+                            {!isLocked && (
+                              <td className="py-2 px-2 text-center">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleRemoveLineItem(idx)}
+                                  className="size-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
+                          <td colSpan={isLocked ? 5 : 6} className="py-6 text-center text-xs text-slate-400">
                             Belum ada aktivitas lembur. Klik <span className="font-semibold text-slate-700">"Tambah Aktivitas"</span>.
                           </td>
                         </tr>
@@ -1131,6 +1167,7 @@ export function OvertimeRequestApprovalForm({
                     <SearchableSelect
                       label="Serviceman"
                       placeholder="PILIH SERVICEMAN..."
+                      disabled={isLocked}
                       value={selectedRequesterId}
                       onValueChange={(val) => {
                         setSelectedRequesterId(val)
@@ -1150,9 +1187,10 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Job Title</Label>
                     <Input
                       value={requesterTitle}
+                      disabled={isLocked}
                       onChange={(e) => setRequesterTitle(e.target.value)}
                       placeholder="Serviceman"
-                      className="h-10 bg-slate-50/60 border-slate-200 text-xs"
+                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
 
@@ -1162,6 +1200,7 @@ export function OvertimeRequestApprovalForm({
                     <SearchableSelect
                       label="Leader"
                       placeholder="PILIH LEADER / PENGAWAS..."
+                      disabled={isLocked}
                       value={selectedLeaderId}
                       onValueChange={(val) => {
                         setSelectedLeaderId(val)
@@ -1181,9 +1220,10 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Leader Title</Label>
                     <Input
                       value={leaderTitle}
+                      disabled={isLocked}
                       onChange={(e) => setLeaderTitle(e.target.value)}
                       placeholder="Leader / Pengawas"
-                      className="h-10 bg-slate-50/60 border-slate-200 text-xs"
+                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
 
@@ -1193,6 +1233,7 @@ export function OvertimeRequestApprovalForm({
                     <SearchableSelect
                       label="Section Head"
                       placeholder="PILIH SECTION HEAD..."
+                      disabled={isLocked}
                       value={selectedSectionHeadId}
                       onValueChange={(val) => {
                         setSelectedSectionHeadId(val)
@@ -1212,28 +1253,33 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Section Head Title</Label>
                     <Input
                       value={sectionHeadTitle}
+                      disabled={isLocked}
                       onChange={(e) => setSectionHeadTitle(e.target.value)}
                       placeholder="Section Head"
-                      className="h-10 bg-slate-50/60 border-slate-200 text-xs"
+                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* ── CARD 5: TANDA TANGAN ELEKTRONIK ── */}
-            <Card className={cn("rounded-[1.2rem] shadow-sm ring-1", isMyTurn ? "ring-amber-300/80 bg-white" : "ring-slate-200/70 bg-slate-50/40")}>
+            {/* ── CARD 6: TANDA TANGAN ELEKTRONIK ── */}
+            <Card className={cn("rounded-[1.2rem] shadow-sm ring-1", isMyTurn && !isLocked ? "ring-amber-300/80 bg-white" : "ring-slate-200/70 bg-slate-50/40")}>
               <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-base font-bold text-slate-900">
-                      {isMyTurn ? `TTD Digital - ${activeSignerName}` : `Status Persetujuan - ${activeStep?.approverName || 'Approver'}`}
+                      {isApproved ? 'Status Persetujuan (Selesai)' : isMyTurn ? `TTD Digital - ${activeSignerName}` : `Status Persetujuan - ${activeStep?.approverName || 'Approver'}`}
                     </CardTitle>
                     <CardDescription className="text-xs mt-0.5">
-                      Tahap: <strong>{activeStep?.stepLabel}</strong> ({activeStep?.approverName || 'Approver'})
+                      {isApproved ? 'Seluruh tahapan persetujuan telah disetujui (Approved).' : `Tahap: ${activeStep?.stepLabel || '-'} (${activeStep?.approverName || 'Approver'})`}
                     </CardDescription>
                   </div>
-                  {activeStep?.status === 'approved' ? (
+                  {isApproved ? (
+                    <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-full px-3 py-1 font-bold text-[10px]">
+                      DISETUJUI (TERKUNCI)
+                    </Badge>
+                  ) : activeStep?.status === 'approved' ? (
                     <Badge className="bg-emerald-50 text-emerald-600 rounded-full border-0 px-3 py-1 font-bold text-[10px]">
                       DISETUJUI
                     </Badge>
@@ -1249,7 +1295,17 @@ export function OvertimeRequestApprovalForm({
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
-                {activeStep?.status === 'approved' ? (
+                {isApproved ? (
+                  <div className="rounded-xl bg-emerald-50/90 border border-emerald-200 p-4 text-xs text-emerald-900 font-semibold flex items-center gap-3 shadow-xs">
+                    <CheckCircle2 className="size-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold text-emerald-950">Dokumen Telah Disetujui Lengkap (Approved)</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        Seluruh tanda tangan digital dan data SPL telah terverifikasi secara sah. Dokumen ini terkunci dan tidak dapat diubah lagi.
+                      </p>
+                    </div>
+                  </div>
+                ) : activeStep?.status === 'approved' ? (
                   <div className="rounded-xl bg-emerald-50/80 border border-emerald-200/70 p-4 text-xs text-emerald-800 font-semibold flex items-center gap-2">
                     <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
                     Tahap ini telah disetujui oleh {activeStep.approverName || 'Approver'}.

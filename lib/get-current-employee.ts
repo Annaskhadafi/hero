@@ -27,14 +27,14 @@ export async function getCurrentEmployee() {
     }
   }
 
-  // Fallback to active user (raihanaraya36@gmail.com / SN: 712011 / Mochamad Annas Khadafi)
+  // Fallback to active user (mochamad.khadafi@chitraparatama.co.id / SN: 71261 / Mochamad Annas Khadafi)
   const [defaultUser] = await db
     .select()
     .from(employees)
     .where(
       or(
-        eq(employees.email, 'raihanaraya36@gmail.com'),
-        eq(employees.employeeSn, '712011')
+        eq(employees.email, 'mochamad.khadafi@chitraparatama.co.id'),
+        eq(employees.employeeSn, '71261')
       )
     )
     .limit(1)

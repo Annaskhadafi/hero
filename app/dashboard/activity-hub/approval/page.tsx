@@ -97,10 +97,7 @@ export default async function DailyActivityApprovalListPage() {
       accessRole === 'khusus mas rendi' ||
       accessRole === 'hc manager' ||
       accessRole === 'hr' ||
-      roleCol === 'admin' ||
-      roleCol === 'super admin' ||
-      normalizedEmail === 'chitra.operation.hero@gmail.com' ||
-      normalizedEmail === 'raihanaraya36@gmail.com'
+      normalizedEmail === 'chitra.operation.hero@gmail.com'
 
     const isSiteAdmin = accessRole === 'site admin'
 
