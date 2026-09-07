@@ -1215,14 +1215,14 @@ function employeeSnLabel(employee: EmployeeOption) {
   return employee.employeeSn?.trim() || String(employee.id)
 }
 
-function getLocalDateStr(value?: string) {
+function getLocalDateStr(value?: string, timezone?: string) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'
+  const tzIana = normalizeIndonesiaTimezone(timezone || 'WITA').iana
   try {
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
+      timeZone: tzIana,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -1232,18 +1232,18 @@ function getLocalDateStr(value?: string) {
   }
 }
 
-function timeFromIso(value?: string) {
+function timeFromIso(value?: string, timezone?: string) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Makassar'
+  const tzIana = normalizeIndonesiaTimezone(timezone || 'WITA').iana
   try {
     return date
       .toLocaleTimeString('id-ID', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-        timeZone: tz,
+        timeZone: tzIana,
       })
       .replace('.', ':')
   } catch {
@@ -1920,11 +1920,19 @@ export function SchedulingTimesheetWorkspace({
       }
     >()
 
+    const effectiveTz = siteConfig.timezone || site?.timezone || 'WITA'
+
     // Group records by cell key first
     const grouped = new Map<string, AttendanceRealRecord[]>()
     for (const record of attendanceRecords) {
-      if (String(record.siteId) !== siteId) continue
-      const dateStr = getLocalDateStr(record.eventTime)
+      if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
+        // Match if employee belongs to this site
+        const emp = employees.find((e) => e.id === record.employeeId)
+        if (emp && String(emp.siteId) !== siteId) {
+          continue
+        }
+      }
+      const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
       if (!dateStr || !dateStr.startsWith(period)) continue
       const day = dayFromDate(dateStr, period)
       if (!day) continue
@@ -1967,7 +1975,7 @@ export function SchedulingTimesheetWorkspace({
     }
 
     return map
-  }, [attendanceRecords, period, siteId])
+  }, [attendanceRecords, employees, period, site, siteConfig.timezone, siteId])
 
   useEffect(() => {
     const firstConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
@@ -2000,9 +2008,13 @@ export function SchedulingTimesheetWorkspace({
   }, [period])
 
   useEffect(() => {
-    const scoped = attendanceOverrides.filter(
-      (override) => String(override.siteId) === siteId && override.period === period
-    )
+    const scoped = attendanceOverrides.filter((override) => {
+      if (override.period !== period) return false
+      if (siteId === 'all') return true
+      if (String(override.siteId) === siteId) return true
+      const emp = employees.find((e) => e.id === override.employeeId)
+      return emp && String(emp.siteId) === siteId
+    })
     setManualAttendance(
       Object.fromEntries(
         scoped.map((override) => {
@@ -2042,7 +2054,7 @@ export function SchedulingTimesheetWorkspace({
     const isDismissed = typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
-  }, [attendanceOverrides, period, siteId])
+  }, [attendanceOverrides, employees, period, siteId])
 
   useEffect(() => {
     if (siteId === 'all') return
@@ -4353,12 +4365,13 @@ export function SchedulingTimesheetWorkspace({
     const manual = manualAttendance[key]
     const real = attendanceByCell.get(key)
     const rowCode = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+    const effectiveTz = siteConfig.timezone || site?.timezone || 'WITA'
 
     if (manual) {
       const note = manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''
       const punctualityDetail = getPunctualityDetail(note)
-      const clockIn = manual.clockIn || timeFromIso(real?.clockIn?.eventTime)
-      const clockOut = manual.clockOut || timeFromIso(real?.clockOut?.eventTime)
+      const clockIn = manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz)
+      const clockOut = manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz)
 
       const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
       const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
@@ -4371,13 +4384,25 @@ export function SchedulingTimesheetWorkspace({
         lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
       }
 
+      let effectiveStatus = manual.status
+      // If employee has attendance clock-in on an off day, replace 'off'/'empty' with 'present'
+      if ((effectiveStatus === 'off' || effectiveStatus === 'empty') && (clockIn || real?.clockIn)) {
+        effectiveStatus = 'present'
+      } else if (!effectiveStatus || effectiveStatus === 'empty') {
+        const rosterStatus = normalizeAttendanceStatus(rowCode)
+        if (rosterStatus === 'off') {
+          effectiveStatus = clockIn ? 'present' : 'off'
+        }
+      }
+
       const isLatePending =
-        manual.status === 'present' &&
+        effectiveStatus === 'present' &&
         (punctualityDetail?.startsWith('Kehadiran: Terlambat') ||
           (lateMinutes !== null && lateMinutes > 0))
 
       return {
         ...manual,
+        status: effectiveStatus,
         clockIn,
         clockOut,
         note,
@@ -4418,11 +4443,18 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
-    const status = normalizeAttendanceStatus(
-      real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
-    )
-    const clockIn = timeFromIso(real.clockIn?.eventTime)
-    const clockOut = timeFromIso(real.clockOut?.eventTime)
+    const rawRealStatus = real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
+    let status = normalizeAttendanceStatus(rawRealStatus)
+    const clockIn = timeFromIso(real.clockIn?.eventTime, effectiveTz)
+    const clockOut = timeFromIso(real.clockOut?.eventTime, effectiveTz)
+    
+    // When real attendance records exist with clock in, status is 'present' (replaces OFF)
+    if (clockIn || real.records.length > 0) {
+      if (status === 'empty' || status === 'off') {
+        status = 'present'
+      }
+    }
+
     const note =
       real.clockIn?.locationNote ||
       real.clockOut?.locationNote ||

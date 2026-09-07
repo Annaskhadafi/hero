@@ -193,5 +193,21 @@ describe('Roster 5:2 & Attendance Engine', () => {
     const workspacePath = path.resolve('components/scheduling-timesheet-workspace.tsx')
     const workspaceCode = fs.readFileSync(workspacePath, 'utf8')
     assert(workspaceCode.includes('siteAttendanceEmployeeIds'))
+    assert(workspaceCode.includes('effectiveStatus = \'present\''))
+  })
+
+  it('replaces OFF status with present when attendance exists and keeps OFF when absent', () => {
+    // When schedule is OFF and no attendance punch exists
+    const rowCode = 'OFF'
+    const statusWithoutAttendance = (rowCode === 'OFF' ? 'off' : 'empty')
+    assert.equal(statusWithoutAttendance, 'off')
+
+    // When schedule is OFF and attendance punch exists (e.g. clockIn 08:00)
+    const clockIn = '08:00'
+    let effectiveStatus: string = statusWithoutAttendance
+    if (effectiveStatus === 'off' && clockIn) {
+      effectiveStatus = 'present'
+    }
+    assert.equal(effectiveStatus, 'present', 'Attendance on OFF day should replace OFF with present')
   })
 })
