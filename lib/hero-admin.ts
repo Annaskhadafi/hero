@@ -884,19 +884,6 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'Human Capital',
     groupLabel: 'HR Operational',
-    title: 'Central Service',
-    url: '/dashboard/central-service',
-    iconName: 'database',
-    resource: 'central_service',
-    sortOrder: 3,
-    isVisible: true,
-    openInNewTab: false,
-  },
-
-  {
-    menuArea: 'main',
-    section: 'Human Capital',
-    groupLabel: 'HR Operational',
     title: 'Surat',
     url: '/dashboard/hc/surat',
     iconName: 'file-word',
@@ -1326,6 +1313,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // Central Service
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'Central Service',
+    url: '/dashboard/central-service',
+    iconName: 'database',
+    resource: 'central_service',
+    sortOrder: 0,
+    isVisible: true,
+    openInNewTab: false,
+  },
   {
     menuArea: 'main',
     section: 'Central Service',
@@ -5275,6 +5274,40 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({ section: 'GOBPI', sortOrder: 1 })
       .where(eq(navbarMenuItems.resource, 'sop-win'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Management',
+        title: 'Central Service',
+        sortOrder: 0,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'central_service'),
+          eq(navbarMenuItems.url, '/dashboard/central-service')
+        )
+      )
+
+    const csMenuItems = await db
+      .select()
+      .from(navbarMenuItems)
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'central_service'),
+          eq(navbarMenuItems.url, '/dashboard/central-service')
+        )
+      )
+
+    if (csMenuItems.length > 0) {
+      const csMenuId = csMenuItems[0].id
+      await db
+        .update(roleMenuPermissions)
+        .set({ canView: true, canEdit: true })
+        .where(eq(roleMenuPermissions.menuItemId, csMenuId))
+    }
 
     const currentMenuItems = await db
       .select()

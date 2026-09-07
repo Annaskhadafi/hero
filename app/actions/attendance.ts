@@ -19,6 +19,7 @@ import {
   getSiteAttendanceClockConfig,
   resolveSiteAttendancePunctuality,
 } from '@/lib/timesheet/site-attendance-punctuality'
+import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
@@ -657,6 +658,12 @@ export async function submitAttendance(formData: FormData) {
         clientRequestId: clientRequestId || null,
       })
       .returning()
+
+    try {
+      await syncFaceAttendanceToTimesheet(employee.id, employee.siteId, eventTime)
+    } catch (syncError) {
+      console.error('[submitAttendance] Timesheet sync failed:', syncError)
+    }
 
     revalidatePath('/mobile/attendance')
     revalidatePath('/dashboard/attendance')

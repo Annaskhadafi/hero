@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { rarayVerifyFace, rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
+import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { revalidatePath } from 'next/cache'
 
 export interface FaceAttendanceParams {
@@ -101,12 +102,14 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const nowStr = eventTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     const shiftLabel = shiftCode === 'night' ? 'Shift Malam' : 'Shift Pagi'
 
+    const targetSiteId = currentEmp.siteId || 1
+
     // 3. Save attendance record directly to database
     const [record] = await db
       .insert(attendanceRecords)
       .values({
         employeeId: currentEmp.id,
-        siteId: currentEmp.siteId || 1,
+        siteId: targetSiteId,
         eventType,
         eventTime,
         status: 'approved',
@@ -117,8 +120,16 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
       })
       .returning()
 
+    // 4. Sync to timesheet overrides (handling night shift cross-day checkout automatically)
+    try {
+      await syncFaceAttendanceToTimesheet(currentEmp.id, targetSiteId, eventTime)
+    } catch (syncErr) {
+      console.error('[face-attendance-action] Timesheet sync failed:', syncErr)
+    }
+
     revalidatePath('/dashboard/analytics')
     revalidatePath('/dashboard/attendance')
+    revalidatePath('/dashboard/scheduling-timesheet')
     revalidatePath('/mobile/attendance')
 
     return {

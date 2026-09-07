@@ -18,6 +18,7 @@ import {
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
 import { rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
+import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { revalidatePath } from 'next/cache'
 
 // ponytail: upgrade to per-terminal secret if needed
@@ -268,6 +269,15 @@ export async function POST(req: NextRequest) {
         clientRequestId: `multi-${resolvedEmployee.id}-${Date.now()}`,
       })
       .returning()
+
+    // Sync to timesheet overrides (handling night shift cross-day checkout automatically)
+    void (async () => {
+      try {
+        await syncFaceAttendanceToTimesheet(resolvedEmployee.id, targetSiteId, record.eventTime)
+      } catch (syncError) {
+        console.error('[multi-attendance/recognize] Timesheet sync failed:', syncError)
+      }
+    })()
 
     // Invalidate all attendance-related pages so dashboards reflect the new record
     revalidatePath('/dashboard/attendance')

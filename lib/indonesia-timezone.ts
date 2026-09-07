@@ -127,6 +127,10 @@ export function inferTimezoneFromLocation(locationText?: string | null): Indones
   const wibKeywords = [
     // Sumatera
     'aceh',
+    'aceh barat',
+    'meulaboh',
+    'nagan raya',
+    'mifa',
     'sumatera',
     'sumatra',
     'medan',

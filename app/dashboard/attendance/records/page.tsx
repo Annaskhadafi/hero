@@ -299,7 +299,11 @@ export default function AttendanceRecordsPage() {
 
   const selectedPhotoFailed = selectedPhoto ? photoErrorId === selectedPhoto.id : false;
   const clockInLog = logs.find((log) => log.eventType === "checked-in") ?? null;
-  const clockOutLog = logs.find((log) => log.eventType === "checked-out") ?? null;
+  const rawClockOutLog = logs.find((log) => log.eventType === "checked-out") ?? null;
+  const clockOutLog =
+    rawClockOutLog && clockInLog && new Date(rawClockOutLog.eventTime).getTime() < new Date(clockInLog.eventTime).getTime()
+      ? null
+      : rawClockOutLog;
   const overtimeDetails = logs
     .flatMap((log) => getOperationalDetails(log))
     .filter((detail) => detail.toLowerCase().startsWith("lembur:") && !detail.toLowerCase().includes("tidak ada"));
