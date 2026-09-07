@@ -664,13 +664,15 @@ export async function sendPtwStepApprovalEmail(params: {
   const recipients = getTargetRecipients(params.approverEmail)
   const baseUrl = getPublicAppUrl()
   const docIdentifier = params.permitNumber || (params.permitId ? String(params.permitId) : '')
-  const approvalLink = `${baseUrl}/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
+  const publicLink = params.approvalToken ? `${baseUrl}/review/ptw/${params.approvalToken}` : ''
+  const dashboardLink = `${baseUrl}/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
+  const approvalLink = publicLink || dashboardLink
 
   await publishInAppApprovalNotification({
     recipientEmail: params.approverEmail,
     title: `Approval: PTW ${params.permitNumber || 'Izin Kerja'}`,
     body: `Dokumen izin kerja ${params.permitNumber || ''} (${params.projectName}) menunggu persetujuan Anda (${params.approvalStep}).`,
-    url: `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`,
+    url: publicLink || `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`,
     eventType: 'ptw_approval_needed',
   })
 

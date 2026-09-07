@@ -256,31 +256,45 @@ export function buildAttendanceImportPreview(params: {
   const adjustedRows = params.rows.map((row) => ({ ...row }))
   for (let i = 0; i < adjustedRows.length; i++) {
     const cur = adjustedRows[i]
-    if (!cur.clockOut) continue
-    const outHour = Number(cur.clockOut.split(':')[0])
-    const inHour = cur.clockIn ? Number(cur.clockIn.split(':')[0]) : null
-    const isEarlyOutOnly = outHour < 9 && (inHour === null || inHour < 9)
+    if (cur.day <= 1) continue
 
-    if (isEarlyOutOnly && cur.day > 1) {
-      const prev = adjustedRows.find(
-        (r) =>
-          r.day === cur.day - 1 &&
-          (r.employeeSn && cur.employeeSn
-            ? normalizeAttendanceImportIdentity(r.employeeSn) === normalizeAttendanceImportIdentity(cur.employeeSn)
-            : normalizeAttendanceImportIdentity(r.employeeName) === normalizeAttendanceImportIdentity(cur.employeeName))
-      )
-      if (prev) {
-        const prevInHour = prev.clockIn ? Number(prev.clockIn.split(':')[0]) : null
-        if (prevInHour !== null && (prevInHour >= 15 || prevInHour < 5)) {
-          if (!prev.clockOut) {
-            prev.clockOut = cur.clockOut
-          }
-          adjustedRows[i] = {
-            ...cur,
-            clockIn: '',
-            clockOut: '',
-            status: 'off',
-          }
+    const outHour = cur.clockOut ? Number(cur.clockOut.split(':')[0]) : null
+    const inHour = cur.clockIn ? Number(cur.clockIn.split(':')[0]) : null
+
+    // Check if cur has a morning punch (< 10:00) that should serve as checkout for yesterday's night shift
+    let morningPunch = ''
+    if (outHour !== null && outHour < 10) {
+      morningPunch = cur.clockOut
+    } else if (inHour !== null && inHour < 10) {
+      morningPunch = cur.clockIn
+    }
+
+    if (!morningPunch) continue
+
+    const prev = adjustedRows.find(
+      (r) =>
+        r.day === cur.day - 1 &&
+        (r.employeeSn && cur.employeeSn
+          ? normalizeAttendanceImportIdentity(r.employeeSn) === normalizeAttendanceImportIdentity(cur.employeeSn)
+          : normalizeAttendanceImportIdentity(r.employeeName) === normalizeAttendanceImportIdentity(cur.employeeName))
+    )
+
+    if (prev) {
+      const prevInHour = prev.clockIn ? Number(prev.clockIn.split(':')[0]) : null
+      if (prevInHour !== null && (prevInHour >= 15 || prevInHour < 5)) {
+        if (!prev.clockOut) {
+          prev.clockOut = morningPunch
+        }
+        const curInHour = cur.clockIn ? Number(cur.clockIn.split(':')[0]) : null
+        if (curInHour !== null && (curInHour >= 15 || curInHour < 5)) {
+          // Cur has an evening checkin for today's night shift; keep clockIn and clear morning checkout
+          cur.clockOut = ''
+        } else {
+          // Cur only had the morning checkout or no evening shift; set day off / clear
+          cur.clockIn = ''
+          cur.clockOut = ''
+          cur.status = 'off'
+          cur.note = ''
         }
       }
     }

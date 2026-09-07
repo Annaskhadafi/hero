@@ -7,6 +7,7 @@ import {
   ptwApprovals,
 } from '@/db/schema/hero'
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { withDbRetry } from '@/lib/hero-admin'
 import { PtwListingClient, type PtwListingRow } from './client'
 import { getPtwWorkflowSettings } from './actions'
 
@@ -21,20 +22,22 @@ export default async function IzinKerjaPtwPage() {
   }
 
   const normalizedEmail = session.user.email.trim().toLowerCase()
-  const [currentEmployee] = await db
-    .select({
-      id: employees.id,
-      name: employees.name,
-      email: employees.email,
-      accessRole: employees.accessRole,
-      jobTitle: employees.jobTitle,
-      department: employees.department,
-      section: employees.section,
-      siteId: employees.siteId,
-    })
-    .from(employees)
-    .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
-    .limit(1)
+  const [currentEmployee] = await withDbRetry(() =>
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        accessRole: employees.accessRole,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        section: employees.section,
+        siteId: employees.siteId,
+      })
+      .from(employees)
+      .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
+      .limit(1)
+  )
 
   const isSuperAdmin = currentEmployee?.accessRole === 'Super Admin'
   const isSiteAdmin = currentEmployee?.accessRole === 'Site Admin'
@@ -42,39 +45,43 @@ export default async function IzinKerjaPtwPage() {
   const isGlobalAdmin = isSuperAdmin || isHseOrAdmin
 
   const [rawPtwRecords, allEmployees, initialSettings] = await Promise.all([
-    db
-      .select({
-        id: hsePtwPermits.id,
-        permitNumber: hsePtwPermits.permitNumber,
-        projectName: hsePtwPermits.projectName,
-        permitType: hsePtwPermits.permitType,
-        location: hsePtwPermits.location,
-        area: hsePtwPermits.area,
-        startAt: hsePtwPermits.startAt,
-        endAt: hsePtwPermits.endAt,
-        status: hsePtwPermits.status,
-        riskLevel: hsePtwPermits.riskLevel,
-        applicantName: hsePtwPermits.applicantName,
-        fieldPicName: hsePtwPermits.fieldPicName,
-        authorizedByName: hsePtwPermits.authorizedByName,
-        description: hsePtwPermits.description,
-        controlSteps: hsePtwPermits.controlSteps,
-        ppe: hsePtwPermits.ppe,
-        gasTestRequired: hsePtwPermits.gasTestRequired,
-        isolationRequired: hsePtwPermits.isolationRequired,
-        createdByEmployeeId: hsePtwPermits.createdByEmployeeId,
-      })
-      .from(hsePtwPermits)
-      .orderBy(desc(hsePtwPermits.id)),
-    db
-      .select({
-        id: employees.id,
-        name: employees.name,
-        position: employees.jobTitle,
-        rank: employees.role,
-      })
-      .from(employees)
-      .where(eq(employees.isActive, true)),
+    withDbRetry(() =>
+      db
+        .select({
+          id: hsePtwPermits.id,
+          permitNumber: hsePtwPermits.permitNumber,
+          projectName: hsePtwPermits.projectName,
+          permitType: hsePtwPermits.permitType,
+          location: hsePtwPermits.location,
+          area: hsePtwPermits.area,
+          startAt: hsePtwPermits.startAt,
+          endAt: hsePtwPermits.endAt,
+          status: hsePtwPermits.status,
+          riskLevel: hsePtwPermits.riskLevel,
+          applicantName: hsePtwPermits.applicantName,
+          fieldPicName: hsePtwPermits.fieldPicName,
+          authorizedByName: hsePtwPermits.authorizedByName,
+          description: hsePtwPermits.description,
+          controlSteps: hsePtwPermits.controlSteps,
+          ppe: hsePtwPermits.ppe,
+          gasTestRequired: hsePtwPermits.gasTestRequired,
+          isolationRequired: hsePtwPermits.isolationRequired,
+          createdByEmployeeId: hsePtwPermits.createdByEmployeeId,
+        })
+        .from(hsePtwPermits)
+        .orderBy(desc(hsePtwPermits.id))
+    ),
+    withDbRetry(() =>
+      db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          position: employees.jobTitle,
+          rank: employees.role,
+        })
+        .from(employees)
+        .where(eq(employees.isActive, true))
+    ),
     getPtwWorkflowSettings(),
   ])
 
@@ -82,23 +89,25 @@ export default async function IzinKerjaPtwPage() {
 
   const rawApprovalsList =
     rawPtwIds.length > 0
-      ? await db
-          .select({
-            ptwPermitId: ptwApprovals.ptwPermitId,
-            stepOrder: ptwApprovals.stepOrder,
-            stepLabel: ptwApprovals.stepLabel,
-            status: ptwApprovals.status,
-            approverName: ptwApprovals.approverName,
-            approverEmail: ptwApprovals.approverEmail,
-            approverEmployeeId: ptwApprovals.approverEmployeeId,
-            approverRole: ptwApprovals.approverRole,
-            signatureDataUrl: ptwApprovals.signatureDataUrl,
-            remarks: ptwApprovals.remarks,
-            signedAt: ptwApprovals.signedAt,
-          })
-          .from(ptwApprovals)
-          .where(inArray(ptwApprovals.ptwPermitId, rawPtwIds))
-          .orderBy(asc(ptwApprovals.stepOrder))
+      ? await withDbRetry(() =>
+          db
+            .select({
+              ptwPermitId: ptwApprovals.ptwPermitId,
+              stepOrder: ptwApprovals.stepOrder,
+              stepLabel: ptwApprovals.stepLabel,
+              status: ptwApprovals.status,
+              approverName: ptwApprovals.approverName,
+              approverEmail: ptwApprovals.approverEmail,
+              approverEmployeeId: ptwApprovals.approverEmployeeId,
+              approverRole: ptwApprovals.approverRole,
+              signatureDataUrl: ptwApprovals.signatureDataUrl,
+              remarks: ptwApprovals.remarks,
+              signedAt: ptwApprovals.signedAt,
+            })
+            .from(ptwApprovals)
+            .where(inArray(ptwApprovals.ptwPermitId, rawPtwIds))
+            .orderBy(asc(ptwApprovals.stepOrder))
+        )
       : []
 
   const approvalsByPtwMap = new Map<number, typeof rawApprovalsList>()

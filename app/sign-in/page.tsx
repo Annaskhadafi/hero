@@ -59,13 +59,20 @@ function SignInContent() {
         }, 500);
     };
 
+    const isDeactivatedError = searchParams.get("error") === "account_deactivated" || searchParams.get("error") === "deactivated";
+
     useEffect(() => {
+        if (isDeactivatedError) {
+            authClient.signOut().catch(() => {});
+            return;
+        }
+
         if (session?.user && !isLoading) {
             // Full page navigation to guarantee the fresh session cookie
             // is present on the next server render.
             window.location.href = getClientPostLoginPath();
         }
-    }, [session, isLoading]);
+    }, [session, isLoading, isDeactivatedError]);
 
     useEffect(() => {
         if (searchParams.get("reset") === "success") {
@@ -73,7 +80,9 @@ function SignInContent() {
         }
         const errorType = searchParams.get("error");
         if (errorType) {
-            if (errorType === "new_user_signup_disabled") {
+            if (errorType === "account_deactivated" || errorType === "deactivated") {
+                setError("Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin untuk mengaktifkan kembali.");
+            } else if (errorType === "new_user_signup_disabled") {
                 setError("Akun user Anda tidak ditemukan. Harap pastikan email Anda sudah terdaftar.");
             } else if (errorType === "INVALID_TOKEN") {
                 setError("Token login biometrik tidak valid atau sudah digunakan.");

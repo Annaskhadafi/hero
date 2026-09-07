@@ -140,7 +140,7 @@ export function SourceCitations({ sources }: SourceCitationsProps) {
                       onClick={() => {
                         setPreviewDoc({
                           filename: selectedSource.filename,
-                          url: selectedSource.s3_url!,
+                          url: resolveRagDocumentUrl(selectedSource.s3_url) || selectedSource.s3_url!,
                         });
                       }}
                       className="w-full h-9 rounded-xl bg-[#003461] hover:bg-[#002647] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"

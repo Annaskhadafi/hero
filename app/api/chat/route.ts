@@ -13,11 +13,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message/query is required" }, { status: 400 });
     }
 
+    const documentId = body.document_id || body.documentId || undefined;
+
     const res = await sendHeroGeniusChatAction({
       query,
       messages,
       top_k: topK,
       session_id: sessionId,
+      document_id: documentId,
     });
 
     if (!res.success || !res.data) {
@@ -28,6 +31,7 @@ export async function POST(req: NextRequest) {
       role: "assistant",
       content: res.data.answer,
       sources: res.data.sources,
+      attached_images: (res.data as any).attached_images || [],
       latency_ms: res.data.latency_ms,
       session_id: res.data.session_id,
       message_id: (res.data as any).message_id,

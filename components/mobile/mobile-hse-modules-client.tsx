@@ -25,13 +25,17 @@ import {
   HIRADC_PRESETS,
   getActivePermitTypeKeys,
   isItemChecked,
+  getDefaultSubTypes,
+  getPermitSubTypes,
+  extractCheckedEquipment,
 } from '@/lib/ptw-helpers'
+import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
 
 type Access = { canView: boolean; canEdit: boolean; canDelete: boolean; canSelectAll?: boolean }
 type Incident = { id: number; title: string; category: string; severity: string; description: string; investigationStatus: string; incidentDate: Date; picName: string; rootCauseAnalysis: string; immediateCorrectiveAction: string; documentationUrl: string }
 type JsaRow = { id: string; jsaNumber: string; jobDescription: string; equipmentNumber: string; teamMembers: string; riskLevel: string; createdAt: Date }
 type HiradcEntry = { id: number; activityName: string; department: string; location: string; hazardCategory: string; hazardDetails: string; riskConsequence: string; riskLevelBefore: string; riskLevelAfter: string; existingControl: string; additionalControl: string }
-type PtwRecord = { id: number; permitNumber: string; projectName: string; permitType: string; location: string; area: string; status: string; riskLevel: string; description: string; controlSteps: string; applicantName?: string; fieldPicName?: string; authorizedByName?: string; ppe?: string[]; startAt?: any; endAt?: any }
+type PtwRecord = { id: number; permitNumber: string; projectName: string; permitType: string; location: string; area: string; status: string; riskLevel: string; description: string; controlSteps: string; applicantName?: string; fieldPicName?: string; authorizedByName?: string; ppe?: string[]; subTypes?: Record<string, string[]> | string[]; startAt?: any; endAt?: any }
 type CorrectiveAction = { id: number; sourceType: string; sourceId: string; title: string; description: string; actionPlan: string; assigneeName: string; priority: string; status: string; closeOutNote: string }
 
 function formatDate(value: Date | string) {
@@ -136,6 +140,7 @@ export function MobilePtwClient({
     endTime: '17:00',
     description: '',
     controlSteps: '',
+    additionalNotes: '',
     applicantName: '',
     fieldPicName: '',
     authorizedByName: '',
@@ -146,10 +151,12 @@ export function MobilePtwClient({
 
   const [form, setForm] = React.useState(initialForm)
   const [checkedEquipment, setCheckedEquipment] = React.useState<string[]>([])
+  const [mobileSubTypes, setMobileSubTypes] = React.useState<Record<string, string[]>>(() => getDefaultSubTypes())
 
   const resetForm = () => {
     setForm(initialForm)
     setCheckedEquipment([])
+    setMobileSubTypes(getDefaultSubTypes())
     setEditingId(null)
   }
 
@@ -169,6 +176,7 @@ export function MobilePtwClient({
       endTime: (p as any).endTime || '17:00',
       description: (p as any).description || '',
       controlSteps: (p as any).controlSteps || '',
+      additionalNotes: (p as any).additionalNotes || '',
       applicantName: (p as any).applicantName || '',
       fieldPicName: (p as any).fieldPicName || '',
       authorizedByName: (p as any).authorizedByName || '',
@@ -176,8 +184,9 @@ export function MobilePtwClient({
       riskLevel: (p as any).riskLevel || 'High',
       ppe: (p as any).ppe || ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
     })
-    if ((p as any).checkedEquipment) {
-      setCheckedEquipment((p as any).checkedEquipment)
+    setCheckedEquipment(extractCheckedEquipment((p as any).controlSteps, (p as any).checkedEquipment, (p as any).permitType))
+    if ((p as any).subTypes && typeof (p as any).subTypes === 'object') {
+      setMobileSubTypes({ ...getDefaultSubTypes(), ...(p as any).subTypes })
     }
     setEditingId(p.id)
   }, [initialExtendPermit])
@@ -244,6 +253,7 @@ export function MobilePtwClient({
       endTime: row.endAt ? new Date(row.endAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':') : '17:00',
       description: row.description || '',
       controlSteps: row.controlSteps || '',
+      additionalNotes: (row as any).additionalNotes || '',
       applicantName: row.applicantName || '',
       fieldPicName: row.fieldPicName || '',
       authorizedByName: row.authorizedByName || '',
@@ -251,6 +261,11 @@ export function MobilePtwClient({
       riskLevel: row.riskLevel || 'High',
       ppe: Array.isArray(row.ppe) ? row.ppe : ['Helmet', 'Safety Shoes'],
     })
+    if (row.subTypes && typeof row.subTypes === 'object' && !Array.isArray(row.subTypes)) {
+      setMobileSubTypes({ ...getDefaultSubTypes(), ...row.subTypes })
+    } else {
+      setMobileSubTypes(getDefaultSubTypes())
+    }
     setIsFormOpen(true)
   }
 
@@ -277,9 +292,12 @@ export function MobilePtwClient({
         riskLevel: form.riskLevel,
         description: finalDescription,
         controlSteps: finalControlSteps,
+        additionalNotes: form.additionalNotes,
         applicantName: form.applicantName,
         fieldPicName: form.fieldPicName,
         authorizedByName: form.authorizedByName,
+        ppe: form.ppe,
+        subTypes: mobileSubTypes,
       })
       toast.success(editingId ? 'Permit PTW berhasil diperbarui!' : 'Permit PTW berhasil diajukan!')
       resetForm()
@@ -470,6 +488,14 @@ export function MobilePtwClient({
               })}
             </div>
 
+            {/* Sub-Jenis Pekerjaan (Aktivitas) Manual CRUD */}
+            <PtwSubTypesEditor
+              activePermitTypes={getActivePermitTypeKeys(form.permitType)}
+              subTypes={mobileSubTypes}
+              onChange={setMobileSubTypes}
+              className="mt-3 pt-2.5 border-t border-slate-200"
+            />
+
             {(() => {
               const activeTypes = getActivePermitTypeKeys(form.permitType)
               if (activeTypes.length === 0) return null
@@ -593,20 +619,9 @@ export function MobilePtwClient({
               <p className="text-xs font-bold text-slate-900">Penandatangan Signatories</p>
             </div>
             
+            {/* 1. Pemberi Kerja / Field PIC */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-700">Pelaksana Kerja (Applicant)</label>
-              <SearchableSelect
-                label="Pelaksana Kerja"
-                value={form.applicantName}
-                onValueChange={(val) => setForm({ ...form, applicantName: val })}
-                options={applicantOptions}
-                placeholder="-- PILIH PELAKSANA KERJA --"
-                widthClassName="w-full"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-700">Pemberi Kerja / Field PIC</label>
+              <label className="text-[11px] font-bold text-slate-700">1. Pemberi Kerja / Field PIC</label>
               <SearchableSelect
                 label="Pemberi Kerja"
                 value={form.fieldPicName}
@@ -617,8 +632,59 @@ export function MobilePtwClient({
               />
             </div>
 
+            {/* 2. Pelaksana Kerja (Multi-Person) */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-700">Safety Dept / Pengawas</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-700">2. Pelaksana Kerja (Multi-Person)</label>
+                <span className="text-[9px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-full font-bold">
+                  {(form.applicantName ? form.applicantName.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1 p-2 rounded-xl border border-slate-200 bg-white min-h-10">
+                {(form.applicantName ? form.applicantName.split(',').map(s => s.trim()).filter(Boolean) : []).map((name) => (
+                  <span
+                    key={name}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
+                  >
+                    <span>{name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = form.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                        const next = current.filter(n => n !== name)
+                        setForm({ ...form, applicantName: next.join(', ') })
+                      }}
+                      className="hover:text-rose-300 font-bold ml-1 text-xs"
+                      title={`Hapus ${name}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <div className="w-full pt-1">
+                  <SearchableSelect
+                    label="Tambah Pelaksana"
+                    placeholder="+ PILIH / TAMBAH PELAKSANA KERJA..."
+                    value=""
+                    onValueChange={(val) => {
+                      if (!val) return
+                      const clean = val.includes(' — ') ? val.split(' — ')[0].trim() : val.trim()
+                      const current = form.applicantName ? form.applicantName.split(',').map(s => s.trim()).filter(Boolean) : []
+                      if (clean && !current.includes(clean)) {
+                        const next = [...current, clean]
+                        setForm({ ...form, applicantName: next.join(', ') })
+                      }
+                    }}
+                    options={applicantOptions}
+                    widthClassName="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Safety Dept / Pengawas */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700">3. Safety Dept / Pengawas</label>
               <SearchableSelect
                 label="Safety Dept"
                 value={form.authorizedByName}
@@ -683,6 +749,7 @@ export function MobilePtwClient({
               })}
             </div>
           </div>
+
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700">Langkah Pengendalian K3 / LOTO / Gas Test</label>

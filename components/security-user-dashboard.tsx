@@ -89,11 +89,16 @@ const RELIGION_COLORS = [
 ]
 
 export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
+  // Only include active employees in the Demographics Dashboard
+  const activeUsers = useMemo(() => {
+    return users.filter((u) => u.isActive !== false && !u.status?.toLowerCase().includes('inactive') && !u.status?.toLowerCase().includes('non'))
+  }, [users])
+
   // 1. Calculate General Metrics
   const metrics = useMemo(() => {
-    const total = users.length
-    const maleUsers = users.filter((u) => getGenderLabel(u.gender) === 'Male')
-    const femaleUsers = users.filter((u) => getGenderLabel(u.gender) === 'Female')
+    const total = activeUsers.length
+    const maleUsers = activeUsers.filter((u) => getGenderLabel(u.gender) === 'Male')
+    const femaleUsers = activeUsers.filter((u) => getGenderLabel(u.gender) === 'Female')
 
     // Contract (Kontrak) vs Permanent (Permanen)
     const isContract = (status: string | null | undefined) => {
@@ -108,8 +113,8 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       return s.includes('permanen') || s.includes('tetap') || s.includes('permanent') || s.includes('pkwtt')
     }
 
-    const contractList = users.filter((u) => isContract(u.employeeStatusType))
-    const permanentList = users.filter((u) => isPermanent(u.employeeStatusType))
+    const contractList = activeUsers.filter((u) => isContract(u.employeeStatusType))
+    const permanentList = activeUsers.filter((u) => isPermanent(u.employeeStatusType))
 
     const contractMale = contractList.filter((u) => getGenderLabel(u.gender) === 'Male').length
     const contractFemale = contractList.filter((u) => getGenderLabel(u.gender) === 'Female').length
@@ -138,11 +143,11 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       permanentFemalePct: permanentList.length > 0 ? (permanentFemale / permanentList.length) * 100 : 0,
       difference,
     }
-  }, [users])
+  }, [activeUsers])
 
   // 2. Calculate Min & Max Join Date
   const joinDateRangeStr = useMemo(() => {
-    const validDates = users
+    const validDates = activeUsers
       .map((u) => (u.joinDate ? new Date(u.joinDate) : null))
       .filter((d): d is Date => d !== null && !isNaN(d.getTime()))
 
@@ -155,7 +160,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     const format = (d: Date) => d.toLocaleDateString('en-GB', options)
 
     return `${format(minDate)} - ${format(maxDate)}`
-  }, [users])
+  }, [activeUsers])
 
   // 3. Current Date for Header display
   const currentDateStr = useMemo(() => {
@@ -172,7 +177,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       return acc
     }, {} as Record<string, { name: string; Male: number; Female: number }>)
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       const age = getAge(u.birthDate)
       if (age !== null) {
         const bucket = getAgeBucket(age)
@@ -183,7 +188,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     })
 
     return buckets.map((b) => dataMap[b])
-  }, [users])
+  }, [activeUsers])
 
   // 5. Marital Status Data
   const maritalData = useMemo(() => {
@@ -194,7 +199,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
       'Widower': { name: 'Widower', Male: 0, Female: 0 },
     }
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       let status = 'Single'
       const raw = u.maritalStatus?.toLowerCase().trim() || ''
       if (raw.includes('married') || raw.startsWith('k') || raw.includes('nikah') || raw.includes('kawin')) {
@@ -211,13 +216,13 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     })
 
     return Object.values(map || {})
-  }, [users])
+  }, [activeUsers])
 
   // 6. Education Data
   const educationData = useMemo(() => {
     const counts: Record<string, { name: string; Male: number; Female: number }> = {}
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       let edu = u.education?.toUpperCase().trim() || 'BELUM DIATUR'
       if (edu === 'SLTA' || edu === 'SLTP' || edu === 'SEKOLAH MENENGAH ATAS') edu = 'SMA'
       if (edu === 'SEKOLAH MENENGAH KEJURUAN') edu = 'SMK'
@@ -234,12 +239,12 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
-  }, [users])
+  }, [activeUsers])
 
   // 7. Religion Data
   const religionData = useMemo(() => {
     const counts: Record<string, number> = {}
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       let rel = u.religion?.trim() || 'Belum Diatur'
       rel = rel.charAt(0).toUpperCase() + rel.slice(1).toLowerCase()
       counts[rel] = (counts[rel] || 0) + 1
@@ -248,13 +253,13 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     return Object.entries(counts || {})
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-  }, [users])
+  }, [activeUsers])
 
   // 8. Location Data
   const locationData = useMemo(() => {
     const counts: Record<string, { name: string; Male: number; Female: number }> = {}
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       const loc = u.siteName || 'Belum Diatur'
       if (!counts[loc]) {
         counts[loc] = { name: loc, Male: 0, Female: 0 }
@@ -268,13 +273,13 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
-  }, [users])
+  }, [activeUsers])
 
   // 9. Department Data
   const departmentData = useMemo(() => {
     const counts: Record<string, { name: string; Male: number; Female: number }> = {}
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       const dept = u.department || 'Belum Diatur'
       if (!counts[dept]) {
         counts[dept] = { name: dept, Male: 0, Female: 0 }
@@ -288,13 +293,13 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
-  }, [users])
+  }, [activeUsers])
 
   // 10. Level Data
   const levelData = useMemo(() => {
     const counts: Record<string, { name: string; Male: number; Female: number }> = {}
 
-    users.forEach((u) => {
+    activeUsers.forEach((u) => {
       const lvl = u.levelName || 'Staff'
       if (!counts[lvl]) {
         counts[lvl] = { name: lvl, Male: 0, Female: 0 }
@@ -308,7 +313,7 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
     return Object.values(counts || {})
       .sort((a, b) => (b.Male + b.Female) - (a.Male + a.Female))
       .slice(0, 8)
-  }, [users])
+  }, [activeUsers])
 
   return (
     <div className="space-y-6">

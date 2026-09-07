@@ -1,14 +1,8 @@
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { user as authUser } from '@/db/schema/auth'
-import {
-  employees,
-  employeeSiteAssignments,
-  navbarMenuItems,
-  roleMenuPermissions,
-  securityRoles,
-} from '@/db/schema/hero'
+import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
 
 export type HeroMenuPermission = {
@@ -31,14 +25,7 @@ export function isSuperAdminRole(roleName: string | null | undefined): boolean {
   if (!roleName) return false
   const trimmed = roleName.trim()
   const lower = trimmed.toLowerCase()
-  return (
-    trimmed === 'Super Admin' ||
-    trimmed === 'Khusus Mas Rendi' ||
-    trimmed === 'System Administrator' ||
-    lower === 'super admin' ||
-    lower === 'superadmin' ||
-    lower === 'system administrator'
-  )
+  return trimmed === 'Super Admin' || lower === 'super admin' || lower === 'superadmin'
 }
 
 export async function getEmployeeAccessRoleByEmail(email: string) {
@@ -52,36 +39,22 @@ export async function getEmployeeAccessRoleByEmail(email: string) {
   return employee?.accessRole ?? null
 }
 
-export async function getCurrentEmployeeAccessRole() {
+export async function getCurrentEmployeeAccessRole(): Promise<string> {
   const session = await getServerSession()
 
-  if (session?.user?.id || session?.user?.email) {
-    const [employee] = await db
-      .select({ accessRole: employees.accessRole })
-      .from(employees)
-      .where(
-        or(
-          session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-          session.user.email ? eq(employees.email, session.user.email) : undefined
-        )
-      )
-      .limit(1)
-
-    if (employee?.accessRole) return employee.accessRole
-  }
-
-  const [defaultUser] = await db
+  if (!session?.user?.id && !session?.user?.email) return ''
+  const [employee] = await db
     .select({ accessRole: employees.accessRole })
     .from(employees)
     .where(
       or(
-        eq(employees.email, 'raihanaraya36@gmail.com'),
-        eq(employees.employeeSn, '712011')
+        session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
+        session.user.email ? eq(employees.email, session.user.email) : undefined
       )
     )
     .limit(1)
 
-  return defaultUser?.accessRole ?? 'Super Admin'
+  return employee?.accessRole ?? ''
 }
 
 export async function getMenuPermissionForRole(
@@ -135,15 +108,13 @@ export async function getMenuPermissionForRole(
     }
   }
 
-  // Fallback defaults for standard roles if not configured in roleMenuPermissions
-  const isElevated = roleName === 'Site Admin' || roleName === 'HC Manager' || roleName === 'Manager'
   return {
     roleName,
-    canView: isElevated,
-    canEdit: isElevated,
+    canView: false,
+    canEdit: false,
     canDelete: false,
     canSelectAll: false,
-    dataScope: roleName === 'HC Manager' ? 'global' : 'site',
+    dataScope: 'own',
   }
 }
 
@@ -184,9 +155,7 @@ export function hasGlobalDataAccess(
   return permission.dataScope === 'global'
 }
 
-export function hasSiteDataAccess(
-  permission: Pick<HeroMenuPermission, 'dataScope'>
-) {
+export function hasSiteDataAccess(permission: Pick<HeroMenuPermission, 'dataScope'>) {
   return permission.dataScope === 'site'
 }
 
@@ -197,28 +166,7 @@ export async function getUserAccessibleSiteIds(employeeId: number): Promise<numb
     .where(eq(employees.id, employeeId))
     .limit(1)
 
-  const siteIds = new Set<number>()
-  if (emp?.siteId != null) {
-    siteIds.add(emp.siteId)
-  }
-
-  const extraAssignments = await db
-    .select({ siteId: employeeSiteAssignments.siteId })
-    .from(employeeSiteAssignments)
-    .where(
-      and(
-        eq(employeeSiteAssignments.employeeId, employeeId),
-        eq(employeeSiteAssignments.isActive, true)
-      )
-    )
-
-  for (const item of extraAssignments) {
-    if (item.siteId != null) {
-      siteIds.add(item.siteId)
-    }
-  }
-
-  return Array.from(siteIds)
+  return emp?.siteId == null ? [] : [emp.siteId]
 }
 
 export const SCHEDULING_TIMESHEET_TABS = [

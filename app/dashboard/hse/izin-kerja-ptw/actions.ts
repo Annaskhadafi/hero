@@ -29,7 +29,8 @@ import {
   type PtwWorkflowSettings,
   DEFAULT_PTW_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
-import { normalizePermitTypes } from '@/lib/ptw-helpers'
+import { normalizePermitTypes, parseApplicantEntry } from '@/lib/ptw-helpers'
+import { withDbRetry } from '@/lib/hero-admin'
 
 function safeRevalidatePath(path: string) {
   try {
@@ -70,13 +71,108 @@ type PtwApprovalData = {
   description: string
   controlSteps: string
   ppe: string[]
+  subTypes?: Record<string, string[]> | string[]
+  additionalNotes?: string
   gasTestRequired: boolean
   isolationRequired: boolean
   registeredSignature?: string | null
+  attachments?: string[] | any[]
   approvals: ApprovalStep[]
   permissions: {
     canApprove: boolean
     canEdit: boolean
+  }
+}
+
+export async function resolveEmployeeOrVendor(rawInput?: string | null) {
+  if (!rawInput || !rawInput.trim()) {
+    return { name: '', email: '', empId: null, signatureDataUrl: null, isExternal: false, company: undefined }
+  }
+
+  const parsed = parseApplicantEntry(rawInput)
+  if (parsed.isExternalVendor && parsed.email) {
+    return {
+      name: parsed.name || 'Vendor Luar',
+      email: parsed.email.trim(),
+      empId: null,
+      signatureDataUrl: null,
+      isExternal: true,
+      company: parsed.company,
+    }
+  }
+
+  // If rawInput itself is an email
+  if (rawInput.includes('@') && !rawInput.includes(' ')) {
+    const [empByEmail] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
+      .from(employees)
+      .where(sql`lower(trim(${employees.email})) = lower(trim(${rawInput.trim()}))`)
+      .limit(1)
+    if (empByEmail) {
+      return {
+        name: empByEmail.name,
+        email: empByEmail.email || rawInput.trim(),
+        empId: empByEmail.id,
+        signatureDataUrl: empByEmail.signatureDataUrl || null,
+        isExternal: false,
+        company: undefined,
+      }
+    }
+    return {
+      name: rawInput.split('@')[0],
+      email: rawInput.trim(),
+      empId: null,
+      signatureDataUrl: null,
+      isExternal: true,
+      company: undefined,
+    }
+  }
+
+  // Clean candidate names (handle "Name — Position", "Name (Vendor)", "Name - Staff")
+  const baseName = parsed.name || rawInput
+  const cleanName = baseName.includes(' — ')
+    ? baseName.split(' — ')[0].trim()
+    : baseName.includes(' - ')
+    ? baseName.split(' - ')[0].trim()
+    : baseName.trim()
+
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      signatureDataUrl: employees.signatureDataUrl,
+    })
+    .from(employees)
+    .where(
+      or(
+        eq(employees.name, cleanName),
+        eq(employees.name, baseName.trim()),
+        sql`lower(trim(${employees.name})) = lower(trim(${cleanName}))`,
+        sql`lower(trim(${employees.name})) = lower(trim(${baseName.trim()}))`,
+        sql`lower(trim(${employees.employeeSn})) = lower(trim(${cleanName}))`
+      )
+    )
+    .limit(1)
+
+  if (emp) {
+    return {
+      name: emp.name,
+      email: emp.email || parsed.email || '',
+      empId: emp.id,
+      signatureDataUrl: emp.signatureDataUrl || null,
+      isExternal: false,
+      company: undefined,
+    }
+  }
+
+  return {
+    name: cleanName,
+    email: parsed.email || '',
+    empId: null,
+    signatureDataUrl: null,
+    isExternal: Boolean(parsed.email),
+    company: parsed.company,
   }
 }
 
@@ -86,24 +182,15 @@ export async function syncPtwApproverNames(
   fieldPicName?: string,
   authorizedByName?: string
 ) {
-  const syncStepApprover = async (stepOrder: number, rawName: string) => {
-    if (!rawName) return
-    const cleanName = rawName.includes(' — ') ? rawName.split(' — ')[0].trim() : rawName.trim()
-    const [emp] = cleanName
-      ? await db
-          .select({ id: employees.id, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
-          .from(employees)
-          .where(eq(employees.name, cleanName))
-          .limit(1)
-      : []
-
-    const sigUrl = emp?.signatureDataUrl || null
+  const syncStepApprover = async (stepOrder: number, rawInput: string) => {
+    if (!rawInput) return
+    const info = await resolveEmployeeOrVendor(rawInput)
     await db
       .update(ptwApprovals)
       .set({
-        approverName: cleanName,
-        ...(emp ? { approverEmail: emp.email, approverEmployeeId: emp.id } : {}),
-        ...(sigUrl ? { signatureDataUrl: sigUrl } : {}),
+        approverName: info.name,
+        approverEmail: info.email,
+        approverEmployeeId: info.empId,
       })
       .where(
         and(
@@ -113,14 +200,141 @@ export async function syncPtwApproverNames(
       )
   }
 
-  if (applicantName !== undefined) {
-    await syncStepApprover(1, applicantName)
-  }
+  // Step 1: Pemberi Kerja
   if (fieldPicName !== undefined) {
-    await syncStepApprover(2, fieldPicName)
+    await syncStepApprover(1, fieldPicName)
   }
+
+  // Step 2..N: Pelaksana Kerja (Multi-Person)
+  if (applicantName !== undefined) {
+    const rawApplicants = applicantName.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+    if (rawApplicants.length > 0) {
+      for (let i = 0; i < rawApplicants.length; i++) {
+        await syncStepApprover(2 + i, rawApplicants[i])
+      }
+    } else {
+      await syncStepApprover(2, applicantName)
+    }
+  }
+
+  // Final Step: Safety Dept
   if (authorizedByName !== undefined) {
-    await syncStepApprover(3, authorizedByName)
+    const [lastStep] = await db
+      .select({ stepOrder: ptwApprovals.stepOrder })
+      .from(ptwApprovals)
+      .where(and(eq(ptwApprovals.ptwPermitId, permitId), eq(ptwApprovals.approverRole, 'field_pic')))
+      .limit(1)
+
+    if (lastStep?.stepOrder) {
+      await syncStepApprover(lastStep.stepOrder, authorizedByName)
+    } else {
+      const [maxStep] = await db
+        .select({ maxOrder: sql<number>`max(${ptwApprovals.stepOrder})` })
+        .from(ptwApprovals)
+        .where(eq(ptwApprovals.ptwPermitId, permitId))
+      if (maxStep?.maxOrder) {
+        await syncStepApprover(maxStep.maxOrder, authorizedByName)
+      }
+    }
+  }
+}
+
+// ── Advance & Notify Next PTW Approval Step ───────────────────────────────
+
+export async function advancePtwApprovalFlow(permitId: number) {
+  const allSteps = await db
+    .select()
+    .from(ptwApprovals)
+    .where(eq(ptwApprovals.ptwPermitId, permitId))
+    .orderBy(asc(ptwApprovals.stepOrder))
+
+  if (allSteps.length === 0) return
+
+  const allApproved = allSteps.every((s) => s.status === 'approved')
+  if (allApproved) {
+    await db
+      .update(hsePtwPermits)
+      .set({ status: 'Approved', updatedAt: new Date() })
+      .where(eq(hsePtwPermits.id, permitId))
+
+    const step1 = allSteps.find((s) => s.stepOrder === 1)
+    const [permit] = await db
+      .select()
+      .from(hsePtwPermits)
+      .where(eq(hsePtwPermits.id, permitId))
+      .limit(1)
+
+    if (step1?.approverEmail) {
+      try {
+        await sendPtwCompletedEmail({
+          permitId,
+          permitNumber: permit?.permitNumber || '',
+          projectName: permit?.projectName || 'Izin Kerja PTW',
+          applicantEmail: step1.approverEmail,
+          applicantName: permit?.applicantName || step1.approverName || 'Pemohon',
+        })
+      } catch (err) {
+        console.error('Error sending PTW completed email:', err)
+      }
+    }
+    return
+  }
+
+  // Find active pending step or unlock next waiting step
+  let targetStep = allSteps.find((s) => s.status === 'pending')
+
+  if (!targetStep) {
+    const nextWaiting = allSteps.find((s) => s.status === 'waiting')
+    if (nextWaiting) {
+      await db
+        .update(ptwApprovals)
+        .set({ status: 'pending' })
+        .where(eq(ptwApprovals.id, nextWaiting.id))
+      targetStep = { ...nextWaiting, status: 'pending' }
+    }
+  }
+
+  if (targetStep) {
+    await db
+      .update(hsePtwPermits)
+      .set({ status: 'In Progress', updatedAt: new Date() })
+      .where(eq(hsePtwPermits.id, permitId))
+
+    const [permit] = await db
+      .select()
+      .from(hsePtwPermits)
+      .where(eq(hsePtwPermits.id, permitId))
+      .limit(1)
+
+    if (targetStep.approverEmail) {
+      try {
+        await sendPtwStepApprovalEmail({
+          permitId,
+          permitNumber: permit?.permitNumber || '',
+          projectName: permit?.projectName || 'Izin Kerja PTW',
+          location: permit?.location,
+          permitType: permit?.permitType,
+          applicantName: permit?.applicantName || 'Pemohon',
+          approverName: targetStep.approverName || 'Approver',
+          approverEmail: targetStep.approverEmail,
+          approvalStep: targetStep.stepLabel,
+          approvalToken: targetStep.approvalToken,
+        })
+
+        await notifyWorkflowBellRecipients({
+          recipientEmails: [targetStep.approverEmail],
+          eventType: 'hse_ptw_approval_needed',
+          category: 'approval_requests',
+          title: `Approval PTW - ${targetStep.stepLabel}`,
+          body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${targetStep.stepLabel}.`,
+          url: `/review/ptw/${targetStep.approvalToken}`,
+          tagPrefix: 'hse-ptw-approval',
+          metadata: { permitId, stepOrder: targetStep.stepOrder, token: targetStep.approvalToken },
+        }).catch((err) => console.error('Error notifying approver bell in advancePtwApprovalFlow:', err))
+      } catch (err) {
+        console.error('Error sending step approval email in advancePtwApprovalFlow:', err)
+      }
+    }
   }
 }
 
@@ -142,7 +356,10 @@ export async function ensurePtwApprovalsExist(permitId: number) {
 
   if (!permit) return
 
-  // Look up employee emails & registered signatures for steps
+  // 1. Pemberi Kerja Employee lookup (Step 1)
+  const fieldPicInfo = await resolveEmployeeOrVendor(permit.fieldPicName || 'Pemberi Kerja')
+
+  // 2. Multi-person Applicants lookup (Step 2..N)
   const [creator] = permit.createdByEmployeeId
     ? await db
         .select({ id: employees.id, name: employees.name, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
@@ -151,73 +368,70 @@ export async function ensurePtwApprovalsExist(permitId: number) {
         .limit(1)
     : []
 
-  const [fieldPicEmp] = permit.fieldPicName
-    ? await db
-        .select({ id: employees.id, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
-        .from(employees)
-        .where(eq(employees.name, permit.fieldPicName.trim()))
-        .limit(1)
-    : []
+  const rawApplicants = (permit.applicantName || creator?.name || 'Pelaksana Kerja')
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const applicantList = rawApplicants.length > 0 ? rawApplicants : ['Pelaksana Kerja']
 
-  const [authorizedEmp] = permit.authorizedByName
-    ? await db
-        .select({ id: employees.id, email: employees.email, signatureDataUrl: employees.signatureDataUrl })
-        .from(employees)
-        .where(eq(employees.name, permit.authorizedByName.trim()))
-        .limit(1)
-    : []
+  const applicantEmpList = await Promise.all(applicantList.map((raw) => resolveEmployeeOrVendor(raw)))
 
-  const steps = [
-    {
-      stepOrder: 1,
-      stepLabel: 'Pelaksana Kerja',
+  // 3. Safety Dept Employee lookup (Final Step)
+  const authorizedInfo = await resolveEmployeeOrVendor(permit.authorizedByName || 'Safety Dept')
+
+  // Sequence: Pemberi Kerja (Step 1) -> Pelaksana Kerja 1..N (Step 2..) -> Safety Dept (Final Step)
+  const steps: Array<{
+    stepOrder: number
+    stepLabel: string
+    approverRole: string
+    name: string
+    email: string
+    empId: number | null
+    signatureDataUrl: string | null
+  }> = []
+
+  // Step 1: Pemberi Kerja (Always starts as pending, never auto-approves on creation)
+  steps.push({
+    stepOrder: 1,
+    stepLabel: 'Pemberi Kerja',
+    approverRole: 'safety_officer',
+    name: fieldPicInfo.name || 'Pemberi Kerja',
+    email: fieldPicInfo.email || '',
+    empId: fieldPicInfo.empId,
+    signatureDataUrl: null,
+  })
+
+  // Step 2..N: Pelaksana Kerja (Multi)
+  applicantEmpList.forEach((app, idx) => {
+    steps.push({
+      stepOrder: 2 + idx,
+      stepLabel: app.company
+        ? `Pelaksana Kerja (${app.company})`
+        : applicantEmpList.length > 1
+        ? `Pelaksana Kerja ${idx + 1}`
+        : 'Pelaksana Kerja',
       approverRole: 'applicant',
-      name: permit.applicantName || creator?.name || 'Pelaksana Kerja',
-      email: creator?.email || '',
-      empId: creator?.id || null,
-      signatureDataUrl: creator?.signatureDataUrl || null,
-    },
-    {
-      stepOrder: 2,
-      stepLabel: 'Pemberi Kerja',
-      approverRole: 'safety_officer',
-      name: permit.fieldPicName || 'Pemberi Kerja',
-      email: fieldPicEmp?.email || '',
-      empId: fieldPicEmp?.id || null,
-      signatureDataUrl: fieldPicEmp?.signatureDataUrl || null,
-    },
-    {
-      stepOrder: 3,
-      stepLabel: 'Safety Dept',
-      approverRole: 'field_pic',
-      name: permit.authorizedByName || 'Safety Dept',
-      email: authorizedEmp?.email || '',
-      empId: authorizedEmp?.id || null,
-      signatureDataUrl: authorizedEmp?.signatureDataUrl || null,
-    },
-  ]
+      name: app.name || `Pelaksana ${idx + 1}`,
+      email: app.email || '',
+      empId: app.empId,
+      signatureDataUrl: null,
+    })
+  })
 
-  let step1Token = ''
-  let step1Name = ''
-  let step1Email = ''
-  let step2Token = ''
-  let step2Name = ''
-  let step2Email = ''
-  const applicantHasSig = Boolean(steps[0]?.signatureDataUrl)
+  // Final Step: Safety Dept
+  const safetyOrder = 2 + applicantEmpList.length
+  steps.push({
+    stepOrder: safetyOrder,
+    stepLabel: 'Safety Dept',
+    approverRole: 'field_pic',
+    name: authorizedInfo.name || 'Safety Dept',
+    email: authorizedInfo.email || '',
+    empId: authorizedInfo.empId,
+    signatureDataUrl: null,
+  })
 
   for (const step of steps) {
     const token = randomUUID()
-    const hasSig = Boolean(step.signatureDataUrl)
-    if (step.stepOrder === 1) {
-      step1Token = token
-      step1Name = step.name
-      step1Email = step.email
-    }
-    if (step.stepOrder === 2) {
-      step2Token = token
-      step2Name = step.name
-      step2Email = step.email
-    }
     try {
       await db.insert(ptwApprovals).values({
         ptwPermitId: permitId,
@@ -228,9 +442,9 @@ export async function ensurePtwApprovalsExist(permitId: number) {
         approverEmail: step.email,
         approverEmployeeId: step.empId,
         approverRole: step.approverRole,
-        status: step.stepOrder === 1 ? (hasSig ? 'approved' : 'pending') : (step.stepOrder === 2 && applicantHasSig ? 'pending' : 'waiting'),
-        signatureDataUrl: (step.stepOrder === 1 && hasSig) ? step.signatureDataUrl : null,
-        signedAt: (step.stepOrder === 1 && hasSig) ? new Date() : null,
+        status: step.stepOrder === 1 ? 'pending' : 'waiting',
+        signatureDataUrl: null,
+        signedAt: null,
         createdAt: new Date(),
       }).onConflictDoNothing()
     } catch {
@@ -238,41 +452,7 @@ export async function ensurePtwApprovalsExist(permitId: number) {
     }
   }
 
-  if (applicantHasSig && step2Token && step2Email) {
-    try {
-      await sendPtwStepApprovalEmail({
-        permitId,
-        permitNumber: permit.permitNumber || '',
-        projectName: permit.projectName || 'Izin Kerja PTW',
-        location: permit.location,
-        permitType: permit.permitType,
-        applicantName: permit.applicantName || creator?.name || 'Pemohon',
-        approverName: step2Name || 'Pemberi Kerja',
-        approverEmail: step2Email,
-        approvalStep: 'Pemberi Kerja Sign',
-        approvalToken: step2Token,
-      })
-    } catch (mailErr) {
-      console.error('Error sending step 2 PTW step approval email:', mailErr)
-    }
-  } else if (step1Token && step1Email) {
-    try {
-      await sendPtwStepApprovalEmail({
-        permitId,
-        permitNumber: permit.permitNumber || '',
-        projectName: permit.projectName || 'Izin Kerja PTW',
-        location: permit.location,
-        permitType: permit.permitType,
-        applicantName: permit.applicantName || creator?.name || 'Pemohon',
-        approverName: step1Name || 'Pemohon',
-        approverEmail: step1Email,
-        approvalStep: 'Applicant Sign',
-        approvalToken: step1Token,
-      })
-    } catch (mailErr) {
-      console.error('Error sending initial PTW step approval email:', mailErr)
-    }
-  }
+  await advancePtwApprovalFlow(permitId)
 }
 
 // ── Get PTW Approval Data ─────────────────────────────────────────────────
@@ -280,36 +460,44 @@ export async function ensurePtwApprovalsExist(permitId: number) {
 export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalData | null> {
   await ensurePtwApprovalsExist(permitId)
 
-  const [permit] = await db
-    .select()
-    .from(hsePtwPermits)
-    .where(eq(hsePtwPermits.id, permitId))
-    .limit(1)
+  const [permit] = await withDbRetry(() =>
+    db
+      .select()
+      .from(hsePtwPermits)
+      .where(eq(hsePtwPermits.id, permitId))
+      .limit(1)
+  )
 
   if (!permit) return null
 
-  const approvalRows = await db
-    .select()
-    .from(ptwApprovals)
-    .where(eq(ptwApprovals.ptwPermitId, permitId))
-    .orderBy(asc(ptwApprovals.stepOrder))
+  const approvalRows = await withDbRetry(() =>
+    db
+      .select()
+      .from(ptwApprovals)
+      .where(eq(ptwApprovals.ptwPermitId, permitId))
+      .orderBy(asc(ptwApprovals.stepOrder))
+  )
 
   // Check permissions & current employee signature
   const session = await getServerSession()
   const userEmail = session?.user?.email?.trim().toLowerCase() || ''
-  const [currentEmployee] = await db
-    .select({ id: employees.id, accessRole: employees.accessRole, signatureDataUrl: employees.signatureDataUrl })
-    .from(employees)
-    .where(sql`LOWER(TRIM(${employees.email})) = ${userEmail}`)
-    .limit(1)
+  const [currentEmployee] = await withDbRetry(() =>
+    db
+      .select({ id: employees.id, accessRole: employees.accessRole, signatureDataUrl: employees.signatureDataUrl })
+      .from(employees)
+      .where(sql`LOWER(TRIM(${employees.email})) = ${userEmail}`)
+      .limit(1)
+  )
 
   let registeredSignature: string | null = currentEmployee?.signatureDataUrl || null
 
   // Pre-fetch all employee signatures to populate any missing approval step signatureDataUrl
-  const allEmpSignatures = await db
-    .select({ id: employees.id, email: employees.email, name: employees.name, signatureDataUrl: employees.signatureDataUrl })
-    .from(employees)
-    .where(sql`${employees.signatureDataUrl} IS NOT NULL`)
+  const allEmpSignatures = await withDbRetry(() =>
+    db
+      .select({ id: employees.id, email: employees.email, name: employees.name, signatureDataUrl: employees.signatureDataUrl })
+      .from(employees)
+      .where(sql`${employees.signatureDataUrl} IS NOT NULL`)
+  )
 
   const empSigMapByEmail = new Map<string, string>()
   const empSigMapById = new Map<number, string>()
@@ -322,39 +510,36 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
     }
   }
 
-  const mappedApprovals = approvalRows
-    .filter((a) => a.stepOrder <= 3)
-    .map((a) => {
-      const isSignedStep = a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.signedAt)
-      let sig = a.signatureDataUrl || null
-      if (!sig && isSignedStep) {
-        if (a.approverEmployeeId && empSigMapById.has(a.approverEmployeeId)) {
-          sig = empSigMapById.get(a.approverEmployeeId)!
-        } else if (a.approverEmail && empSigMapByEmail.has(a.approverEmail.trim().toLowerCase())) {
-          sig = empSigMapByEmail.get(a.approverEmail.trim().toLowerCase())!
-        } else if (a.approverName && empSigMapByName.has(a.approverName.trim().toLowerCase())) {
-          sig = empSigMapByName.get(a.approverName.trim().toLowerCase())!
-        }
+  const mappedApprovals = approvalRows.map((a) => {
+    const isSignedStep = a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.signedAt)
+    let sig = a.signatureDataUrl || null
+    if (!sig && isSignedStep) {
+      if (a.approverEmployeeId && empSigMapById.has(a.approverEmployeeId)) {
+        sig = empSigMapById.get(a.approverEmployeeId)!
+      } else if (a.approverEmail && empSigMapByEmail.has(a.approverEmail.trim().toLowerCase())) {
+        sig = empSigMapByEmail.get(a.approverEmail.trim().toLowerCase())!
+      } else if (a.approverName && empSigMapByName.has(a.approverName.trim().toLowerCase())) {
+        sig = empSigMapByName.get(a.approverName.trim().toLowerCase())!
       }
-      return {
-        id: a.id,
-        stepOrder: a.stepOrder,
-        stepLabel:
-          a.stepOrder === 1 || a.approverRole === 'applicant'
-            ? 'Pelaksana Kerja'
-            : a.stepOrder === 2 || a.approverRole === 'safety_officer'
-            ? 'Pemberi Kerja'
-            : a.stepOrder === 3 || a.approverRole === 'field_pic' || a.approverRole === 'authorized'
-            ? 'Safety Dept'
-            : a.stepLabel,
-        approverName: a.approverName,
-        approverRole: a.approverRole,
-        status: a.status,
-        signatureDataUrl: isSignedStep ? sig : null,
-        remarks: a.remarks,
-        signedAt: a.signedAt,
-      }
-    })
+    }
+    return {
+      id: a.id,
+      stepOrder: a.stepOrder,
+      stepLabel: a.stepLabel || (
+        a.stepOrder === 1 || a.approverRole === 'safety_officer' || a.approverRole === 'pemberi_kerja'
+          ? 'Pemberi Kerja'
+          : a.approverRole === 'applicant'
+          ? 'Pelaksana Kerja'
+          : 'Safety Dept'
+      ),
+      approverName: a.approverName,
+      approverRole: a.approverRole,
+      status: a.status,
+      signatureDataUrl: isSignedStep ? sig : null,
+      remarks: a.remarks,
+      signedAt: a.signedAt,
+    }
+  })
 
   const canApprove = Boolean(currentEmployee) && approvalRows.some(
     (a) => a.status === 'pending' && (a.approverEmployeeId === currentEmployee?.id || ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee?.accessRole ?? ''))
@@ -377,8 +562,11 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
     description: permit.description,
     controlSteps: permit.controlSteps,
     ppe: (permit.ppe as string[]) || [],
+    subTypes: (permit.subTypes as Record<string, string[]> | string[]) || [],
+    additionalNotes: permit.additionalNotes || '',
     gasTestRequired: permit.gasTestRequired,
     isolationRequired: permit.isolationRequired,
+    attachments: (permit.attachments as any) || [],
     registeredSignature,
     approvals: mappedApprovals,
     permissions: {
@@ -406,7 +594,10 @@ export async function savePtwApprovalForm(params: {
   description?: string
   controlSteps?: string
   ppe?: string[]
+  subTypes?: Record<string, string[]> | string[]
+  additionalNotes?: string
   checkedEquipment?: string[]
+  attachments?: string[] | any[]
   signatures?: Record<number, string>
   stepRemarks?: Record<number, string>
   remarks?: string
@@ -426,8 +617,11 @@ export async function savePtwApprovalForm(params: {
     if (params.riskLevel !== undefined) updates.riskLevel = params.riskLevel
     if (params.description !== undefined) updates.description = params.description
     if (params.controlSteps !== undefined) updates.controlSteps = params.controlSteps
+    if (params.additionalNotes !== undefined) updates.additionalNotes = params.additionalNotes
     
     if (params.ppe !== undefined) updates.ppe = params.ppe
+    if (params.subTypes !== undefined) updates.subTypes = params.subTypes
+    if (params.attachments !== undefined) updates.attachments = params.attachments
 
     await db
       .update(hsePtwPermits)
@@ -454,6 +648,7 @@ export async function savePtwApprovalForm(params: {
     }
 
     if (params.signatures && typeof params.signatures === 'object') {
+      let anySignatureUpdated = false
       for (const [stepIdStr, sigUrl] of Object.entries(params.signatures || {})) {
         const stepId = Number(stepIdStr)
         if (stepId && sigUrl) {
@@ -466,7 +661,11 @@ export async function savePtwApprovalForm(params: {
               remarks: params.stepRemarks?.[stepId] ?? undefined,
             })
             .where(eq(ptwApprovals.id, stepId))
+          anySignatureUpdated = true
         }
+      }
+      if (anySignatureUpdated) {
+        await advancePtwApprovalFlow(params.permitId)
       }
     }
 
@@ -639,103 +838,8 @@ export async function submitPtwApprovalStepAction(
         console.error('Error persisting employee signature in submitPtwApprovalStepAction:', empErr)
       }
 
-      // Unlock next step
-      const [nextStep] = await db
-        .select()
-        .from(ptwApprovals)
-        .where(
-          and(
-            eq(ptwApprovals.ptwPermitId, permitId),
-            eq(ptwApprovals.status, 'waiting'),
-            sql`${ptwApprovals.stepOrder} > ${approval.stepOrder}`
-          )
-        )
-        .orderBy(asc(ptwApprovals.stepOrder))
-        .limit(1)
-
-      if (nextStep) {
-        await db
-          .update(ptwApprovals)
-          .set({ status: 'pending' })
-          .where(eq(ptwApprovals.id, nextStep.id))
-
-        await db
-          .update(hsePtwPermits)
-          .set({ status: 'In Progress', updatedAt: new Date() })
-          .where(eq(hsePtwPermits.id, permitId))
-
-        try {
-          if (nextStep.approverEmail) {
-            await sendPtwStepApprovalEmail({
-              permitId,
-              permitNumber: permit?.permitNumber || '',
-              projectName: permit?.projectName || 'Izin Kerja PTW',
-              location: permit?.location,
-              permitType: permit?.permitType,
-              applicantName: permit?.applicantName || 'Pemohon',
-              approverName: nextStep.approverName || 'Approver',
-              approverEmail: nextStep.approverEmail,
-              approvalStep: nextStep.stepLabel,
-              approvalToken: nextStep.approvalToken,
-            })
-
-            await notifyWorkflowBellRecipients({
-              recipientEmails: [nextStep.approverEmail],
-              eventType: 'hse_ptw_approval_needed',
-              category: 'approval_requests',
-              title: `Approval PTW - ${nextStep.stepLabel}`,
-              body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${nextStep.stepLabel}.`,
-              url: `/dashboard/hse/izin-kerja-ptw/${permitId}/approval`,
-              tagPrefix: 'hse-ptw-approval',
-              metadata: { permitId, stepOrder: nextStep.stepOrder, token: nextStep.approvalToken },
-            }).catch((err) => console.error('Error notifying next approver bell:', err))
-          }
-        } catch (mailErr) {
-          console.error('Error sending PTW step approval email:', mailErr)
-        }
-      } else {
-        // All steps approved — update PTW status
-        await db
-          .update(hsePtwPermits)
-          .set({ status: 'Approved', updatedAt: new Date() })
-          .where(eq(hsePtwPermits.id, permitId))
-
-        const [step1] = await db
-          .select()
-          .from(ptwApprovals)
-          .where(
-            and(
-              eq(ptwApprovals.ptwPermitId, permitId),
-              eq(ptwApprovals.stepOrder, 1)
-            )
-          )
-          .limit(1)
-
-        try {
-          if (step1?.approverEmail) {
-            await sendPtwCompletedEmail({
-              permitId,
-              permitNumber: permit?.permitNumber || '',
-              projectName: permit?.projectName || 'Izin Kerja PTW',
-              applicantEmail: step1.approverEmail,
-              applicantName: permit?.applicantName || step1.approverName || 'Pemohon',
-            })
-
-            await notifyWorkflowBellRecipients({
-              recipientEmails: [step1.approverEmail],
-              eventType: 'hse_ptw_approved',
-              category: 'approval_requests',
-              title: `PTW Disetujui: #${permit?.permitNumber || ''}`,
-              body: `Izin Kerja Aman (PTW) #${permit?.permitNumber || ''} telah disetujui lengkap oleh seluruh approver.`,
-              url: `/dashboard/hse/izin-kerja-ptw`,
-              tagPrefix: 'hse-ptw-approved',
-              metadata: { permitId },
-            }).catch((err) => console.error('Error notifying applicant on completed:', err))
-          }
-        } catch (mailErr) {
-          console.error('Error sending PTW completed email:', mailErr)
-        }
-      }
+      // Unlock next step and notify approver
+      await advancePtwApprovalFlow(permitId)
     } else if (action === 'reject') {
       await db
         .update(ptwApprovals)
@@ -1028,7 +1132,9 @@ export async function createPtwPermitAction(
         description?: string
         controlSteps?: string
         ppe?: string[] | string
+        subTypes?: Record<string, string[]> | string[] | string
         checkedEquipment?: string[]
+        attachments?: string[] | any[]
         gasTestRequired?: boolean
         isolationRequired?: boolean
         startAt?: Date | string
@@ -1045,8 +1151,12 @@ export async function createPtwPermitAction(
     if (rawPayload instanceof FormData) {
       const ppeRaw = rawPayload.get('ppe') as string
       const typesRaw = rawPayload.get('selectedPermitTypes') as string
+      const subTypesRaw = rawPayload.get('subTypes') as string
+      const attachmentsRaw = rawPayload.get('attachments') as string
       let parsedPpe: string[] = []
       let parsedTypes: string[] = []
+      let parsedSubTypes: Record<string, string[]> | string[] = {}
+      let parsedAttachments: string[] = []
       try {
         if (ppeRaw) parsedPpe = JSON.parse(ppeRaw)
       } catch {
@@ -1056,6 +1166,16 @@ export async function createPtwPermitAction(
         if (typesRaw) parsedTypes = JSON.parse(typesRaw)
       } catch {
         if (typesRaw) parsedTypes = [typesRaw]
+      }
+      try {
+        if (subTypesRaw) parsedSubTypes = JSON.parse(subTypesRaw)
+      } catch {
+        if (subTypesRaw) parsedSubTypes = [subTypesRaw]
+      }
+      try {
+        if (attachmentsRaw) parsedAttachments = JSON.parse(attachmentsRaw)
+      } catch {
+        if (attachmentsRaw) parsedAttachments = [attachmentsRaw]
       }
 
       const pTypeStr = parsedTypes.length > 0
@@ -1074,7 +1194,10 @@ export async function createPtwPermitAction(
         authorizedByName: (rawPayload.get('authorizedByName') as string) || '',
         description: (rawPayload.get('description') as string) || (rawPayload.get('workDescription') as string) || '',
         controlSteps: (rawPayload.get('controlSteps') as string) || '',
+        additionalNotes: (rawPayload.get('additionalNotes') as string) || (rawPayload.get('additionalExplanation') as string) || '',
         ppe: parsedPpe,
+        subTypes: parsedSubTypes,
+        attachments: parsedAttachments,
         gasTestRequired: rawPayload.get('gasTestRequired') === 'true' || rawPayload.get('gasTestRequired') === '1',
         isolationRequired: rawPayload.get('isolationRequired') === 'true' || rawPayload.get('isolationRequired') === '1',
         startDate: (rawPayload.get('startDate') as string) || undefined,
@@ -1095,6 +1218,23 @@ export async function createPtwPermitAction(
         } catch {
           payload.ppe = [payload.ppe]
         }
+      }
+      if (typeof payload.subTypes === 'string') {
+        try {
+          payload.subTypes = JSON.parse(payload.subTypes)
+        } catch {
+          payload.subTypes = [payload.subTypes]
+        }
+      }
+      if (typeof payload.attachments === 'string') {
+        try {
+          payload.attachments = JSON.parse(payload.attachments)
+        } catch {
+          payload.attachments = [payload.attachments]
+        }
+      }
+      if (payload.additionalExplanation && !payload.additionalNotes) {
+        payload.additionalNotes = payload.additionalExplanation
       }
     }
 
@@ -1183,7 +1323,10 @@ export async function createPtwPermitAction(
         authorizedByName: payload.authorizedByName?.trim() || 'Safety Dept',
         description: payload.description || '',
         controlSteps: payload.controlSteps || '',
+        additionalNotes: payload.additionalNotes || '',
         ppe: ppeList,
+        subTypes: payload.subTypes || {},
+        attachments: payload.attachments || [],
         gasTestRequired: gasTestReq,
         isolationRequired: isolationReq,
         startAt: parsedStartAt,
@@ -1336,23 +1479,61 @@ export async function sendDuePtwReminders(targetPermitId?: number) {
 
 // ── Token Approval Methods ────────────────────────────────────────────────
 
+export async function resolveApprovalFromTokenOrPermit(token: string) {
+  if (!token) return null
+  const cleanToken = token.trim().replace(/\s+/g, '-')
+  let decodedToken = token
+  try {
+    decodedToken = decodeURIComponent(token).trim().replace(/\s+/g, '-')
+  } catch {}
+
+  let [approval] = await db
+    .select()
+    .from(ptwApprovals)
+    .where(
+      or(
+        eq(ptwApprovals.approvalToken, token),
+        eq(ptwApprovals.approvalToken, cleanToken),
+        eq(ptwApprovals.approvalToken, decodedToken)
+      )
+    )
+    .limit(1)
+
+  if (!approval) {
+    const [permit] = await db
+      .select()
+      .from(hsePtwPermits)
+      .where(
+        or(
+          eq(hsePtwPermits.permitNumber, token),
+          eq(hsePtwPermits.permitNumber, cleanToken),
+          eq(hsePtwPermits.permitNumber, decodedToken)
+        )
+      )
+      .limit(1)
+
+    if (permit) {
+      await ensurePtwApprovalsExist(permit.id)
+      const permitApprovals = await db
+        .select()
+        .from(ptwApprovals)
+        .where(eq(ptwApprovals.ptwPermitId, permit.id))
+        .orderBy(asc(ptwApprovals.stepOrder))
+
+      approval = permitApprovals.find((a) => a.status === 'pending') || permitApprovals[0]
+    }
+  }
+
+  return approval || null
+}
+
 export async function getPtwApprovalByToken(token: string) {
   try {
     if (!token) {
       return { success: false as const, error: 'Token approval tidak valid.' }
     }
-    const cleanToken = token.trim().replace(/\s+/g, '-')
 
-    const [approval] = await db
-      .select()
-      .from(ptwApprovals)
-      .where(
-        or(
-          eq(ptwApprovals.approvalToken, token),
-          eq(ptwApprovals.approvalToken, cleanToken)
-        )
-      )
-      .limit(1)
+    const approval = await resolveApprovalFromTokenOrPermit(token)
 
     if (!approval) {
       return { success: false as const, error: 'Approval step tidak ditemukan.' }
@@ -1411,11 +1592,7 @@ export async function approvePtwStepByToken(
   payload: { signatureDataUrl: string; remarks?: string }
 ) {
   try {
-    const [approval] = await db
-      .select()
-      .from(ptwApprovals)
-      .where(eq(ptwApprovals.approvalToken, token))
-      .limit(1)
+    const approval = await resolveApprovalFromTokenOrPermit(token)
 
     if (!approval) throw new Error('Approval token tidak valid.')
     if (approval.status === 'approved') return { success: true as const }
@@ -1466,108 +1643,8 @@ export async function approvePtwStepByToken(
       console.error('Error persisting employee signature in approvePtwStepByToken:', empErr)
     }
 
-    // Advance next step
-    const [next] = await db
-      .select()
-      .from(ptwApprovals)
-      .where(
-        and(
-          eq(ptwApprovals.ptwPermitId, approval.ptwPermitId),
-          sql`${ptwApprovals.stepOrder} > ${approval.stepOrder}`,
-          eq(ptwApprovals.status, 'waiting')
-        )
-      )
-      .orderBy(asc(ptwApprovals.stepOrder))
-      .limit(1)
-
-    const [permit] = await db
-      .select()
-      .from(hsePtwPermits)
-      .where(eq(hsePtwPermits.id, approval.ptwPermitId))
-      .limit(1)
-
-    if (next) {
-      await db
-        .update(ptwApprovals)
-        .set({ status: 'pending' })
-        .where(eq(ptwApprovals.id, next.id))
-
-      await db
-        .update(hsePtwPermits)
-        .set({ status: 'In Progress', updatedAt: new Date() })
-        .where(eq(hsePtwPermits.id, approval.ptwPermitId))
-
-      try {
-        if (next.approverEmail) {
-          await sendPtwStepApprovalEmail({
-            permitId: approval.ptwPermitId,
-            permitNumber: permit?.permitNumber || '',
-            projectName: permit?.projectName || 'Izin Kerja PTW',
-            location: permit?.location,
-            permitType: permit?.permitType,
-            applicantName: permit?.applicantName || 'Pemohon',
-            approverName: next.approverName || 'Approver',
-            approverEmail: next.approverEmail,
-            approvalStep: next.stepLabel,
-            approvalToken: next.approvalToken,
-          })
-
-          await notifyWorkflowBellRecipients({
-            recipientEmails: [next.approverEmail],
-            eventType: 'hse_ptw_approval_needed',
-            category: 'approval_requests',
-            title: `Approval PTW - ${next.stepLabel}`,
-            body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${next.stepLabel}.`,
-            url: `/dashboard/hse/izin-kerja-ptw/${approval.ptwPermitId}/approval`,
-            tagPrefix: 'hse-ptw-approval',
-            metadata: { permitId: approval.ptwPermitId, stepOrder: next.stepOrder, token: next.approvalToken },
-          }).catch((err) => console.error('Error notifying next approver bell:', err))
-        }
-      } catch (mailErr) {
-        console.error('Error sending PTW step approval email:', mailErr)
-      }
-    } else {
-      await db
-        .update(hsePtwPermits)
-        .set({ status: 'Approved', updatedAt: new Date() })
-        .where(eq(hsePtwPermits.id, approval.ptwPermitId))
-
-      const [step1] = await db
-        .select()
-        .from(ptwApprovals)
-        .where(
-          and(
-            eq(ptwApprovals.ptwPermitId, approval.ptwPermitId),
-            eq(ptwApprovals.stepOrder, 1)
-          )
-        )
-        .limit(1)
-
-      try {
-        if (step1?.approverEmail) {
-          await sendPtwCompletedEmail({
-            permitId: approval.ptwPermitId,
-            permitNumber: permit?.permitNumber || '',
-            projectName: permit?.projectName || 'Izin Kerja PTW',
-            applicantEmail: step1.approverEmail,
-            applicantName: permit?.applicantName || step1.approverName || 'Pemohon',
-          })
-
-          await notifyWorkflowBellRecipients({
-            recipientEmails: [step1.approverEmail],
-            eventType: 'hse_ptw_approved',
-            category: 'approval_requests',
-            title: `PTW Disetujui: #${permit?.permitNumber || ''}`,
-            body: `Izin Kerja Aman (PTW) #${permit?.permitNumber || ''} telah disetujui lengkap oleh seluruh approver.`,
-            url: `/dashboard/hse/izin-kerja-ptw`,
-            tagPrefix: 'hse-ptw-approved',
-            metadata: { permitId: approval.ptwPermitId },
-          }).catch((err) => console.error('Error notifying applicant on completed:', err))
-        }
-      } catch (mailErr) {
-        console.error('Error sending PTW completed email:', mailErr)
-      }
-    }
+    // Advance next step and send email/bell notifications
+    await advancePtwApprovalFlow(approval.ptwPermitId)
 
     safeRevalidatePath('/dashboard/hse/izin-kerja-ptw')
     safeRevalidatePath(`/dashboard/hse/izin-kerja-ptw/${approval.ptwPermitId}/approval`)
@@ -1584,11 +1661,7 @@ export async function rejectPtwStepByToken(
   payload: { remarks?: string }
 ) {
   try {
-    const [approval] = await db
-      .select()
-      .from(ptwApprovals)
-      .where(eq(ptwApprovals.approvalToken, token))
-      .limit(1)
+    const approval = await resolveApprovalFromTokenOrPermit(token)
 
     if (!approval) throw new Error('Approval token tidak valid.')
 
@@ -2235,11 +2308,13 @@ export async function singleRevertPtwPermitAction(permitId: number, remarks?: st
 
 export async function getPtwWorkflowSettings(): Promise<PtwWorkflowSettings> {
   try {
-    const [row] = await db
-      .select()
-      .from(hcContractReviewSettings)
-      .where(eq(hcContractReviewSettings.settingKey, 'ptw_permit_workflow'))
-      .limit(1)
+    const [row] = await withDbRetry(() =>
+      db
+        .select()
+        .from(hcContractReviewSettings)
+        .where(eq(hcContractReviewSettings.settingKey, 'ptw_permit_workflow'))
+        .limit(1)
+    )
 
     const stored = (row?.settingValue as Partial<PtwWorkflowSettings> | undefined) ?? {}
     return {

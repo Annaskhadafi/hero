@@ -15,6 +15,8 @@ import {
   Trophy,
   ClipboardList,
 } from 'lucide-react'
+import { useLanguage } from '@/components/language-provider'
+import { translateMenuTitle } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 const LEARNER_ITEMS = [
@@ -26,13 +28,13 @@ const LEARNER_ITEMS = [
     color: 'blue',
   },
   {
-    title: 'Katalog Kursus',
+    title: 'Katalog Pelatihan',
     href: '/dashboard/chitralearning-lms/catalog',
     icon: Library,
     color: 'violet',
   },
   {
-    title: 'My Learning',
+    title: 'Pembelajaran Saya',
     href: '/dashboard/chitralearning-lms/my-learning',
     icon: BookOpen,
     color: 'emerald',
@@ -44,7 +46,7 @@ const LEARNER_ITEMS = [
     color: 'amber',
   },
   {
-    title: 'Leaderboard',
+    title: 'Papan Peringkat',
     href: '/dashboard/chitralearning-lms/leaderboard',
     icon: Trophy,
     color: 'orange',
@@ -53,36 +55,35 @@ const LEARNER_ITEMS = [
 
 const ADMIN_ITEMS = [
   {
-    title: 'Course Builder',
+    title: 'Pembangun Kursus',
     href: '/dashboard/chitralearning-lms/courses/new',
     icon: Hammer,
     color: 'rose',
   },
   {
-    title: 'Management',
+    title: 'Manajemen',
     href: '/dashboard/chitralearning-lms/management',
     icon: Settings,
     color: 'cyan',
   },
   {
-    title: 'Reports',
+    title: 'Laporan',
     href: '/dashboard/chitralearning-lms/reports',
     icon: BarChart,
     color: 'indigo',
   },
   {
-    title: 'Campaigns',
+    title: 'Kampanye',
     href: '/dashboard/chitralearning-lms/campaigns',
     icon: Megaphone,
     color: 'orange',
   },
   {
-    title: 'Online Assignment',
+    title: 'Tugas Online',
     href: '/dashboard/chitralearning-lms/online-assignments',
     icon: ClipboardList,
     color: 'violet',
   },
-
 ]
 
 const COLOR_MAP: Record<string, { icon: string; active: string; ring: string }> = {
@@ -100,8 +101,9 @@ interface LmsSidebarNavProps {
   isAdmin?: boolean
 }
 
-function NavItem({ item, isActive }: { item: typeof LEARNER_ITEMS[number]; isActive: boolean }) {
+function NavItem({ item, isActive, language }: { item: typeof LEARNER_ITEMS[number]; isActive: boolean; language: 'id' | 'en' }) {
   const colors = COLOR_MAP[item.color]
+  const displayTitle = translateMenuTitle(item.title, language)
 
   return (
     <Link
@@ -123,7 +125,7 @@ function NavItem({ item, isActive }: { item: typeof LEARNER_ITEMS[number]; isAct
       >
         <item.icon className="h-4 w-4" />
       </span>
-      {item.title}
+      {displayTitle}
       {isActive && (
         <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10" />
       )}
@@ -133,20 +135,21 @@ function NavItem({ item, isActive }: { item: typeof LEARNER_ITEMS[number]; isAct
 
 export function LmsSidebarNav({ isAdmin = false }: LmsSidebarNavProps) {
   const pathname = usePathname()
+  const { language, isIndonesian } = useLanguage()
 
   return (
     <nav className="flex flex-col gap-6 w-full max-w-[240px] sticky top-6">
       {/* Learner Section */}
       <div className="rounded-2xl border border-slate-200/60 bg-white p-3 shadow-sm">
         <h4 className="px-2 mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Learner
+          {isIndonesian ? 'Peserta Belajar' : 'Learner'}
         </h4>
         <div className="space-y-1">
           {LEARNER_ITEMS.map((item) => {
             const isActive = item.exact
               ? pathname === item.href
               : pathname?.startsWith(item.href)
-            return <NavItem key={item.href} item={item} isActive={isActive} />
+            return <NavItem key={item.href} item={item} isActive={isActive} language={language} />
           })}
         </div>
       </div>
@@ -155,14 +158,14 @@ export function LmsSidebarNav({ isAdmin = false }: LmsSidebarNavProps) {
       {isAdmin && (
         <div className="rounded-2xl border border-slate-200/60 bg-white p-3 shadow-sm">
           <h4 className="px-2 mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Instructor & Admin
+            {isIndonesian ? 'Instruktur & Admin' : 'Instructor & Admin'}
           </h4>
           <div className="space-y-1">
             {ADMIN_ITEMS.map((item) => {
               const isActive = (item as any).exact
                 ? pathname === item.href
                 : pathname?.startsWith(item.href)
-              return <NavItem key={item.href} item={item} isActive={isActive} />
+              return <NavItem key={item.href} item={item} isActive={isActive} language={language} />
             })}
           </div>
         </div>

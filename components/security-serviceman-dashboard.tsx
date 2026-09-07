@@ -68,10 +68,15 @@ function isContract(status: string | null | undefined): boolean {
 }
 
 export function SecurityServicemanDashboard({ users }: SecurityServicemanDashboardProps) {
+  // Only include active employees
+  const activeUsers = useMemo(() => {
+    return users.filter((u) => u.isActive !== false && !u.status?.toLowerCase().includes('inactive') && !u.status?.toLowerCase().includes('non'))
+  }, [users])
+
   // Get all unique departments and sections
   const uniqueDepartments = useMemo(() => {
-    return Array.from(new Set(users.map((u) => u.department).filter(Boolean))).sort()
-  }, [users])
+    return Array.from(new Set(activeUsers.map((u) => u.department).filter(Boolean))).sort()
+  }, [activeUsers])
 
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedSections, setSelectedSections] = useState<string[]>([])
@@ -81,19 +86,19 @@ export function SecurityServicemanDashboard({ users }: SecurityServicemanDashboa
   // Filter sections options based on selected departments
   const uniqueSections = useMemo(() => {
     const relevantUsers = selectedDepartments.length === 0
-      ? users
-      : users.filter((u) => u.department && selectedDepartments.includes(u.department))
+      ? activeUsers
+      : activeUsers.filter((u) => u.department && selectedDepartments.includes(u.department))
     return Array.from(new Set(relevantUsers.map((u) => u.section).filter(Boolean))).sort()
-  }, [users, selectedDepartments])
+  }, [activeUsers, selectedDepartments])
 
   // Filter users based on selected departments & sections
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    return activeUsers.filter((u) => {
       const matchDept = selectedDepartments.length === 0 || (u.department && selectedDepartments.includes(u.department))
       const matchSec = selectedSections.length === 0 || (u.section && selectedSections.includes(u.section))
       return matchDept && matchSec
     })
-  }, [users, selectedDepartments, selectedSections])
+  }, [activeUsers, selectedDepartments, selectedSections])
 
   // Compute metrics
   const metrics = useMemo(() => {

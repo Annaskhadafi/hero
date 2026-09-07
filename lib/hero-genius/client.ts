@@ -20,21 +20,40 @@ export function resolveRagDocumentUrl(rawUrl?: string | null): string {
   const trimmed = rawUrl.trim()
   if (!trimmed) return ''
 
-  const filename = trimmed.split('/').pop() || ''
+  const envBase = (process.env.RARAY_VISION_BASE_URL || 'https://vision.chitraparatama.com').replace(/\/+$/, '')
+  const cleanBase = envBase.endsWith('/api/v1') ? envBase.slice(0, -7) : envBase
 
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    if (trimmed.includes('vision.chitraparatama.com')) {
-      if (trimmed.includes('/api/v1/uploads/')) {
-        return trimmed.replace('/api/v1/uploads/', '/uploads/')
-      }
-      return trimmed
-    }
-    // Route cloudhost or other storage through working Vision uploads endpoint
-    return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
+  // If already pointing to localhost:8000 in dev, map to cleanBase
+  if (trimmed.includes('localhost:8000')) {
+    return trimmed.replace('http://localhost:8000', cleanBase)
   }
 
-  return `https://vision.chitraparatama.com/uploads/${encodeURIComponent(filename)}`
+  // If already pointing to vision's api/v1/uploads endpoint, return as is
+  if (trimmed.includes('/api/v1/uploads/')) {
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed
+    }
+    return `${cleanBase}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`
+  }
+  if (trimmed.includes('/uploads/')) {
+    const fixed = trimmed.replace('/uploads/', '/api/v1/uploads/')
+    if (fixed.startsWith('http://') || fixed.startsWith('https://')) {
+      return fixed
+    }
+    return `${cleanBase}${fixed.startsWith('/') ? '' : '/'}${fixed}`
+  }
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed
+  }
+
+  // Extract clean filename without query parameters
+  const cleanFilename = decodeURIComponent(trimmed.split('?')[0].split('/').pop() || '')
+  if (!cleanFilename) return trimmed
+
+  return `${cleanBase}/api/v1/uploads/${encodeURIComponent(cleanFilename)}`
 }
+
 
 
 function getAuthHeaders(): HeadersInit {
@@ -78,6 +97,13 @@ export interface RagInfoResponse {
   }
 }
 
+export interface RagAttachedImageItem {
+  alt: string
+  url: string
+  source_doc?: string
+  heading?: string | null
+}
+
 export interface RagSourceItem {
   source_id: number
   filename: string
@@ -86,6 +112,7 @@ export interface RagSourceItem {
   similarity_score: number
   chunk_id?: string
   content?: string
+  images?: Array<{ alt: string; url: string }>
 }
 
 export interface RagChatRequest {
@@ -93,6 +120,7 @@ export interface RagChatRequest {
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
   top_k?: number
   session_id?: string | null
+  document_id?: string | null
 }
 
 export interface RagChatResponse {
@@ -101,6 +129,7 @@ export interface RagChatResponse {
     query: string
     answer: string
     sources: RagSourceItem[]
+    attached_images?: RagAttachedImageItem[]
     session_id?: string | null
     retrieved_chunks_count: number
     latency_ms: number
@@ -234,9 +263,10 @@ export async function sendRagChat(payload: RagChatRequest): Promise<RagChatRespo
       messages: payload.messages || [],
       top_k: payload.top_k || 4,
       session_id: payload.session_id || undefined,
+      document_id: payload.document_id || undefined,
     }),
     cache: 'no-store',
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(120000),
   })
 
   if (!res.ok) {
@@ -260,6 +290,7 @@ export async function searchRagKnowledge(query: string, top_k = 4): Promise<RagS
     },
     body: JSON.stringify({ query, top_k }),
     cache: 'no-store',
+    signal: AbortSignal.timeout(30000),
   })
 
   if (!res.ok) {

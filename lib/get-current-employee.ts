@@ -1,11 +1,12 @@
-import { eq, or, sql, asc } from "drizzle-orm"
-import { db } from "@/db"
-import { employees } from "@/db/schema/hero"
-import { getServerSession } from "@/lib/auth-session"
+import { eq, or } from 'drizzle-orm'
+import { db } from '@/db'
+import { employees } from '@/db/schema/hero'
+import { getServerSession } from '@/lib/auth-session'
+import { isSuperAdminRole, getCurrentMenuPermission } from '@/lib/hero-access'
 
 export async function getCurrentEmployee() {
   const session = await getServerSession()
-  
+
   if (session?.user?.id || session?.user?.email) {
     const conditions = []
     if (session.user.id) {
@@ -26,38 +27,22 @@ export async function getCurrentEmployee() {
     }
   }
 
-  // Fallback to active user (raihanaraya36@gmail.com / SN: 712011 / Mochamad Annas Khadafi)
-  const [defaultUser] = await db
-    .select()
-    .from(employees)
-    .where(
-      or(
-        eq(employees.email, 'raihanaraya36@gmail.com'),
-        eq(employees.employeeSn, '712011')
-      )
-    )
-    .limit(1)
-
-  if (defaultUser) return defaultUser
-
-  const [firstActive] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .orderBy(asc(employees.id))
-    .limit(1)
-
-  return firstActive || null
+  return null
 }
 
-export async function getCurrentEmployeeAccessRole(): Promise<string | null> {
+export async function getCurrentEmployeeAccessRole(): Promise<string> {
   const emp = await getCurrentEmployee()
-  return emp?.accessRole ?? 'Super Admin'
+  return emp?.accessRole ?? ''
 }
 
-export async function requireAdminOrHcManagerRole(): Promise<void> {
+export async function requireAdminOrHcManagerRole(resource = 'security_users'): Promise<void> {
   const role = await getCurrentEmployeeAccessRole()
-  if (!role || (role !== 'Super Admin' && role !== 'HC Manager')) {
-    throw new Error('Akses ditolak. Hanya Super Admin dan HC Manager yang dapat mengelola pengguna.')
+  if (role && isSuperAdminRole(role)) {
+    return
   }
+  const perm = await getCurrentMenuPermission(resource)
+  if (perm.canEdit) {
+    return
+  }
+  throw new Error('Akses ditolak. Anda tidak memiliki izin untuk mengelola pengguna.')
 }

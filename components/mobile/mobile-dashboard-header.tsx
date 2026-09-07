@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/components/language-provider";
 import { 
   Trophy, 
   CloudSun, 
@@ -22,13 +23,14 @@ export function MobileDashboardHeader({
   totalPoints, 
   currentLevel 
 }: DashboardHeaderProps) {
+  const { isIndonesian } = useLanguage();
   
   function getGreeting() {
     const hour = new Date().getHours();
-    if (hour < 11) return "Selamat Pagi";
-    if (hour < 15) return "Selamat Siang";
-    if (hour < 19) return "Selamat Sore";
-    return "Selamat Malam";
+    if (hour < 11) return isIndonesian ? "Selamat Pagi" : "Good Morning";
+    if (hour < 15) return isIndonesian ? "Selamat Siang" : "Good Afternoon";
+    if (hour < 19) return isIndonesian ? "Selamat Sore" : "Good Evening";
+    return isIndonesian ? "Selamat Malam" : "Good Night";
   }
 
   function firstName(name: string) {
@@ -49,7 +51,7 @@ export function MobileDashboardHeader({
         </div>
         <div className="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-[10px] font-bold text-amber-700">
           <CloudSun className="size-3.5" />
-          <span>Shift Pagi · Balikpapan 29°C</span>
+          <span>{isIndonesian ? "Shift Pagi · Balikpapan 29°C" : "Morning Shift · Balikpapan 29°C"}</span>
         </div>
       </section>
 
@@ -64,18 +66,18 @@ export function MobileDashboardHeader({
           <div>
             <Badge className="border-0 bg-white/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-md">
               <Trophy className="mr-1 size-3 text-[#f4b183]" />
-              {currentLevel.toUpperCase()} RANK
+              {currentLevel.toUpperCase()} {isIndonesian ? "PERINGKAT" : "RANK"}
             </Badge>
             <div className="mt-3 flex items-baseline gap-1">
               <p className="text-3xl font-black leading-none tracking-tight">
-                {totalPoints.toLocaleString("id-ID")}
+                {totalPoints.toLocaleString(isIndonesian ? "id-ID" : "en-US")}
               </p>
               <span className="text-[10px] font-black uppercase tracking-wider text-sky-200">PTS</span>
             </div>
           </div>
 
           <div className="text-right">
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/80">Pro Progress</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-sky-200/80">{isIndonesian ? "Kemajuan Pro" : "Pro Progress"}</p>
             <p className="text-xs font-black text-white mt-1">Level {Math.floor(totalPoints / 100) + 1}</p>
           </div>
         </div>

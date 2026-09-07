@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Bell,
+  CalendarClock,
   FileText,
   History,
   Mail,
@@ -16,6 +17,7 @@ import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
+import { AttendanceNotificationSettingsPanel } from "@/components/attendance-notification-settings-panel";
 import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
 import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
 import { CsForecastDailyReportSettingsPanel } from "@/components/cs-forecast-daily-report-settings-panel";
@@ -189,6 +191,10 @@ export default async function EmailSettingsPage() {
             <Users className="size-4" />
             Human Capital
           </TabsTrigger>
+          <TabsTrigger value="attendance">
+            <CalendarClock className="size-4" />
+            Izin Absensi
+          </TabsTrigger>
           <TabsTrigger value="apd">
             <Users className="size-4" />
             APD & CS
@@ -243,6 +249,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="hc">
           <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="attendance">
+          <AttendanceNotificationSettingsPanel />
         </TabsContent>
 
         <TabsContent value="apd">

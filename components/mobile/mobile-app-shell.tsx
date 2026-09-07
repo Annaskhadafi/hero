@@ -34,6 +34,8 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { LogoutButton } from '@/components/logout-button'
+import { LanguageToggle } from '@/components/language-toggle'
+import { useLanguage } from '@/components/language-provider'
 import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
 import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
 import { useMobilePermissions } from '@/components/mobile/permission-provider'
@@ -58,64 +60,6 @@ type DrawerSectionItem = {
 
 type DrawerItem = DrawerLinkItem | DrawerSectionItem
 
-const bottomNavItems = [
-  { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { label: 'Activity', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
-  { label: 'Approval', href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
-  { label: 'Profile', href: '/mobile/profile', icon: UserRound },
-]
-
-const drawerItems: DrawerItem[] = [
-  { type: 'section', label: 'HOME' },
-  { type: 'link', label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { type: 'link', label: 'Hero Genius AI', href: '/mobile/hero-genius', icon: Sparkles, resource: 'hero-genius' },
-  { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
-  { type: 'section', label: 'Produktivitas' },
-  { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
-  {
-    type: 'link',
-    label: mobileActivityDrawerItem.label,
-    href: mobileActivityDrawerItem.href,
-    icon: ClipboardList,
-    resource: 'tire_service',
-  },
-  { type: 'section', label: 'IZIN & ROSTER' },
-  {
-    type: 'link',
-    label: 'Izin Sakit & Terlambat',
-    href: '/mobile/attendance/permission',
-    icon: ShieldAlert,
-    resource: 'hc_attendance_permission',
-  },
-  { type: 'link', label: 'SPL', href: '/mobile/overtime', icon: FileSignature, resource: 'overtime_requests' },
-  { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
-  { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
-  { type: 'section', label: 'Health & Safety (HSE)' },
-  { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck, resource: 'safety_dashboard' },
-  { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck, resource: 'safety_inspections' },
-  {
-    type: 'link',
-    label: 'Tire Site Inspection',
-    href: '/mobile/hse/tire-inspection',
-    icon: ShieldCheck,
-    resource: 'hse_tire_inspection',
-  },
-  { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck, resource: 'hse_jsa' },
-  { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck, resource: 'hse_izin_kerja_ptw' },
-  { type: 'section', label: 'LAINNYA' },
-  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance', icon: ScanFace, resource: 'attendance' },
-  { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
-  { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText, resource: 'daily_report_admin' },
-  { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature, resource: 'service360_service_form' },
-  { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen, resource: 'chitralearning_lms_workspace' },
-  { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
-  { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
-  { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
-  { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
-  { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
-  { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
-]
-
 export function MobileAppShell({
   children,
   userName,
@@ -128,9 +72,68 @@ export function MobileAppShell({
   allowedLinks?: MobileAllowedLink[]
 }) {
   const pathname = usePathname()
+  const { t } = useLanguage()
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount)
   const permissions = useMobilePermissions()
+
+  const bottomNavItems = [
+    { label: t('nav.dashboard', 'Dashboard'), href: '/mobile/dashboard', icon: Home },
+    { label: t('nav.activity', 'Activity'), href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
+    { label: t('nav.approval', 'Approval'), href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
+    { label: t('nav.profile', 'Profile'), href: '/mobile/profile', icon: UserRound },
+  ]
+
+  const drawerItems: DrawerItem[] = [
+    { type: 'section', label: t('nav.home', 'HOME') },
+    { type: 'link', label: t('nav.dashboard', 'Dashboard'), href: '/mobile/dashboard', icon: Home },
+    { type: 'link', label: t('nav.hero_genius', 'Hero Genius AI'), href: '/mobile/hero-genius', icon: Sparkles, resource: 'hero-genius' },
+    { type: 'link', label: t('nav.ho_info', 'Informasi HO'), href: '/mobile/information', icon: Bell },
+    { type: 'section', label: t('nav.productivity', 'Produktivitas') },
+    { type: 'link', label: t('nav.activity', 'Aktivitas Harian'), href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
+    {
+      type: 'link',
+      label: mobileActivityDrawerItem.label,
+      href: mobileActivityDrawerItem.href,
+      icon: ClipboardList,
+      resource: 'tire_service',
+    },
+    { type: 'section', label: t('nav.leave_roster', 'IZIN & ROSTER') },
+    {
+      type: 'link',
+      label: t('nav.sick_late_permission', 'Izin Sakit & Terlambat'),
+      href: '/mobile/attendance/permission',
+      icon: ShieldAlert,
+      resource: 'hc_attendance_permission',
+    },
+    { type: 'link', label: t('nav.spl', 'SPL'), href: '/mobile/overtime', icon: FileSignature, resource: 'overtime_requests' },
+    { type: 'link', label: t('nav.roster', 'Roster'), href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
+    { type: 'link', label: t('nav.timesheet', 'Timesheet'), href: '/mobile/timesheet', icon: Timer, resource: 'scheduling_timesheet' },
+    { type: 'section', label: t('nav.hse', 'Health & Safety (HSE)') },
+    { type: 'link', label: t('nav.hse_report', 'HSE Report'), href: '/mobile/hse', icon: ShieldCheck, resource: 'safety_dashboard' },
+    { type: 'link', label: t('nav.hse_checklist', 'HSE Checklist'), href: '/mobile/hse/checklist', icon: ShieldCheck, resource: 'safety_inspections' },
+    {
+      type: 'link',
+      label: t('nav.tire_inspection', 'Tire Site Inspection'),
+      href: '/mobile/hse/tire-inspection',
+      icon: ShieldCheck,
+      resource: 'hse_tire_inspection',
+    },
+    { type: 'link', label: t('nav.jsa', 'JSA'), href: '/mobile/hse/jsa', icon: ShieldCheck, resource: 'hse_jsa' },
+    { type: 'link', label: t('nav.ptw', 'Izin Kerja PTW'), href: '/mobile/hse/ptw', icon: ShieldCheck, resource: 'hse_izin_kerja_ptw' },
+    { type: 'section', label: t('nav.others', 'LAINNYA') },
+    { type: 'link', label: t('nav.face_attendance', 'Absensi Wajah'), href: '/mobile/attendance', icon: ScanFace, resource: 'attendance' },
+    { type: 'link', label: t('nav.approval', 'Approval'), href: '/mobile/approval', icon: CheckCircle2, resource: 'approval_inbox' },
+    { type: 'link', label: t('nav.daily_report', 'Daily Report'), href: '/mobile/reports', icon: FileText, resource: 'daily_report_admin' },
+    { type: 'link', label: t('nav.service_form', 'Service Form'), href: '/mobile/service-form', icon: FileSignature, resource: 'service360_service_form' },
+    { type: 'link', label: t('nav.lms', 'ChitraLearning LMS'), href: '/mobile/chitralearning', icon: BookOpen, resource: 'chitralearning_lms_workspace' },
+    { type: 'link', label: t('nav.training', 'Training'), href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
+    { type: 'link', label: t('nav.wellness', 'Wellness'), href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
+    { type: 'link', label: t('nav.leaderboard', 'Leaderboard'), href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
+    { type: 'link', label: t('nav.executive', 'Executive'), href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
+    { type: 'link', label: t('nav.cargo_manifest', 'Cargo Manifest'), href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
+    { type: 'link', label: t('nav.profile', 'Profile'), href: '/mobile/profile', icon: UserRound },
+  ]
 
   const checkAccess = (href: string, resource?: string) => {
     // If it has a resource, strictly check permissions (deny by default)
@@ -380,10 +383,11 @@ export function MobileAppShell({
                       )
                     })}
                   </nav>
-                  <div className="px-4 pb-5">
+                  <div className="space-y-3 px-4 pb-5">
+                    <LanguageToggle variant="mobile-drawer" />
                     <LogoutButton
                       variant="default"
-                      label="Logout"
+                      label={t('auth.logout', 'Logout')}
                       className="h-12 w-full rounded-xl border-0 bg-[#5a2200] text-white shadow-[0_14px_28px_rgba(90,34,0,0.18)] hover:bg-[#6b2a00]"
                     />
                   </div>
@@ -399,20 +403,24 @@ export function MobileAppShell({
                 HERO
               </Link>
 
-              <Link
-                prefetch={false}
-                href="/mobile/notifications"
-                aria-label="Open notifications"
-                onClick={() => beginNavigation('/mobile/notifications')}
-                className="relative flex size-11 items-center justify-center rounded-lg text-[#004b87] transition active:scale-[0.96] active:bg-[#e6f2fb]"
-              >
-                <Bell className="size-5" />
-                {liveNotificationCount > 0 ? (
-                  <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-[#5a2200] px-1 text-[9px] leading-4 font-black text-white shadow-[0_6px_14px_rgba(90,34,0,0.24)]">
-                    {liveNotificationCount > 9 ? '9+' : liveNotificationCount}
-                  </span>
-                ) : null}
-              </Link>
+              <div className="flex items-center gap-1.5">
+                <LanguageToggle variant="mobile-header" />
+
+                <Link
+                  prefetch={false}
+                  href="/mobile/notifications"
+                  aria-label="Open notifications"
+                  onClick={() => beginNavigation('/mobile/notifications')}
+                  className="relative flex size-10 items-center justify-center rounded-lg text-[#004b87] transition active:scale-[0.96] active:bg-[#e6f2fb]"
+                >
+                  <Bell className="size-5" />
+                  {liveNotificationCount > 0 ? (
+                    <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-[#5a2200] px-1 text-[9px] leading-4 font-black text-white shadow-[0_6px_14px_rgba(90,34,0,0.24)]">
+                      {liveNotificationCount > 9 ? '9+' : liveNotificationCount}
+                    </span>
+                  ) : null}
+                </Link>
+              </div>
             </div>
           </header>
         )}
@@ -420,7 +428,7 @@ export function MobileAppShell({
         <main aria-busy={pendingHref ? 'true' : undefined} className={cn("px-4 pt-4", isEmbed ? "pb-6" : "pb-28")}>
           {pendingHref ? (
             <div className="mb-3 rounded-lg bg-[#e9f6fd] px-3 py-2 text-[10px] font-black tracking-[0.14em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-              Memuat halaman
+              {t('loading.page', 'Memuat halaman')}
             </div>
           ) : null}
           {children}
@@ -431,10 +439,10 @@ export function MobileAppShell({
                   <ShieldAlert className="size-6" />
                 </div>
                 <h2 className="mt-4 text-lg font-black tracking-tight text-[#082033]">
-                  Anda tidak memiliki akses
+                  {t('access.denied_title', 'Anda tidak memiliki akses')}
                 </h2>
                 <p className="mt-2 text-sm leading-6 font-semibold text-[#486275]">
-                  Halaman ini dibatasi untuk role tertentu. Hubungi admin untuk membuka akses.
+                  {t('access.denied_desc', 'Halaman ini dibatasi untuk role tertentu. Hubungi admin untuk membuka akses.')}
                 </p>
                 <Link
                   prefetch={false}
@@ -442,7 +450,7 @@ export function MobileAppShell({
                   onClick={() => beginNavigation('/mobile/dashboard')}
                   className="mt-5 flex h-12 items-center justify-center rounded-xl bg-[#003f78] text-xs font-black tracking-[0.12em] text-white uppercase active:scale-[0.98]"
                 >
-                  Kembali ke Dashboard
+                  {t('access.back_to_dashboard', 'Kembali ke Dashboard')}
                 </Link>
               </div>
             </div>

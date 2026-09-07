@@ -90,6 +90,7 @@ export function SecurityUserCreateDialog({
   const formRef = useRef<HTMLFormElement>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const overwriteInputRef = useRef<HTMLInputElement>(null);
   const [state, formAction] = useActionState(
     manageSecurityUserAction,
     INITIAL_STATE,
@@ -101,6 +102,9 @@ export function SecurityUserCreateDialog({
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
   const [selectedSiteId, setSelectedSiteId] = useState<string>("");
+  const [selectedEmploymentStatus, setSelectedEmploymentStatus] = useState<string>("active");
+  const [selectedStatusType, setSelectedStatusType] = useState<string>("Permanen | Staff");
+  const [selectedRole, setSelectedRole] = useState<string>(roleOptions[0]?.name ?? "User");
   const selectedPosition =
     positions.find((position) => position.name === selectedJobTitle) ?? null;
   const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null;
@@ -113,13 +117,14 @@ export function SecurityUserCreateDialog({
   // Filter positions based on selected department and ensure unique position names/keys
   const uniquePositions = useMemo(() => {
     const filtered = selectedDepartmentId
-      ? positions.filter((p) => p.departmentId?.toString() === selectedDepartmentId)
+      ? positions.filter((p) => !p.departmentId || p.departmentId.toString() === selectedDepartmentId)
       : positions;
 
     const seen = new Set<string>();
     return filtered.filter((pos) => {
-      if (!pos.name || seen.has(pos.name)) return false;
-      seen.add(pos.name);
+      const name = pos.name?.trim();
+      if (!name || seen.has(name.toLowerCase())) return false;
+      seen.add(name.toLowerCase());
       return true;
     });
   }, [positions, selectedDepartmentId]);
@@ -143,9 +148,12 @@ export function SecurityUserCreateDialog({
       setSelectedSectionId("");
       setSelectedJobTitle("");
       setSelectedSiteId("");
+      setSelectedEmploymentStatus("active");
+      setSelectedStatusType("Permanen | Staff");
+      setSelectedRole(roleOptions[0]?.name ?? "User");
       startRefreshTransition(() => router.refresh());
     }
-  }, [isDuplicateFound, router, state.status, startRefreshTransition]);
+  }, [isDuplicateFound, roleOptions, router, state.status, startRefreshTransition]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -165,7 +173,7 @@ export function SecurityUserCreateDialog({
 
         <form ref={formRef} key={formKey} action={formAction} className="space-y-5">
           <input type="hidden" name="intent" value="create-user" />
-          <input type="hidden" name="overwriteExisting" value={confirmOverwrite ? "true" : "false"} />
+          <input ref={overwriteInputRef} type="hidden" name="overwriteExisting" value={confirmOverwrite ? "true" : "false"} />
 
           {state.status !== "idle" && !isDuplicateFound ? (
             <Alert
@@ -271,23 +279,12 @@ export function SecurityUserCreateDialog({
 
             <div className="grid gap-2">
               <Label>Position</Label>
-              <Select
-                value={selectedJobTitle}
-                onValueChange={setSelectedJobTitle}
-                disabled={!selectedDepartmentId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={selectedDepartmentId ? "Pilih jabatan" : "Pilih department terlebih dahulu"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {uniquePositions.map((pos) => (
-                    <SelectItem key={pos.id} value={pos.name}>
-                      {pos.name} ({pos.code}) - {pos.siteLocation || "Semua Site"} - Level {pos.level}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               <input type="hidden" name="jobTitle" value={selectedJobTitle} />
+              <SearchablePositionSelect
+                positions={uniquePositions}
+                selectedJobTitle={selectedJobTitle}
+                onSelectJobTitle={setSelectedJobTitle}
+              />
             </div>
 
             <label className="grid gap-2">
@@ -328,7 +325,7 @@ export function SecurityUserCreateDialog({
             </label>
             <div className="grid gap-2">
               <Label>Status</Label>
-              <Select name="employmentStatus" defaultValue="active">
+              <Select value={selectedEmploymentStatus} onValueChange={setSelectedEmploymentStatus}>
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih status" />
                 </SelectTrigger>
@@ -340,10 +337,11 @@ export function SecurityUserCreateDialog({
                   <SelectItem value="inactive">inactive</SelectItem>
                 </SelectContent>
               </Select>
+              <input type="hidden" name="employmentStatus" value={selectedEmploymentStatus} />
             </div>
             <div className="grid gap-2">
               <Label>Tipe Status Karyawan</Label>
-              <Select name="employeeStatusType" defaultValue="Permanen | Staff">
+              <Select value={selectedStatusType} onValueChange={setSelectedStatusType}>
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih tipe status" />
                 </SelectTrigger>
@@ -354,12 +352,13 @@ export function SecurityUserCreateDialog({
                   <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
                 </SelectContent>
               </Select>
+              <input type="hidden" name="employeeStatusType" value={selectedStatusType} />
             </div>
             <div className="grid gap-2">
               <Label>Peran Akses</Label>
               <Select
-                name="accessRole"
-                defaultValue={roleOptions[0]?.name ?? undefined}
+                value={selectedRole}
+                onValueChange={setSelectedRole}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih peran" />
@@ -372,6 +371,7 @@ export function SecurityUserCreateDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <input type="hidden" name="accessRole" value={selectedRole} />
             </div>
           </div>
 
@@ -425,6 +425,9 @@ export function SecurityUserCreateDialog({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
+                if (overwriteInputRef.current) {
+                  overwriteInputRef.current.value = "true";
+                }
                 setConfirmOverwrite(true);
                 setShowDuplicateDialog(false);
                 setTimeout(() => {
@@ -523,6 +526,120 @@ function SearchableManagerSelect({
                   >
                     <span className="truncate">{manager.name}</span>
                     {isSelected ? <Check className="size-4 shrink-0 text-primary" /> : null}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function SearchablePositionSelect({
+  positions,
+  selectedJobTitle,
+  onSelectJobTitle,
+}: {
+  positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
+  selectedJobTitle: string;
+  onSelectJobTitle: (jobTitle: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredPositions = useMemo(() => {
+    if (!search.trim()) return positions;
+    const q = search.toLowerCase();
+    return positions.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.code && p.code.toLowerCase().includes(q))
+    );
+  }, [positions, search]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-normal"
+        >
+          <span className="truncate">{selectedJobTitle || "Pilih atau cari jabatan..."}</span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0 sm:w-[420px]" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Cari atau ketik jabatan..."
+            value={search}
+            onValueChange={setSearch}
+            className="h-9"
+          />
+          <CommandList className="max-h-[240px]">
+            <CommandEmpty>
+              <div className="p-3 text-center text-xs">
+                <p className="text-muted-foreground">Jabatan tidak ditemukan dalam daftar master.</p>
+                {search.trim() ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 h-7 text-xs text-primary font-medium hover:bg-primary/10"
+                    onClick={() => {
+                      onSelectJobTitle(search.trim());
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    Gunakan "{search.trim()}"
+                  </Button>
+                ) : null}
+              </div>
+            </CommandEmpty>
+            <CommandGroup>
+              {search.trim() &&
+              !positions.some((p) => p.name.toLowerCase() === search.trim().toLowerCase()) ? (
+                <CommandItem
+                  value={search.trim()}
+                  onSelect={() => {
+                    onSelectJobTitle(search.trim());
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className="flex items-center justify-between cursor-pointer text-primary font-medium"
+                >
+                  <span className="truncate">Gunakan "{search.trim()}"</span>
+                  <Plus className="size-4 shrink-0" />
+                </CommandItem>
+              ) : null}
+              {filteredPositions.map((pos) => {
+                const isSelected = pos.name === selectedJobTitle;
+                return (
+                  <CommandItem
+                    key={`${pos.id}-${pos.name}`}
+                    value={pos.name}
+                    onSelect={() => {
+                      onSelectJobTitle(pos.name);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex flex-col truncate">
+                      <span className="truncate font-medium">{pos.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {pos.code ? `Kode: ${pos.code}` : ""}
+                        {pos.siteLocation ? ` • ${pos.siteLocation}` : ""}
+                        {pos.level ? ` • Lvl ${pos.level}` : ""}
+                      </span>
+                    </div>
+                    {isSelected ? <Check className="size-4 shrink-0 text-primary ml-2" /> : null}
                   </CommandItem>
                 );
               })}

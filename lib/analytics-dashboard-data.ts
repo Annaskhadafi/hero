@@ -32,6 +32,8 @@ export interface IndividualDashboardData {
     expMinePermit: string | null
     daysUntilContractEnd: number | null
     daysUntilMinePermitExp: number | null
+    isActive: boolean
+    employmentStatus: string
   }
   scoreCard: {
     totalPoints: number
@@ -180,6 +182,8 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
     expMinePermit: currentEmp?.expMinePermit ? String(currentEmp.expMinePermit) : null,
     daysUntilContractEnd,
     daysUntilMinePermitExp,
+    isActive: currentEmp?.isActive ?? true,
+    employmentStatus: currentEmp?.employmentStatus || (currentEmp?.isActive === false ? 'inactive' : 'active'),
   }
 
   // 2. Fetch Last Daily Activity STRICTLY for this user

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
+import { LanguageProvider } from "@/components/language-provider";
 import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
 import "./globals.css";
@@ -33,7 +34,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -46,11 +47,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem={false}
           disableTransitionOnChange
         >
-          <Suspense fallback={null}>
-            <NavigationProgressBar />
-          </Suspense>
-          <PwaRegistration />
-          {children}
+          <LanguageProvider>
+            <Suspense fallback={null}>
+              <NavigationProgressBar />
+            </Suspense>
+            <PwaRegistration />
+            {children}
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

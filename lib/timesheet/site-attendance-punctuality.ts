@@ -8,6 +8,10 @@ import {
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
+import {
+  inferTimezoneFromLocation,
+  normalizeIndonesiaTimezone,
+} from '@/lib/indonesia-timezone'
 import { eq } from 'drizzle-orm'
 
 export async function getSiteAttendanceClockConfig(siteId: number) {
@@ -15,6 +19,12 @@ export async function getSiteAttendanceClockConfig(siteId: number) {
     .select({
       fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
       configTimezone: timesheetSchedulingConfigs.timezone,
+      scheduleType: timesheetSchedulingConfigs.scheduleType,
+      rosterType: timesheetSchedulingConfigs.rosterType,
+      siteName: sites.name,
+      siteLocation: sites.location,
+      provinceName: sites.provinceName,
+      regencyName: sites.regencyName,
       siteTimezone: sites.timezone,
     })
     .from(sites)
@@ -26,12 +36,23 @@ export async function getSiteAttendanceClockConfig(siteId: number) {
     row?.fieldBreakConfig && typeof row.fieldBreakConfig === 'object'
       ? (row.fieldBreakConfig as Record<string, unknown>)
       : {}
-  const timezone = row?.configTimezone || row?.siteTimezone || fbConfig.timezone || 'WITA'
 
-  return normalizeSiteAttendanceClockConfig({
-    ...fbConfig,
-    timezone,
-  })
+  const inferredTimezone = inferTimezoneFromLocation(
+    [row?.siteLocation, row?.provinceName, row?.regencyName, row?.siteName].filter(Boolean).join(' ')
+  )
+
+  const rawTimezone =
+    row?.configTimezone || fbConfig.timezone || row?.siteTimezone || inferredTimezone
+  const timezone = normalizeIndonesiaTimezone(rawTimezone).code
+
+  return {
+    ...normalizeSiteAttendanceClockConfig({
+      ...fbConfig,
+      timezone,
+    }),
+    scheduleType: row?.scheduleType || 'office',
+    rosterType: row?.rosterType || '5:2',
+  }
 }
 
 export async function resolveSiteAttendancePunctuality(input: {

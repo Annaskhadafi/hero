@@ -8,6 +8,7 @@ import {
   formatTimeHHMMInTimezone,
   getTimezoneDateParts,
   getTimezoneDayBoundaries,
+  inferTimezoneFromLocation,
   normalizeIndonesiaTimezone,
 } from '@/lib/indonesia-timezone'
 
@@ -32,11 +33,12 @@ export function isCheckOutEvent(eventType: string): boolean {
 }
 
 /**
- * Resolves the configured timezone code for a site from scheduling configs or sites table.
+ * Resolves the configured timezone code for a site from scheduling configs, sites table, or site name.
  */
 export async function getSiteTimezone(siteId: number): Promise<string> {
   const [row] = await db
     .select({
+      siteName: sites.name,
       siteTz: sites.timezone,
       configTz: timesheetSchedulingConfigs.timezone,
       fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
@@ -51,7 +53,13 @@ export async function getSiteTimezone(siteId: number): Promise<string> {
       ? (row.fieldBreakConfig as Record<string, unknown>)
       : {}
 
-  return row?.configTz || row?.siteTz || (fbConfig.timezone as string | undefined) || 'WITA'
+  return (
+    row?.configTz ||
+    row?.siteTz ||
+    (fbConfig.timezone as string | undefined) ||
+    inferTimezoneFromLocation(row?.siteName) ||
+    'WITA'
+  )
 }
 
 /**
@@ -82,8 +90,11 @@ export function formatTimeHHMM(date: Date, timezone = 'WIB'): string {
 export function computeWorkMinutes(clockIn: string, clockOut: string): number | null {
   if (!clockIn || !clockOut) return null
 
-  const [inH, inM] = clockIn.split(':').map(Number)
-  const [outH, outM] = clockOut.split(':').map(Number)
+  const cleanIn = clockIn.replace(/\s*\(\+1d\)/gi, '').trim()
+  const cleanOut = clockOut.replace(/\s*\(\+1d\)/gi, '').trim()
+
+  const [inH, inM] = cleanIn.split(':').map(Number)
+  const [outH, outM] = cleanOut.split(':').map(Number)
 
   if (!Number.isFinite(inH) || !Number.isFinite(inM)) return null
   if (!Number.isFinite(outH) || !Number.isFinite(outM)) return null
@@ -104,6 +115,7 @@ export function computeWorkMinutes(clockIn: string, clockOut: string): number | 
  * partitions into check-ins/check-outs, computes earliest check-in and latest check-out,
  * sets validationFlags, and upserts into timesheetAttendanceRealOverrides with source: 'attendance'.
  * Automatically respects the site's local timezone (WIB, WITA, or WIT).
+ * Correctly attributes morning checkouts (< 10:00) to yesterday's Night Shift (date of entry).
  */
 export async function syncFaceAttendanceToTimesheet(
   employeeId: number,
@@ -137,96 +149,150 @@ export async function syncFaceAttendanceToTimesheet(
       )
     )
 
-  if (records.length === 0) {
-    return null
-  }
-
   const sortedRecords = [...records].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
 
-  // Check if today's earliest punch is an early-morning checkout (< 09:00 local time) belonging to yesterday's Night Shift
-  const firstPunch = sortedRecords[0]
-  const firstPunchLocalHours = firstPunch ? getTimezoneDateParts(firstPunch.eventTime, tzInfo.code).hours : 0
-  const isEarlyMorningPunch = firstPunchLocalHours < 9
+  // Track punch IDs on Day T that are consumed as checkout for Day T-1's Night Shift
+  const consumedPunchIds = new Set<number>()
 
-  if (isEarlyMorningPunch) {
-    const previousDayDate = new Date(startOfDay.getTime() - 12 * 60 * 60 * 1000)
-    const prevBoundaries = getTimezoneDayBoundaries(previousDayDate, tzInfo.code)
-    const prevRecords = await db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.employeeId, employeeId),
-          eq(attendanceRecords.siteId, siteId),
-          gte(attendanceRecords.eventTime, prevBoundaries.startOfDay),
-          lt(attendanceRecords.eventTime, prevBoundaries.startOfNextDay)
+  // 1. Check if yesterday (Day T-1) had a Night Shift that was waiting for today's early morning checkout
+  const previousDayDate = new Date(startOfDay.getTime() - 12 * 60 * 60 * 1000)
+  const prevBoundaries = getTimezoneDayBoundaries(previousDayDate, tzInfo.code)
+  const prevRecords = await db
+    .select()
+    .from(attendanceRecords)
+    .where(
+      and(
+        eq(attendanceRecords.employeeId, employeeId),
+        eq(attendanceRecords.siteId, siteId),
+        gte(attendanceRecords.eventTime, prevBoundaries.startOfDay),
+        lt(attendanceRecords.eventTime, prevBoundaries.startOfNextDay)
+      )
+    )
+  const prevSorted = [...prevRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+
+  // Find yesterday's night check-in punch (local hour >= 15 or < 05)
+  const prevNightPunch = prevSorted.find((r) => {
+    const h = getTimezoneDateParts(r.eventTime, tzInfo.code).hours
+    return h >= 15 || h < 5
+  })
+
+  if (prevNightPunch) {
+    // Check if yesterday had a same-evening checkout punch >= 2h after prevNightPunch
+    const prevSameEveningOut = prevSorted.filter(
+      (r) =>
+        r.id !== prevNightPunch.id &&
+        r.eventTime.getTime() - prevNightPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
+    )
+
+    if (prevSameEveningOut.length === 0) {
+      // Look for today's early-morning punch (< 10:00 local time)
+      const morningPunches = sortedRecords.filter(
+        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 10
+      )
+
+      if (morningPunches.length > 0) {
+        // Find the best morning checkout punch (prefer explicit check-out event, else latest morning punch)
+        const explicitOut = morningPunches.filter((r) => isCheckOutEvent(r.eventType))
+        const morningCheckout =
+          explicitOut.length > 0
+            ? explicitOut[explicitOut.length - 1]
+            : morningPunches[morningPunches.length - 1]
+
+        const prevClockIn = formatTimeHHMMInTimezone(prevNightPunch.eventTime, tzInfo.code)
+        const prevClockOut = formatTimeHHMMInTimezone(morningCheckout.eventTime, tzInfo.code)
+        const prevWorkMinutes = computeWorkMinutes(prevClockIn, prevClockOut)
+        const { period: prevPeriod, day: prevDay } = derivePeriodAndDayInTimezone(
+          previousDayDate,
+          tzInfo.code
         )
-      )
-    const prevSorted = [...prevRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
-    const prevFirstPunch = prevSorted[0]
-    const prevFirstPunchHours = prevFirstPunch
-      ? getTimezoneDateParts(prevFirstPunch.eventTime, tzInfo.code).hours
-      : 0
-    const prevHasNightCheckIn = prevFirstPunchHours >= 15
 
-    if (prevHasNightCheckIn) {
-      // Sync previous day so it gets updated with today's early morning checkout
-      await syncFaceAttendanceToTimesheet(employeeId, siteId, previousDayDate, tzInfo.code)
+        const prevNote = prevNightPunch.locationNote || ''
 
-      // If today has NO punches at or after 09:00 local time, all punches today are just yesterday's Night Shift checkout
-      const punchesAfterMorning = sortedRecords.filter(
-        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 9
-      )
-      if (punchesAfterMorning.length === 0) {
-        const { period, day } = derivePeriodAndDayInTimezone(eventDate, tzInfo.code)
+        // Upsert yesterday's completed night shift record
         await db
-          .delete(timesheetAttendanceRealOverrides)
-          .where(
-            and(
-              eq(timesheetAttendanceRealOverrides.siteId, siteId),
-              eq(timesheetAttendanceRealOverrides.period, period),
-              eq(timesheetAttendanceRealOverrides.employeeId, employeeId),
-              eq(timesheetAttendanceRealOverrides.day, day),
-              eq(timesheetAttendanceRealOverrides.source, 'attendance')
-            )
-          )
-        return null
+          .insert(timesheetAttendanceRealOverrides)
+          .values({
+            siteId,
+            period: prevPeriod,
+            employeeId,
+            day: prevDay,
+            status: 'present',
+            clockIn: prevClockIn,
+            clockOut: prevClockOut,
+            note: prevNote,
+            source: 'attendance',
+            validationFlags: [],
+            workMinutes: prevWorkMinutes,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [
+              timesheetAttendanceRealOverrides.siteId,
+              timesheetAttendanceRealOverrides.period,
+              timesheetAttendanceRealOverrides.employeeId,
+              timesheetAttendanceRealOverrides.day,
+            ],
+            set: {
+              status: 'present',
+              clockIn: prevClockIn,
+              clockOut: prevClockOut,
+              note: prevNote,
+              source: 'attendance',
+              validationFlags: [],
+              workMinutes: prevWorkMinutes,
+              updatedAt: new Date(),
+            },
+          })
+
+        console.log(
+          `[face-sync] ✓ Updated Prev Day Night Shift: site=${siteId}, period=${prevPeriod}, emp=${employeeId}, day=${prevDay}, in=${prevClockIn}, out=${prevClockOut}`
+        )
+
+        // Mark all morning punches up to the morning checkout as consumed by yesterday's shift
+        for (const punch of morningPunches) {
+          if (punch.eventTime.getTime() <= morningCheckout.eventTime.getTime()) {
+            consumedPunchIds.add(punch.id)
+          }
+        }
       }
     }
   }
 
-  // Partition into check-ins and check-outs
-  const checkIns = records.filter((r) => !isCheckOutEvent(r.eventType))
-  const checkOuts = records.filter((r) => isCheckOutEvent(r.eventType))
+  // 2. Evaluate Today's (Day T) own shift punches (excluding any punches consumed by yesterday's night shift)
+  const todayOwnPunches = sortedRecords.filter((r) => !consumedPunchIds.has(r.id))
 
-  // Timesheet attendance uses earliest punch as clock-in and latest valid punch as clock-out in site timezone.
-  const clockIn = firstPunch ? formatTimeHHMMInTimezone(firstPunch.eventTime, tzInfo.code) : ''
+  const { period, day } = derivePeriodAndDayInTimezone(eventDate, tzInfo.code)
 
-  // Determine if this punch is a Night Shift candidate (e.g. evening start >= 15:00 or early morning < 05:00)
+  if (todayOwnPunches.length === 0) {
+    // Today has no active shift punches of its own (all punches today were just yesterday's morning checkout)
+    await db
+      .delete(timesheetAttendanceRealOverrides)
+      .where(
+        and(
+          eq(timesheetAttendanceRealOverrides.siteId, siteId),
+          eq(timesheetAttendanceRealOverrides.period, period),
+          eq(timesheetAttendanceRealOverrides.employeeId, employeeId),
+          eq(timesheetAttendanceRealOverrides.day, day),
+          eq(timesheetAttendanceRealOverrides.source, 'attendance')
+        )
+      )
+    console.log(
+      `[face-sync] ✓ Cleaned Today (all punches consumed by yesterday night shift): site=${siteId}, period=${period}, emp=${employeeId}, day=${day}`
+    )
+    return null
+  }
+
+  // 3. Process Today's own shift
+  const firstPunch = todayOwnPunches[0]
+  const firstPunchLocalHours = getTimezoneDateParts(firstPunch.eventTime, tzInfo.code).hours
+  const clockIn = formatTimeHHMMInTimezone(firstPunch.eventTime, tzInfo.code)
   const isNightShift = firstPunchLocalHours >= 15 || firstPunchLocalHours < 5
 
   let clockOut = ''
 
-  // 1. Explicit check-out events on the same day
-  if (checkOuts.length > 0) {
-    const latestCheckOut = [...checkOuts].sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime())[0]
-    clockOut = formatTimeHHMMInTimezone(latestCheckOut.eventTime, tzInfo.code)
-  }
-  // 2. Same-day punches at least 2 hours apart (for Day Shifts)
-  else if (!isNightShift) {
-    const punchesLater = sortedRecords.filter(
-      (r) => r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
-    )
-    if (punchesLater.length > 0) {
-      clockOut = formatTimeHHMMInTimezone(punchesLater[punchesLater.length - 1].eventTime, tzInfo.code)
-    }
-  }
-
-  // 3. Overnight shift handling for Night Shift: look for punches on next day 00:00 - 09:00 local time
-  if (isNightShift || (!clockOut && checkIns.length > 0)) {
-    // 09:00 next day = startOfNextDay + 9h
-    const nextDayCutoff = new Date(startOfNextDay.getTime() + 9 * 60 * 60 * 1000)
-
+  if (isNightShift) {
+    // Overnight shift handling: look for checkout punches on next day 00:00 - 10:00 local time
+    const nextDayCutoff = new Date(startOfNextDay.getTime() + 10 * 60 * 60 * 1000)
     const overnightRecords = await db
       .select()
       .from(attendanceRecords)
@@ -240,26 +306,88 @@ export async function syncFaceAttendanceToTimesheet(
       )
 
     if (overnightRecords.length > 0) {
-      const sortedOvernight = [...overnightRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
-      const lastOvernight = sortedOvernight[sortedOvernight.length - 1]
-      clockOut = `${formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)} (+1d)`
+      const sortedOvernight = [...overnightRecords].sort(
+        (a, b) => a.eventTime.getTime() - b.eventTime.getTime()
+      )
+      const explicitNextOut = sortedOvernight.filter((r) => isCheckOutEvent(r.eventType))
+      const lastOvernight =
+        explicitNextOut.length > 0
+          ? explicitNextOut[explicitNextOut.length - 1]
+          : sortedOvernight[sortedOvernight.length - 1]
+      clockOut = formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)
+
+      // Ensure Day T+1 override does not retain orphan attendance if it has no own shift punches (>= 10:00)
+      const nextDayDate = new Date(startOfNextDay.getTime() + 12 * 60 * 60 * 1000)
+      const nextBoundaries = getTimezoneDayBoundaries(nextDayDate, tzInfo.code)
+      const nextDayFullRecords = await db
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.employeeId, employeeId),
+            eq(attendanceRecords.siteId, siteId),
+            gte(attendanceRecords.eventTime, nextBoundaries.startOfDay),
+            lt(attendanceRecords.eventTime, nextBoundaries.startOfNextDay)
+          )
+        )
+      const nextDayOwnPunches = nextDayFullRecords.filter(
+        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 10
+      )
+      const { period: nextPeriod, day: nextDay } = derivePeriodAndDayInTimezone(
+        nextDayDate,
+        tzInfo.code
+      )
+      if (nextDayOwnPunches.length === 0) {
+        await db
+          .delete(timesheetAttendanceRealOverrides)
+          .where(
+            and(
+              eq(timesheetAttendanceRealOverrides.siteId, siteId),
+              eq(timesheetAttendanceRealOverrides.period, nextPeriod),
+              eq(timesheetAttendanceRealOverrides.employeeId, employeeId),
+              eq(timesheetAttendanceRealOverrides.day, nextDay),
+              eq(timesheetAttendanceRealOverrides.source, 'attendance')
+            )
+          )
+      }
+    } else {
+      // Check same-evening punch at least 2 hours apart
+      const sameDayPunches = todayOwnPunches.filter(
+        (r) => r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
+      )
+      if (sameDayPunches.length > 0) {
+        clockOut = formatTimeHHMMInTimezone(
+          sameDayPunches[sameDayPunches.length - 1].eventTime,
+          tzInfo.code
+        )
+      }
+    }
+  } else {
+    // Day Shift handling
+    const checkOutPunches = todayOwnPunches.filter(
+      (r) =>
+        isCheckOutEvent(r.eventType) ||
+        r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
+    )
+    if (checkOutPunches.length > 0) {
+      clockOut = formatTimeHHMMInTimezone(
+        checkOutPunches[checkOutPunches.length - 1].eventTime,
+        tzInfo.code
+      )
     }
   }
 
   // Compute work minutes
   const workMinutes = computeWorkMinutes(clockIn, clockOut)
 
-  // Set validation flags (AFTER overnight resolution)
+  // Set validation flags
   const validationFlags: string[] = []
-  if (checkIns.length > 0 && checkOuts.length === 0 && !clockOut) {
+  if (!clockOut) {
     validationFlags.push('missing-check-out')
-  }
-  if (checkOuts.length > 0 && checkIns.length === 0) {
-    validationFlags.push('missing-check-in')
   }
 
   // GPS flag propagation: scan locationNote for [gps-unavailable]
-  for (const record of records) {
+  for (const record of todayOwnPunches) {
     if (record.locationNote?.includes('[gps-unavailable]')) {
       if (!validationFlags.includes('gps-unavailable')) {
         validationFlags.push('gps-unavailable')
@@ -268,11 +396,8 @@ export async function syncFaceAttendanceToTimesheet(
     }
   }
 
-  // Derive period and day in site timezone
-  const { period, day } = derivePeriodAndDayInTimezone(eventDate, tzInfo.code)
-
-  // Determine status
   const status = 'present'
+  const syncNote = firstPunch.locationNote || ''
 
   // Upsert into timesheetAttendanceRealOverrides
   await db
@@ -285,7 +410,7 @@ export async function syncFaceAttendanceToTimesheet(
       status,
       clockIn,
       clockOut,
-      note: '',
+      note: syncNote,
       source: 'attendance',
       validationFlags,
       workMinutes,
@@ -302,6 +427,7 @@ export async function syncFaceAttendanceToTimesheet(
         status,
         clockIn,
         clockOut,
+        note: syncNote,
         source: 'attendance',
         validationFlags,
         workMinutes,

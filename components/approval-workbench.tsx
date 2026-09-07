@@ -30,6 +30,8 @@ import {
   User,
   X,
   XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
@@ -61,7 +63,8 @@ import {
   batchRevertPtwPermitsAction,
   batchRejectPtwPermitsAction,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
+import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
@@ -126,6 +129,13 @@ function formatTimestamp(value: Date | string | null | undefined) {
   if (isNaN(d.getTime())) return '—'
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatTime(value: Date | string | null | undefined) {
+  if (!value) return '—'
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (!date || isNaN(date.getTime())) return '—'
+  return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':')
 }
 
 function formatPtwTime(value: Date | string | null | undefined) {
@@ -319,11 +329,12 @@ export function InboxTab({
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [mobileSearch, setMobileSearch] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string>(filterCategory || 'ALL')
 
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
-  const [viewerZoom, setViewerZoom] = useState(1.0)
+  const [viewerZoom, setViewerZoom] = useState(2.2)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
@@ -342,6 +353,9 @@ export function InboxTab({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasDrawn, setHasDrawn] = useState(false)
+
+  // Document Preview Scaling & Zoom State (Matching Mobile Daily Activity approval)
+  const [previewZoom, setPreviewZoom] = useState<number>(1.0)
 
   useEffect(() => {
     async function loadSig() {
@@ -709,6 +723,38 @@ export function InboxTab({
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
 
+  // Adaptive category summary dynamically computed from all items (only categories with count > 0)
+  const categorySummary = useMemo(() => {
+    const map = new Map<string, { label: string; count: number }>()
+    for (const item of allUnifiedItems) {
+      const catKey = item.category || 'OTHER'
+      const label = item.categoryLabel || catKey
+      const existing = map.get(catKey)
+      if (existing) {
+        existing.count += 1
+      } else {
+        map.set(catKey, { label, count: 1 })
+      }
+    }
+    return Array.from(map.entries()).map(([key, value]) => ({
+      key,
+      label: value.label,
+      count: value.count,
+    }))
+  }, [allUnifiedItems])
+
+  // Automatically reset selected category to 'ALL' if the active category no longer exists
+  useEffect(() => {
+    if (selectedCategory !== 'ALL' && !categorySummary.some((c) => c.key === selectedCategory)) {
+      setSelectedCategory('ALL')
+    }
+  }, [categorySummary, selectedCategory])
+
+  const categoryFilteredItems = useMemo(() => {
+    if (selectedCategory === 'ALL') return allUnifiedItems
+    return allUnifiedItems.filter((it) => it.category === selectedCategory)
+  }, [allUnifiedItems, selectedCategory])
+
   const selectedItems = useMemo(() => {
     return allUnifiedItems.filter((it) => selectedIds.has(it.id))
   }, [allUnifiedItems, selectedIds])
@@ -756,13 +802,13 @@ export function InboxTab({
 
   const currentBatchDoc = selectedItems[batchReviewIndex] || null
 
-  const isAllSelected = allUnifiedItems.length > 0 && selectedIds.size === allUnifiedItems.length
+  const isAllSelected = categoryFilteredItems.length > 0 && categoryFilteredItems.every((it) => selectedIds.has(it.id))
 
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(allUnifiedItems.map((it) => it.id)))
+      setSelectedIds(new Set(categoryFilteredItems.map((it) => it.id)))
     }
   }
 
@@ -1314,6 +1360,62 @@ export function InboxTab({
         />
       </div>
 
+      {/* Adaptive Category Filter Chips */}
+      {categorySummary.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none select-none">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('ALL')}
+            className={cn(
+              "shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+              selectedCategory === 'ALL'
+                ? "bg-[#003461] text-white shadow-xs ring-1 ring-[#003461]"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
+            )}
+          >
+            <span>Semua</span>
+            <span
+              className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                selectedCategory === 'ALL'
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {allUnifiedItems.length}
+            </span>
+          </button>
+          {categorySummary.map((cat) => {
+            const isSelected = selectedCategory === cat.key
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => setSelectedCategory(cat.key)}
+                className={cn(
+                  "shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  isSelected
+                    ? "bg-[#003461] text-white shadow-xs ring-1 ring-[#003461]"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 shadow-2xs"
+                )}
+              >
+                <span>{cat.label}</span>
+                <span
+                  className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                    isSelected
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  )}
+                >
+                  {cat.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Select All & Batch Actions */}
       <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
         <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
@@ -1506,13 +1608,69 @@ export function InboxTab({
             />
           }
         >
+          {/* Adaptive Category Filter Chips for Desktop */}
+          {categorySummary.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-2 select-none">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('ALL')}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                  selectedCategory === 'ALL'
+                    ? "bg-[#003461] text-white shadow-xs"
+                    : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60 shadow-2xs"
+                )}
+              >
+                <span>Semua</span>
+                <span
+                  className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                    selectedCategory === 'ALL'
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-200 text-slate-700"
+                  )}
+                >
+                  {allUnifiedItems.length}
+                </span>
+              </button>
+              {categorySummary.map((cat) => {
+                const isSelected = selectedCategory === cat.key
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.key)}
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer",
+                      isSelected
+                        ? "bg-[#003461] text-white shadow-xs"
+                        : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80 border border-slate-200/60 shadow-2xs"
+                    )}
+                  >
+                    <span>{cat.label}</span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full font-black leading-none",
+                        isSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-slate-200 text-slate-700"
+                      )}
+                    >
+                      {cat.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {/* ── TOP INLINE MULTI-SELECT ACTION BAR (BELOW ROWS CONTROLS) ── */}
           {selectedIds.size > 0 && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl bg-[#EEF2FF] border border-indigo-100/90 shadow-2xs transition-all animate-in fade-in slide-in-from-top-2 duration-200 select-none">
               <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs sm:text-sm tracking-tight">
                 <Check className="size-4 text-[#4F46E5] stroke-[3] shrink-0" />
                 <span>
-                  {selectedIds.size} dari {allUnifiedItems.length} aktivitas terpilih
+                  {selectedIds.size} dari {categoryFilteredItems.length} aktivitas terpilih
                 </span>
               </div>
 
@@ -1578,7 +1736,7 @@ export function InboxTab({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {allUnifiedItems.map((item) => {
+              {categoryFilteredItems.map((item) => {
                 const isSelected = selectedIds.has(item.id)
                 return (
                   <TableRow
@@ -1748,8 +1906,10 @@ export function InboxTab({
               <DialogContent
                 showCloseButton={false}
                 className={cn(
-                  "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
-                  isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl"
+                  viewMode === 'mobile'
+                    ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+                    : "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
+                  viewMode !== 'mobile' && (isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl")
                 )}
               >
                 {/* Top Viewer Toolbar */}
@@ -1817,18 +1977,18 @@ export function InboxTab({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setViewerZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+                        onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
                         className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
                         title="Zoom In"
                       >
                         +
                       </Button>
-                      {viewerZoom !== 1.0 && (
+                      {viewerZoom !== 2.2 && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setViewerZoom(1.0)}
+                          onClick={() => setViewerZoom(2.2)}
                           className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
                         >
                           Reset
@@ -1859,43 +2019,92 @@ export function InboxTab({
                 </div>
 
                 {/* Body: 2 Columns on Desktop, Continuous Vertical Scroll on Mobile */}
-                <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row bg-slate-100 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                <div
+                  className={cn(
+                    "flex-1 overflow-y-auto bg-slate-100",
+                    viewMode === 'mobile'
+                      ? "overflow-x-hidden p-2 sm:p-3 space-y-3 flex flex-col"
+                      : "flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-200"
+                  )}
+                >
                   {/* Top Section (Mobile) / Left Column (Desktop): Live Letterhead PDF Preview */}
-                  <div className={cn(
-                    "w-full lg:flex-1 p-2 sm:p-6 flex justify-center items-start bg-slate-200/60 shrink-0 lg:shrink",
-                    viewMode === 'mobile' ? "overflow-hidden" : "overflow-x-auto"
-                  )}>
-                    {currentBatchDoc && (
-                      <div
-                        id="unified-batch-preview-sheet"
-                        className={cn(
-                          "relative mx-auto shrink-0 overflow-hidden bg-white shadow-md border border-slate-200/90 rounded-sm transition-transform duration-150 origin-top",
-                          isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                  <div
+                    className={cn(
+                      "flex flex-col items-center",
+                      viewMode === 'mobile'
+                        ? "w-full p-0 shrink-0 space-y-3"
+                        : "w-full lg:flex-1 p-2 sm:p-4 bg-slate-200/70 overflow-x-hidden shrink-0 lg:shrink"
+                    )}
+                  >
+                    {/* Zoom Action Bar */}
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-white/90 backdrop-blur-xs rounded-xl border border-slate-200 shadow-2xs max-w-lg w-full mb-2 mx-auto">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewerZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          title="Zoom Out"
+                        >
+                          -
+                        </Button>
+                        <span className="text-[11px] font-mono font-bold text-slate-600 px-1 min-w-10 text-center">
+                          {Math.round(viewerZoom * 100)}%
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                          title="Zoom In"
+                        >
+                          +
+                        </Button>
+                        {viewerZoom !== 2.2 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewerZoom(2.2)}
+                            className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+                          >
+                            Reset
+                          </Button>
                         )}
-                        style={{
-                          backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                          backgroundSize: '100% 100%',
-                          transform: viewMode === 'mobile'
-                            ? `scale(${isLandscapeDoc ? 0.32 * viewerZoom : 0.44 * viewerZoom})`
-                            : viewerZoom !== 1.0
-                            ? `scale(${viewerZoom})`
-                            : undefined,
-                          marginBottom: viewMode === 'mobile'
-                            ? `${(isLandscapeDoc ? -145 : -165) + (viewerZoom - 1.0) * 125}mm`
-                            : undefined,
-                        }}
-                      >
+                      </div>
+                    </div>
+
+                    {/* 1. PDF Letterhead Document Preview Container */}
+                    {currentBatchDoc && (
+                      <div className="flex justify-center items-start overflow-hidden p-1 w-full max-w-full">
                         <div
-                          className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
+                          id="unified-batch-preview-sheet"
+                          className={cn(
+                            "relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-200",
+                            isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                          )}
                           style={{
-                            color: 'black',
-                            paddingTop: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '38mm',
-                            paddingBottom: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '25mm',
-                            paddingLeft: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
-                            paddingRight: isCleanCustomDoc ? (isFiveRDoc || isApdDoc ? '0mm' : '4mm') : '14mm',
-                            minHeight: isLandscapeDoc ? '210mm' : '297mm',
+                            backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                            backgroundSize: '100% 100%',
+                            transform: `scale(${ (isLandscapeDoc ? 0.31 : 0.44) * viewerZoom })`,
+                            marginBottom: `${(isLandscapeDoc ? -135 : -160) + (viewerZoom - 1.0) * 125}mm`,
                           }}
                         >
+                          <div
+                            className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
+                            style={{
+                              paddingTop: isLandscapeDoc ? '4mm' : '38mm',
+                              paddingBottom: isLandscapeDoc ? '4mm' : '35mm',
+                              paddingLeft: isLandscapeDoc ? '4mm' : '20mm',
+                              paddingRight: isLandscapeDoc ? '4mm' : '20mm',
+                              minHeight: isLandscapeDoc ? '210mm' : '297mm',
+                            }}
+                          >
                       {/* Document Type Specific Content */}
                       {currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily && (
                         <div>
@@ -2130,7 +2339,7 @@ export function InboxTab({
                           <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
                           <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
 
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8.5pt]">
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
                             <tbody>
                               <tr>
                                 <td colSpan={4} className="font-bold bg-slate-50">Details & Request Profile</td>
@@ -2143,7 +2352,7 @@ export function InboxTab({
                               </tr>
                               <tr>
                                 <td className="font-bold bg-slate-50">Title / Keperluan</td>
-                                <td colSpan={3} className="font-semibold">{currentBatchDoc.rawOvertime.title || '—'}</td>
+                                <td colSpan={3} className="font-semibold">{currentBatchDoc.rawOvertime.title || currentBatchDoc.title || '—'}</td>
                               </tr>
                               <tr>
                                 <td className="font-bold bg-slate-50">Requester Name</td>
@@ -2154,7 +2363,7 @@ export function InboxTab({
                               <tr>
                                 <td className="font-bold bg-slate-50">Planned Schedule</td>
                                 <td colSpan={3}>
-                                  {currentBatchDoc.rawOvertime.plannedStartAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedStartAt) : '-'} s.d. {currentBatchDoc.rawOvertime.plannedEndAt ? formatTimestamp(currentBatchDoc.rawOvertime.plannedEndAt) : '-'}
+                                  {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.rawOvertime.plannedStartAt)} s.d. {formatTime(currentBatchDoc.rawOvertime.plannedEndAt)})
                                 </td>
                               </tr>
                               {Boolean((currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes) && (
@@ -2207,7 +2416,6 @@ export function InboxTab({
                           {/* Section 3: Line Items */}
                           {(() => {
                             const lineItems = (currentBatchDoc.rawOvertime as any).lineItems || []
-                            if (lineItems.length === 0) return null
                             return (
                               <>
                                 <div className="font-bold mb-1">B. Line Items (Aktivitas Pekerjaan)</div>
@@ -2222,44 +2430,52 @@ export function InboxTab({
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {lineItems.map((item: any, idx: number) => (
-                                      <tr key={idx}>
-                                        <td className="text-center">{idx + 1}</td>
-                                        <td className="font-medium">{item.lineLabel}</td>
-                                        <td className="text-center">{item.targetUnit || '—'}</td>
-                                        <td className="text-center">{item.estimatedMinutes} m</td>
-                                        <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                    {lineItems.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                                       </tr>
-                                    ))}
+                                    ) : (
+                                      lineItems.map((item: any, idx: number) => (
+                                        <tr key={idx}>
+                                          <td className="text-center">{idx + 1}</td>
+                                          <td className="font-medium">{item.lineLabel}</td>
+                                          <td className="text-center">{item.targetUnit || '—'}</td>
+                                          <td className="text-center">{item.estimatedMinutes} m</td>
+                                          <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                        </tr>
+                                      ))
+                                    )}
                                   </tbody>
                                 </table>
                               </>
                             )
                           })()}
 
-                          {/* Section 4: Approval Steps */}
+                          {/* Section 4: Approval Steps Table */}
                           <div className="font-bold mb-1">C. Approval Steps</div>
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-center text-[8pt]">
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
                             <thead>
                               <tr className="bg-slate-50 font-bold">
-                                <th className="w-[6%]">#</th>
-                                <th className="text-left w-[22%]">Tahap</th>
-                                <th className="text-left w-[22%]">Approver</th>
-                                <th className="w-[14%]">Status</th>
-                                <th className="w-[18%]">Waktu</th>
-                                <th className="text-left w-[18%]">Catatan</th>
+                                <th style={{ width: '6%' }}>#</th>
+                                <th className="text-left" style={{ width: '20%' }}>Tahap</th>
+                                <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                                <th style={{ width: '14%' }}>Status</th>
+                                <th style={{ width: '16%' }}>Waktu</th>
+                                <th className="text-left" style={{ width: '22%' }}>Catatan</th>
                               </tr>
                             </thead>
                             <tbody>
                               {(() => {
                                 const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                                const activeReviewStep = approvals.find((a: any) => (a.status === 'pending' || a.status === 'waiting' || a.status === 'reverted') && a.stepOrder > 1) || approvals.find((a: any) => a.status === 'pending' || a.status === 'reverted') || approvals[0]
+                                const activeReviewStep = approvals.find((a: any) => a.status === 'pending' || a.status === 'reverted') || approvals[0]
 
                                 return approvals.map((step: any) => {
-                                  const isThisActiveStep = activeReviewStep && (step.id === activeReviewStep.id || step.stepOrder === activeReviewStep.stepOrder)
-                                  const liveRemark = isThisActiveStep && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
+                                  const isThisActiveStep = (step.status === 'pending' || step.status === 'reverted') && (step.id === activeReviewStep?.id || step.stepOrder === activeReviewStep?.stepOrder)
+                                  const liveRemark = isThisActiveStep && approvalRemarks[currentBatchDoc.id]
+                                    ? approvalRemarks[currentBatchDoc.id]
+                                    : step.remarks || '—'
                                   const isRevertedStep = step.status === 'reverted'
-                                  const isApprovedStep = step.status === 'approved'
+                                  const isApprovedStep = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
 
                                   return (
                                     <tr key={step.stepOrder} className={isRevertedStep ? "bg-amber-50/70" : undefined}>
@@ -2275,8 +2491,8 @@ export function InboxTab({
                                       )}>
                                         {isRevertedStep ? 'Reverted' : step.status}
                                       </td>
-                                      <td className="text-[7pt]">{isApprovedStep ? formatTimestamp(step.signedAt) : '—'}</td>
-                                      <td className="text-left text-[7pt] text-slate-700 italic font-medium">{liveRemark}</td>
+                                      <td className="text-[7pt]">{isApprovedStep && step.signedAt ? formatTimestamp(step.signedAt) : '—'}</td>
+                                      <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight font-medium" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{liveRemark}</td>
                                     </tr>
                                   )
                                 })
@@ -2291,18 +2507,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step1 = approvals.find((s: any) => s.stepOrder === 1)
-                              const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
-                              const sigUrl1 = isSigned1 ? step1?.signatureDataUrl : null
+                              const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signedAt)
+                              const sigUrl1 = step1?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isSigned1 && sigUrl1 ? (
+                                    {sigUrl1 ? (
                                       <img src={sigUrl1} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isSigned1 && step1?.signedAt ? (
+                                    ) : isSigned1 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed ({formatTimestamp(step1.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed ({formatTimestamp(step1?.signedAt || new Date())})</span>
                                       </div>
                                     ) : step1?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
@@ -2313,9 +2529,9 @@ export function InboxTab({
                                   <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
                                     {step1?.approverName || currentBatchDoc.employeeName}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{(currentBatchDoc.rawOvertime as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
                                   <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                                    {isSigned1 && step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
+                                    {step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : '—'}
                                   </div>
                                 </div>
                               )
@@ -2325,18 +2541,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step2 = approvals.find((s: any) => s.stepOrder === 2)
-                              const isApproved2 = step2?.status === 'approved'
-                              const sigUrl2 = isApproved2 ? step2?.signatureDataUrl : null
+                              const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
+                              const sigUrl2 = step2?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isApproved2 && sigUrl2 ? (
+                                    {sigUrl2 ? (
                                       <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved2 && step2?.signedAt ? (
+                                    ) : isApproved2 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step2?.signedAt)})</span>
                                       </div>
                                     ) : step2?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
@@ -2359,18 +2575,18 @@ export function InboxTab({
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
                               const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                              const isApproved3 = step3?.status === 'approved'
-                              const sigUrl3 = isApproved3 ? step3?.signatureDataUrl : null
+                              const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
+                              const sigUrl3 = step3?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
                                   <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {isApproved3 && sigUrl3 ? (
+                                    {sigUrl3 ? (
                                       <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved3 && step3?.signedAt ? (
+                                    ) : isApproved3 ? (
                                       <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3.signedAt)})</span>
+                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
                                       </div>
                                     ) : step3?.status === 'reverted' ? (
                                       <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
@@ -2390,7 +2606,7 @@ export function InboxTab({
                             })()}
                           </div>
 
-                          <div className="w-full text-right text-[7pt] text-slate-400 mt-6 pt-2 border-t border-slate-100">PT Chitra Paratama • HERO Platform</div>
+                          <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
                         </div>
                       )}
 
@@ -2477,209 +2693,21 @@ export function InboxTab({
                               JENIS PEKERJAAN
                             </div>
 
-                            {/* ── DYNAMIC COLUMNS FOR PERMIT TYPES ── */}
+                            {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
                             {(() => {
-                              const checkedEquipment: string[] = doc.controlSteps
-                                ? doc.controlSteps.split('\n').map((l: string) => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
-                                : (Array.isArray(doc.ppe) ? doc.ppe : [])
+                              const checkedEquipment: string[] = extractCheckedEquipment(
+                                doc.controlSteps || (currentBatchDoc as any)?.rawPtw?.controlSteps,
+                                (doc as any)?.checkedEquipment || (currentBatchDoc as any)?.rawPtw?.checkedEquipment,
+                                doc.permitType || (currentBatchDoc as any)?.rawPtw?.permitType
+                              )
 
                               return (
-                                <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-                                  {columnsToShow.includes('HOT') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Hot Work Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('CONFINED') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Confined Space Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('DIGGING') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Digging Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('COLD') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Cold Work Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {columnsToShow.includes('ELECTRICAL') && (
-                                    <div className="flex flex-col justify-between">
-                                      <div>
-                                        <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                                          Electrical / Mechanical Permit
-                                        </div>
-                                        <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subTypes?.map((st) => (
-                                            <div key={st}>- {st}</div>
-                                          ))}
-                                        </div>
-                                        <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                                          {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].subHeader}
-                                        </div>
-                                        <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                                          <thead>
-                                            <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                                              <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                                              <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item, idx) => {
-                                              const isChecked = isItemChecked(item.label, checkedEquipment)
-                                              return (
-                                                <tr key={item.id}>
-                                                  <td>{idx + 1}. {item.label}</td>
-                                                  <td className="text-center">{isChecked ? '☑' : '☐'}</td>
-                                                  <td className="text-center">{!isChecked ? '☑' : '☐'}</td>
-                                                </tr>
-                                              )
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                <PtwChecklistTable
+                                  permitType={doc.permitType}
+                                  subTypes={(currentBatchDoc as any)?.rawPtw?.subTypes || (currentBatchDoc as any)?.subTypes || (doc as any)?.subTypes}
+                                  checkedEquipment={checkedEquipment}
+                                  columnsToShow={columnsToShow}
+                                />
                               )
                             })()}
 
@@ -2702,21 +2730,19 @@ export function InboxTab({
                               </div>
                             </div>
 
+                            {/* ── DESKRIPSI PEKERJAAN ── */}
+                            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+                              <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+                                DESKRIPSI PEKERJAAN :
+                              </span>
+                              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+                                {cleanPtwDescription(doc?.description || (currentBatchDoc as any)?.rawPtw?.description) || doc?.description || (doc as any)?.additionalNotes || (currentBatchDoc as any)?.rawPtw?.additionalNotes || doc?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
+                              </div>
+                            </div>
+
                             {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
                             <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
-                              {/* 1. Catatan Pelaksana Pekerjaan */}
-                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
-                                <div>
-                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
-                                    CATATAN PELAKSANA PEKERJAAN
-                                  </span>
-                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 2. Catatan Pemberi Kerja */}
+                              {/* 1. Catatan Pemberi Kerja */}
                               <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
                                 <div>
                                   <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
@@ -2724,6 +2750,18 @@ export function InboxTab({
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
                                     {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* 2. Catatan Pelaksana Pekerjaan */}
+                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                                <div>
+                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                    CATATAN PELAKSANA PEKERJAAN
+                                  </span>
+                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
                                   </div>
                                 </div>
                               </div>
@@ -2741,16 +2779,30 @@ export function InboxTab({
                               </div>
 
                               {/* 4. QR Code */}
-                              <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-                                <img
-                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                                    `http://localhost:3000/review/ptw/${doc.permitNumber}`
-                                  )}`}
-                                  alt="QR Code Lampiran PTW"
-                                  className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-                                />
-                                <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-                              </div>
+                              {(() => {
+                                const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+                                  ? window.location.origin
+                                  : 'https://hero.chitraparatama.com'
+                                const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
+                                return (
+                                  <a
+                                    href={qrTargetUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+                                    title="Klik / Scan untuk membuka lampiran PTW"
+                                  >
+                                    <img
+                                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                                      alt="QR Code Lampiran PTW"
+                                      className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                                    />
+                                    <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                                      Klik / Scan QR
+                                    </span>
+                                  </a>
+                                )
+                              })()}
                             </div>
 
                             {/* ── MASA BERLAKU IKB ── */}
@@ -2782,55 +2834,58 @@ export function InboxTab({
                               </div>
                             </div>
 
-                            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+                            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
                             <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
-                              <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                                <div className="h-14 flex flex-col items-center justify-center my-1">
-                                  {step1?.signatureDataUrl ? (
-                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
-                                  ) : null}
-                                  {step1?.status === 'rejected' ? (
-                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : step1?.status === 'reverted' ? (
-                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : step1?.status === 'approved' && !step1?.signatureDataUrl ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
-                                  ) : !step1?.signatureDataUrl ? (
-                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
-                                  ) : null}
-                                </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold">
-                                  {step1?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
-                                </div>
-                              </div>
-
+                              {/* 1. PEMBERI KERJA */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
                                 <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
                                 <div className="h-14 flex flex-col items-center justify-center my-1">
-                                  {step2?.status === 'rejected' ? (
+                                  {step1?.status === 'rejected' ? (
                                     <>
-                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
-                                  ) : step2?.status === 'reverted' ? (
+                                  ) : step1?.status === 'reverted' ? (
                                     <>
-                                      {step2?.signatureDataUrl && <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
+                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
-                                  ) : step2?.signatureDataUrl ? (
-                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
-                                  ) : step2?.status === 'approved' ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step1?.signatureDataUrl ? (
+                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                  ) : step1?.status === 'approved' ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
                                   ) : (
                                     <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
                                   )}
                                 </div>
                                 <div className="border-t border-slate-900 pt-1 font-bold">
-                                  {step2?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
+                                  {step1?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
 
+                              {/* 2. PELAKSANA PEKERJAAN */}
+                              <div className="p-1.5 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                                  {step2?.signatureDataUrl ? (
+                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                                  ) : null}
+                                  {step2?.status === 'rejected' ? (
+                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step2?.status === 'reverted' ? (
+                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : step2?.status === 'approved' && !step2?.signatureDataUrl ? (
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
+                                  ) : !step2?.signatureDataUrl ? (
+                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                  ) : null}
+                                </div>
+                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                  {step2?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+                                </div>
+                              </div>
+
+                              {/* 3. VERIFIKASI (SAFETY DEPT) */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
                                 <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
                                 <div className="h-14 flex flex-col items-center justify-center my-1">
@@ -3413,13 +3468,21 @@ export function InboxTab({
                           </div>
                         </div>
                       )}
-                    </div>
+                            </div>
+                          </div>
+                        </div>
+                    )}
                   </div>
-                )}
-              </div>
 
               {/* Right Column (Desktop) / Bottom Section (Mobile): Reviewer Action Sidebar */}
-              <div className="w-full lg:w-96 shrink-0 bg-white p-4 sm:p-5 flex flex-col justify-between text-slate-800 space-y-4">
+              <div
+                className={cn(
+                  "bg-white text-slate-800",
+                  viewMode === 'mobile'
+                    ? "w-full max-w-lg mx-auto p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3"
+                    : "w-full lg:w-96 shrink-0 p-4 sm:p-5 flex flex-col justify-between space-y-4"
+                )}
+              >
                 <div className="space-y-4">
                   {/* Card 1: Informasi Dokumen */}
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs space-y-2 relative">

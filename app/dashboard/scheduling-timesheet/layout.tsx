@@ -1,5 +1,5 @@
 import { getPermittedSchedulingTabs } from '@/lib/hero-access'
-import { SchedulingTabs } from './tabs-nav'
+import { SchedulingTabs, SchedulingHeaderTitle } from './tabs-nav'
 
 export default async function SchedulingTimesheetLayout({
   children,
@@ -14,9 +14,7 @@ export default async function SchedulingTimesheetLayout({
       <header className="admin-daily-card overflow-hidden rounded-[1.1rem] px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="font-display text-foreground mt-1 text-[1.75rem] leading-tight font-semibold sm:text-[2rem]">
-              Roster &amp; Schedule
-            </h1>
+            <SchedulingHeaderTitle />
           </div>
         </div>
         <SchedulingTabs permittedHrefs={permittedHrefs} />

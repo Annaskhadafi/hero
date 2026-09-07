@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useTheme } from "@/components/theme-provider"
+import { useLanguage } from "@/components/language-provider"
+import { translateMenuTitle, translateSectionTitle } from "@/lib/i18n"
 import { HeaderThemeControls } from "@/components/header-theme-controls"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
@@ -38,6 +40,7 @@ export function SiteHeader({
   navSecondary?: NavItem[]
 }) {
   const { resolvedTheme } = useTheme()
+  const { language, t } = useLanguage()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -51,6 +54,10 @@ export function SiteHeader({
   const triggerClassName = isDark
     ? "bg-slate-900 text-slate-100 hover:bg-slate-800 hover:text-white border-white/10"
     : "bg-white text-foreground hover:bg-muted/50 hover:text-foreground border-border/70"
+
+  const displayEyebrow = eyebrow === "Desktop Workspace" ? t("desktop_workspace", "Desktop Workspace") : eyebrow
+  const displayTitle = translateMenuTitle(title, language)
+  const displaySubtitle = subtitle ? translateMenuTitle(subtitle, language) : null
 
   return (
     <header
@@ -77,12 +84,12 @@ export function SiteHeader({
             <Separator orientation="vertical" className={cn("hidden h-7 lg:block", isDark ? "bg-white/12" : "bg-border")} />
             <div className="min-w-0">
               <p className={cn("text-[0.62rem] font-semibold uppercase tracking-[0.16em]", isDark ? "text-slate-400" : "text-muted-foreground")}>
-                {eyebrow}
+                {displayEyebrow}
               </p>
               <p className={cn("font-display truncate text-sm font-semibold tracking-normal sm:text-[1rem]", isDark ? "text-slate-50" : "text-foreground")}>
-                {title}
+                {displayTitle}
               </p>
-              {subtitle ? <p className={cn("truncate text-xs", isDark ? "text-slate-400" : "text-muted-foreground")}>{subtitle}</p> : null}
+              {displaySubtitle ? <p className={cn("truncate text-xs", isDark ? "text-slate-400" : "text-muted-foreground")}>{displaySubtitle}</p> : null}
             </div>
           </div>
 

@@ -123,7 +123,7 @@ export function MobileDailyActivityClient({
   const [isActionRunning, setIsActionRunning] = useState(false)
   const [isSigModalOpen, setIsSigModalOpen] = useState(false)
   const [userSignature, setUserSignature] = useState<string | null>(null)
-  const [previewZoom, setPreviewZoom] = useState(1.0)
+  const [previewZoom, setPreviewZoom] = useState(2.2)
   const pdfRef = useRef<HTMLDivElement | null>(null)
 
   const activeCount = data.summary.jobsAssigned || data.assignments.length || 0
@@ -721,18 +721,18 @@ export function MobileDailyActivityClient({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setPreviewZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
+                      onClick={() => setPreviewZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
                       className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
                       title="Zoom In"
                     >
                       +
                     </Button>
-                    {previewZoom !== 1.0 && (
+                    {previewZoom !== 2.2 && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setPreviewZoom(1.0)}
+                        onClick={() => setPreviewZoom(2.2)}
                         className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
                       >
                         Reset

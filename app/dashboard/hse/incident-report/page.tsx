@@ -5,20 +5,22 @@ import { AdminPageShell } from '@/components/admin-page-shell'
 import { IncidentReportClient } from './incident-client'
 import { getIncidentRecords } from './actions'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
   title: 'HSE Incident Report',
   description: 'Manage and track HSE incident reports',
 }
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
 export default async function IncidentReportPage() {
+  const access = await getCurrentMenuPermission('hse_incident_report')
+  if (!access.canView) redirect('/dashboard')
   const allSites = await db.select({ id: sites.id, name: sites.name }).from(sites)
   const recordsResult = await getIncidentRecords()
-  const access = await getCurrentMenuPermission('hse_incident_report')
 
-  const records = recordsResult.success ? (recordsResult.data as any) ?? [] : []
+  const records = recordsResult.success ? ((recordsResult.data as any) ?? []) : []
 
   return (
     <AdminPageShell

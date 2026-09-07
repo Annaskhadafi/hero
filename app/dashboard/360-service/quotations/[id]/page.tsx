@@ -8,8 +8,14 @@ import { Suspense } from "react"
 import { resolveUploadUrl } from "@/lib/s3-storage"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
+import { db } from "@/db"
+import { sites, employees } from "@/db/schema"
+import { timesheetSchedulingPlansV2 } from "@/db/schema/timesheet"
+import { eq, or, ilike, and, inArray } from "drizzle-orm"
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+const MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+
 function abbreviatePeriod(period: string | null) {
   if (!period) return '-'
   return period.replace(
@@ -31,8 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!quotation) return { title: 'Quotation Preview' }
 
   const dateStr = new Date(quotation.quotationDate);
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-  const bulan = `${monthNames[dateStr.getMonth()]} ${dateStr.getFullYear()}`;
+  const bulan = `${MONTH_NAMES[dateStr.getMonth()]} ${dateStr.getFullYear()}`;
   const site = quotation.projectName || 'Site';
   const safeQuotationNum = quotation.quotationNumber.replace(/\//g, '-');
   
@@ -147,6 +152,210 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
     return new Date(dateStr).getFullYear().toString();
   };
 
+  // -------------------------------------------------------------
+  // DATA SINKRONISASI JADWAL ROSTER & SCHEDULE V2
+  // -------------------------------------------------------------
+  let matchedSite: { id: number; name: string } | null = null
+  if (quotation.projectName) {
+    const siteRows = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(or(
+        eq(sites.name, quotation.projectName),
+        ilike(sites.name, `%${quotation.projectName}%`)
+      ))
+      .limit(1)
+    if (siteRows[0]) matchedSite = siteRows[0]
+  }
+
+  let rosterStartDateStr = ""
+  let rosterEndDateStr = ""
+  if (quotation.poPeriod) {
+    const matchedDates = quotation.poPeriod.match(/\d{4}-\d{2}-\d{2}/g)
+    if (matchedDates && matchedDates.length >= 2) {
+      rosterStartDateStr = matchedDates[0]
+      rosterEndDateStr = matchedDates[1]
+    }
+  }
+  if (!rosterStartDateStr || !rosterEndDateStr) {
+    const qDate = new Date(quotation.quotationDate)
+    const validD = isNaN(qDate.getTime()) ? new Date() : qDate
+    const y = validD.getFullYear()
+    const m = String(validD.getMonth() + 1).padStart(2, "0")
+    const lastDay = new Date(y, validD.getMonth() + 1, 0).getDate()
+    rosterStartDateStr = `${y}-${m}-01`
+    rosterEndDateStr = `${y}-${m}-${String(lastDay).padStart(2, "0")}`
+  }
+
+  const DAY_LETTERS = ["M", "S", "S", "R", "K", "J", "S"]
+  const rosterDates: {
+    iso: string
+    day: number
+    month: number
+    year: number
+    dayLetter: string
+    isSunday: boolean
+  }[] = []
+
+  const [sY, sM, sD] = rosterStartDateStr.split("-").map(Number)
+  const [eY, eM, eD] = rosterEndDateStr.split("-").map(Number)
+  const cursorDate = new Date(Date.UTC(sY, sM - 1, sD))
+  const endCursorDate = new Date(Date.UTC(eY, eM - 1, eD))
+
+  while (cursorDate <= endCursorDate) {
+    const y = cursorDate.getUTCFullYear()
+    const m = cursorDate.getUTCMonth() + 1
+    const d = cursorDate.getUTCDate()
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+    const dayOfWeek = cursorDate.getUTCDay()
+    rosterDates.push({
+      iso,
+      day: d,
+      month: m,
+      year: y,
+      dayLetter: DAY_LETTERS[dayOfWeek],
+      isSunday: dayOfWeek === 0,
+    })
+    cursorDate.setUTCDate(cursorDate.getUTCDate() + 1)
+  }
+
+  const uniqueRosterPeriods = [...new Set(rosterDates.map(r => r.iso.slice(0, 7)))]
+
+  // Query Schedule V2
+  const scheduleByEmpAndPeriod = new Map<string, string[]>()
+  if (matchedSite?.id && uniqueRosterPeriods.length > 0) {
+    const plans = await db
+      .select({
+        period: timesheetSchedulingPlansV2.period,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(and(
+        eq(timesheetSchedulingPlansV2.siteId, matchedSite.id),
+        inArray(timesheetSchedulingPlansV2.period, uniqueRosterPeriods)
+      ))
+
+    for (const plan of plans) {
+      const list = ((plan.activeSchedule as any[])?.length ? plan.activeSchedule : plan.draftSchedule) as any[]
+      if (Array.isArray(list)) {
+        for (const row of list) {
+          if (row.employeeId && Array.isArray(row.schedule)) {
+            scheduleByEmpAndPeriod.set(`${row.employeeId}:${plan.period}`, row.schedule)
+          }
+        }
+      }
+    }
+  }
+
+  // Query Employee Data untuk SN dan Nama
+  const allEmployees = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+
+  const empMapByName = new Map<string, { id: number; sn: string; name: string }>()
+  for (const emp of allEmployees) {
+    if (emp.name) {
+      empMapByName.set(emp.name.trim().toLowerCase(), {
+        id: emp.id,
+        sn: emp.employeeSn || "-",
+        name: emp.name,
+      })
+    }
+  }
+
+  // Bangun data baris personil roster
+  const rosterRows: {
+    no: number
+    sn: string
+    level: string
+    name: string
+    shifts: { dateIso: string; code: string; isOff?: boolean; isSunday: boolean }[]
+    workingDays: number
+  }[] = []
+
+  let rosterRowIndex = 1
+  for (const item of quotation.items) {
+    const rawDesc = item.quotationItem.customDescription || item.item?.name || item.item?.jobTitle || `Personil ${rosterRowIndex}`
+    let cleanPersonName = rawDesc.replace(/^Labour\s*cost\s*/i, '').trim()
+    const matchParen = rawDesc.match(/\(([^)]+)\)/)
+    if (matchParen && matchParen[1]) {
+      cleanPersonName = matchParen[1].trim()
+    }
+
+    const level = item.quotationItem.level || item.item?.jobTitle || "1"
+
+    let matchedEmp: { id: number; sn: string; name: string } | null = null
+    if (cleanPersonName) {
+      matchedEmp = empMapByName.get(cleanPersonName.toLowerCase()) || null
+      if (!matchedEmp) {
+        for (const [k, v] of empMapByName.entries()) {
+          if (k.includes(cleanPersonName.toLowerCase()) || cleanPersonName.toLowerCase().includes(k)) {
+            matchedEmp = v
+            break
+          }
+        }
+      }
+    }
+
+    const sn = matchedEmp?.sn && matchedEmp.sn !== "" ? matchedEmp.sn : "-"
+    const empId = matchedEmp?.id || null
+
+    let workingDaysCount = 0
+    const shifts = rosterDates.map((dateObj) => {
+      const periodStr = dateObj.iso.slice(0, 7)
+      const dayIndex = dateObj.day - 1
+      let code = "11"
+      let isOff = false
+
+      if (empId) {
+        const sched = scheduleByEmpAndPeriod.get(`${empId}:${periodStr}`)
+        if (sched && sched[dayIndex]) {
+          const rawCode = sched[dayIndex].trim().toUpperCase()
+          if (rawCode === "FB" || rawCode === "RR") {
+            code = "FB"
+          } else if (rawCode === "OFF" || rawCode === "LIBUR") {
+            code = "11"
+            isOff = true
+          } else if (rawCode === "DS" || rawCode === "NS" || rawCode === "ST" || rawCode === "11") {
+            code = "11"
+          }
+        }
+      }
+
+      if (code === "11") {
+        workingDaysCount++
+      }
+
+      return {
+        dateIso: dateObj.iso,
+        code,
+        isOff,
+        isSunday: dateObj.isSunday,
+      }
+    })
+
+    rosterRows.push({
+      no: rosterRowIndex++,
+      sn,
+      level,
+      name: (matchedEmp?.name || cleanPersonName).toUpperCase(),
+      shifts,
+      workingDays: workingDaysCount,
+    })
+  }
+
+  const startMonthName = MONTH_NAMES[sM - 1] || "Bulan"
+  const endMonthName = MONTH_NAMES[eM - 1] || "Bulan"
+  const rosterHeaderTitle = sM === eM && sY === eY
+    ? `ROSTER ${startMonthName.toUpperCase()} ${sY}`
+    : `ROSTER PERIODE ${sD} ${startMonthName.toUpperCase()} - ${eD} ${endMonthName.toUpperCase()} ${eY}`
+
   const bastClosing = (
     <div data-bast-closing className="mt-4 text-[9pt]">
       <div className="leading-relaxed mb-4">
@@ -250,19 +459,28 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
 
   return (
     <div className="w-full p-4 md:p-6 space-y-6">
-      <div className="flex justify-between items-center no-print">
-        <h1 className="text-2xl font-bold tracking-tight">Quotation Preview</h1>
-        <div className="flex gap-2">
+      <div className="flex flex-wrap justify-between items-center gap-4 no-print bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2">
           <Link href="/dashboard/360-service/quotations">
-            <Button variant="outline">Back</Button>
+            <Button variant="outline" size="sm">Back</Button>
           </Link>
+          <Link href={`/dashboard/360-service/quotations/${quotation.id}/edit`}>
+            <Button variant="outline" size="sm">Edit</Button>
+          </Link>
+          <h1 className="text-lg font-bold tracking-tight text-slate-800 ml-2">Quotation Preview</h1>
+        </div>
+        <div className="flex items-center gap-2">
           <Suspense fallback={<Button disabled className="bg-teal-600 text-white">Loading...</Button>}>
-            <PrintButton />
+            <PrintButton 
+              quotationId={quotation.id}
+              initialIncludeBast={quotation.includeBast}
+              initialIncludeRoster={quotation.includeRoster}
+            />
           </Suspense>
         </div>
       </div>
 
-      <div className="flex flex-col items-center overflow-auto p-4 bg-muted no-print rounded-xl gap-8">
+      <div className="flex flex-col items-center overflow-auto p-4 bg-muted rounded-xl gap-8 print:p-0 print:bg-white print:gap-0">
         {chunks.map((chunk, pageIndex) => (
           <div key={pageIndex} data-quotation-page className="pdf-wrapper relative bg-white shadow-xl w-[210mm] h-[297mm] overflow-hidden text-[10pt] font-sans text-black shrink-0">
             
@@ -690,10 +908,153 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             </div>
           </>
         )}
+
+        {/* ROSTER PAGE (LANDSCAPE) */}
+        <div data-roster-page className={`pdf-wrapper roster-landscape-page relative bg-white shadow-xl w-[297mm] h-[210mm] overflow-hidden text-[10pt] font-sans text-black shrink-0 my-6 ${!quotation.includeRoster ? 'hidden' : ''}`}>
+          <div className="relative z-10 px-[10mm] py-[8mm] h-full flex flex-col font-sans text-slate-800 justify-between">
+            <div>
+              {/* Header Title */}
+              <div className="mb-2">
+                <div className="text-base font-extrabold text-slate-900 tracking-wider uppercase">
+                  {rosterHeaderTitle}
+                </div>
+                <div className="h-1 bg-[#00B0F0] w-full mt-1 mb-2"></div>
+              </div>
+
+              {/* Table Grid Roster */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[7.5pt] border border-slate-400">
+                  <thead>
+                    <tr className="text-slate-900 font-bold">
+                      <th rowSpan={2} className="border border-slate-400 px-1 py-1 text-center bg-slate-100 w-[24px]">
+                        NO
+                      </th>
+                      <th rowSpan={2} className="border border-slate-400 px-1 py-1 text-center bg-slate-100 min-w-[45px] max-w-[55px]">
+                        SN
+                      </th>
+                      <th rowSpan={2} className="border border-slate-400 px-1 py-1 text-center bg-slate-100 w-[26px]">
+                        Lv
+                      </th>
+                      <th rowSpan={2} className="border border-slate-400 px-2 py-1 text-left bg-slate-100 min-w-[140px] max-w-[190px]">
+                        NAMA/TANGGAL
+                      </th>
+                      {rosterDates.map((d) => (
+                        <th
+                          key={`letter-${d.iso}`}
+                          className={`border border-slate-400 px-0.5 py-0.5 text-center w-[20px] font-bold ${
+                            d.isSunday
+                              ? "bg-[#FCD5B4] text-amber-950"
+                              : "bg-[#00B0F0] text-white"
+                          }`}
+                        >
+                          {d.dayLetter}
+                        </th>
+                      ))}
+                      <th rowSpan={2} className="border border-slate-400 px-1 py-1 text-center bg-[#C6E0B4] text-emerald-950 font-bold w-[48px] leading-tight">
+                        WORKING DAYS
+                      </th>
+                    </tr>
+                    <tr className="text-slate-900 font-bold">
+                      {rosterDates.map((d) => (
+                        <th
+                          key={`num-${d.iso}`}
+                          className={`border border-slate-400 px-0.5 py-0.5 text-center w-[20px] text-[7pt] ${
+                            d.isSunday
+                              ? "bg-[#FCD5B4] text-amber-950 font-bold"
+                              : "bg-[#F2F2F2] text-slate-800"
+                          }`}
+                        >
+                          {d.day}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rosterRows.map((row) => (
+                      <tr key={row.no} className="hover:bg-slate-50/50">
+                        <td className="border border-slate-400 px-1 py-0.5 text-center text-slate-600 font-mono text-[7pt]">
+                          {row.no}
+                        </td>
+                        <td className="border border-slate-400 px-1 py-0.5 text-center font-mono text-[7pt] text-slate-700">
+                          {row.sn}
+                        </td>
+                        <td className="border border-slate-400 px-1 py-0.5 text-center font-bold text-[7pt] text-slate-800">
+                          {row.level}
+                        </td>
+                        <td className="border border-slate-400 px-2 py-0.5 font-semibold text-slate-900 uppercase whitespace-nowrap overflow-hidden text-ellipsis max-w-[190px] text-[7pt]" title={row.name}>
+                          {row.name}
+                        </td>
+                        {row.shifts.map((shift) => {
+                          const isFb = shift.code === "FB"
+                          const isOff = shift.isOff
+                          return (
+                            <td
+                              key={shift.dateIso}
+                              className={`border border-slate-300 px-0.5 py-0.5 text-center font-bold text-[7pt] ${
+                                isFb
+                                  ? "bg-[#B4C6E7] text-[#1F4E79]"
+                                  : isOff
+                                  ? "bg-[#FCE4D6] text-[#C65911]"
+                                  : "bg-white text-slate-800"
+                              }`}
+                            >
+                              {shift.code}
+                            </td>
+                          )
+                        })}
+                        <td className="border border-slate-400 px-1 py-0.5 text-center font-bold text-[7.5pt] bg-[#E2EFDA] text-emerald-950">
+                          {row.workingDays}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer Signatures matching user's document */}
+            <div className="mt-4 pt-2 flex justify-between items-start text-xs text-slate-800 px-4">
+              <div className="flex flex-col items-center w-[220px]">
+                <p className="font-semibold mb-12 text-center">Prepared By :</p>
+                <div className="w-full border-b border-slate-600 text-center pb-0.5">
+                  ( {quotation.fromName || "                     "} )
+                </div>
+              </div>
+              <div className="flex flex-col items-center w-[220px]">
+                <p className="font-semibold mb-12 text-center">Anknowled By :</p>
+                <div className="w-full border-b border-slate-600 text-center pb-0.5">
+                  ( {quotation.attn || "                     "} )
+                </div>
+              </div>
+              <div className="flex flex-col items-center w-[220px]">
+                <p className="font-semibold mb-12 text-center">
+                  Approval By {matchedSite?.name || quotation.projectName || "Site"} :
+                </p>
+                <div className="w-full border-b border-slate-600 text-center pb-0.5">
+                  (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
-      {/* Global Print Styles specifically for this document */}
+      {/* Global Print & Layout Styles specifically for this document */}
       <style dangerouslySetInnerHTML={{__html: `
+        /* Sembunyikan Navbar Chitra Hub dan Sidebar HERO di Quotation Preview */
+        [data-admin-dashboard-shell] > header,
+        [data-slot="sidebar"] {
+          display: none !important;
+        }
+        main[data-slot="sidebar-inset"] {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        
+        @page roster-landscape {
+          size: A4 landscape;
+          margin: 0;
+        }
         @media print {
           body * {
             visibility: hidden;
@@ -711,6 +1072,13 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             break-after: page;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+          }
+          .roster-landscape-page {
+            page: roster-landscape !important;
+            width: 297mm !important;
+            height: 210mm !important;
+            page-break-before: always !important;
+            break-before: page !important;
           }
           @page {
             size: A4;

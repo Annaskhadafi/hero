@@ -1,3 +1,4 @@
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   normalizePermitType,
@@ -8,6 +9,8 @@ import {
   HIRADC_PRESETS,
   PERMIT_TYPE_OPTIONS,
   EQUIPMENT_CHECKLIST_PER_TYPE,
+  getDefaultSubTypes,
+  getPermitSubTypes,
 } from '../lib/ptw-helpers.ts'
 
 test('PTW Helpers - normalizePermitType', () => {
@@ -48,6 +51,30 @@ test('PTW Helpers - isItemChecked (Number Prefix Stripping & Matching)', () => {
   assert.equal(isItemChecked('7. Respirator', checkedEquipment), false)
 })
 
+test('PTW Helpers - subTypes defaults and custom overrides', () => {
+  const defaults = getDefaultSubTypes()
+  assert.ok(defaults['Hot Work Permit'].includes('Welding'))
+  assert.ok(defaults['Hot Work Permit'].includes('Cutting torch'))
+  assert.ok(defaults['Hot Work Permit'].includes('Grinding'))
+  assert.ok(defaults['Hot Work Permit'].includes('Brazing'))
+  assert.ok(defaults['Confined Space Permit'].includes('Pekerjaan Tangki'))
+  assert.ok(defaults['Confined Space Permit'].includes('Chute'))
+  assert.ok(defaults['Confined Space Permit'].includes('Sewer / Saluran air'))
+  assert.ok(defaults['Digging Permit'].includes('Penggalian parit'))
+  assert.ok(defaults['Digging Permit'].includes('Pembuatan pondasi'))
+
+  // Custom subTypes overrides
+  const custom = {
+    'Hot Work Permit': ['Welding Pipa 4 inch', 'Custom Grinding'],
+  }
+  const hwSubTypes = getPermitSubTypes('Hot Work Permit', custom)
+  assert.deepEqual(hwSubTypes, ['Welding Pipa 4 inch', 'Custom Grinding'])
+
+  // Fallback to default when not in custom
+  const csSubTypes = getPermitSubTypes('Confined Space Permit', custom)
+  assert.ok(csSubTypes.includes('Pekerjaan Tangki'))
+})
+
 test('PTW Helpers - HIRADC Presets Have Normalized Permit Types', () => {
   for (const preset of HIRADC_PRESETS) {
     const activeKeys = getActivePermitTypeKeys(preset.permitType)
@@ -57,3 +84,4 @@ test('PTW Helpers - HIRADC Presets Have Normalized Permit Types', () => {
     }
   }
 })
+

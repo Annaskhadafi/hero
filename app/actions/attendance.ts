@@ -12,6 +12,7 @@ import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
+  checkEmployeeOffDayStatus,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
@@ -19,16 +20,16 @@ import {
   getSiteAttendanceClockConfig,
   resolveSiteAttendancePunctuality,
 } from '@/lib/timesheet/site-attendance-punctuality'
+import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 import {
   buildWorkflowEmailContent,
   getAttendancePermissionRecipientEmails,
+  resolveAttendancePermissionApprover,
+  ATTENDANCE_PERMISSION_HC_CC_EMAILS,
   getEmployeeContactById,
   getAppUrl,
-  getHumanCapitalRecipientEmails,
-  getOperationalApprovalRecipientEmails,
   sendWorkflowEmail,
-  sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import {
@@ -108,6 +109,7 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
@@ -139,6 +141,7 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
@@ -336,35 +339,31 @@ function formatAttendancePermissionRange(startDate: string, endDate: string) {
   return `${new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })} s/d ${new Date(`${endDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })}`
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function notifyAttendancePermissionSubmitted(input: {
+  employeeId?: number | null
   employeeName: string
   employeeEmail: string
-  siteId: number
+  siteId?: number | null
+  siteName?: string | null
+  sectionId?: number | null
+  sectionName?: string | null
+  jobTitle?: string | null
   permissionType: string
   startDate: string
   endDate: string
   reason: string
   actorEmail?: string
 }) {
-  const recipientEmails = await getAttendancePermissionRecipientEmails(input.siteId)
+  const approver = await resolveAttendancePermissionApprover({
+    employeeId: input.employeeId,
+    siteId: input.siteId,
+    siteName: input.siteName,
+    sectionId: input.sectionId,
+    sectionName: input.sectionName,
+    jobTitle: input.jobTitle,
+  })
 
-  if (recipientEmails.length === 0) {
+  if (!approver?.approverEmail) {
     return
   }
 
@@ -372,19 +371,22 @@ async function notifyAttendancePermissionSubmitted(input: {
   const requestDate = formatAttendancePermissionRange(input.startDate, input.endDate)
   const emailContent = buildWorkflowEmailContent({
     title: `Pengajuan ${permissionLabel} baru`,
-    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu persetujuan.`,
+    greeting: `Halo ${approver.approverName},`,
+    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu persetujuan Anda (${approver.approverTitle || approver.category}).`,
     details: [
       `Karyawan: ${input.employeeName}`,
       `Jenis Izin: ${permissionLabel}`,
       `Tanggal: ${requestDate}`,
       input.reason ? `Alasan: ${input.reason}` : null,
+      `Approver (${approver.category}): ${approver.approverName} (${approver.approverTitle})`,
     ],
     ctaLabel: 'Buka Dashboard Izin',
     ctaUrl: getAppUrl('/dashboard/hc/permission'),
   })
 
-  await sendWorkflowEmailToMany({
-    recipients: recipientEmails,
+  await sendWorkflowEmail({
+    to: approver.approverEmail,
+    cc: ATTENDANCE_PERMISSION_HC_CC_EMAILS,
     actorEmail: input.actorEmail,
     templateCode: 'attendance_permission_reminder',
     templateName: 'Attendance Permission Reminder',
@@ -393,6 +395,8 @@ async function notifyAttendancePermissionSubmitted(input: {
       permissionType: permissionLabel,
       requestDate,
       reason: input.reason || '-',
+      approverName: approver.approverName,
+      approverRole: approver.approverTitle || approver.category,
     },
     fallbackSubject: `Pengajuan ${permissionLabel} baru - ${input.employeeName}`,
     fallbackHtml: emailContent.html,
@@ -600,14 +604,41 @@ export async function submitAttendance(formData: FormData) {
       Number(getTrimmedFormValue(formData, 'overtimeMinutes')) || 0
     )
     const shiftCode = getTrimmedFormValue(formData, 'shiftCode')
-    const activeShiftOptions = await getActiveAttendanceShiftOptions()
-    const selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode)
+    const activeShiftOptions = await getActiveAttendanceShiftOptions().catch(() => [])
+    let selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode)
 
     if (!selectedShift) {
-      return { success: false, error: 'Shift option is not available. Contact Master Data admin.' }
+      if (['ns', 'night', 'malam'].includes(shiftCode.toLowerCase())) {
+        selectedShift = {
+          value: shiftCode || 'night',
+          label: 'Shift Malam',
+          window: '18:00 - 05:00',
+          helper: 'Night Shift',
+        }
+      } else {
+        selectedShift = {
+          value: shiftCode || 'day',
+          label: 'Shift Pagi / Reguler',
+          window: '08:00 - 17:00',
+          helper: 'Day Shift',
+        }
+      }
     }
 
     const eventTime = new Date()
+    const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime,
+      role: employee.role || employee.jobTitle,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      timeZone: siteConfig.timezone,
+    })
+
+    if (!offDayCheck.allowAttendance && offDayCheck.reason) {
+      return { success: false, error: offDayCheck.reason }
+    }
+
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: employee.siteId,
       eventType,
@@ -615,12 +646,17 @@ export async function submitAttendance(formData: FormData) {
       shiftCode,
     })
 
+    const rawContext = getTrimmedFormValue(formData, 'attendanceContext')
+    const attendanceContext = offDayCheck.isOffDay
+      ? [rawContext, 'Hari OFF / Lembur'].filter(Boolean).join(' - ')
+      : rawContext
+
     const locationNote = buildAttendanceNote({
       locationNote: baseLocationNote,
       shiftLabel: selectedShift.label,
       shiftWindow: selectedShift.window,
       workMode: getTrimmedFormValue(formData, 'workMode'),
-      attendanceContext: getTrimmedFormValue(formData, 'attendanceContext'),
+      attendanceContext,
       overtimeMinutes,
       operationalNote: getTrimmedFormValue(formData, 'operationalNote').slice(0, 160),
       punctualityNote: punctuality?.note,
@@ -642,10 +678,17 @@ export async function submitAttendance(formData: FormData) {
       })
       .returning()
 
+    try {
+      await syncFaceAttendanceToTimesheet(employee.id, employee.siteId, eventTime)
+    } catch (syncError) {
+      console.error('[submitAttendance] Timesheet sync failed:', syncError)
+    }
+
     revalidatePath('/mobile/attendance')
     revalidatePath('/dashboard/attendance')
     revalidatePath('/dashboard/attendance/records')
     revalidatePath('/dashboard/scheduling-timesheet')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
 
     return { success: true, record }
   } catch (err) {
@@ -799,9 +842,14 @@ export async function submitAttendancePermission(formData: FormData) {
 
     try {
       await notifyAttendancePermissionSubmitted({
+        employeeId: employee.id,
         employeeName: employee.name,
         employeeEmail: employee.email,
         siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
         permissionType,
         startDate: requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
@@ -813,11 +861,21 @@ export async function submitAttendancePermission(formData: FormData) {
     }
 
     try {
+      const approver = await resolveAttendancePermissionApprover({
+        employeeId: employee.id,
+        siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
+      })
+
       const bellRecipients = Array.from(
-        new Set([
-          ...(await getHumanCapitalRecipientEmails()),
-          ...(await getOperationalApprovalRecipientEmails(employee.siteId)),
-        ])
+        new Set(
+          [approver?.approverEmail, ...ATTENDANCE_PERMISSION_HC_CC_EMAILS].filter(
+            (email): email is string => Boolean(email && email.includes('@'))
+          )
+        )
       )
       await notifyAttendancePermissionBell({
         recipientEmails: bellRecipients,
@@ -829,6 +887,8 @@ export async function submitAttendancePermission(formData: FormData) {
           permissionType,
           requestDate: formattedRequestDate,
           employeeName: employee.name,
+          approverName: approver?.approverName,
+          approverCategory: approver?.category,
         },
       })
     } catch (notificationError) {
@@ -1103,7 +1163,11 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   ]
 
   if (!hasGlobalDataAccess(access)) {
-    conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+    conditions.push(
+      access.dataScope === 'own'
+        ? eq(attendanceRecords.employeeId, employee.id)
+        : eq(attendanceRecords.siteId, employee.siteId)
+    )
   }
 
   const records = await db
@@ -1195,7 +1259,11 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
 
   return {
     success: true as const,
-    scope: hasGlobalDataAccess(access) ? ('global' as const) : ('site' as const),
+    scope: hasGlobalDataAccess(access)
+      ? ('global' as const)
+      : access.dataScope === 'own'
+        ? ('own' as const)
+        : ('site' as const),
     generatedAt: new Date().toISOString(),
     records: records.map((record) => ({
       ...record,

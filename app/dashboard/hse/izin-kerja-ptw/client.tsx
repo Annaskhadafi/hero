@@ -28,6 +28,7 @@ import {
   UploadCloud,
   X,
   XCircle,
+  Building2,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
@@ -88,8 +89,16 @@ import {
   normalizePermitTypes,
   getActivePermitTypeKeys,
   getDefaultEquipmentItems as getSharedDefaultEquipmentItems,
+  extractCheckedEquipment,
   isItemChecked as isSharedItemChecked,
+  getDefaultSubTypes,
+  getPermitSubTypes,
+  parseApplicantEntry,
+  formatVendorApplicantEntry,
+  cleanPtwDescription,
 } from '@/lib/ptw-helpers'
+import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
+import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 
 export type PtwListingRow = {
   id: number
@@ -108,6 +117,7 @@ export type PtwListingRow = {
   description?: string
   controlSteps?: string
   ppe?: string[]
+  subTypes?: Record<string, string[]> | string[]
   gasTestRequired?: boolean
   isolationRequired?: boolean
   hiradcReference?: string
@@ -253,9 +263,10 @@ function PtwLandscapePdfSheet({
   liveRemarks?: Record<number, string>
   checkedEquipmentOverride?: string[]
 }) {
-  const step1 = doc.approvals?.find((a) => a.stepOrder === 1 || a.approverRole === 'applicant')
-  const step2 = doc.approvals?.find((a) => a.stepOrder === 2 || a.approverRole === 'safety_officer')
-  const step3 = doc.approvals?.find((a) => a.stepOrder === 3 || a.approverRole === 'field_pic' || a.approverRole === 'authorized')
+  const step1 = doc.approvals?.find((a) => a.stepOrder === 1 || a.approverRole === 'safety_officer' || a.approverRole === 'pemberi_kerja')
+  const pelaksanaApprovals = doc.approvals?.filter((a) => a.approverRole === 'applicant' || a.approverRole === 'pelaksana' || a.approverRole === 'pelaksana_kerja') || []
+  const step2 = pelaksanaApprovals[0] || doc.approvals?.find((a) => a.stepOrder === 2)
+  const step3 = doc.approvals?.find((a) => a.approverRole === 'field_pic' || a.approverRole === 'safety_dept' || a.approverRole === 'authorized' || a.stepOrder === (doc.approvals?.length || 3))
 
   const remark1 = (liveRemarks && liveRemarks[1]) || step1?.remarks
   const remark2 = (liveRemarks && liveRemarks[2]) || step2?.remarks
@@ -284,7 +295,7 @@ function PtwLandscapePdfSheet({
 
   const checkedEquipmentList = checkedEquipmentOverride && checkedEquipmentOverride.length > 0
     ? checkedEquipmentOverride
-    : (doc?.ppe && Array.isArray(doc.ppe) && doc.ppe.length > 0 ? doc.ppe : [])
+    : extractCheckedEquipment(doc?.controlSteps, (doc as any)?.checkedEquipment, doc?.permitType)
 
   return (
     <div
@@ -340,213 +351,13 @@ function PtwLandscapePdfSheet({
         JENIS PEKERJAAN
       </div>
 
-      {/* ── DYNAMIC COLUMNS FOR PERMIT TYPES ── */}
-      <div className={`grid ${gridColsClass} border-b-2 border-slate-900 divide-x-2 divide-slate-900 text-[7.5pt]`}>
-        {columnsToShow.includes('HOT') && (
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="bg-[#ef4444] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                Hot Work Permit
-              </div>
-              <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                <div>- Welding / Pengelasan</div>
-                <div>- Cutting torch</div>
-                <div>- Grinding / Gerinda</div>
-              </div>
-              <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-              </div>
-              <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                <thead>
-                  <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                    <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {EQUIPMENT_CHECKLIST_PER_TYPE['Hot Work Permit'].items.map((item) => {
-                    const isChecked = checkedEquipmentList.length > 0
-                      ? isSharedItemChecked(item.label, checkedEquipmentList)
-                      : true
-                    return (
-                      <tr key={item.id}>
-                        <td>{item.label}</td>
-                        <td className="text-center">{isChecked ? "☑" : "☐"}</td>
-                        <td className="text-center">{!isChecked ? "☑" : "☐"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {columnsToShow.includes('CONFINED') && (
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="bg-[#eab308] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                Confined Space Permit
-              </div>
-              <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                <div>- Pekerjaan Tangki / Silo</div>
-                <div>- Chute / Vessel</div>
-                <div>- Sewer / Saluran Air</div>
-              </div>
-              <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-              </div>
-              <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                <thead>
-                  <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                    <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {EQUIPMENT_CHECKLIST_PER_TYPE['Confined Space Permit'].items.map((item) => {
-                    const isChecked = checkedEquipmentList.length > 0
-                      ? isSharedItemChecked(item.label, checkedEquipmentList)
-                      : true
-                    return (
-                      <tr key={item.id}>
-                        <td>{item.label}</td>
-                        <td className="text-center">{isChecked ? "☑" : "☐"}</td>
-                        <td className="text-center">{!isChecked ? "☑" : "☐"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {columnsToShow.includes('DIGGING') && (
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="bg-[#84cc16] text-slate-900 text-center font-bold py-1 uppercase border-b border-slate-900">
-                Digging Permit
-              </div>
-              <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                <div>- Penggalian Parit / Tanah</div>
-                <div>- Pembuatan Pondasi</div>
-                <div>- Penggalian Jalur Kabel / Pipa</div>
-              </div>
-              <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-              </div>
-              <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                <thead>
-                  <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                    <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {EQUIPMENT_CHECKLIST_PER_TYPE['Digging Permit'].items.map((item) => {
-                    const isChecked = checkedEquipmentList.length > 0
-                      ? isSharedItemChecked(item.label, checkedEquipmentList)
-                      : true
-                    return (
-                      <tr key={item.id}>
-                        <td>{item.label}</td>
-                        <td className="text-center">{isChecked ? "☑" : "☐"}</td>
-                        <td className="text-center">{!isChecked ? "☑" : "☐"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {columnsToShow.includes('COLD') && (
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="bg-[#06b6d4] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                Cold Work Permit
-              </div>
-              <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                <div>- Pekerjaan Perbaikan Sipil</div>
-                <div>- Inspeksi & Maintenance Umum</div>
-                <div>- Housekeeping & Cleanup</div>
-              </div>
-              <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-              </div>
-              <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                <thead>
-                  <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                    <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {EQUIPMENT_CHECKLIST_PER_TYPE['Cold Permit'].items.map((item) => {
-                    const isChecked = checkedEquipmentList.length > 0
-                      ? isSharedItemChecked(item.label, checkedEquipmentList)
-                      : true
-                    return (
-                      <tr key={item.id}>
-                        <td>{item.label}</td>
-                        <td className="text-center">{isChecked ? "☑" : "☐"}</td>
-                        <td className="text-center">{!isChecked ? "☑" : "☐"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {columnsToShow.includes('ELECTRICAL') && (
-          <div className="flex flex-col justify-between">
-            <div>
-              <div className="bg-[#3b82f6] text-white text-center font-bold py-1 uppercase border-b border-slate-900">
-                Electrical / Mechanical Permit
-              </div>
-              <div className="p-1.5 space-y-0.5 border-b border-slate-900 min-h-[56px] text-[7.5pt]">
-                <div>- Perbaikan Drainase & Kabel</div>
-                <div>- Maintenance LOTO / Panel</div>
-                <div>- Alignment Motor & Pompa</div>
-              </div>
-              <div className="p-1 bg-slate-50 font-semibold italic text-[6.5pt] text-slate-600 border-b border-slate-900 leading-tight">
-                Sebelum pekerjaan dilakukan terlebih dahulu menyiapkan peralatan tersebut di bawah ini.
-              </div>
-              <table className="w-full text-left border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-1 [&_td]:py-0.5 text-[7pt]">
-                <thead>
-                  <tr className="bg-slate-100 text-[6.5pt] text-center font-bold">
-                    <th className="w-[70%] border border-slate-300 px-1 py-0.5">Item Check</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Ya</th>
-                    <th className="w-[15%] border border-slate-300 px-1 py-0.5">Tidak</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {EQUIPMENT_CHECKLIST_PER_TYPE['Electrical/Mechanical'].items.map((item) => {
-                    const isChecked = checkedEquipmentList.length > 0
-                      ? isSharedItemChecked(item.label, checkedEquipmentList)
-                      : true
-                    return (
-                      <tr key={item.id}>
-                        <td>{item.label}</td>
-                        <td className="text-center">{isChecked ? "☑" : "☐"}</td>
-                        <td className="text-center">{!isChecked ? "☑" : "☐"}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
+      <PtwChecklistTable
+        permitType={doc.permitType}
+        subTypes={doc?.subTypes}
+        checkedEquipment={checkedEquipmentList}
+        columnsToShow={columnsToShow}
+      />
 
       {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
       <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
@@ -567,21 +378,19 @@ function PtwLandscapePdfSheet({
         </div>
       </div>
 
+      {/* ── DESKRIPSI PEKERJAAN ── */}
+      <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
+        <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+          DESKRIPSI PEKERJAAN :
+        </span>
+        <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+          {cleanPtwDescription(doc.description) || doc.description || doc.additionalNotes || doc.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
+        </div>
+      </div>
+
       {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
       <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
-        {/* 1. Catatan Pelaksana Pekerjaan */}
-        <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
-          <div>
-            <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
-              CATATAN PELAKSANA PEKERJAAN
-            </span>
-            <div className="text-[7pt] text-slate-700 leading-snug break-words">
-              {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Catatan Pemberi Kerja */}
+        {/* 1. Catatan Pemberi Kerja */}
         <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
           <div>
             <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
@@ -589,6 +398,18 @@ function PtwLandscapePdfSheet({
             </span>
             <div className="text-[7pt] text-slate-700 leading-snug break-words">
               {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Catatan Pelaksana Pekerjaan */}
+        <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+          <div>
+            <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+              CATATAN PELAKSANA PEKERJAAN
+            </span>
+            <div className="text-[7pt] text-slate-700 leading-snug break-words">
+              {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
             </div>
           </div>
         </div>
@@ -606,16 +427,30 @@ function PtwLandscapePdfSheet({
         </div>
 
         {/* 4. QR Code */}
-        <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-              `http://localhost:3000/review/ptw/${doc.permitNumber}`
-            )}`}
-            alt="QR Code Lampiran PTW"
-            className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-          />
-          <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-        </div>
+        {(() => {
+          const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://hero.chitraparatama.com'
+          const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
+          return (
+            <a
+              href={qrTargetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+              title="Klik / Scan untuk membuka lampiran PTW"
+            >
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                alt="QR Code Lampiran PTW"
+                className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+              />
+              <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                Klik / Scan QR
+              </span>
+            </a>
+          )
+        })()}
       </div>
 
       {/* ── MASA BERLAKU IKB ── */}
@@ -647,10 +482,11 @@ function PtwLandscapePdfSheet({
         </div>
       </div>
 
-      {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS) ── */}
+      {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
       <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
+        {/* 1. PEMBERI KERJA */}
         <div className="p-1.5 text-center flex flex-col justify-between">
-          <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+          <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
           <div className="h-14 flex items-center justify-center my-1">
             {step1?.status === 'rejected' ? (
               <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
@@ -665,30 +501,41 @@ function PtwLandscapePdfSheet({
             )}
           </div>
           <div className="border-t border-slate-900 pt-1 font-bold">
-            {step1?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+            {step1?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
           </div>
         </div>
 
+        {/* 2. PELAKSANA PEKERJAAN (MULTI) */}
         <div className="p-1.5 text-center flex flex-col justify-between">
-          <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
-          <div className="h-14 flex items-center justify-center my-1">
-            {step2?.status === 'rejected' ? (
-              <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-            ) : step2?.status === 'reverted' ? (
-              <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-            ) : step2?.status === 'approved' && step2?.signatureDataUrl ? (
-              <img src={step2.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
-            ) : step2?.status === 'approved' ? (
-              <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+          <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+          <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+            {pelaksanaApprovals.length > 0 ? (
+              pelaksanaApprovals.map((pStep, pIdx) => (
+                <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
+                  {pStep.status === 'rejected' ? (
+                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                  ) : pStep.status === 'reverted' ? (
+                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                  ) : pStep.signatureDataUrl ? (
+                    <img src={pStep.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                  ) : pStep.status === 'approved' ? (
+                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                  ) : (
+                    <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
+                  )}
+                  <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
+                </div>
+              ))
             ) : (
               <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
             )}
           </div>
-          <div className="border-t border-slate-900 pt-1 font-bold">
-            {step2?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
+          <div className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate" title={pelaksanaApprovals.map((p) => p.approverName).join(', ') || doc.applicantName}>
+            {pelaksanaApprovals.map((p) => p.approverName).join(', ') || doc.applicantName || 'NAMA & TANDA TANGAN'}
           </div>
         </div>
 
+        {/* 3. VERIFIKASI (SAFETY DEPT) */}
         <div className="p-1.5 text-center flex flex-col justify-between">
           <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
           <div className="h-14 flex items-center justify-center my-1">
@@ -951,12 +798,51 @@ export function PtwListingClient({
     authorizedByName: 'HSE Superintendent',
     riskLevel: 'Critical',
     ppe: ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+    additionalNotes: '',
     gasTestRequired: false,
     isolationRequired: false,
   })
 
+  // External Vendor Worker Form State
+  const [vendorModalOpen, setVendorModalOpen] = useState(false)
+  const [vendorForm, setVendorForm] = useState({
+    name: '',
+    email: '',
+    company: '',
+  })
+
+  const handleAddVendorApplicant = () => {
+    const name = vendorForm.name.trim()
+    const email = vendorForm.email.trim().toLowerCase()
+    const company = vendorForm.company.trim()
+
+    if (!name) {
+      toast.error('Nama pelaksana kerja vendor wajib diisi')
+      return
+    }
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      toast.error('Email pelaksana kerja vendor tidak valid')
+      return
+    }
+
+    const formattedEntry = formatVendorApplicantEntry(name, email, company || undefined)
+    const current = (createForm.applicantName || '').split(',').map((s) => s.trim()).filter(Boolean)
+
+    if (current.some((c) => c.toLowerCase() === formattedEntry.toLowerCase())) {
+      toast.error('Pelaksana kerja vendor ini sudah ditambahkan')
+      return
+    }
+
+    const next = [...current, formattedEntry]
+    setCreateForm({ ...createForm, applicantName: next.join(', ') })
+    setVendorForm({ name: '', email: '', company: '' })
+    setVendorModalOpen(false)
+    toast.success(`Pelaksana vendor ${name} berhasil ditambahkan!`)
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachedFileName, setAttachedFileName] = useState<string>('')
+  const [createAttachments, setCreateAttachments] = useState<string[]>([])
   const [origin, setOrigin] = useState<string>('')
 
   useEffect(() => {
@@ -967,11 +853,21 @@ export function PtwListingClient({
     const file = e.target.files?.[0]
     if (file) {
       setAttachedFileName(file.name)
-      toast.success(`Dokumen pendukung ${file.name} berhasil dilampirkan!`)
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        const entry = `${file.name}||${dataUrl}`
+        setCreateAttachments((prev) => [...prev, entry])
+        toast.success(`Dokumen pendukung ${file.name} berhasil dilampirkan!`)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
-  const [checkedEquipment, setCheckedEquipment] = useState<string[]>([])
+  const [checkedEquipment, setCheckedEquipment] = useState<string[]>(() =>
+    getSharedDefaultEquipmentItems('Cold Permit')
+  )
+  const [createSubTypes, setCreateSubTypes] = useState<Record<string, string[]>>(() => getDefaultSubTypes())
 
   const getDefaultEquipmentItems = (permitTypeStr: string): string[] => {
     return getSharedDefaultEquipmentItems(permitTypeStr)
@@ -991,6 +887,9 @@ export function PtwListingClient({
     if (isRemoving) {
       const removedTypeItems = EQUIPMENT_CHECKLIST_PER_TYPE[typeValue]?.items.map((i) => i.label) || []
       setCheckedEquipment((prev) => prev.filter((item) => !removedTypeItems.includes(item)))
+    } else {
+      const addedTypeItems = EQUIPMENT_CHECKLIST_PER_TYPE[typeValue]?.items.map((i) => i.label) || []
+      setCheckedEquipment((prev) => Array.from(new Set([...prev, ...addedTypeItems])))
     }
     setCreateForm((prev) => ({ ...prev, permitType: newPermitTypeStr }))
   }
@@ -1533,7 +1432,10 @@ export function PtwListingClient({
 
   const resetCreateForm = () => {
     const defaultPermitType = 'Cold Permit'
-    setCheckedEquipment([])
+    setAttachedFileName('')
+    setCreateAttachments([])
+    setCheckedEquipment(getDefaultEquipmentItems(defaultPermitType))
+    setCreateSubTypes(getDefaultSubTypes())
 
     setCreateForm({
       projectName: 'Perbaikan Silo Material Kering No. 3 & Corong Inlet',
@@ -1553,6 +1455,7 @@ export function PtwListingClient({
       authorizedByName: 'HSE Superintendent',
       riskLevel: 'Critical',
       ppe: ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+      additionalNotes: '',
       gasTestRequired: false,
       isolationRequired: false,
     })
@@ -1589,7 +1492,10 @@ export function PtwListingClient({
         authorizedByName: createForm.authorizedByName,
         description: finalDescription,
         controlSteps: finalControlSteps,
+        additionalNotes: createForm.additionalNotes,
         ppe: createForm.ppe,
+        subTypes: createSubTypes,
+        attachments: createAttachments,
         gasTestRequired: createForm.gasTestRequired,
         isolationRequired: createForm.isolationRequired,
         startAt,
@@ -2319,6 +2225,14 @@ export function PtwListingClient({
                 })}
               </div>
 
+              {/* Rincian Sub-Jenis Pekerjaan (Aktivitas Pekerjaan) Manual CRUD */}
+              <PtwSubTypesEditor
+                activePermitTypes={getActivePermitTypeKeys(createForm.permitType)}
+                subTypes={createSubTypes}
+                onChange={setCreateSubTypes}
+                className="mt-3 pt-3 border-t border-slate-200"
+              />
+
               {/* Dynamic Peralatan & Checklist K3 Section (Minimalist & Without Emojis) */}
               {(() => {
                 const activeTypes = getActivePermitTypeKeys(createForm.permitType)
@@ -2453,18 +2367,7 @@ export function PtwListingClient({
               />
             </div>
 
-            {/* Signatories: Nama Pelaksana Kerja, Nama Pemberi Kerja, Nama Safety Dept */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja</Label>
-              <SearchableSelect
-                label="Pelaksana Kerja"
-                placeholder="PILIH PELAKSANA KERJA..."
-                value={createForm.applicantName}
-                onValueChange={(val) => setCreateForm({ ...createForm, applicantName: val })}
-                options={employeeNameOptions}
-                widthClassName="w-full"
-              />
-            </div>
+            {/* Signatories Section: Pemberi Kerja -> Pelaksana Kerja (Multi) -> Safety Dept */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Nama pemberi kerja</Label>
               <SearchableSelect
@@ -2476,7 +2379,7 @@ export function PtwListingClient({
                 widthClassName="w-full"
               />
             </div>
-            <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Nama safety dept / pengawas</Label>
               <SearchableSelect
                 label="Safety Dept"
@@ -2488,7 +2391,101 @@ export function PtwListingClient({
               />
             </div>
 
-            {/* Field 14: Status Persetujuan */}
+            {/* Pelaksana Kerja (Multi-Person) */}
+            <div className="space-y-1.5 md:col-span-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja (Multi-person)</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setVendorModalOpen(true)}
+                    className="h-6 px-2 text-[10.5px] font-bold border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100/90 shadow-2xs gap-1"
+                  >
+                    <Building2 className="w-3 h-3 text-amber-700" />
+                    + Vendor Luar
+                  </Button>
+                  <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-bold">
+                    {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
+                {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean) : []).map((rawEntry) => {
+                  const parsed = parseApplicantEntry(rawEntry)
+                  if (parsed.isExternalVendor) {
+                    return (
+                      <span
+                        key={rawEntry}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold bg-amber-600 text-white shadow-2xs border border-amber-700"
+                      >
+                        <Building2 className="w-3 h-3 text-amber-200 shrink-0" />
+                        <span>{parsed.name}</span>
+                        {parsed.company && (
+                          <span className="text-[9.5px] bg-amber-800/60 px-1 py-0.2 rounded font-medium text-amber-100">
+                            {parsed.company}
+                          </span>
+                        )}
+                        <span className="text-[9.5px] text-amber-100/90 font-mono">({parsed.email})</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                            const next = current.filter(n => n !== rawEntry)
+                            setCreateForm({ ...createForm, applicantName: next.join(', ') })
+                          }}
+                          className="hover:text-rose-200 font-bold ml-1 text-xs"
+                          title={`Hapus ${parsed.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  }
+                  return (
+                    <span
+                      key={rawEntry}
+                      className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
+                    >
+                      <span>{parsed.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                          const next = current.filter(n => n !== rawEntry)
+                          setCreateForm({ ...createForm, applicantName: next.join(', ') })
+                        }}
+                        className="hover:text-rose-300 font-bold ml-1 text-xs"
+                        title={`Hapus ${parsed.name}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )
+                })}
+                <div className="flex-1 min-w-[220px]">
+                  <SearchableSelect
+                    label="Tambah Pelaksana"
+                    placeholder="+ PILIH / TAMBAH PELAKSANA KERJA..."
+                    value=""
+                    onValueChange={(val) => {
+                      if (!val) return
+                      const clean = val.includes(' — ') ? val.split(' — ')[0].trim() : val.trim()
+                      const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                      if (clean && !current.includes(clean)) {
+                        const next = [...current, clean]
+                        setCreateForm({ ...createForm, applicantName: next.join(', ') })
+                      }
+                    }}
+                    options={employeeNameOptions}
+                    widthClassName="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Field 14: Status Persetujuan & Risk Level */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Status persetujuan</Label>
               <select
@@ -2502,8 +2499,6 @@ export function PtwListingClient({
                 <option value="Draft">Draft</option>
               </select>
             </div>
-
-            {/* Field 16 & 17: Risk Level & APD Wajib */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Risk level</Label>
               <select
@@ -2517,7 +2512,9 @@ export function PtwListingClient({
                 <option value="Critical">Critical</option>
               </select>
             </div>
-            <div className="space-y-1.5">
+
+            {/* Field APD Wajib */}
+            <div className="space-y-1.5 md:col-span-2">
               <Label className="text-xs font-semibold text-slate-700">APD wajib</Label>
               <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
                 {APD_OPTIONS.map((item) => {
@@ -2540,6 +2537,7 @@ export function PtwListingClient({
                 })}
               </div>
             </div>
+
 
             {/* Field 18: Lampiran JSA / Work Plan */}
             <div className="space-y-1.5 md:col-span-2">
@@ -2872,6 +2870,85 @@ export function PtwListingClient({
               className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
             >
               {isDeleting ? 'Menghapus...' : 'Hapus Dokumen'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog Tambah Pelaksana Kerja Vendor Luar ── */}
+      <Dialog open={vendorModalOpen} onOpenChange={setVendorModalOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Building2 className="size-4 text-amber-600" />
+              Tambah Pelaksana Kerja (Vendor Luar)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pekerja vendor luar akan menerima link approval khusus via email untuk review & tanda tangan digital PTW.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Lengkap Pelaksana <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                placeholder="Contoh: Joko Santoso"
+                value={vendorForm.name}
+                onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Email / Gmail <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                type="email"
+                placeholder="Contoh: joko.santoso@gmail.com"
+                value={vendorForm.email}
+                onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
+                className="h-9 text-xs"
+              />
+              <p className="text-[10.5px] text-slate-400">
+                Link review publik PTW akan dikirimkan otomatis ke alamat email ini.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Perusahaan / Vendor <span className="text-slate-400 font-normal">(Opsional)</span>
+              </Label>
+              <Input
+                placeholder="Contoh: PT Surya Teknik Mandiri"
+                value={vendorForm.company}
+                onChange={(e) => setVendorForm({ ...vendorForm, company: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setVendorModalOpen(false)
+                setVendorForm({ name: '', email: '', company: '' })
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddVendorApplicant}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Tambahkan Pelaksana
             </Button>
           </DialogFooter>
         </DialogContent>

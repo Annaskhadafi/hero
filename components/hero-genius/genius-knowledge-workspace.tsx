@@ -544,7 +544,7 @@ export function GeniusKnowledgeWorkspace({
                           onClick={() => {
                             setPreviewDoc({
                               filename: doc.filename,
-                              url: doc.s3_url || doc.local_url || "",
+                              url: resolveRagDocumentUrl(doc.s3_url || doc.local_url) || doc.s3_url || doc.local_url || "",
                               format: doc.format,
                             });
                           }}
