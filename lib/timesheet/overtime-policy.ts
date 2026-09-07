@@ -145,10 +145,10 @@ function cloneDefaults(): SiteOvertimeConfig {
   }
 }
 
+import { minutesFromTime } from '@/lib/timesheet/attendance-real'
+
 export function parseTimeMinutes(value: string) {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null
-  const [hours, minutes] = value.split(':').map(Number)
-  return hours * 60 + minutes
+  return minutesFromTime(value)
 }
 
 export function intervalMinutes(interval: OvertimeInterval) {

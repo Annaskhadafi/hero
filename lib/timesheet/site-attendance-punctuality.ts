@@ -65,8 +65,11 @@ export async function resolveSiteAttendancePunctuality(input: {
   if (input.eventType !== 'checked-in') return null
 
   const config = await getSiteAttendanceClockConfig(input.siteId)
+  const rawShift = input.shiftCode?.trim()
   const shiftCode =
-    input.shiftCode?.trim() || inferShiftCodeForEvent(input.eventTime, config, config.timezone)
+    rawShift && rawShift !== 'auto'
+      ? rawShift
+      : inferShiftCodeForEvent(input.eventTime, config, config.timezone)
   const scheduledClockIn =
     resolveConfiguredShiftClockIn(shiftCode, config) ??
     (isClockTime(input.fallbackClockIn) ? input.fallbackClockIn : null)

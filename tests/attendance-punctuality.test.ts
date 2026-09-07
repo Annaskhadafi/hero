@@ -1,8 +1,15 @@
 import {
   calculateAttendancePunctuality,
+  calculateLateMinutesFromTimes,
   inferShiftCodeForEvent,
   normalizeSiteAttendanceClockConfig,
+  resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
+import {
+  minutesFromTime,
+  normalizeTo24HourTime,
+  formatTo12HourTime,
+} from '@/lib/timesheet/attendance-real'
 
 describe('site attendance punctuality', () => {
   const config = normalizeSiteAttendanceClockConfig({
@@ -36,5 +43,40 @@ describe('site attendance punctuality', () => {
       }).isLate
     ).toBe(false)
     expect(inferShiftCodeForEvent(new Date('2026-07-15T10:05:00.000Z'), config)).toBe('night')
+  })
+
+  it('correctly handles 12-hour AM/PM and 24-hour time strings', () => {
+    expect(minutesFromTime('06:24 PM')).toBe(18 * 60 + 24)
+    expect(minutesFromTime('6:24 pm')).toBe(18 * 60 + 24)
+    expect(minutesFromTime('18:24')).toBe(18 * 60 + 24)
+    expect(minutesFromTime('06:24 AM')).toBe(6 * 60 + 24)
+    expect(minutesFromTime('12:00 AM')).toBe(0)
+    expect(minutesFromTime('12:00 PM')).toBe(720)
+
+    expect(normalizeTo24HourTime('06:24 PM')).toBe('18:24')
+    expect(normalizeTo24HourTime('6:24 AM')).toBe('06:24')
+    expect(normalizeTo24HourTime('18:24')).toBe('18:24')
+
+    expect(formatTo12HourTime('18:24')).toBe('06:24 PM')
+    expect(formatTo12HourTime('08:00')).toBe('08:00 AM')
+    expect(formatTo12HourTime('00:00')).toBe('12:00 AM')
+    expect(formatTo12HourTime('12:00')).toBe('12:00 PM')
+  })
+
+  it('calculates late minutes accurately for Night Shift (18:00) with 06:24 PM (+24m, not +624m)', () => {
+    const scheduled = resolveConfiguredShiftClockIn('NS', {
+      dayShiftClockIn: '08:00',
+      nightShiftClockIn: '18:00',
+      timezone: 'WITA',
+    })
+    expect(scheduled).toBe('18:00')
+
+    // 06:24 PM against 18:00 schedule -> 24 minutes late
+    expect(calculateLateMinutesFromTimes('06:24 PM', scheduled)).toBe(24)
+    expect(calculateLateMinutesFromTimes('18:24', scheduled)).toBe(24)
+
+    // On time (17:55 against 18:00) -> 0 minutes late
+    expect(calculateLateMinutesFromTimes('17:55', scheduled)).toBe(0)
+    expect(calculateLateMinutesFromTimes('05:55 PM', scheduled)).toBe(0)
   })
 })

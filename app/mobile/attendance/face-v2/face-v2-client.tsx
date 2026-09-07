@@ -82,10 +82,13 @@ const CAPTURE_INTERVAL = 1000
 const GPS_TIMEOUT = 15000
 
 function formatClock(date: Date) {
-  const hours = String(date.getHours()).padStart(2, '0')
+  const h24 = date.getHours()
   const minutes = String(date.getMinutes()).padStart(2, '0')
   const seconds = String(date.getSeconds()).padStart(2, '0')
-  return `${hours}.${minutes}.${seconds}`
+  const isPm = h24 >= 12
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  const suffix = isPm ? 'PM' : 'AM'
+  return `${String(h12).padStart(2, '0')}:${minutes}:${seconds} ${suffix}`
 }
 
 function formatDate(date: Date) {
@@ -183,18 +186,26 @@ export function FaceAttendanceV2Client({
     {
       value: 'day',
       label: 'Day Shift (DS)',
-      window: '08:00 - 17:00 WITA',
+      window: '08:00 - 17:00 WITA (08:00 AM - 05:00 PM)',
       helper: 'Regular Day Shift (08:00 - 17:00).',
     },
     {
       value: 'night',
       label: 'Night Shift (NS)',
-      window: '18:00 - 06:00 WITA',
+      window: '18:00 - 06:00 WITA (06:00 PM - 06:00 AM)',
       helper: 'Overnight Night Shift (18:00 - 06:00).',
     },
   ]
 
-  const [selectedShift, setSelectedShift] = useState<string>(activeShifts[0]?.value ?? 'day')
+  const [selectedShift, setSelectedShift] = useState<string>(() => {
+    const currentHour = new Date().getHours()
+    const isNight = currentHour >= 15 || currentHour < 7
+    if (isNight) {
+      const nightOption = activeShifts.find((s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS')
+      if (nightOption) return nightOption.value
+    }
+    return activeShifts[0]?.value ?? 'day'
+  })
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
   useEffect(() => {

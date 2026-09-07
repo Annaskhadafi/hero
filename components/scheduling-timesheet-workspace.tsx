@@ -122,8 +122,10 @@ import {
 import {
   attendanceStatusLabel,
   calculateAttendanceOvertime,
+  formatTo12HourTime,
   minutesFromTime,
   normalizeAttendanceStatus,
+  normalizeTo24HourTime,
   type AttendanceCellStatus,
 } from '@/lib/timesheet/attendance-real'
 import {
@@ -4378,10 +4380,12 @@ export function SchedulingTimesheetWorkspace({
       const scheduledClockIn =
         configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
 
-      const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
-      let lateMinutes: number | null = punctMatch ? Number(punctMatch[1]) : null
-      if (lateMinutes === null && clockIn && scheduledClockIn) {
-        lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+      let lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+      if (lateMinutes === null) {
+        const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
+        if (punctMatch) {
+          lateMinutes = Number(punctMatch[1])
+        }
       }
 
       let effectiveStatus = manual.status
@@ -4397,8 +4401,9 @@ export function SchedulingTimesheetWorkspace({
 
       const isLatePending =
         effectiveStatus === 'present' &&
-        (punctualityDetail?.startsWith('Kehadiran: Terlambat') ||
-          (lateMinutes !== null && lateMinutes > 0))
+        (lateMinutes !== null
+          ? lateMinutes > 0
+          : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
 
       return {
         ...manual,
@@ -4467,16 +4472,19 @@ export function SchedulingTimesheetWorkspace({
     const scheduledClockIn =
       configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
 
-    const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
-    let lateMinutes: number | null = punctMatch ? Number(punctMatch[1]) : null
-    if (lateMinutes === null && clockIn && scheduledClockIn) {
-      lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+    let lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+    if (lateMinutes === null) {
+      const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
+      if (punctMatch) {
+        lateMinutes = Number(punctMatch[1])
+      }
     }
 
     const isLatePending =
       status === 'present' &&
-      (punctualityDetail?.startsWith('Kehadiran: Terlambat') ||
-        (lateMinutes !== null && lateMinutes > 0))
+      (lateMinutes !== null
+        ? lateMinutes > 0
+        : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
 
     return {
       status,
@@ -11356,7 +11364,10 @@ export function SchedulingTimesheetWorkspace({
                         Tanggal {selectedAttendanceCell.day} • Shift:{' '}
                         <span className="font-semibold text-slate-900 dark:text-slate-100">
                           {selectedAttendanceValue.shiftCode || 'Day'} (Jadwal Masuk:{' '}
-                          {selectedAttendanceValue.scheduledClockIn || siteConfig.dayShiftClockIn})
+                          {selectedAttendanceValue.scheduledClockIn
+                            ? `${selectedAttendanceValue.scheduledClockIn} • ${formatTo12HourTime(selectedAttendanceValue.scheduledClockIn)}`
+                            : siteConfig.dayShiftClockIn}
+                          )
                         </span>
                       </div>
                       {selectedAttendanceValue.isLatePending ? (
@@ -11394,10 +11405,17 @@ export function SchedulingTimesheetWorkspace({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Jam Masuk</Label>
+                        <div className="flex items-center justify-between">
+                          <Label>Jam Masuk</Label>
+                          {selectedAttendanceValue.clockIn ? (
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                              {formatTo12HourTime(selectedAttendanceValue.clockIn)}
+                            </span>
+                          ) : null}
+                        </div>
                         <Input
                           type="time"
-                          value={selectedAttendanceValue.clockIn}
+                          value={normalizeTo24HourTime(selectedAttendanceValue.clockIn)}
                           onChange={(event) =>
                             updateAttendanceCell(
                               selectedAttendanceCell.employeeId,
@@ -11413,10 +11431,17 @@ export function SchedulingTimesheetWorkspace({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Jam Pulang</Label>
+                        <div className="flex items-center justify-between">
+                          <Label>Jam Pulang</Label>
+                          {selectedAttendanceValue.clockOut ? (
+                            <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
+                              {formatTo12HourTime(selectedAttendanceValue.clockOut)}
+                            </span>
+                          ) : null}
+                        </div>
                         <Input
                           type="time"
-                          value={selectedAttendanceValue.clockOut}
+                          value={normalizeTo24HourTime(selectedAttendanceValue.clockOut)}
                           onChange={(event) =>
                             updateAttendanceCell(
                               selectedAttendanceCell.employeeId,

@@ -51,10 +51,68 @@ export function attendanceStatusLabel(status: AttendanceCellStatus) {
   return '-'
 }
 
-export function minutesFromTime(value: string) {
-  const [hours, minutes] = value.split(':').map(Number)
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
-  return hours * 60 + minutes
+export function minutesFromTime(value?: string | null): number | null {
+  if (!value || typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  // Check for 12-hour AM/PM format (e.g. "06:24 PM", "6:24 AM", "12:30:00 PM", "6.24 pm")
+  const ampmMatch = trimmed.match(/^(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*([aApP][mM])$/i)
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10)
+    const minutes = parseInt(ampmMatch[2], 10)
+    const isPm = ampmMatch[3].toUpperCase() === 'PM'
+
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) return null
+
+    if (isPm && hours < 12) {
+      hours += 12
+    } else if (!isPm && hours === 12) {
+      hours = 0
+    }
+    return hours * 60 + minutes
+  }
+
+  // Check for 24-hour format (e.g. "18:24", "08:00", "18:24:00", "08.00")
+  const h24Match = trimmed.match(/^([01]?\d|2[0-3])[:.](\d{2})(?:[:.]\d{2})?$/)
+  if (h24Match) {
+    const hours = parseInt(h24Match[1], 10)
+    const minutes = parseInt(h24Match[2], 10)
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null
+    return hours * 60 + minutes
+  }
+
+  return null
+}
+
+/**
+ * Normalizes any time string (12h AM/PM or 24h) into standard 24-hour "HH:mm" format.
+ * "06:24 PM" -> "18:24"
+ * "6:24 AM" -> "06:24"
+ * "18:24" -> "18:24"
+ */
+export function normalizeTo24HourTime(value?: string | null): string {
+  const minutes = minutesFromTime(value)
+  if (minutes === null) return value?.trim() || ''
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Formats minutes (0-1439) or any time string into 12-hour AM/PM format ("hh:mm A").
+ * "18:24" -> "06:24 PM"
+ * "08:00" -> "08:00 AM"
+ */
+export function formatTo12HourTime(value?: string | number | null): string {
+  const minutes = typeof value === 'number' ? value : minutesFromTime(value)
+  if (minutes === null) return ''
+  const h24 = Math.floor(minutes / 60)
+  const m = minutes % 60
+  const isPm = h24 >= 12
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  const suffix = isPm ? 'PM' : 'AM'
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
 export function attendanceHours(cell: AttendanceCell) {

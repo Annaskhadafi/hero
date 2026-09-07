@@ -3,6 +3,11 @@ import {
   normalizeIndonesiaTimezone,
   resolveTimezoneIana,
 } from '@/lib/indonesia-timezone'
+import {
+  minutesFromTime,
+  normalizeTo24HourTime,
+  formatTo12HourTime,
+} from '@/lib/timesheet/attendance-real'
 
 export const DEFAULT_SITE_ATTENDANCE_CLOCKS = {
   dayShiftClockIn: '08:00',
@@ -24,23 +29,21 @@ export type AttendancePunctuality = {
   note: string
 }
 
-const CLOCK_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
-
-export function isClockTime(value: unknown): value is string {
-  return typeof value === 'string' && CLOCK_TIME_PATTERN.test(value)
+export function isClockTime(value: unknown): boolean {
+  return typeof value === 'string' && minutesFromTime(value) !== null
 }
 
 export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendanceClockConfig {
   const config = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-  const legacyDayClock = isClockTime(config.defaultClockIn) ? config.defaultClockIn : null
+  const legacyDayClock = isClockTime(config.defaultClockIn) ? normalizeTo24HourTime(config.defaultClockIn as string) : null
   const timezone = normalizeIndonesiaTimezone(config.timezone).code
 
   return {
     dayShiftClockIn: isClockTime(config.dayShiftClockIn)
-      ? config.dayShiftClockIn
+      ? normalizeTo24HourTime(config.dayShiftClockIn as string)
       : (legacyDayClock ?? DEFAULT_SITE_ATTENDANCE_CLOCKS.dayShiftClockIn),
     nightShiftClockIn: isClockTime(config.nightShiftClockIn)
-      ? config.nightShiftClockIn
+      ? normalizeTo24HourTime(config.nightShiftClockIn as string)
       : DEFAULT_SITE_ATTENDANCE_CLOCKS.nightShiftClockIn,
     timezone,
   }
@@ -62,10 +65,10 @@ export function resolveConfiguredShiftClockIn(
     .trim()
     .toUpperCase()
 
-  // Direct HH:mm or HH:mm-HH:mm schedule (e.g., "08:00", "08:00-17:00", "18:00-05:00")
-  if (isClockTime(code)) return code
-  const timeRangeMatch = code.match(/^([01]\d|2[0-3]):([0-5]\d)/)
-  if (timeRangeMatch) return timeRangeMatch[0]
+  // Direct HH:mm or 12h AM/PM schedule
+  if (isClockTime(code)) return normalizeTo24HourTime(code)
+  const timeRangeMatch = code.match(/^([01]?\d|2[0-3])[:.][0-5]\d(?:\s*[aApP][mM])?/)
+  if (timeRangeMatch && isClockTime(timeRangeMatch[0])) return normalizeTo24HourTime(timeRangeMatch[0])
 
   if (
     [
@@ -81,7 +84,7 @@ export function resolveConfiguredShiftClockIn(
       'S2',
     ].includes(code)
   ) {
-    return config.nightShiftClockIn
+    return normalizeTo24HourTime(config.nightShiftClockIn)
   }
 
   if (
@@ -102,7 +105,7 @@ export function resolveConfiguredShiftClockIn(
       'S1',
     ].includes(code)
   ) {
-    return config.dayShiftClockIn
+    return normalizeTo24HourTime(config.dayShiftClockIn)
   }
 
   return null
@@ -112,19 +115,19 @@ export function inferShiftFromClockInTime(
   clockInTime: string,
   config: SiteAttendanceClockConfig
 ): { shiftCode: 'night' | 'day'; scheduledClockIn: string } {
-  const inM = clockMinutes(clockInTime)
+  const inM = minutesFromTime(clockInTime)
   if (inM === null) {
-    return { shiftCode: 'day', scheduledClockIn: config.dayShiftClockIn }
+    return { shiftCode: 'day', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
   }
-  const dayStart = clockMinutes(config.dayShiftClockIn) ?? 480
-  const nightStart = clockMinutes(config.nightShiftClockIn) ?? 1080
+  const dayStart = minutesFromTime(config.dayShiftClockIn) ?? 480
+  const nightStart = minutesFromTime(config.nightShiftClockIn) ?? 1080
   const distDay = Math.min(Math.abs(inM - dayStart), 24 * 60 - Math.abs(inM - dayStart))
   const distNight = Math.min(Math.abs(inM - nightStart), 24 * 60 - Math.abs(inM - nightStart))
 
   if (distNight < distDay) {
-    return { shiftCode: 'night', scheduledClockIn: config.nightShiftClockIn }
+    return { shiftCode: 'night', scheduledClockIn: normalizeTo24HourTime(config.nightShiftClockIn) }
   }
-  return { shiftCode: 'day', scheduledClockIn: config.dayShiftClockIn }
+  return { shiftCode: 'day', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
 }
 
 export function calculateLateMinutesFromTimes(
@@ -132,8 +135,8 @@ export function calculateLateMinutesFromTimes(
   scheduledClockIn: string | null | undefined
 ): number | null {
   if (!clockIn || !scheduledClockIn) return null
-  const inM = clockMinutes(clockIn)
-  const schedM = clockMinutes(scheduledClockIn)
+  const inM = minutesFromTime(clockIn)
+  const schedM = minutesFromTime(scheduledClockIn)
   if (inM === null || schedM === null) return null
 
   let difference = inM - schedM
@@ -141,11 +144,6 @@ export function calculateLateMinutesFromTimes(
   else if (difference > 12 * 60) difference -= 24 * 60
 
   return Math.max(0, difference)
-}
-
-function clockMinutes(value: string) {
-  const match = value.match(CLOCK_TIME_PATTERN)
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null
 }
 
 function eventClockMinutes(eventTime: Date, timeZone?: string) {
@@ -168,8 +166,8 @@ export function inferShiftCodeForEvent(
 ) {
   const targetTz = timeZone || config.timezone
   const actual = eventClockMinutes(eventTime, targetTz)
-  const dayStart = clockMinutes(config.dayShiftClockIn) ?? 0
-  const nightStart = clockMinutes(config.nightShiftClockIn) ?? 0
+  const dayStart = minutesFromTime(config.dayShiftClockIn) ?? 480
+  const nightStart = minutesFromTime(config.nightShiftClockIn) ?? 1080
   const circularDistance = (start: number) => {
     const distance = Math.abs(actual - start)
     return Math.min(distance, 24 * 60 - distance)
@@ -184,9 +182,9 @@ export function calculateAttendancePunctuality(input: {
   scheduledClockIn: string
   timeZone?: string
 }): AttendancePunctuality {
-  const scheduled = clockMinutes(input.scheduledClockIn)
+  const scheduled = minutesFromTime(input.scheduledClockIn)
   if (scheduled === null) {
-    throw new Error('Scheduled clock-in must use HH:mm format.')
+    throw new Error('Scheduled clock-in must use a valid time format.')
   }
 
   const actual = eventClockMinutes(input.eventTime, input.timeZone)
@@ -198,12 +196,12 @@ export function calculateAttendancePunctuality(input: {
 
   return {
     shiftCode: input.shiftCode,
-    scheduledClockIn: input.scheduledClockIn,
+    scheduledClockIn: normalizeTo24HourTime(input.scheduledClockIn),
     lateMinutes,
     isLate,
     note: isLate
-      ? `Kehadiran: Terlambat ${lateMinutes} menit (jadwal ${input.scheduledClockIn})`
-      : `Kehadiran: Tepat waktu (jadwal ${input.scheduledClockIn})`,
+      ? `Kehadiran: Terlambat ${lateMinutes} menit (jadwal ${normalizeTo24HourTime(input.scheduledClockIn)})`
+      : `Kehadiran: Tepat waktu (jadwal ${normalizeTo24HourTime(input.scheduledClockIn)})`,
   }
 }
 
