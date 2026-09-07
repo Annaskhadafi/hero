@@ -90,6 +90,7 @@ export function SecurityUserCreateDialog({
   const formRef = useRef<HTMLFormElement>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const overwriteInputRef = useRef<HTMLInputElement>(null);
   const [state, formAction] = useActionState(
     manageSecurityUserAction,
     INITIAL_STATE,
@@ -172,7 +173,7 @@ export function SecurityUserCreateDialog({
 
         <form ref={formRef} key={formKey} action={formAction} className="space-y-5">
           <input type="hidden" name="intent" value="create-user" />
-          <input type="hidden" name="overwriteExisting" value={confirmOverwrite ? "true" : "false"} />
+          <input ref={overwriteInputRef} type="hidden" name="overwriteExisting" value={confirmOverwrite ? "true" : "false"} />
 
           {state.status !== "idle" && !isDuplicateFound ? (
             <Alert
@@ -424,6 +425,9 @@ export function SecurityUserCreateDialog({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
+                if (overwriteInputRef.current) {
+                  overwriteInputRef.current.value = "true";
+                }
                 setConfirmOverwrite(true);
                 setShowDuplicateDialog(false);
                 setTimeout(() => {

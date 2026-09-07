@@ -28,6 +28,7 @@ import {
   UploadCloud,
   X,
   XCircle,
+  Building2,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
@@ -88,9 +89,13 @@ import {
   normalizePermitTypes,
   getActivePermitTypeKeys,
   getDefaultEquipmentItems as getSharedDefaultEquipmentItems,
+  extractCheckedEquipment,
   isItemChecked as isSharedItemChecked,
   getDefaultSubTypes,
   getPermitSubTypes,
+  parseApplicantEntry,
+  formatVendorApplicantEntry,
+  cleanPtwDescription,
 } from '@/lib/ptw-helpers'
 import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
@@ -258,9 +263,10 @@ function PtwLandscapePdfSheet({
   liveRemarks?: Record<number, string>
   checkedEquipmentOverride?: string[]
 }) {
-  const step1 = doc.approvals?.find((a) => a.stepOrder === 1 || a.approverRole === 'applicant')
-  const step2 = doc.approvals?.find((a) => a.stepOrder === 2 || a.approverRole === 'safety_officer')
-  const step3 = doc.approvals?.find((a) => a.stepOrder === 3 || a.approverRole === 'field_pic' || a.approverRole === 'authorized')
+  const step1 = doc.approvals?.find((a) => a.stepOrder === 1 || a.approverRole === 'safety_officer' || a.approverRole === 'pemberi_kerja')
+  const pelaksanaApprovals = doc.approvals?.filter((a) => a.approverRole === 'applicant' || a.approverRole === 'pelaksana' || a.approverRole === 'pelaksana_kerja') || []
+  const step2 = pelaksanaApprovals[0] || doc.approvals?.find((a) => a.stepOrder === 2)
+  const step3 = doc.approvals?.find((a) => a.approverRole === 'field_pic' || a.approverRole === 'safety_dept' || a.approverRole === 'authorized' || a.stepOrder === (doc.approvals?.length || 3))
 
   const remark1 = (liveRemarks && liveRemarks[1]) || step1?.remarks
   const remark2 = (liveRemarks && liveRemarks[2]) || step2?.remarks
@@ -289,7 +295,7 @@ function PtwLandscapePdfSheet({
 
   const checkedEquipmentList = checkedEquipmentOverride && checkedEquipmentOverride.length > 0
     ? checkedEquipmentOverride
-    : (doc?.ppe && Array.isArray(doc.ppe) && doc.ppe.length > 0 ? doc.ppe : [])
+    : extractCheckedEquipment(doc?.controlSteps, (doc as any)?.checkedEquipment, doc?.permitType)
 
   return (
     <div
@@ -372,13 +378,13 @@ function PtwLandscapePdfSheet({
         </div>
       </div>
 
-      {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+      {/* ── DESKRIPSI PEKERJAAN ── */}
       <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
         <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-          PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+          DESKRIPSI PEKERJAAN :
         </span>
-        <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
-          {doc.additionalNotes || doc.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+        <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+          {cleanPtwDescription(doc.description) || doc.description || doc.additionalNotes || doc.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
         </div>
       </div>
 
@@ -421,16 +427,30 @@ function PtwLandscapePdfSheet({
         </div>
 
         {/* 4. QR Code */}
-        <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-              `http://localhost:3000/review/ptw/${doc.permitNumber}`
-            )}`}
-            alt="QR Code Lampiran PTW"
-            className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-          />
-          <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-        </div>
+        {(() => {
+          const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'https://hero.chitraparatama.com'
+          const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
+          return (
+            <a
+              href={qrTargetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+              title="Klik / Scan untuk membuka lampiran PTW"
+            >
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                alt="QR Code Lampiran PTW"
+                className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+              />
+              <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                Klik / Scan QR
+              </span>
+            </a>
+          )
+        })()}
       </div>
 
       {/* ── MASA BERLAKU IKB ── */}
@@ -488,21 +508,30 @@ function PtwLandscapePdfSheet({
         {/* 2. PELAKSANA PEKERJAAN (MULTI) */}
         <div className="p-1.5 text-center flex flex-col justify-between">
           <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-          <div className="h-14 flex items-center justify-center my-1">
-            {step2?.status === 'rejected' ? (
-              <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-            ) : step2?.status === 'reverted' ? (
-              <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-            ) : step2?.status === 'approved' && step2?.signatureDataUrl ? (
-              <img src={step2.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
-            ) : step2?.status === 'approved' ? (
-              <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+          <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+            {pelaksanaApprovals.length > 0 ? (
+              pelaksanaApprovals.map((pStep, pIdx) => (
+                <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
+                  {pStep.status === 'rejected' ? (
+                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                  ) : pStep.status === 'reverted' ? (
+                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                  ) : pStep.signatureDataUrl ? (
+                    <img src={pStep.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                  ) : pStep.status === 'approved' ? (
+                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                  ) : (
+                    <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
+                  )}
+                  <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
+                </div>
+              ))
             ) : (
               <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
             )}
           </div>
-          <div className="border-t border-slate-900 pt-1 font-bold">
-            {step2?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+          <div className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate" title={pelaksanaApprovals.map((p) => p.approverName).join(', ') || doc.applicantName}>
+            {pelaksanaApprovals.map((p) => p.approverName).join(', ') || doc.applicantName || 'NAMA & TANDA TANGAN'}
           </div>
         </div>
 
@@ -774,8 +803,46 @@ export function PtwListingClient({
     isolationRequired: false,
   })
 
+  // External Vendor Worker Form State
+  const [vendorModalOpen, setVendorModalOpen] = useState(false)
+  const [vendorForm, setVendorForm] = useState({
+    name: '',
+    email: '',
+    company: '',
+  })
+
+  const handleAddVendorApplicant = () => {
+    const name = vendorForm.name.trim()
+    const email = vendorForm.email.trim().toLowerCase()
+    const company = vendorForm.company.trim()
+
+    if (!name) {
+      toast.error('Nama pelaksana kerja vendor wajib diisi')
+      return
+    }
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      toast.error('Email pelaksana kerja vendor tidak valid')
+      return
+    }
+
+    const formattedEntry = formatVendorApplicantEntry(name, email, company || undefined)
+    const current = (createForm.applicantName || '').split(',').map((s) => s.trim()).filter(Boolean)
+
+    if (current.some((c) => c.toLowerCase() === formattedEntry.toLowerCase())) {
+      toast.error('Pelaksana kerja vendor ini sudah ditambahkan')
+      return
+    }
+
+    const next = [...current, formattedEntry]
+    setCreateForm({ ...createForm, applicantName: next.join(', ') })
+    setVendorForm({ name: '', email: '', company: '' })
+    setVendorModalOpen(false)
+    toast.success(`Pelaksana vendor ${name} berhasil ditambahkan!`)
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [attachedFileName, setAttachedFileName] = useState<string>('')
+  const [createAttachments, setCreateAttachments] = useState<string[]>([])
   const [origin, setOrigin] = useState<string>('')
 
   useEffect(() => {
@@ -786,11 +853,20 @@ export function PtwListingClient({
     const file = e.target.files?.[0]
     if (file) {
       setAttachedFileName(file.name)
-      toast.success(`Dokumen pendukung ${file.name} berhasil dilampirkan!`)
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        const entry = `${file.name}||${dataUrl}`
+        setCreateAttachments((prev) => [...prev, entry])
+        toast.success(`Dokumen pendukung ${file.name} berhasil dilampirkan!`)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
-  const [checkedEquipment, setCheckedEquipment] = useState<string[]>([])
+  const [checkedEquipment, setCheckedEquipment] = useState<string[]>(() =>
+    getSharedDefaultEquipmentItems('Cold Permit')
+  )
   const [createSubTypes, setCreateSubTypes] = useState<Record<string, string[]>>(() => getDefaultSubTypes())
 
   const getDefaultEquipmentItems = (permitTypeStr: string): string[] => {
@@ -811,6 +887,9 @@ export function PtwListingClient({
     if (isRemoving) {
       const removedTypeItems = EQUIPMENT_CHECKLIST_PER_TYPE[typeValue]?.items.map((i) => i.label) || []
       setCheckedEquipment((prev) => prev.filter((item) => !removedTypeItems.includes(item)))
+    } else {
+      const addedTypeItems = EQUIPMENT_CHECKLIST_PER_TYPE[typeValue]?.items.map((i) => i.label) || []
+      setCheckedEquipment((prev) => Array.from(new Set([...prev, ...addedTypeItems])))
     }
     setCreateForm((prev) => ({ ...prev, permitType: newPermitTypeStr }))
   }
@@ -1353,7 +1432,9 @@ export function PtwListingClient({
 
   const resetCreateForm = () => {
     const defaultPermitType = 'Cold Permit'
-    setCheckedEquipment([])
+    setAttachedFileName('')
+    setCreateAttachments([])
+    setCheckedEquipment(getDefaultEquipmentItems(defaultPermitType))
     setCreateSubTypes(getDefaultSubTypes())
 
     setCreateForm({
@@ -1414,6 +1495,7 @@ export function PtwListingClient({
         additionalNotes: createForm.additionalNotes,
         ppe: createForm.ppe,
         subTypes: createSubTypes,
+        attachments: createAttachments,
         gasTestRequired: createForm.gasTestRequired,
         isolationRequired: createForm.isolationRequired,
         startAt,
@@ -2313,31 +2395,75 @@ export function PtwListingClient({
             <div className="space-y-1.5 md:col-span-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja (Multi-person)</Label>
-                <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-bold">
-                  {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
-                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setVendorModalOpen(true)}
+                    className="h-6 px-2 text-[10.5px] font-bold border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100/90 shadow-2xs gap-1"
+                  >
+                    <Building2 className="w-3 h-3 text-amber-700" />
+                    + Vendor Luar
+                  </Button>
+                  <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-bold">
+                    {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
-                {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean) : []).map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
-                  >
-                    <span>{name}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
-                        const next = current.filter(n => n !== name)
-                        setCreateForm({ ...createForm, applicantName: next.join(', ') })
-                      }}
-                      className="hover:text-rose-300 font-bold ml-1 text-xs"
-                      title={`Hapus ${name}`}
+                {(createForm.applicantName ? createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean) : []).map((rawEntry) => {
+                  const parsed = parseApplicantEntry(rawEntry)
+                  if (parsed.isExternalVendor) {
+                    return (
+                      <span
+                        key={rawEntry}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold bg-amber-600 text-white shadow-2xs border border-amber-700"
+                      >
+                        <Building2 className="w-3 h-3 text-amber-200 shrink-0" />
+                        <span>{parsed.name}</span>
+                        {parsed.company && (
+                          <span className="text-[9.5px] bg-amber-800/60 px-1 py-0.2 rounded font-medium text-amber-100">
+                            {parsed.company}
+                          </span>
+                        )}
+                        <span className="text-[9.5px] text-amber-100/90 font-mono">({parsed.email})</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                            const next = current.filter(n => n !== rawEntry)
+                            setCreateForm({ ...createForm, applicantName: next.join(', ') })
+                          }}
+                          className="hover:text-rose-200 font-bold ml-1 text-xs"
+                          title={`Hapus ${parsed.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )
+                  }
+                  return (
+                    <span
+                      key={rawEntry}
+                      className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      <span>{parsed.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = createForm.applicantName.split(',').map(s => s.trim()).filter(Boolean)
+                          const next = current.filter(n => n !== rawEntry)
+                          setCreateForm({ ...createForm, applicantName: next.join(', ') })
+                        }}
+                        className="hover:text-rose-300 font-bold ml-1 text-xs"
+                        title={`Hapus ${parsed.name}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )
+                })}
                 <div className="flex-1 min-w-[220px]">
                   <SearchableSelect
                     label="Tambah Pelaksana"
@@ -2412,17 +2538,6 @@ export function PtwListingClient({
               </div>
             </div>
 
-            {/* Field: Penjelasan Tambahan / Detail Pekerjaan */}
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs font-semibold text-slate-700">Penjelasan Tambahan / Detail Pekerjaan</Label>
-              <Textarea
-                placeholder="Ketik penjelasan tambahan mengenai aktivitas khusus, kondisi lapangan, atau langkah pekerjaan..."
-                rows={3}
-                value={createForm.additionalNotes}
-                onChange={(e) => setCreateForm({ ...createForm, additionalNotes: e.target.value })}
-                className="bg-slate-50/70 border-slate-200 text-xs"
-              />
-            </div>
 
             {/* Field 18: Lampiran JSA / Work Plan */}
             <div className="space-y-1.5 md:col-span-2">
@@ -2755,6 +2870,85 @@ export function PtwListingClient({
               className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
             >
               {isDeleting ? 'Menghapus...' : 'Hapus Dokumen'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog Tambah Pelaksana Kerja Vendor Luar ── */}
+      <Dialog open={vendorModalOpen} onOpenChange={setVendorModalOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Building2 className="size-4 text-amber-600" />
+              Tambah Pelaksana Kerja (Vendor Luar)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pekerja vendor luar akan menerima link approval khusus via email untuk review & tanda tangan digital PTW.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Lengkap Pelaksana <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                placeholder="Contoh: Joko Santoso"
+                value={vendorForm.name}
+                onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Email / Gmail <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                type="email"
+                placeholder="Contoh: joko.santoso@gmail.com"
+                value={vendorForm.email}
+                onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
+                className="h-9 text-xs"
+              />
+              <p className="text-[10.5px] text-slate-400">
+                Link review publik PTW akan dikirimkan otomatis ke alamat email ini.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Perusahaan / Vendor <span className="text-slate-400 font-normal">(Opsional)</span>
+              </Label>
+              <Input
+                placeholder="Contoh: PT Surya Teknik Mandiri"
+                value={vendorForm.company}
+                onChange={(e) => setVendorForm({ ...vendorForm, company: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setVendorModalOpen(false)
+                setVendorForm({ name: '', email: '', company: '' })
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddVendorApplicant}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Tambahkan Pelaksana
             </Button>
           </DialogFooter>
         </DialogContent>

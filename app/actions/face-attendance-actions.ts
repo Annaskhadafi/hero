@@ -4,6 +4,11 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { rarayVerifyFace, rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
+import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import {
+  getSiteAttendanceClockConfig,
+  resolveSiteAttendancePunctuality,
+} from '@/lib/timesheet/site-attendance-punctuality'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { revalidatePath } from 'next/cache'
 
@@ -32,6 +37,23 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const currentEmp = await getCurrentEmployee()
     if (!currentEmp) {
       return { success: false, error: 'Sesi login tidak ditemukan. Mohon login kembali.' }
+    }
+
+    const targetSiteId = currentEmp.siteId || 1
+    const eventTime = new Date()
+
+    // Off-day policy check: Non-staff can record on off-days, staff is blocked by default
+    const siteConfig = await getSiteAttendanceClockConfig(targetSiteId)
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime,
+      role: currentEmp.role || currentEmp.jobTitle,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      timeZone: siteConfig.timezone,
+    })
+
+    if (!offDayCheck.allowAttendance && offDayCheck.reason) {
+      return { success: false, error: offDayCheck.reason }
     }
 
     // 1. Parse Base64 image
@@ -97,12 +119,25 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     }
 
     const verified = true
-
-    const eventTime = new Date()
     const nowStr = eventTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     const shiftLabel = shiftCode === 'night' ? 'Shift Malam' : 'Shift Pagi'
 
-    const targetSiteId = currentEmp.siteId || 1
+    // Compute punctuality
+    const punctuality = await resolveSiteAttendancePunctuality({
+      siteId: targetSiteId,
+      eventType,
+      eventTime,
+      shiftCode,
+    })
+
+    const offDayLabel = offDayCheck.isOffDay ? ' [Hari OFF / Lembur]' : ''
+    const fullNoteParts = [
+      locationNote,
+      `Shift: ${shiftLabel}`,
+      `Mode: ${workMode}${offDayLabel}`,
+      punctuality?.note,
+      `Vision AI Verified (${(confidence * 100).toFixed(0)}%)`,
+    ].filter(Boolean)
 
     // 3. Save attendance record directly to database
     const [record] = await db
@@ -113,7 +148,7 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
         eventType,
         eventTime,
         status: 'approved',
-        locationNote: `${locationNote} | Shift: ${shiftLabel} | Mode: ${workMode} | Vision AI Verified (${(confidence * 100).toFixed(0)}%)`,
+        locationNote: fullNoteParts.join(' | '),
         latitude: String(latitude),
         longitude: String(longitude),
         clientRequestId: `web-desk-v1-${Date.now()}`,
@@ -129,7 +164,9 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
 
     revalidatePath('/dashboard/analytics')
     revalidatePath('/dashboard/attendance')
+    revalidatePath('/dashboard/attendance/records')
     revalidatePath('/dashboard/scheduling-timesheet')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
     revalidatePath('/mobile/attendance')
 
     return {

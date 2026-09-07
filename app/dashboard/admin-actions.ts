@@ -6308,7 +6308,11 @@ function revalidateAdminSurfaces() {
   ]
 
   for (const path of paths) {
-    revalidatePath(path)
+    try {
+      revalidatePath(path)
+    } catch {
+      // Ignore static generation store invariants in edge / direct calls
+    }
   }
 }
 
@@ -7546,7 +7550,19 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Site HR default belum tersedia.' }
       }
 
-      const authUserId = existingAuthUser?.id || existingEmployee?.authUserId || randomUUID()
+      // Check existing authUser by ID (if employee already had authUserId) or by email
+      let existingAuthUserById = null
+      if (existingEmployee?.authUserId) {
+        const [u] = await db
+          .select({ id: user.id, name: user.name })
+          .from(user)
+          .where(eq(user.id, existingEmployee.authUserId))
+          .limit(1)
+        existingAuthUserById = u || null
+      }
+
+      const targetAuthUser = existingAuthUser || existingAuthUserById
+      const authUserId = targetAuthUser?.id || randomUUID()
       const now = new Date()
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
@@ -7574,7 +7590,7 @@ export async function manageSecurityUserAction(
       )
 
       // 1. Upsert auth user
-      if (existingAuthUser) {
+      if (targetAuthUser) {
         await db
           .update(user)
           .set({
@@ -7583,7 +7599,7 @@ export async function manageSecurityUserAction(
             image: profileImage || null,
             updatedAt: now,
           })
-          .where(eq(user.id, existingAuthUser.id))
+          .where(eq(user.id, targetAuthUser.id))
       } else {
         await db.insert(user).values({
           id: authUserId,

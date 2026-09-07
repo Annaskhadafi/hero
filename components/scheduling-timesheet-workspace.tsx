@@ -117,6 +117,7 @@ import {
   INDONESIA_TIMEZONES,
   IndonesiaTimezoneCode,
   inferTimezoneFromLocation,
+  normalizeIndonesiaTimezone,
 } from '@/lib/indonesia-timezone'
 import {
   attendanceStatusLabel,
@@ -161,7 +162,9 @@ import {
   type EmployeeBenefitRule,
 } from '@/lib/timesheet/employee-benefit-policy'
 import {
+  calculateLateMinutesFromTimes,
   getPunctualityDetail,
+  inferShiftFromClockInTime,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
 import {
@@ -400,7 +403,10 @@ type ManualAttendanceCell = {
   note: string
   source?: 'attendance' | 'manual' | 'excel'
   isLatePending?: boolean
+  lateMinutes?: number | null
   overtimeHours?: number | null
+  scheduledClockIn?: string | null
+  shiftCode?: string | null
 }
 
 type SavedAttendanceOverride = {
@@ -875,6 +881,21 @@ function buildSchedule(
     if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) return 'IN'
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
+  if (rosterType === '5:2') {
+    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+      return isWeekend(period, day) ? 'OFF' : 'IN'
+    }
+    const cycle = (day + employeeIndex * 2) % 7
+    if (cycle === 0 || cycle === 6) return 'OFF'
+    return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+  }
+  if (rosterType === '6:1') {
+    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+      return isWeekend(period, day) ? 'OFF' : 'IN'
+    }
+    if ((day + employeeIndex) % 7 === 0) return 'OFF'
+    return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+  }
   if (scheduleType === 'office') return isWeekend(period, day) ? 'OFF' : 'IN'
   // Hybrid: staff = office schedule, non-staff = shift schedule
   if (scheduleType === 'hybrid') {
@@ -1017,7 +1038,7 @@ function attendanceCellClass(status: AttendanceCellStatus) {
   if (status === 'off') return 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
   if (status === 'standby') return 'bg-violet-100 text-violet-950 ring-1 ring-violet-200'
   if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200'
-  return 'bg-red-100 text-red-950 ring-1 ring-red-200'
+  return 'bg-slate-50 text-slate-400 ring-1 ring-slate-200'
 }
 
 // Overtime rounding rules:
@@ -2033,11 +2054,21 @@ export function SchedulingTimesheetWorkspace({
         | Record<string, unknown>
         | undefined) ?? {}
     const savedRosterType = savedConfig?.rosterType as SiteRosterType | undefined
+    const inferredTimezone = currentSiteObj
+      ? normalizeIndonesiaTimezone(
+          currentSiteObj.timezone ||
+            inferTimezoneFromLocation(
+              [currentSiteObj.location, currentSiteObj.provinceName, currentSiteObj.name]
+                .filter(Boolean)
+                .join(' ')
+            )
+        ).code
+      : 'WITA'
+
     const siteTimezone =
       (savedConfig as { timezone?: string } | undefined)?.timezone ||
-      currentSiteObj?.timezone ||
       (fieldBreakConfig.timezone as string | undefined) ||
-      'WITA'
+      inferredTimezone
     const hasWeekBasedFieldBreak =
       savedRosterType === '13:1' && fieldBreakConfig.fieldBreakUnit === 'weeks'
     const hasIncorrectThirteenOneDefaults =
@@ -2063,7 +2094,7 @@ export function SchedulingTimesheetWorkspace({
           dayShiftClockIn:
             (fieldBreakConfig.dayShiftClockIn as string | undefined) ??
             (fieldBreakConfig.defaultClockIn as string | undefined) ??
-            '06:00',
+            '08:00',
           dayShiftClockOut:
             (fieldBreakConfig.dayShiftClockOut as string | undefined) ??
             (fieldBreakConfig.defaultClockOut as string | undefined) ??
@@ -2089,13 +2120,22 @@ export function SchedulingTimesheetWorkspace({
             (fieldBreakConfig.day7NightShiftClockIn as string | undefined) ?? '20:00',
           day7NightShiftClockOut:
             (fieldBreakConfig.day7NightShiftClockOut as string | undefined) ?? '02:00',
-          defaultEarlyOvertimeHours: Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
+          defaultEarlyOvertimeHours:
+            (fieldBreakConfig.defaultEarlyOvertimeHours as number | undefined) ?? 1,
           defaultOvertimeEnd:
             (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
-          lokasiKhususRate: Number(fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
+          lokasiKhususRate:
+            Number(
+              fieldBreakConfig.lokasiKhususRate ??
+                fieldBreakConfig.lokasiKhususRateStaff ??
+                fieldBreakConfig.lokasiKhususRateNonStaff ??
+                35000
+            ) || 0,
           lokasiKhususRateStaff:
             Number(
-              fieldBreakConfig.lokasiKhususRateStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000
+              fieldBreakConfig.lokasiKhususRateStaff ??
+                fieldBreakConfig.lokasiKhususRate ??
+                35000
             ) || 0,
           lokasiKhususRateNonStaff:
             Number(
@@ -2133,7 +2173,10 @@ export function SchedulingTimesheetWorkspace({
             sites
           ),
         }
-      : defaultSiteConfig
+      : {
+          ...defaultSiteConfig,
+          timezone: inferredTimezone,
+        }
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
     setRoster(config.rosterType)
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: config.scheduleType }))
@@ -2219,19 +2262,28 @@ export function SchedulingTimesheetWorkspace({
         : []
     )
 
+    const siteAttendanceEmployeeIds = new Set<number>()
+    for (const rec of attendanceRecords) {
+      if (String(rec.siteId) === siteId) siteAttendanceEmployeeIds.add(rec.employeeId)
+    }
+    for (const ov of attendanceOverrides) {
+      if (String(ov.siteId) === siteId && ov.period === period) siteAttendanceEmployeeIds.add(ov.employeeId)
+    }
+
     const filtered = employees.filter((employee) => {
-      // First priority: included in this site's saved/scheduled plan roster
-      if (scheduledEmployeeIds.has(employee.id)) return true
-      // If this site already has a configured roster plan with employees, strictly show only rostered employees
-      if (scheduledEmployeeIds.size > 0) return false
-      // Otherwise fallback to matching site employees
+      // 1. Employee belongs directly to this site
       if (String(employee.siteId) === siteId) return true
+      // 2. Included in this site's saved/scheduled plan roster
+      if (scheduledEmployeeIds.has(employee.id)) return true
+      // 3. Has attendance records or overrides in this site
+      if (siteAttendanceEmployeeIds.has(employee.id)) return true
+      // 4. Fallback matching site location name
       if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
 
     return filtered
-  }, [employees, mode, savedPlan, selectedSite, siteId])
+  }, [attendanceOverrides, attendanceRecords, employees, mode, period, savedPlan, selectedSite, siteId])
 
   const rosterSectionByEmployee = useMemo(
     () =>
@@ -4299,12 +4351,46 @@ export function SchedulingTimesheetWorkspace({
   ): ManualAttendanceCell {
     const key = attendanceKey(employeeId, day)
     const manual = manualAttendance[key]
-    if (manual) return manual
-
     const real = attendanceByCell.get(key)
+    const rowCode = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+
+    if (manual) {
+      const note = manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''
+      const punctualityDetail = getPunctualityDetail(note)
+      const clockIn = manual.clockIn || timeFromIso(real?.clockIn?.eventTime)
+      const clockOut = manual.clockOut || timeFromIso(real?.clockOut?.eventTime)
+
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
+      const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
+      const scheduledClockIn =
+        configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
+
+      const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
+      let lateMinutes: number | null = punctMatch ? Number(punctMatch[1]) : null
+      if (lateMinutes === null && clockIn && scheduledClockIn) {
+        lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+      }
+
+      const isLatePending =
+        manual.status === 'present' &&
+        (punctualityDetail?.startsWith('Kehadiran: Terlambat') ||
+          (lateMinutes !== null && lateMinutes > 0))
+
+      return {
+        ...manual,
+        clockIn,
+        clockOut,
+        note,
+        lateMinutes,
+        isLatePending: Boolean(isLatePending),
+        scheduledClockIn,
+        shiftCode: rowCode || inferred?.shiftCode || null,
+      }
+    }
+
     if (!real) {
-      const code = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
-      const rosterStatus = normalizeAttendanceStatus(code)
+      const rosterStatus = normalizeAttendanceStatus(rowCode)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -4317,38 +4403,59 @@ export function SchedulingTimesheetWorkspace({
           clockIn: '',
           clockOut: '',
           note: '',
+          scheduledClockIn: configuredClockIn,
+          shiftCode: rowCode || null,
         }
       }
-      return { status: 'empty', clockIn: '', clockOut: '', note: '', source: 'attendance' }
+      return {
+        status: 'empty',
+        clockIn: '',
+        clockOut: '',
+        note: '',
+        source: 'attendance',
+        scheduledClockIn: configuredClockIn,
+        shiftCode: rowCode || null,
+      }
     }
 
     const status = normalizeAttendanceStatus(
       real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
     )
     const clockIn = timeFromIso(real.clockIn?.eventTime)
+    const clockOut = timeFromIso(real.clockOut?.eventTime)
     const note =
       real.clockIn?.locationNote ||
       real.clockOut?.locationNote ||
       real.records[0]?.locationNote ||
       'Face/location attendance'
     const punctualityDetail = getPunctualityDetail(note)
-    const scheduledClockIn = resolveConfiguredShiftClockIn(scheduleCode, siteConfig)
+
+    const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
+    const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
+    const scheduledClockIn =
+      configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
+
+    const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
+    let lateMinutes: number | null = punctMatch ? Number(punctMatch[1]) : null
+    if (lateMinutes === null && clockIn && scheduledClockIn) {
+      lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+    }
+
     const isLatePending =
       status === 'present' &&
       (punctualityDetail?.startsWith('Kehadiran: Terlambat') ||
-        (!punctualityDetail &&
-          clockIn &&
-          scheduledClockIn &&
-          minutesFromTime(clockIn) !== null &&
-          minutesFromTime(scheduledClockIn) !== null &&
-          (minutesFromTime(clockIn) ?? 0) > (minutesFromTime(scheduledClockIn) ?? 0)))
+        (lateMinutes !== null && lateMinutes > 0))
+
     return {
       status,
       clockIn,
-      clockOut: timeFromIso(real.clockOut?.eventTime),
+      clockOut,
       note,
       source: 'attendance',
+      lateMinutes,
       isLatePending: Boolean(isLatePending),
+      scheduledClockIn,
+      shiftCode: rowCode || inferred?.shiftCode || null,
     }
   }
 
@@ -4876,12 +4983,17 @@ export function SchedulingTimesheetWorkspace({
   const attendanceConflicts =
     mode === 'attendance'
       ? rows.flatMap(
-          (row) =>
-            row.schedule
+          (row) => {
+            const staff = isStaffRole(row.employee.role)
+            return row.schedule
               .map((code, index) => {
                 const day = index + 1
                 const cell = getAttendanceCell(row.employee.id, day)
-                return cell.status === 'present' && ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                // Non-staff are allowed to attend on OFF/Libur days (5:2 roster / overtime)
+                const isDisallowedConflict = staff
+                  ? ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                  : ['Sakit'].includes(code)
+                return cell.status === 'present' && isDisallowedConflict
                   ? {
                       employeeId: row.employee.id,
                       employeeName: row.employee.name,
@@ -4898,6 +5010,7 @@ export function SchedulingTimesheetWorkspace({
               scheduleCode: string
               currentCell: ManualAttendanceCell
             }>
+          }
         )
       : []
 
@@ -10101,6 +10214,7 @@ export function SchedulingTimesheetWorkspace({
                                         const isConflict =
                                           cell.status === 'present' &&
                                           ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
+                                        const scheduledClockIn = row.schedule[day - 1]?.split('-')[0]?.trim() || '';
                                         return (
                                           <td
                                             key={day}
@@ -10108,7 +10222,13 @@ export function SchedulingTimesheetWorkspace({
                                             title={holidayName}
                                           >
                                             <button
-                                              className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${cell.isLatePending ? 'bg-purple-100 text-purple-950 ring-1 ring-purple-300' : isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                              className={`relative h-[76px] w-[44px] rounded-xl px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
+                                                cell.isLatePending
+                                                  ? 'bg-red-100 text-red-950 ring-1 ring-red-400 hover:bg-red-200 shadow-sm'
+                                                  : isHolidayDay
+                                                    ? attendanceHolidayCellClass
+                                                    : attendanceCellClass(cell.status)
+                                              } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                               onClick={() =>
                                                 multiSelectAttendance
                                                   ? toggleAttendanceSelection(row.employee.id, day)
@@ -10121,11 +10241,13 @@ export function SchedulingTimesheetWorkspace({
                                                 cycleAttendanceCell(row.employee.id, day)
                                               }
                                               title={
-                                                isConflict
-                                                  ? `Conflict schedule ${scheduleCode} vs attendance masuk`
-                                                  : holidayName ||
-                                                    cell.note ||
-                                                    attendanceStatusLabel(cell.status)
+                                                cell.isLatePending
+                                                  ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
+                                                  : isConflict
+                                                    ? `Conflict schedule ${scheduleCode} vs attendance masuk`
+                                                    : holidayName ||
+                                                      cell.note ||
+                                                      attendanceStatusLabel(cell.status)
                                               }
                                             >
                                               {isConflict ? (
@@ -10138,13 +10260,24 @@ export function SchedulingTimesheetWorkspace({
                                                   L
                                                 </span>
                                               ) : null}
-                                              <span>
-                                                {cell.isLatePending
-                                                  ? 'Late'
-                                                  : attendanceStatusLabel(cell.status)}
-                                              </span>
+                                              {cell.isLatePending ? (
+                                                <span className="block leading-tight">
+                                                  <span className="block text-[9.5px] font-extrabold text-red-700 tracking-tight">
+                                                    Terlambat
+                                                  </span>
+                                                  {cell.lateMinutes ? (
+                                                    <span className="mt-0.5 block text-[8px] font-bold text-red-600">
+                                                      +{cell.lateMinutes}m
+                                                    </span>
+                                                  ) : null}
+                                                </span>
+                                              ) : (
+                                                <span>
+                                                  {attendanceStatusLabel(cell.status)}
+                                                </span>
+                                              )}
                                               {cell.clockIn || cell.clockOut ? (
-                                                <span className="mt-1 block font-mono text-[10px]">
+                                                <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
                                                   {cell.clockIn || '--:--'}-
                                                   {cell.clockOut || '--:--'}
                                                 </span>
@@ -11186,9 +11319,23 @@ export function SchedulingTimesheetWorkspace({
 
                 return (
                   <div className="grid gap-4 py-2">
-                    <div className="bg-surface-container-low text-muted-foreground rounded-2xl p-3 text-sm">
-                      Tanggal {selectedAttendanceCell.day} • jam ini dipakai otomatis untuk hitung
-                      Overtime.
+                    <div className="bg-surface-container-low text-muted-foreground flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 text-sm">
+                      <div>
+                        Tanggal {selectedAttendanceCell.day} • Shift:{' '}
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">
+                          {selectedAttendanceValue.shiftCode || 'Day'} (Jadwal Masuk:{' '}
+                          {selectedAttendanceValue.scheduledClockIn || siteConfig.dayShiftClockIn})
+                        </span>
+                      </div>
+                      {selectedAttendanceValue.isLatePending ? (
+                        <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                          Terlambat {selectedAttendanceValue.lateMinutes ? `+${selectedAttendanceValue.lateMinutes}m` : ''}
+                        </span>
+                      ) : selectedAttendanceValue.clockIn ? (
+                        <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                          Tepat Waktu
+                        </span>
+                      ) : null}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="space-y-2">

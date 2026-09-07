@@ -18,6 +18,11 @@ import {
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
 import { rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
+import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import {
+  getSiteAttendanceClockConfig,
+  resolveSiteAttendancePunctuality,
+} from '@/lib/timesheet/site-attendance-punctuality'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { revalidatePath } from 'next/cache'
 
@@ -246,12 +251,47 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const eventTime = new Date()
+
+    // Off-day policy check: Non-staff can record on off-days, staff is blocked by default
+    const siteConfig = await getSiteAttendanceClockConfig(targetSiteId)
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime,
+      role: resolvedEmployee.role || resolvedEmployee.jobTitle,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      timeZone: siteConfig.timezone,
+    })
+
+    if (!offDayCheck.allowAttendance && offDayCheck.reason) {
+      return NextResponse.json<MultiAttendanceRecognizeResponse>({
+        recognized: true,
+        employee_id: resolvedEmployee.id,
+        employee_name: resolvedEmployee.name,
+        employee_sn: resolvedEmployee.employeeSn,
+        job_title: resolvedEmployee.jobTitle,
+        event_type: eventType,
+        error: offDayCheck.reason,
+      })
+    }
+
+    const punctuality = await resolveSiteAttendancePunctuality({
+      siteId: targetSiteId,
+      eventType,
+      eventTime,
+      shiftCode: shiftCode || null,
+    })
+
     // ── 7. Insert attendance record ───────────────────────────────────────────
-    const locationNote = buildTerminalNote({
+    const baseTerminalNote = buildTerminalNote({
       shiftLabel,
       siteLabel,
       confidence: rarayResult.confidence ?? 0,
     })
+    const offDayLabel = offDayCheck.isOffDay ? ' [Hari OFF / Lembur]' : ''
+    const locationNote = [baseTerminalNote + offDayLabel, punctuality?.note]
+      .filter(Boolean)
+      .join(' | ')
 
     const [record] = await db
       .insert(attendanceRecords)
@@ -259,7 +299,7 @@ export async function POST(req: NextRequest) {
         employeeId: resolvedEmployee.id,
         siteId: targetSiteId,
         eventType,
-        eventTime: new Date(),
+        eventTime,
         status: 'pending',
         locationNote,
         photoUrl: null, // terminal mode: no selfie photo

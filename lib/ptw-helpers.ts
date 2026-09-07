@@ -165,6 +165,52 @@ export function getDefaultEquipmentItems(permitTypeStr: string): string[] {
   return Array.from(new Set(result))
 }
 
+export function extractCheckedEquipment(
+  controlSteps?: string | null,
+  checkedEquipment?: string[] | null,
+  permitType?: string | null
+): string[] {
+  if (Array.isArray(checkedEquipment) && checkedEquipment.length > 0) {
+    const isOnlyApd = checkedEquipment.every((item) =>
+      [
+        'Safety Helmet',
+        'Helmet',
+        'Safety Shoes',
+        'Safety Glasses / Goggles',
+        'Safety Glasses',
+        'Ear Plug / Ear Muff',
+        'Dust Mask / Respirator',
+        'Reflective Vest',
+        'Face Shield',
+        'Full Body Harness',
+        'Welding Gloves',
+        'Leather Gloves',
+        'Chemical Gloves',
+        'Respirator',
+      ].includes(item)
+    )
+    if (!isOnlyApd) {
+      return checkedEquipment
+    }
+  }
+
+  if (controlSteps && typeof controlSteps === 'string') {
+    const lines = controlSteps
+      .split('\n')
+      .map((l) => l.replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter((l) => l.length > 0 && !l.startsWith('[Referensi HIRADC:'))
+    if (lines.length > 0) {
+      return lines
+    }
+  }
+
+  if (permitType) {
+    return getDefaultEquipmentItems(permitType)
+  }
+
+  return []
+}
+
 export function isItemChecked(itemLabel: string, checkedList: string[]): boolean {
   if (!checkedList || checkedList.length === 0) return false
 
@@ -207,4 +253,108 @@ export function getPermitSubTypes(
   }
   return EQUIPMENT_CHECKLIST_PER_TYPE[normKey]?.subTypes || EQUIPMENT_CHECKLIST_PER_TYPE[permitType]?.subTypes || []
 }
+
+export type ParsedApplicant = {
+  name: string
+  email: string
+  company?: string
+  isExternalVendor: boolean
+  displayLabel: string
+}
+
+export function parseApplicantEntry(raw: string): ParsedApplicant {
+  const trimmed = (raw || '').trim()
+  if (!trimmed) {
+    return { name: '', email: '', isExternalVendor: false, displayLabel: '' }
+  }
+
+  // Format 1: "Name <email@example.com>"
+  const angleMatch = trimmed.match(/^([^<]+)<([^>]+)>$/)
+  if (angleMatch) {
+    const name = angleMatch[1].trim()
+    const email = angleMatch[2].trim()
+    return {
+      name,
+      email,
+      isExternalVendor: true,
+      displayLabel: `${name} (${email})`,
+    }
+  }
+
+  // Format 2: "Name (Vendor: company - email@example.com)" or "Name (Vendor: email@example.com)" or "Name (email@example.com)"
+  const parenMatch = trimmed.match(/^([^(]+)\(([^)]+)\)$/)
+  if (parenMatch) {
+    const name = parenMatch[1].trim()
+    const inner = parenMatch[2].trim()
+    const emailMatch = inner.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
+    if (emailMatch) {
+      const email = emailMatch[1]
+      const company = inner.replace(email, '').replace(/^vendor:?/i, '').replace(/[-:]/g, '').trim()
+      return {
+        name,
+        email,
+        company: company || undefined,
+        isExternalVendor: true,
+        displayLabel: company ? `${name} [${company}] (${email})` : `${name} (${email})`,
+      }
+    }
+  }
+
+  // Format 3: "Name [Vendor: email@example.com]"
+  const bracketMatch = trimmed.match(/^([^[]+)\[([^\]]+)\]$/)
+  if (bracketMatch) {
+    const name = bracketMatch[1].trim()
+    const inner = bracketMatch[2].trim()
+    const emailMatch = inner.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
+    if (emailMatch) {
+      const email = emailMatch[1]
+      const company = inner.replace(email, '').replace(/^vendor:?/i, '').replace(/[-:]/g, '').trim()
+      return {
+        name,
+        email,
+        company: company || undefined,
+        isExternalVendor: true,
+        displayLabel: company ? `${name} [${company}] (${email})` : `${name} (${email})`,
+      }
+    }
+  }
+
+  // Format 4: Check if string has email anywhere e.g. "Name - email@gmail.com"
+  const genericEmailMatch = trimmed.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
+  if (genericEmailMatch) {
+    const email = genericEmailMatch[1]
+    const name = trimmed.replace(email, '').replace(/[-—()<>\[\]]/g, '').trim()
+    return {
+      name: name || email,
+      email,
+      isExternalVendor: true,
+      displayLabel: `${name || email} (${email})`,
+    }
+  }
+
+  // Otherwise, standard internal employee name
+  const cleanName = trimmed.includes(' — ') ? trimmed.split(' — ')[0].trim() : trimmed
+  return {
+    name: cleanName,
+    email: '',
+    isExternalVendor: false,
+    displayLabel: cleanName,
+  }
+}
+
+export function formatVendorApplicantEntry(name: string, email: string, company?: string): string {
+  const cleanName = name.trim()
+  const cleanEmail = email.trim()
+  const cleanCompany = company?.trim()
+  if (cleanCompany) {
+    return `${cleanName} (Vendor: ${cleanCompany} - ${cleanEmail})`
+  }
+  return `${cleanName} (Vendor: ${cleanEmail})`
+}
+
+export function cleanPtwDescription(description?: string | null): string {
+  if (!description) return ''
+  return description.replace(/\[Referensi HIRADC:[^\]]+\]\s*/g, '').trim()
+}
+
 

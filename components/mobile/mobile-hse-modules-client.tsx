@@ -27,6 +27,7 @@ import {
   isItemChecked,
   getDefaultSubTypes,
   getPermitSubTypes,
+  extractCheckedEquipment,
 } from '@/lib/ptw-helpers'
 import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
 
@@ -183,9 +184,7 @@ export function MobilePtwClient({
       riskLevel: (p as any).riskLevel || 'High',
       ppe: (p as any).ppe || ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
     })
-    if ((p as any).checkedEquipment) {
-      setCheckedEquipment((p as any).checkedEquipment)
-    }
+    setCheckedEquipment(extractCheckedEquipment((p as any).controlSteps, (p as any).checkedEquipment, (p as any).permitType))
     if ((p as any).subTypes && typeof (p as any).subTypes === 'object') {
       setMobileSubTypes({ ...getDefaultSubTypes(), ...(p as any).subTypes })
     }
@@ -751,21 +750,6 @@ export function MobilePtwClient({
             </div>
           </div>
 
-          {/* Kolom Penjelasan Tambahan / Detail Pekerjaan */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">
-                Penjelasan Tambahan / Detail Aktivitas
-              </label>
-              <span className="text-[10px] text-slate-400 font-normal">(Opsional)</span>
-            </div>
-            <Textarea
-              className="rounded-xl border-slate-200 bg-slate-50/60 px-3 py-2 text-xs font-medium min-h-16"
-              placeholder="Uraian penjelasan tambahan mengenai pekerjaan yang dilakukan..."
-              value={form.additionalNotes}
-              onChange={(e) => setForm({ ...form, additionalNotes: e.target.value })}
-            />
-          </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700">Langkah Pengendalian K3 / LOTO / Gas Test</label>

@@ -81,6 +81,35 @@ export async function generateElementAsPdfBlob(
   }
 
   pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight)
+
+  // ponytail: interactive_pdf_links - annotate all <a> tags with clickable jsPDF links
+  try {
+    const rootRect = element.getBoundingClientRect()
+    if (rootRect.width > 0 && rootRect.height > 0) {
+      const linkElements = Array.from(element.querySelectorAll('a[href]'))
+      for (const linkEl of linkElements) {
+        const href = linkEl.getAttribute('href')
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) continue
+        const linkRect = linkEl.getBoundingClientRect()
+        if (linkRect.width <= 0 || linkRect.height <= 0) continue
+
+        const relLeft = (linkRect.left - rootRect.left) / rootRect.width
+        const relTop = (linkRect.top - rootRect.top) / rootRect.height
+        const relWidth = linkRect.width / rootRect.width
+        const relHeight = linkRect.height / rootRect.height
+
+        const linkPdfX = x + relLeft * imgWidth
+        const linkPdfY = y + relTop * imgHeight
+        const linkPdfW = relWidth * imgWidth
+        const linkPdfH = relHeight * imgHeight
+
+        pdf.link(linkPdfX, linkPdfY, linkPdfW, linkPdfH, { url: href })
+      }
+    }
+  } catch (e) {
+    console.error('Error adding PDF link annotations:', e)
+  }
+
   return pdf.output('blob')
 }
 

@@ -12,6 +12,7 @@ import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
+  checkEmployeeOffDayStatus,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
@@ -108,6 +109,7 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
@@ -139,6 +141,7 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
@@ -617,14 +620,41 @@ export async function submitAttendance(formData: FormData) {
       Number(getTrimmedFormValue(formData, 'overtimeMinutes')) || 0
     )
     const shiftCode = getTrimmedFormValue(formData, 'shiftCode')
-    const activeShiftOptions = await getActiveAttendanceShiftOptions()
-    const selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode)
+    const activeShiftOptions = await getActiveAttendanceShiftOptions().catch(() => [])
+    let selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode)
 
     if (!selectedShift) {
-      return { success: false, error: 'Shift option is not available. Contact Master Data admin.' }
+      if (['ns', 'night', 'malam'].includes(shiftCode.toLowerCase())) {
+        selectedShift = {
+          value: shiftCode || 'night',
+          label: 'Shift Malam',
+          window: '18:00 - 05:00',
+          helper: 'Night Shift',
+        }
+      } else {
+        selectedShift = {
+          value: shiftCode || 'day',
+          label: 'Shift Pagi / Reguler',
+          window: '08:00 - 17:00',
+          helper: 'Day Shift',
+        }
+      }
     }
 
     const eventTime = new Date()
+    const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime,
+      role: employee.role || employee.jobTitle,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      timeZone: siteConfig.timezone,
+    })
+
+    if (!offDayCheck.allowAttendance && offDayCheck.reason) {
+      return { success: false, error: offDayCheck.reason }
+    }
+
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: employee.siteId,
       eventType,
@@ -632,12 +662,17 @@ export async function submitAttendance(formData: FormData) {
       shiftCode,
     })
 
+    const rawContext = getTrimmedFormValue(formData, 'attendanceContext')
+    const attendanceContext = offDayCheck.isOffDay
+      ? [rawContext, 'Hari OFF / Lembur'].filter(Boolean).join(' - ')
+      : rawContext
+
     const locationNote = buildAttendanceNote({
       locationNote: baseLocationNote,
       shiftLabel: selectedShift.label,
       shiftWindow: selectedShift.window,
       workMode: getTrimmedFormValue(formData, 'workMode'),
-      attendanceContext: getTrimmedFormValue(formData, 'attendanceContext'),
+      attendanceContext,
       overtimeMinutes,
       operationalNote: getTrimmedFormValue(formData, 'operationalNote').slice(0, 160),
       punctualityNote: punctuality?.note,
@@ -669,6 +704,7 @@ export async function submitAttendance(formData: FormData) {
     revalidatePath('/dashboard/attendance')
     revalidatePath('/dashboard/attendance/records')
     revalidatePath('/dashboard/scheduling-timesheet')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
 
     return { success: true, record }
   } catch (err) {

@@ -9,6 +9,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Download,
+  Eye,
+  FileText,
   Lock,
   PenTool,
   Plus,
@@ -19,6 +21,7 @@ import {
   UploadCloud,
   X,
   XCircle,
+  Building2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
@@ -30,9 +33,13 @@ import {
   normalizePermitTypes,
   getActivePermitTypeKeys,
   getDefaultEquipmentItems,
+  extractCheckedEquipment,
   isItemChecked,
   getDefaultSubTypes,
   getPermitSubTypes,
+  parseApplicantEntry,
+  formatVendorApplicantEntry,
+  cleanPtwDescription,
 } from '@/lib/ptw-helpers'
 import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
@@ -95,6 +102,7 @@ type PtwApprovalData = {
   ppe: string[]
   gasTestRequired: boolean
   isolationRequired: boolean
+  attachments?: string[] | any[]
   approvals: ApprovalStep[]
   permissions: {
     canApprove: boolean
@@ -269,6 +277,81 @@ export function PtwApprovalForm({
   const [riskLevel, setRiskLevel] = useState(data.riskLevel || 'Medium')
   const [additionalNotes, setAdditionalNotes] = useState((data as any).additionalNotes || '')
   const [gasTestRequired, setGasTestRequired] = useState<boolean>(Boolean(data.gasTestRequired))
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [attachments, setAttachments] = useState<string[]>(() => {
+    const raw = (data as any).attachments
+    if (Array.isArray(raw)) return raw
+    return []
+  })
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        const entry = `${file.name}||${dataUrl}`
+        setAttachments((prev) => [...prev, entry])
+        toast.success(`Dokumen ${file.name} berhasil dilampirkan!`)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const parseAttachment = (att: string | { name: string; url?: string }) => {
+    if (typeof att === 'object' && att !== null) {
+      return { name: att.name || 'Dokumen Pendukung', url: att.url || '' }
+    }
+    if (typeof att === 'string') {
+      if (att.includes('||')) {
+        const [name, ...rest] = att.split('||')
+        return { name, url: rest.join('||') }
+      }
+      try {
+        const parsed = JSON.parse(att)
+        if (parsed.name) return { name: parsed.name, url: parsed.url || '' }
+      } catch {}
+      return { name: att.split('/').pop() || att, url: att.startsWith('http') || att.startsWith('data:') ? att : '' }
+    }
+    return { name: 'Dokumen Pendukung', url: '' }
+  }
+
+  // External Vendor Worker Form State
+  const [vendorModalOpen, setVendorModalOpen] = useState(false)
+  const [vendorForm, setVendorForm] = useState({
+    name: '',
+    email: '',
+    company: '',
+  })
+
+  const handleAddVendorApplicant = () => {
+    const name = vendorForm.name.trim()
+    const email = vendorForm.email.trim().toLowerCase()
+    const company = vendorForm.company.trim()
+
+    if (!name) {
+      toast.error('Nama pelaksana kerja vendor wajib diisi')
+      return
+    }
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      toast.error('Email pelaksana kerja vendor tidak valid')
+      return
+    }
+
+    const formattedEntry = formatVendorApplicantEntry(name, email, company || undefined)
+    const current = (selectedApplicant || '').split(',').map((s) => s.trim()).filter(Boolean)
+
+    if (current.some((c) => c.toLowerCase() === formattedEntry.toLowerCase())) {
+      toast.error('Pelaksana kerja vendor ini sudah ditambahkan')
+      return
+    }
+
+    const next = [...current, formattedEntry]
+    setSelectedApplicant(next.join(', '))
+    setVendorForm({ name: '', email: '', company: '' })
+    setVendorModalOpen(false)
+    toast.success(`Pelaksana vendor ${name} berhasil ditambahkan!`)
+  }
   const [ppe, setPpe] = useState<string[]>(() => {
     if (data.ppe && Array.isArray(data.ppe) && data.ppe.length > 0) {
       const validApd = data.ppe.filter((item) => !item.includes('?') && item.length < 35)
@@ -284,14 +367,7 @@ export function PtwApprovalForm({
     return getDefaultSubTypes()
   })
   const [checkedEquipment, setCheckedEquipment] = useState<string[]>(() => {
-    if (data.controlSteps) {
-      const lines = data.controlSteps
-        .split('\n')
-        .map((l) => l.replace(/^\d+\.\s*/, '').trim())
-        .filter(Boolean)
-      if (lines.length > 0) return lines
-    }
-    return []
+    return extractCheckedEquipment(data.controlSteps, (data as any)?.checkedEquipment, data.permitType)
   })
 
   const toggleEquipmentItem = (itemLabel: string) => {
@@ -397,6 +473,7 @@ export function PtwApprovalForm({
         additionalNotes,
         ppe,
         subTypes: formSubTypes,
+        attachments,
         signatures: signaturesByStepId,
         stepRemarks,
       })
@@ -529,30 +606,40 @@ export function PtwApprovalForm({
   }
 
   const approvalHistoryForDisplay = (data?.approvals?.length
-    ? data.approvals.filter((s) => s.stepOrder <= 3)
+    ? data.approvals
     : [
-        { id: 1, stepOrder: 1, stepLabel: 'Pelaksana Kerja', approverName: selectedApplicant || 'Pelaksana Kerja', approverRole: 'applicant', status: 'approved', signatureDataUrl: null, remarks: '', signedAt: data.startAt },
-        { id: 2, stepOrder: 2, stepLabel: 'Pemberi Kerja', approverName: selectedFieldPic || 'Pemberi Kerja', approverRole: 'safety_officer', status: 'pending', signatureDataUrl: null, remarks: '', signedAt: null },
-        { id: 3, stepOrder: 3, stepLabel: 'Safety Dept', approverName: selectedAuthorized || 'Safety Dept', approverRole: 'field_pic', status: 'waiting', signatureDataUrl: null, remarks: '', signedAt: null },
+        { id: 1, stepOrder: 1, stepLabel: 'Pemberi Kerja', approverName: selectedFieldPic || 'Pemberi Kerja', approverRole: 'safety_officer', status: 'pending', signatureDataUrl: null, remarks: '', signedAt: null },
+        ...((selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean).length > 0
+          ? (selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+          : ['Pelaksana Kerja']
+        ).map((appName, idx, arr) => {
+          const parsed = parseApplicantEntry(appName)
+          return {
+            id: 2 + idx,
+            stepOrder: 2 + idx,
+            stepLabel: arr.length > 1 ? `Pelaksana Kerja ${idx + 1}` : 'Pelaksana Kerja',
+            approverName: parsed.name || appName,
+            approverRole: 'applicant',
+            status: 'waiting',
+            signatureDataUrl: null,
+            remarks: '',
+            signedAt: null,
+          }
+        }),
+        { id: 99, stepOrder: 99, stepLabel: 'Safety Dept', approverName: selectedAuthorized || 'Safety Dept', approverRole: 'field_pic', status: 'waiting', signatureDataUrl: null, remarks: '', signedAt: null },
       ]
-  ).map((step) => ({
-    ...step,
-    stepLabel:
-      step.stepOrder === 1 || step.approverRole === 'applicant'
-        ? 'Pelaksana Kerja'
-        : step.stepOrder === 2 || step.approverRole === 'safety_officer'
-        ? 'Pemberi Kerja'
-        : step.stepOrder === 3 || step.approverRole === 'field_pic' || step.approverRole === 'authorized'
-        ? 'Safety Dept'
-        : step.stepLabel,
-  }))
+  )
 
-  const step1 = approvalHistoryForDisplay.find((s) => s.stepOrder === 1 || s.approverRole === 'applicant')
-  const step2 = approvalHistoryForDisplay.find((s) => s.stepOrder === 2 || s.approverRole === 'safety_officer')
-  const step3 = approvalHistoryForDisplay.find((s) => s.stepOrder === 3 || s.approverRole === 'field_pic' || s.approverRole === 'authorized')
+  const pemberiKerjaStep = approvalHistoryForDisplay.find((s) => s.stepOrder === 1 || s.approverRole === 'safety_officer' || s.approverRole === 'pemberi_kerja')
+  const pelaksanaSteps = approvalHistoryForDisplay.filter((s) => s.approverRole === 'applicant' || s.approverRole === 'pelaksana' || s.approverRole === 'pelaksana_kerja')
+  const safetyDeptStep = approvalHistoryForDisplay.find((s) => s.approverRole === 'field_pic' || s.approverRole === 'safety_dept' || s.approverRole === 'authorized' || s.stepOrder === approvalHistoryForDisplay.length)
+
+  const step1 = pemberiKerjaStep
+  const step2 = pelaksanaSteps[0] || approvalHistoryForDisplay.find((s) => s.stepOrder === 2)
+  const step3 = safetyDeptStep
 
   const isStep1Locked = Boolean(step1?.status === 'approved' || step1?.signatureDataUrl || data.status === 'Approved')
-  const isStep2Locked = Boolean(step2?.status === 'approved' || step2?.signatureDataUrl || data.status === 'Approved')
+  const isStep2Locked = Boolean(pelaksanaSteps.some((p) => p.status === 'approved' || p.signatureDataUrl) || data.status === 'Approved')
   const isStep3Locked = Boolean(step3?.status === 'approved' || step3?.signatureDataUrl || data.status === 'Approved')
 
   const step1Sig = (step1 && signaturesByStepId[step1.id]) || step1?.signatureDataUrl || (activeStepId === step1?.id && previewSig ? previewSig : null)
@@ -959,31 +1046,75 @@ export function PtwApprovalForm({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold text-slate-700">Nama pelaksana kerja (Multi-person)</Label>
-                    <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-bold">
-                      {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setVendorModalOpen(true)}
+                        className="h-6 px-2 text-[10.5px] font-bold border-amber-300 bg-amber-50/80 text-amber-900 hover:bg-amber-100/90 shadow-2xs gap-1"
+                      >
+                        <Building2 className="w-3 h-3 text-amber-700" />
+                        + Vendor Luar
+                      </Button>
+                      <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full font-bold">
+                        {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean).length : 0)} Orang Ditugaskan
+                      </span>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
-                    {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean) : []).map((name) => (
-                      <span
-                        key={name}
-                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
-                      >
-                        <span>{name}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const current = selectedApplicant.split(',').map(s => s.trim()).filter(Boolean)
-                            const next = current.filter(n => n !== name)
-                            setSelectedApplicant(next.join(', '))
-                          }}
-                          className="hover:text-rose-300 font-bold ml-1 text-xs"
-                          title={`Hapus ${name}`}
+                    {(selectedApplicant ? selectedApplicant.split(',').map(s => s.trim()).filter(Boolean) : []).map((rawEntry) => {
+                      const parsed = parseApplicantEntry(rawEntry)
+                      if (parsed.isExternalVendor) {
+                        return (
+                          <span
+                            key={rawEntry}
+                            className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold bg-amber-600 text-white shadow-2xs border border-amber-700"
+                          >
+                            <Building2 className="w-3 h-3 text-amber-200 shrink-0" />
+                            <span>{parsed.name}</span>
+                            {parsed.company && (
+                              <span className="text-[9.5px] bg-amber-800/60 px-1 py-0.2 rounded font-medium text-amber-100">
+                                {parsed.company}
+                              </span>
+                            )}
+                            <span className="text-[9.5px] text-amber-100/90 font-mono">({parsed.email})</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = selectedApplicant.split(',').map(s => s.trim()).filter(Boolean)
+                                const next = current.filter(n => n !== rawEntry)
+                                setSelectedApplicant(next.join(', '))
+                              }}
+                              className="hover:text-rose-200 font-bold ml-1 text-xs"
+                              title={`Hapus ${parsed.name}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )
+                      }
+                      return (
+                        <span
+                          key={rawEntry}
+                          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+                          <span>{parsed.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = selectedApplicant.split(',').map(s => s.trim()).filter(Boolean)
+                              const next = current.filter(n => n !== rawEntry)
+                              setSelectedApplicant(next.join(', '))
+                            }}
+                            className="hover:text-rose-300 font-bold ml-1 text-xs"
+                            title={`Hapus ${parsed.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      )
+                    })}
                     <div className="flex-1 min-w-[220px]">
                       <SearchableSelect
                         label="Tambah Pelaksana"
@@ -1131,29 +1262,96 @@ export function PtwApprovalForm({
                   </div>
                 </div>
 
-                {/* Row 5: Penjelasan Tambahan / Detail Pekerjaan */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Penjelasan Tambahan / Detail Pekerjaan</Label>
-                  <Textarea
-                    value={additionalNotes}
-                    onChange={(e) => setAdditionalNotes(e.target.value)}
-                    placeholder="Ketik penjelasan tambahan mengenai aktivitas khusus, kondisi lapangan, atau langkah pekerjaan..."
-                    rows={3}
-                    className="bg-slate-50/70 border-slate-200 text-xs leading-relaxed"
-                  />
-                </div>
 
 
                 {/* Field 19: Attachment Documents */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                  <Label className="text-xs font-semibold text-slate-700">Lampiran dokumen pendukung</Label>
-                  <div className="border border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-pointer">
-                    <div className="flex flex-col items-center gap-1 text-xs text-slate-500 font-medium">
-                      <UploadCloud className="size-6 text-slate-400" />
-                      <span>Pilih dokumen pendukung</span>
-                      <span className="text-[10px] font-normal text-slate-400">PDF, JPG, PNG hingga 10MB</span>
-                    </div>
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">Lampiran dokumen pendukung</Label>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                      className="hidden"
+                    />
+                    {attachments.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-7 text-[11px] gap-1 px-2 text-slate-600 hover:text-blue-600 hover:border-blue-200"
+                      >
+                        <UploadCloud className="size-3.5" />
+                        Tambah File
+                      </Button>
+                    )}
                   </div>
+
+                  {attachments.length > 0 ? (
+                    <div className="space-y-2">
+                      {attachments.map((att, idx) => {
+                        const parsed = parseAttachment(att)
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/80 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="size-4 text-blue-600 shrink-0" />
+                              {parsed.url ? (
+                                <a
+                                  href={parsed.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={parsed.name}
+                                  className="font-medium text-blue-700 hover:underline truncate"
+                                >
+                                  {parsed.name}
+                                </a>
+                              ) : (
+                                <span className="font-medium text-slate-800 truncate">{parsed.name}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {parsed.url && (
+                                <a
+                                  href={parsed.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={parsed.name}
+                                  className="p-1 text-slate-500 hover:text-blue-600 transition-colors"
+                                  title="Lihat / Unduh Dokumen"
+                                >
+                                  <Eye className="size-4" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
+                                className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                title="Hapus Dokumen"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <div className="flex flex-col items-center gap-1 text-xs text-slate-500 font-medium">
+                        <UploadCloud className="size-6 text-slate-400" />
+                        <span>Pilih dokumen pendukung</span>
+                        <span className="text-[10px] font-normal text-slate-400">PDF, JPG, PNG hingga 10MB</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1165,24 +1363,25 @@ export function PtwApprovalForm({
               </CardHeader>
               <CardContent className="space-y-2.5 pt-4">
                 {approvalHistoryForDisplay.map((step, idx) => {
-                  const roleLabels: Record<string, string> = {
-                    applicant: 'Pelaksana Kerja',
-                    pelaksana: 'Pelaksana Kerja',
-                    pelaksana_kerja: 'Pelaksana Kerja',
-                    safety_officer: 'Pemberi Kerja',
-                    pemberi_kerja: 'Pemberi Kerja',
-                    field_pic: 'Safety Dept',
-                    safety_dept: 'Safety Dept',
-                    authorized: 'Safety Dept',
-                  }
-                  const displayName =
-                    (step.stepOrder === 1 || step.approverRole === 'applicant' || step.approverRole === 'pelaksana' || step.approverRole === 'pelaksana_kerja')
-                      ? (selectedApplicant || step.approverName || 'Pelaksana Kerja')
-                      : (step.stepOrder === 2 || step.approverRole === 'safety_officer' || step.approverRole === 'pemberi_kerja')
-                      ? (selectedFieldPic || step.approverName || 'Pemberi Kerja')
-                      : (selectedAuthorized || step.approverName || 'Safety Dept')
+                  const isPemberi = step.stepOrder === 1 || step.approverRole === 'safety_officer' || step.approverRole === 'pemberi_kerja'
+                  const isSafety = step.approverRole === 'field_pic' || step.approverRole === 'safety_dept' || step.approverRole === 'authorized' || (!isPemberi && idx === approvalHistoryForDisplay.length - 1)
+                  const isPelaksana = !isPemberi && !isSafety
 
-                  const displayRole = roleLabels[step.approverRole] || step.stepLabel || 'Approver'
+                  let displayName = step.approverName
+                  if (isPemberi && selectedFieldPic) {
+                    displayName = selectedFieldPic.includes(' — ') ? selectedFieldPic.split(' — ')[0].trim() : selectedFieldPic.trim()
+                  } else if (isSafety && selectedAuthorized) {
+                    displayName = selectedAuthorized.includes(' — ') ? selectedAuthorized.split(' — ')[0].trim() : selectedAuthorized.trim()
+                  }
+
+                  let displayRole = step.stepLabel
+                  if (isPemberi) {
+                    displayRole = 'Pemberi Kerja'
+                  } else if (isSafety) {
+                    displayRole = 'Safety Dept'
+                  } else if (!displayRole || displayRole === 'Pelaksana Kerja') {
+                    displayRole = pelaksanaSteps.length > 1 ? `Pelaksana Kerja ${idx}` : 'Pelaksana Kerja'
+                  }
 
                   return (
                     <div
@@ -1192,7 +1391,7 @@ export function PtwApprovalForm({
                       )}
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900">{displayName}</p>
+                        <p className="text-sm font-semibold text-slate-900">{displayName || '—'}</p>
                         <p className="text-xs text-slate-400">{displayRole}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1472,13 +1671,13 @@ export function PtwApprovalForm({
                 </div>
               </div>
 
-              {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+              {/* ── DESKRIPSI PEKERJAAN ── */}
               <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
                 <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-                  PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                  DESKRIPSI PEKERJAAN :
                 </span>
-                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
-                  {additionalNotes || controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+                  {cleanPtwDescription(description) || description || additionalNotes || controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
                 </div>
               </div>
 
@@ -1527,16 +1726,30 @@ export function PtwApprovalForm({
                 </div>
 
                 {/* 4. QR Code */}
-                <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                      origin ? `${origin}/review/ptw/${data.permitNumber}` : `https://hero.chitraparatama.com/review/ptw/${data.permitNumber}`
-                    )}`}
-                    alt="QR Code Lampiran PTW"
-                    className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-                  />
-                  <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-                </div>
+                {(() => {
+                  const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+                    ? window.location.origin
+                    : origin || 'https://hero.chitraparatama.com'
+                  const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data.permitNumber)}`
+                  return (
+                    <a
+                      href={qrTargetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+                      title="Klik / Scan untuk membuka lampiran PTW"
+                    >
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                        alt="QR Code Lampiran PTW"
+                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                      />
+                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                        Klik / Scan QR
+                      </span>
+                    </a>
+                  )
+                })()}
               </div>
 
               {/* ── MASA BERLAKU IKB ── */}
@@ -1598,21 +1811,34 @@ export function PtwApprovalForm({
                 {/* 2. PELAKSANA PEKERJAAN (MULTI) */}
                 <div className="p-1.5 text-center flex flex-col justify-between">
                   <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                  <div className="h-14 flex flex-col items-center justify-center my-1">
-                    {step2Sig || step2?.signatureDataUrl ? (
-                      <img src={(step2Sig || step2?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-10 object-contain" />
-                    ) : null}
-                    {step2?.status === 'rejected' ? (
-                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-                    ) : step2?.status === 'reverted' ? (
-                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                    ) : step2?.status === 'approved' && !step2Sig && !step2?.signatureDataUrl ? (
-                      <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
-                    ) : !step2Sig && !step2?.signatureDataUrl ? (
+                  <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+                    {pelaksanaSteps.length > 0 ? (
+                      pelaksanaSteps.map((pStep, pIdx) => {
+                        const pSig = (signaturesByStepId[pStep.id]) || pStep.signatureDataUrl || (activeStepId === pStep.id && previewSig ? previewSig : null)
+                        return (
+                          <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
+                            {pStep.status === 'rejected' ? (
+                              <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                            ) : pStep.status === 'reverted' ? (
+                              <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                            ) : pSig ? (
+                              <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-10 object-contain" />
+                            ) : pStep.status === 'approved' ? (
+                              <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                            ) : (
+                              <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
+                            )}
+                            <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
+                          </div>
+                        )
+                      })
+                    ) : (
                       <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
-                    ) : null}
+                    )}
                   </div>
-                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedApplicant || step2?.approverName || 'NAMA & TANDA TANGAN'}</div>
+                  <div className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate" title={pelaksanaSteps.map((p) => p.approverName).join(', ') || selectedApplicant}>
+                    {pelaksanaSteps.map((p) => p.approverName).join(', ') || selectedApplicant || 'NAMA & TANDA TANGAN'}
+                  </div>
                 </div>
 
                 {/* 3. VERIFIKASI (SAFETY DEPT) */}
@@ -1728,6 +1954,85 @@ export function PtwApprovalForm({
               }}
             >
               {confirmDialog?.actionType === 'reject' ? 'Ya, Tolak' : 'Ya, Kembalikan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog Tambah Pelaksana Kerja Vendor Luar ── */}
+      <Dialog open={vendorModalOpen} onOpenChange={setVendorModalOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Building2 className="size-4 text-amber-600" />
+              Tambah Pelaksana Kerja (Vendor Luar)
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pekerja vendor luar akan menerima link approval khusus via email untuk review & tanda tangan digital PTW.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Lengkap Pelaksana <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                placeholder="Contoh: Joko Santoso"
+                value={vendorForm.name}
+                onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Email / Gmail <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                type="email"
+                placeholder="Contoh: joko.santoso@gmail.com"
+                value={vendorForm.email}
+                onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
+                className="h-9 text-xs"
+              />
+              <p className="text-[10.5px] text-slate-400">
+                Link review publik PTW akan dikirimkan otomatis ke alamat email ini.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">
+                Nama Perusahaan / Vendor <span className="text-slate-400 font-normal">(Opsional)</span>
+              </Label>
+              <Input
+                placeholder="Contoh: PT Surya Teknik Mandiri"
+                value={vendorForm.company}
+                onChange={(e) => setVendorForm({ ...vendorForm, company: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setVendorModalOpen(false)
+                setVendorForm({ name: '', email: '', company: '' })
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddVendorApplicant}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Tambahkan Pelaksana
             </Button>
           </DialogFooter>
         </DialogContent>

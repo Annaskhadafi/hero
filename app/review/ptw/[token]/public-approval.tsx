@@ -8,7 +8,7 @@ import {
   revertPtwStepByToken,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -524,6 +524,66 @@ export function PtwPublicApproval({
               </div>
             </div>
 
+            {/* Attachment Documents Card */}
+            {data?.attachments && Array.isArray(data.attachments) && data.attachments.length > 0 && (
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-teal-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    Lampiran Dokumen Pendukung ({data.attachments.length})
+                  </h3>
+                </div>
+                <div className="space-y-2">
+                  {data.attachments.map((att: any, idx: number) => {
+                    let name = 'Dokumen Lampiran'
+                    let url = ''
+                    if (typeof att === 'object' && att !== null) {
+                      name = att.name || name
+                      url = att.url || ''
+                    } else if (typeof att === 'string') {
+                      if (att.includes('||')) {
+                        const [n, ...rest] = att.split('||')
+                        name = n
+                        url = rest.join('||')
+                      } else {
+                        try {
+                          const p = JSON.parse(att)
+                          name = p.name || name
+                          url = p.url || ''
+                        } catch {
+                          name = att.split('/').pop() || att
+                          url = att.startsWith('http') || att.startsWith('data:') ? att : ''
+                        }
+                      }
+                    }
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="size-4 text-teal-600 shrink-0" />
+                          <span className="font-semibold text-slate-800 truncate">{name}</span>
+                        </div>
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={name}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition-colors shrink-0"
+                          >
+                            <Download className="size-3.5" />
+                            Unduh / Buka
+                          </a>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Approval Action Box */}
             {!done && !rejected && !reverted && (
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-4">
@@ -722,7 +782,7 @@ export function PtwPublicApproval({
               <PtwChecklistTable
                 permitType={data?.permitType}
                 subTypes={data?.subTypes}
-                checkedEquipment={selectedApd}
+                checkedEquipment={extractCheckedEquipment(data?.controlSteps, (data as any)?.checkedEquipment, data?.permitType)}
               />
 
               {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
@@ -741,13 +801,13 @@ export function PtwPublicApproval({
                 </div>
               </div>
 
-              {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+              {/* ── DESKRIPSI PEKERJAAN ── */}
               <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
                 <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-                  PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                  DESKRIPSI PEKERJAAN :
                 </span>
-                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
-                  {(data as any)?.additionalNotes || data?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+                <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+                  {cleanPtwDescription(data?.description) || data?.description || (data as any)?.additionalNotes || data?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
                 </div>
               </div>
 
@@ -811,16 +871,30 @@ export function PtwPublicApproval({
                 })()}
 
                 {/* 4. QR Code */}
-                <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                      `https://hero.chitraparatama.com/review/ptw/${token}`
-                    )}`}
-                    alt="QR Code Lampiran PTW"
-                    className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-                  />
-                  <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-                </div>
+                {(() => {
+                  const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+                    ? window.location.origin
+                    : 'https://hero.chitraparatama.com'
+                  const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data?.permitNumber || token)}`
+                  return (
+                    <a
+                      href={qrTargetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+                      title="Klik / Scan untuk membuka lampiran PTW"
+                    >
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                        alt="QR Code Lampiran PTW"
+                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                      />
+                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                        Klik / Scan QR
+                      </span>
+                    </a>
+                  )
+                })()}
               </div>
 
               {/* ── MASA BERLAKU IKB ── */}

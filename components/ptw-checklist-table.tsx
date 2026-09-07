@@ -4,6 +4,7 @@ import {
   EQUIPMENT_CHECKLIST_PER_TYPE,
   getPermitSubTypes,
   getActivePermitTypeKeys,
+  normalizePermitType,
   isItemChecked,
 } from '@/lib/ptw-helpers'
 
@@ -39,7 +40,7 @@ export const PTW_COLUMNS: PtwColumnDef[] = [
   },
   {
     key: 'COLD',
-    permitTypeKey: 'Cold Work Permit',
+    permitTypeKey: 'Cold Permit',
     title: 'COLD WORK PERMIT',
     headerBg: 'bg-[#06b6d4]',
     headerTextColor: 'text-white',
@@ -82,7 +83,11 @@ export function PtwChecklistTable({
 
     if (activePermitKeys.length > 0) {
       const filtered = PTW_COLUMNS.filter((col) =>
-        activePermitKeys.some((k) => k.toLowerCase() === col.permitTypeKey.toLowerCase())
+        activePermitKeys.some((k) => {
+          const normK = normalizePermitType(k)
+          const normCol = normalizePermitType(col.permitTypeKey)
+          return normK.toLowerCase() === normCol.toLowerCase()
+        })
       )
       return filtered.length > 0 ? filtered : PTW_COLUMNS
     }
@@ -178,10 +183,11 @@ export function PtwChecklistTable({
           {Array.from({ length: 7 }).map((_, rIdx) => (
             <tr key={`row-${rIdx}`} className="border-b border-slate-300 last:border-b-0">
               {activeCols.map((col, cIdx) => {
-                const items = EQUIPMENT_CHECKLIST_PER_TYPE[col.permitTypeKey]?.items || []
+                const normColKey = normalizePermitType(col.permitTypeKey)
+                const items = EQUIPMENT_CHECKLIST_PER_TYPE[normColKey]?.items || EQUIPMENT_CHECKLIST_PER_TYPE[col.permitTypeKey]?.items || []
                 const item = items[rIdx]
                 const isColActive = activePermitKeys.some(
-                  (k) => k.toLowerCase() === col.permitTypeKey.toLowerCase()
+                  (k) => normalizePermitType(k).toLowerCase() === normColKey.toLowerCase()
                 )
                 const isChecked = item
                   ? isCheckedEquipmentProvided

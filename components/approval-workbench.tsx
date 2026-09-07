@@ -63,7 +63,7 @@ import {
   batchRevertPtwPermitsAction,
   batchRejectPtwPermitsAction,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked, getPermitSubTypes } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
@@ -2593,9 +2593,11 @@ export function InboxTab({
 
                             {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
                             {(() => {
-                              const checkedEquipment: string[] = doc.controlSteps
-                                ? doc.controlSteps.split('\n').map((l: string) => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
-                                : (Array.isArray(doc.ppe) ? doc.ppe : [])
+                              const checkedEquipment: string[] = extractCheckedEquipment(
+                                doc.controlSteps || (currentBatchDoc as any)?.rawPtw?.controlSteps,
+                                (doc as any)?.checkedEquipment || (currentBatchDoc as any)?.rawPtw?.checkedEquipment,
+                                doc.permitType || (currentBatchDoc as any)?.rawPtw?.permitType
+                              )
 
                               return (
                                 <PtwChecklistTable
@@ -2626,13 +2628,13 @@ export function InboxTab({
                               </div>
                             </div>
 
-                            {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+                            {/* ── DESKRIPSI PEKERJAAN ── */}
                             <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
                               <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-                                PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+                                DESKRIPSI PEKERJAAN :
                               </span>
-                              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
-                                {(doc as any)?.additionalNotes || (currentBatchDoc as any)?.rawPtw?.additionalNotes || doc?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+                              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+                                {cleanPtwDescription(doc?.description || (currentBatchDoc as any)?.rawPtw?.description) || doc?.description || (doc as any)?.additionalNotes || (currentBatchDoc as any)?.rawPtw?.additionalNotes || doc?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
                               </div>
                             </div>
 
@@ -2675,16 +2677,30 @@ export function InboxTab({
                               </div>
 
                               {/* 4. QR Code */}
-                              <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
-                                <img
-                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                                    `http://localhost:3000/review/ptw/${doc.permitNumber}`
-                                  )}`}
-                                  alt="QR Code Lampiran PTW"
-                                  className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded"
-                                />
-                                <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center">Scan QR Lampiran</span>
-                              </div>
+                              {(() => {
+                                const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+                                  ? window.location.origin
+                                  : 'https://hero.chitraparatama.com'
+                                const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
+                                return (
+                                  <a
+                                    href={qrTargetUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
+                                    title="Klik / Scan untuk membuka lampiran PTW"
+                                  >
+                                    <img
+                                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                                      alt="QR Code Lampiran PTW"
+                                      className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                                    />
+                                    <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                                      Klik / Scan QR
+                                    </span>
+                                  </a>
+                                )
+                              })()}
                             </div>
 
                             {/* ── MASA BERLAKU IKB ── */}

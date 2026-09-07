@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getPermitSubTypes } from "@/lib/ptw-helpers";
+import { getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from "@/lib/ptw-helpers";
 import { PtwChecklistTable } from "@/components/ptw-checklist-table";
 
 export type PtwPrintRecord = {
@@ -175,7 +175,7 @@ export function IzinKerjaPtwPrintPage() {
           <PtwChecklistTable
             permitType={record.permitType}
             subTypes={record.subTypes as any}
-            checkedEquipment={record.ppe}
+            checkedEquipment={extractCheckedEquipment(record.controlSteps, (record as any).checkedEquipment, record.permitType)}
           />
 
           {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
@@ -194,13 +194,13 @@ export function IzinKerjaPtwPrintPage() {
             </div>
           </div>
 
-          {/* ── PENJELASAN TAMBAHAN PEKERJAAN ── */}
+          {/* ── DESKRIPSI PEKERJAAN ── */}
           <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
             <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-              PENJELASAN TAMBAHAN / DETAIL AKTIVITAS :
+              DESKRIPSI PEKERJAAN :
             </span>
-            <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap">
-              {record.additionalNotes || (record as any).controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada penjelasan tambahan —</span>}
+            <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+              {cleanPtwDescription(record.description) || record.description || record.additionalNotes || (record as any).controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
             </div>
           </div>
 
@@ -217,16 +217,30 @@ export function IzinKerjaPtwPrintPage() {
                 URL Publik: {origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
               </div>
             </div>
-            <div className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
-                  origin ? `${origin}/review/ptw/${record.id}` : `https://hero.chitraparatama.com/review/ptw/${record.id}`
-                )}`}
-                alt="QR Code Lampiran PTW"
-                className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded"
-              />
-              <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center">Scan QR Lampiran</span>
-            </div>
+            {(() => {
+              const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
+                ? window.location.origin
+                : origin || 'https://hero.chitraparatama.com'
+              const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
+              return (
+                <a
+                  href={qrTargetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors"
+                  title="Klik / Scan untuk membuka lampiran PTW"
+                >
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                    alt="QR Code Lampiran PTW"
+                    className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded hover:scale-105 transition-transform"
+                  />
+                  <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1">
+                    Klik / Scan QR
+                  </span>
+                </a>
+              )
+            })()}
           </div>
 
           {/* ── MASA BERLAKU IKB ── */}

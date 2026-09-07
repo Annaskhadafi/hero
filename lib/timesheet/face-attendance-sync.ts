@@ -206,6 +206,8 @@ export async function syncFaceAttendanceToTimesheet(
           tzInfo.code
         )
 
+        const prevNote = prevNightPunch.locationNote || ''
+
         // Upsert yesterday's completed night shift record
         await db
           .insert(timesheetAttendanceRealOverrides)
@@ -217,7 +219,7 @@ export async function syncFaceAttendanceToTimesheet(
             status: 'present',
             clockIn: prevClockIn,
             clockOut: prevClockOut,
-            note: '',
+            note: prevNote,
             source: 'attendance',
             validationFlags: [],
             workMinutes: prevWorkMinutes,
@@ -234,6 +236,7 @@ export async function syncFaceAttendanceToTimesheet(
               status: 'present',
               clockIn: prevClockIn,
               clockOut: prevClockOut,
+              note: prevNote,
               source: 'attendance',
               validationFlags: [],
               workMinutes: prevWorkMinutes,
@@ -394,6 +397,7 @@ export async function syncFaceAttendanceToTimesheet(
   }
 
   const status = 'present'
+  const syncNote = firstPunch.locationNote || ''
 
   // Upsert into timesheetAttendanceRealOverrides
   await db
@@ -406,7 +410,7 @@ export async function syncFaceAttendanceToTimesheet(
       status,
       clockIn,
       clockOut,
-      note: '',
+      note: syncNote,
       source: 'attendance',
       validationFlags,
       workMinutes,
@@ -423,6 +427,7 @@ export async function syncFaceAttendanceToTimesheet(
         status,
         clockIn,
         clockOut,
+        note: syncNote,
         source: 'attendance',
         validationFlags,
         workMinutes,
