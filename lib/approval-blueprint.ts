@@ -3305,7 +3305,7 @@ const APPROVAL_WORKFLOW_REGISTRY = [
   },
   {
     key: 'apd-summary',
-    name: 'Summary Permintaan Barang',
+    name: 'Summary Permintaan APD',
     pageTitle: 'Summary APD',
     pageUrl: '/dashboard/summary',
     templateKey: 'apd-summary',
@@ -3603,12 +3603,32 @@ export async function getWorkflowStudioConsoleData() {
           return (a.id ?? 0) - (b.id ?? 0)
         })
         .map((matrix) => {
-        const steps = matrixSteps.filter((s) => s.matrixId === matrix.id)
+        const steps = matrixSteps
+          .filter((s) => s.matrixId === matrix.id)
+          .sort((a, b) => a.stepOrder - b.stepOrder)
         const approversByRole: Record<string, number | null> = {}
-        for (const step of steps) {
-          const node = nodeRows.find((n) => n.id === step.nodeId)
-          approversByRole[normalizeStatus(step.label)] = node?.employeeId ?? null
+        const values: Record<string, string> = {}
+        if (matrix.sectionId != null) {
+          values['step-0'] = String(matrix.sectionId)
         }
+        steps.forEach((step, idx) => {
+          const node = nodeRows.find((n) => n.id === step.nodeId)
+          const empId = node?.employeeId ?? null
+          const norm = normalizeStatus(step.label)
+          approversByRole[norm] = empId
+
+          const plain = step.label.toLowerCase().replace(/[^a-z]/g, '')
+          if (plain.includes('leader')) approversByRole['leader'] = empId
+          if (plain.includes('pjo') || plain.includes('hse') || plain.includes('atasan') || plain.includes('admin') || plain.includes('headlokasi')) approversByRole['pjo'] = empId
+          if (plain.includes('sectionhead') || plain.includes('headsection') || (plain.includes('section') && !plain.includes('service'))) approversByRole['section_head'] = empId
+          if (plain.includes('departmenthead') || plain.includes('headdepartment') || plain.includes('depthead')) approversByRole['department_head'] = empId
+          if (plain.includes('quality') || plain.includes('qmo')) approversByRole['quality'] = empId
+          if (plain.includes('cpi')) approversByRole['cpi'] = empId
+
+          if (empId != null) {
+            values[`step-${idx + 1}`] = String(empId)
+          }
+        })
 
         let areaId: number | null = matrix.sectionId ?? null
         if (!areaId && matrix.description && matrix.description.includes('Area ID:')) {
@@ -3617,6 +3637,7 @@ export async function getWorkflowStudioConsoleData() {
         }
 
         return {
+          id: matrix.id,
           siteId: matrix.siteId,
           departmentId: matrix.departmentId ?? null,
           sectionId: areaId,
@@ -3626,6 +3647,15 @@ export async function getWorkflowStudioConsoleData() {
           sectionHeadId: approversByRole.section_head ?? null,
           departmentHeadId: approversByRole.department_head ?? null,
           customRoles: approversByRole,
+          values,
+          steps: steps.map((s) => {
+            const node = nodeRows.find((n) => n.id === s.nodeId)
+            return {
+              stepOrder: s.stepOrder,
+              label: s.label,
+              employeeId: node?.employeeId ?? null,
+            }
+          }),
         }
       }),
       globalSteps: (() => {

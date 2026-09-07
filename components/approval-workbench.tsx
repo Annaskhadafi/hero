@@ -630,16 +630,21 @@ export function InboxTab({
             i.title?.toLowerCase().includes('request apd') ||
             i.title?.toLowerCase().includes('request tools') ||
             i.title?.toLowerCase().includes('request material') ||
-            i.activityType === 'Summary APD'
+            i.activityType === 'Summary APD' ||
+            i.title?.toLowerCase().includes('summary')
         )
 
         const isApd = Boolean(apdItem)
-        const resolvedCategoryLabel = isApd
+        const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
+        const resolvedCategory = isSummary ? 'SUMMARY' : isApd ? 'APD' : 'GENERAL'
+        const resolvedCategoryLabel = isSummary
+          ? 'Summary APD'
+          : isApd
           ? (apdItem?.activityType || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[0] : 'Request APD'))
           : 'Form Activity'
 
         const resolvedDocNumber = isApd
-          ? (apdItem?.requestNumber || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[1] : `APD-${apdItem?.activityId}`) || `GRP-${g.id}`)
+          ? (apdItem?.requestNumber || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[1] : isSummary ? `SUM-${apdItem?.activityId}` : `APD-${apdItem?.activityId}`) || `GRP-${g.id}`)
           : `GRP-${g.id}`
 
         const resolvedTitle = isApd
@@ -648,7 +653,7 @@ export function InboxTab({
 
         list.push({
           id: `general-group-${g.id}`,
-          category: isApd ? 'APD' : 'GENERAL',
+          category: resolvedCategory,
           categoryLabel: resolvedCategoryLabel,
           documentNumber: resolvedDocNumber,
           title: resolvedTitle,
@@ -660,6 +665,9 @@ export function InboxTab({
           dueAt: g.items[0]?.dueAt || new Date(),
           submittedAt: g.items[0]?.submittedAt || new Date(),
           url: '#',
+          activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? 'Request APD' : 'Form Activity')),
+          activityId: apdItem?.activityId || g.id,
+          approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
           rawGeneralGroup: g,
         })
       }
@@ -1169,30 +1177,59 @@ export function InboxTab({
     }
   }
 
-  if (allUnifiedItems.length === 0) {
-    if (viewMode === 'mobile') {
-      return (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
-          Belum ada pengajuan yang menunggu keputusan Anda.
-        </div>
-      )
-    }
-    return (
-      <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
-        <CardHeader>
-          <CardTitle>Inbox approval</CardTitle>
-          <CardDescription>Belum ada pengajuan yang menunggu keputusan Anda.</CardDescription>
-        </CardHeader>
-      </Card>
-    )
-  }
+  const sites = useMemo(() => {
+    return Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
+  }, [allUnifiedItems])
 
-  const sites = Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
+  const [mobileCategory, setMobileCategory] = useState<string>('ALL')
+
+  const availableCategories = useMemo(() => {
+    const cats: Array<{ key: string; label: string; count: number }> = [
+      { key: 'ALL', label: 'Semua', count: allUnifiedItems.length },
+    ]
+    const map = new Map<string, { label: string; count: number }>()
+
+    for (const it of allUnifiedItems) {
+      const catKey = it.category || 'GENERAL'
+      const label =
+        catKey === 'SUMMARY'
+          ? 'Summary APD'
+          : catKey === 'APD'
+          ? 'Permintaan APD/Barang'
+          : catKey === 'DAILY_ACTIVITY' || catKey === 'GENERAL'
+          ? 'Daily Activity'
+          : catKey === 'OVERTIME'
+          ? 'Overtime'
+          : catKey === 'PTW'
+          ? 'PTW'
+          : catKey === 'RFR'
+          ? 'RFR'
+          : catKey === 'CONTRACT_REVIEW'
+          ? 'Contract Review'
+          : catKey === 'SOP_WIN'
+          ? 'SOP/WIN'
+          : it.categoryLabel || catKey
+
+      if (!map.has(catKey)) {
+        map.set(catKey, { label, count: 0 })
+      }
+      map.get(catKey)!.count++
+    }
+
+    map.forEach((val, key) => {
+      cats.push({ key, label: val.label, count: val.count })
+    })
+    return cats
+  }, [allUnifiedItems])
 
   const filteredMobileItems = useMemo(() => {
-    if (!mobileSearch.trim()) return allUnifiedItems
+    let list = allUnifiedItems
+    if (mobileCategory !== 'ALL') {
+      list = list.filter((item) => item.category === mobileCategory)
+    }
+    if (!mobileSearch.trim()) return list
     const q = mobileSearch.toLowerCase()
-    return allUnifiedItems.filter((item) => {
+    return list.filter((item) => {
       return (
         item.employeeName?.toLowerCase().includes(q) ||
         item.documentNumber?.toLowerCase().includes(q) ||
@@ -1203,7 +1240,7 @@ export function InboxTab({
         item.stepLabel?.toLowerCase().includes(q)
       )
     })
-  }, [allUnifiedItems, mobileSearch])
+  }, [allUnifiedItems, mobileCategory, mobileSearch])
 
   const isAllMobileSelected =
     filteredMobileItems.length > 0 &&
@@ -1217,8 +1254,54 @@ export function InboxTab({
     }
   }
 
-  const content = viewMode === 'mobile' ? (
+  const emptyContent =
+    viewMode === 'mobile' ? (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+        Belum ada pengajuan yang menunggu keputusan Anda.
+      </div>
+    ) : (
+      <Card className="bg-surface-container-lowest rounded-[1.6rem] shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+        <CardHeader>
+          <CardTitle>Inbox approval</CardTitle>
+          <CardDescription>Belum ada pengajuan yang menunggu keputusan Anda.</CardDescription>
+        </CardHeader>
+      </Card>
+    )
+
+  const content = allUnifiedItems.length === 0 ? emptyContent : viewMode === 'mobile' ? (
     <div className="space-y-3">
+      {/* Category Filter Pills (Horizontal Scroll) */}
+      {availableCategories.length > 2 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
+          {availableCategories.map((cat) => {
+            const isActive = mobileCategory === cat.key
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => setMobileCategory(cat.key)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer',
+                  isActive
+                    ? 'bg-[#003461] text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                )}
+              >
+                <span>{cat.label}</span>
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.2 text-[10px] font-black',
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  )}
+                >
+                  {cat.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Search Input */}
       <div className="relative">
         <Search className="size-4 text-slate-400 absolute left-3.5 top-3.5" />
@@ -1305,7 +1388,26 @@ export function InboxTab({
                       className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer shrink-0"
                     />
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200/60 shrink-0">
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shrink-0 border',
+                          item.category === 'SUMMARY' || item.activityType === 'Summary APD'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                            : item.category === 'APD'
+                            ? 'bg-teal-50 text-teal-800 border-teal-200/80'
+                            : item.category === 'OVERTIME'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200/80'
+                            : item.category === 'PTW'
+                            ? 'bg-rose-50 text-rose-800 border-rose-200/80'
+                            : item.category === 'RFR'
+                            ? 'bg-purple-50 text-purple-800 border-purple-200/80'
+                            : item.category === 'CONTRACT_REVIEW'
+                            ? 'bg-indigo-50 text-indigo-800 border-indigo-200/80'
+                            : item.category === 'SOP_WIN'
+                            ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80'
+                            : 'bg-blue-50 text-blue-700 border-blue-200/60'
+                        )}
+                      >
                         <FileText className="size-3" />
                         {item.categoryLabel}
                       </span>
@@ -1347,7 +1449,7 @@ export function InboxTab({
                 {/* Action Button */}
                 {item.category === 'RFR' && item.rawRfr ? (
                   <RfrApprovalDialog item={item.rawRfr} />
-                ) : ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) || (item as any).activityType === 'Summary APD' ? (
+                ) : item.category === 'SUMMARY' || item.category === 'APD' || item.activityType === 'Summary APD' || ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) ? (
                   <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                 ) : isReverted ? (
                   <Button
@@ -1551,7 +1653,7 @@ export function InboxTab({
                     <TableCell className="align-top text-right">
                       {item.category === 'RFR' && item.rawRfr ? (
                         <RfrApprovalDialog item={item.rawRfr} />
-                      ) : ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) || (item as any).activityType === 'Summary APD' ? (
+                      ) : item.category === 'SUMMARY' || item.category === 'APD' || item.activityType === 'Summary APD' || ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) ? (
                         <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).activityType === 'Work Order' ||
                         (item as any).repairFormWo ||
@@ -1607,13 +1709,13 @@ export function InboxTab({
         >
           {(() => {
             const isLandscapeDoc =
-              currentBatchDoc?.category === 'PTW' ||
-              currentBatchDoc?.category === 'FORM_WO' ||
+              (currentBatchDoc?.category as any) === 'PTW' ||
+              (currentBatchDoc?.category as any) === 'FORM_WO' ||
               Boolean((currentBatchDoc as any)?.rawFormWo) ||
               Boolean(currentBatchDoc?.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO'))
 
             const isFiveRDoc =
-              currentBatchDoc?.category === 'QUALITY_5R' ||
+              (currentBatchDoc?.category as any) === 'QUALITY_5R' ||
               Boolean((currentBatchDoc as any)?.rawFiveR) ||
               Boolean((currentBatchDoc as any)?.fiveRReport) ||
               Boolean(
@@ -1627,7 +1729,7 @@ export function InboxTab({
               )
 
             const isApdDoc =
-              currentBatchDoc?.category === 'APD' ||
+              (currentBatchDoc?.category as any) === 'APD' ||
               Boolean(
                 currentBatchDoc?.rawGeneralGroup?.items?.some(
                   (i: any) =>
@@ -3087,7 +3189,7 @@ export function InboxTab({
                       )}
 
                       {/* Form Permintaan Work Order (Landscape Document) */}
-                      {(currentBatchDoc.category === 'FORM_WO' ||
+                      {((currentBatchDoc.category as any) === 'FORM_WO' ||
                         Boolean((currentBatchDoc as any).rawFormWo) ||
                         Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo))) && (() => {
                         const formWoRaw =
@@ -3108,7 +3210,7 @@ export function InboxTab({
                       })()}
 
                       {/* Laporan Audit 5R Document (Standard A4 / Official CPI Document) */}
-                      {(currentBatchDoc.category === 'QUALITY_5R' ||
+                      {((currentBatchDoc.category as any) === 'QUALITY_5R' ||
                         Boolean((currentBatchDoc as any).rawFiveR) ||
                         Boolean((currentBatchDoc as any).fiveRReport) ||
                         Boolean(
@@ -3627,9 +3729,9 @@ export function HistoryTab({
 
             <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
-                <span className="font-bold text-slate-700">{item.currentStage || 'Selesai'}</span>
-              </div>
+                 <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
+                 <span className="font-bold text-slate-700">{(item as any).currentStage || 'Selesai'}</span>
+               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Diajukan:</span>
                 <span className="font-semibold text-slate-600">{formatDate(item.submittedAt)}</span>

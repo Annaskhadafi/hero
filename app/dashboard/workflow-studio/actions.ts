@@ -14,6 +14,7 @@ import {
   formSubmissions,
   formTemplates,
   inboxItems,
+  masterSections,
   notificationDeliveries,
   notificationEvents,
   orgChartNodes,
@@ -363,10 +364,22 @@ export async function saveWorkflowStudioApprovalAction(
 
           if (area) {
             matrixName = `Laporan Audit 5R - ${area.name}`
-            matrixDesc = `Matrix approval otomatis untuk Master Area ${area.name} (Area ID: ${areaOrSectionId})`
+            if (!matrixDesc) {
+              matrixDesc = `Matrix approval otomatis untuk Master Area ${area.name} (Area ID: ${areaOrSectionId})`
+            }
             if (!entry.siteId && area.siteId) {
               entry.siteId = area.siteId
             }
+          }
+        } else if (payload.transactionType === 'apd-summary' && areaOrSectionId) {
+          const [sec] = await tx
+            .select({ name: masterSections.name })
+            .from(masterSections)
+            .where(eq(masterSections.id, areaOrSectionId))
+            .limit(1)
+
+          if (sec) {
+            matrixName = `Summary Permintaan APD - ${sec.name}`
           }
         }
 

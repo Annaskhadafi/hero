@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   HelpCircle,
+  ChevronDown,
 } from 'lucide-react'
 
 import {
@@ -43,6 +44,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -207,82 +213,14 @@ function SearchableSelect({
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const popupHeightRef = useRef(240)
-  const [popupPos, setPopupPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      const target = e.target as Node
-      if (
-        ref.current &&
-        !ref.current.contains(target) &&
-        popupRef.current &&
-        !popupRef.current.contains(target)
-      ) {
-        setOpen(false)
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    document.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [])
-
-  // Focus search input reliably when popup opens and position is calculated
-  useEffect(() => {
-    if (open && popupPos) {
+    if (open) {
       const timer = setTimeout(() => {
         inputRef.current?.focus()
-      }, 30)
+      }, 50)
       return () => clearTimeout(timer)
-    }
-  }, [open, popupPos])
-
-  // Catat tinggi asli popup setelah dirender untuk keputusan flip.
-  useLayoutEffect(() => {
-    if (open && popupRef.current) popupHeightRef.current = popupRef.current.offsetHeight
-  }, [open, popupPos])
-
-  // Posisi popup dihitung dari tombol, dirender lewat portal ke body supaya
-  // tidak terpotong oleh container tabel yang overflow-x-auto.
-  useEffect(() => {
-    if (!open || typeof document === 'undefined') return
-    const button = ref.current?.querySelector('button')
-    if (!button) return
-    const update = () => {
-      const rect = button.getBoundingClientRect()
-      const margin = 8
-      const vw = window.innerWidth
-      const vh = window.innerHeight
-      const width = Math.max(240, rect.width)
-      const left = Math.max(margin, Math.min(rect.left, vw - width - margin))
-      const spaceBelow = vh - rect.bottom - margin
-      const spaceAbove = rect.top - margin
-      const estHeight = Math.min(popupHeightRef.current || 240, vh - margin * 2)
-      const openUp = estHeight > spaceBelow && spaceAbove > spaceBelow
-      const top = openUp ? rect.top - estHeight - 4 : rect.bottom + 4
-      const maxHeight = Math.max(120, (openUp ? spaceAbove : spaceBelow) - 4)
-      setPopupPos({
-        top: Math.max(margin, top),
-        left,
-        width,
-        maxHeight: Math.min(estHeight, maxHeight),
-      })
-    }
-    update()
-    document.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      document.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
     }
   }, [open])
 
@@ -298,88 +236,91 @@ function SearchableSelect({
       })
     : options
 
-  const popup = open && popupPos ? (
-    <div
-      ref={popupRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'fixed',
-        top: popupPos.top,
-        left: popupPos.left,
-        width: popupPos.width,
-        maxHeight: popupPos.maxHeight,
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) setQuery('')
       }}
-      className="pointer-events-auto z-[9999] flex flex-col rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden"
     >
-      <div className="relative border-b border-slate-200 bg-slate-50/70 p-1.5 flex items-center">
-        <Search className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder={searchPlaceholder ?? 'Cari karyawan...'}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.stopPropagation()}
-          className="h-7 w-full rounded border border-slate-200 bg-white pl-7 pr-7 text-xs text-slate-800 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
-        />
-        {query && (
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="border-border/70 bg-white hover:bg-slate-50 h-8 w-full rounded-md border px-2 text-left text-xs truncate transition-colors cursor-pointer flex items-center justify-between gap-1"
+        >
+          <span className="truncate flex-1">
+            {selected ? `${selected.name}${selected.jobTitle ? ` - ${selected.jobTitle}` : ''}` : (placeholder ?? 'Kosong')}
+          </span>
+          <ChevronDown className="size-3 text-slate-400 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        className="w-[280px] p-0 z-[9999] bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden"
+      >
+        <div className="relative border-b border-slate-200 bg-slate-50/70 p-1.5 flex items-center">
+          <Search className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={searchPlaceholder ?? 'Cari karyawan...'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="h-7 w-full rounded border border-slate-200 bg-white pl-7 pr-7 text-xs text-slate-800 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('')
+                inputRef.current?.focus()
+              }}
+              className="absolute right-2.5 text-slate-400 hover:text-slate-700"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="max-h-[240px] overflow-y-auto p-1 divide-y divide-slate-100">
           <button
             type="button"
             onClick={() => {
+              onChange('')
+              setOpen(false)
               setQuery('')
-              inputRef.current?.focus()
             }}
-            className="absolute right-2.5 text-slate-400 hover:text-slate-700"
+            className="text-slate-500 hover:bg-slate-100 rounded h-7 w-full px-2 text-left text-xs font-medium italic transition-colors cursor-pointer"
           >
-            <X className="size-3.5" />
+            - Kosongkan Pilihan -
           </button>
-        )}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-1 divide-y divide-slate-100" style={{ maxHeight: '240px' }}>
-        <button
-          type="button"
-          onClick={() => { onChange(''); setOpen(false); setQuery('') }}
-          className="text-slate-500 hover:bg-slate-100 rounded h-7 w-full px-2 text-left text-xs font-medium italic"
-        >
-          - Kosongkan Pilihan -
-        </button>
-        {filtered.length === 0 ? (
-          <div className="py-3 px-2 text-center text-xs text-slate-400">
-            Tidak ada data yang sesuai &quot;{query}&quot;
-          </div>
-        ) : (
-          filtered.map((emp) => (
-            <button
-              key={emp.id}
-              type="button"
-              onClick={() => { onChange(emp.id.toString()); setOpen(false); setQuery('') }}
-              className={`hover:bg-slate-100 rounded h-7 w-full px-2 text-left text-xs truncate transition-colors ${
-                value === emp.id.toString() ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-800'
-              }`}
-              title={`${emp.name}${emp.jobTitle ? ` - ${emp.jobTitle}` : ''}`}
-            >
-              {emp.name}{emp.jobTitle ? ` - ${emp.jobTitle}` : ''}
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  ) : null
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => {
-          if (!open) setQuery('')
-          setOpen(!open)
-        }}
-        className="border-border/70 bg-white hover:bg-slate-50 h-8 w-full rounded-md border px-2 text-left text-xs truncate transition-colors"
-      >
-        {selected ? `${selected.name}${selected.jobTitle ? ` - ${selected.jobTitle}` : ''}` : (placeholder ?? 'Kosong')}
-      </button>
-      {typeof document !== 'undefined' ? createPortal(popup, document.body) : null}
-    </div>
+          {filtered.length === 0 ? (
+            <div className="py-3 px-2 text-center text-xs text-slate-400">
+              Tidak ada data yang sesuai &quot;{query}&quot;
+            </div>
+          ) : (
+            filtered.map((emp) => (
+              <button
+                key={emp.id}
+                type="button"
+                onClick={() => {
+                  onChange(emp.id.toString())
+                  setOpen(false)
+                  setQuery('')
+                }}
+                className={`hover:bg-slate-100 rounded h-7 w-full px-2 text-left text-xs truncate transition-colors cursor-pointer ${
+                  value === emp.id.toString() ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-800'
+                }`}
+                title={`${emp.name}${emp.jobTitle ? ` - ${emp.jobTitle}` : ''}`}
+              >
+                {emp.name}{emp.jobTitle ? ` - ${emp.jobTitle}` : ''}
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 const SITE_APPROVER_MAP: Record<string, string> = {
@@ -456,9 +397,19 @@ const SECTION_HEAD_BY_SEC_ID: Record<string, string> = {
   '28': '944',  // Quality Management -> Bardinia Susi Ekawaty
   '29': '996',  // Repair / Retread Operation -> Ary Maulana
   '33': '955',  // Service Operation MVC -> Apriyanto
-  '34': '1040', // Service Operation Others
-  '37': '96',   // Technical Operation -> Febrial Hariri
+  '34': '15',   // Service Operation Others -> Junaidi
+  '37': '1094', // Technical Operation -> Muhammad Abian Husain
   '39': '979',  // Warehouse & Distribution -> Ali Rahman
+}
+
+const DEPARTMENT_HEAD_BY_DEPT_ID: Record<string, string> = {
+  '2': '972',  // Central Services -> Romy Hidayat (Central Services Manager)
+  '3': '944',  // Continuous Process Improvement -> Bardinia Susi Ekawaty
+  '4': '960',  // Finance Business Partner -> Febrian Dani
+  '5': '966',  // Human Capital -> Rendra Rachman
+  '6': '1009', // Legal & ERM -> Paulus Stupa Gumilang
+  '9': '943',  // Supply Chain -> Bekti Widyasmoro
+  '10': '941', // Support Facilities Management -> Susanto
 }
 
 function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
@@ -603,6 +554,14 @@ function WorkflowBuilderDialog({
       departmentName: s.departmentName,
     }))
   }, [data.builderOptions.sections, data.builderOptions.csSections])
+  const csSectionsList = useMemo(() => {
+    return allSectionsList.filter(
+      (s) =>
+        (s.departmentId === 2 || (s.departmentName || '').toLowerCase().includes('central')) &&
+        !s.name.toLowerCase().includes('accessories') &&
+        s.id !== 27
+    )
+  }, [allSectionsList])
   const csSections = allSectionsList
   const fiveRAreas: Array<{ id: number; name: string; siteId: number | null; picEmployeeId: number | null; picName: string | null }> = (data.builderOptions as any).fiveRAreas ?? []
 
@@ -696,8 +655,21 @@ function WorkflowBuilderDialog({
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('5r') ||
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('five-r')
   const isFormWoMenu = (selectedMenuKey || initial?.id || '').toLowerCase().includes('wo')
+  const isSummaryMenu = (key?: string) => {
+    const k = (key || selectedMenuKey || initial?.id || initial?.templateKey || '').toLowerCase()
+    return k.includes('summary')
+  }
 
   const WORKFLOW_PRESETS = [
+    {
+      key: "summary-apd-2-step",
+      name: "Summary APD (Section Head & Department Head)",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Section Head", type: "employee" as const },
+        { id: "step-2", label: "Department Head", type: "employee" as const },
+      ]
+    },
     {
       key: "material-tools-section-head",
       name: "Material & Tools (3 Section ke Section Head)",
@@ -755,6 +727,27 @@ function WorkflowBuilderDialog({
       type: s.type
     }))
     setApprovalSteps(newSteps)
+
+    if (presetKey === 'summary-apd-2-step') {
+      const autoRows: any[] = []
+      let rIndex = 0
+      for (const sec of csSectionsList) {
+        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
+        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+        autoRows.push({
+          key: `site-sum-${rIndex++}-${sec.id}`,
+          siteId: '0',
+          departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+          values: {
+            'step-0': sec.id.toString(),
+            'step-1': secHeadId,
+            'step-2': deptHeadId,
+          },
+        })
+      }
+      setSiteData(autoRows)
+      return
+    }
 
     if (presetKey === 'material-tools-section-head') {
       const autoRows: any[] = []
@@ -817,7 +810,7 @@ function WorkflowBuilderDialog({
     })
   }
 
-  function resolveFiveRAreaApprover(area: MasterAreaOption) {
+  function resolveFiveRAreaApprover(area: { id?: number; name?: string; siteId?: number | null; picEmployeeId?: number | null }) {
     const areaSiteId = area.siteId ? area.siteId.toString() : '126'
     const siteHeadId = allSites.find((s) => s.id.toString() === areaSiteId)?.headEmployeeId?.toString()
     return area.picEmployeeId?.toString() ?? siteHeadId ?? SITE_APPROVER_MAP[areaSiteId] ?? '955'
@@ -856,6 +849,12 @@ function WorkflowBuilderDialog({
     { id: 'step-1', label: 'Section Head', type: 'employee' },
   ]
 
+  const summaryApdDefaults: ApprovalStep[] = [
+    { id: 'step-0', label: 'Section', type: 'section' },
+    { id: 'step-1', label: 'Section Head', type: 'employee' },
+    { id: 'step-2', label: 'Department Head', type: 'employee' },
+  ]
+
   const apdDefaults: ApprovalStep[] = [
     { id: 'step-1', label: 'Service MVC', type: 'employee' },
     { id: 'step-2', label: 'Service Others', type: 'employee' },
@@ -885,7 +884,9 @@ function WorkflowBuilderDialog({
     const isFormWo = menuKeyLower.includes('wo')
     const isRfr = menuKeyLower.includes('rfr')
     const isFiveR = menuKeyLower.includes('5r') || menuKeyLower.includes('five-r')
-    const isApd = menuKeyLower === 'apd-request-apd' || menuKeyLower === 'apd-request'
+    const isSummary = menuKeyLower.includes('summary')
+    const isMaterialTools = isMaterialOrToolsMenu()
+    const isApd = (menuKeyLower === 'apd-request-apd' || menuKeyLower === 'apd-request' || menuKeyLower.includes('apd')) && !isSummary && !isMaterialTools
 
     const isFormWoService = menuKeyLower.includes('service') && isFormWo
 
@@ -899,15 +900,13 @@ function WorkflowBuilderDialog({
         ? formWoDefaults
         : isFiveR
           ? fiveRDefaults
-          : isMaterialOrToolsMenu()
+          : isMaterialTools
             ? materialToolsDefaults
-            : isApd
-              ? apdDefaults
-              : generalDefaults
-
-    if (isMaterialOrToolsMenu()) {
-      return materialToolsDefaults
-    }
+            : isSummary
+              ? summaryApdDefaults
+              : isApd
+                ? apdDefaults
+                : generalDefaults
 
     if (!initial?.globalSteps || initial.globalSteps.length === 0) {
       return defaults
@@ -934,8 +933,7 @@ function WorkflowBuilderDialog({
       }))
 
     const is3ColWorkflow =
-      isApd ||
-      (selectedMenuKey || initial?.id || '').toLowerCase().includes('apd') ||
+      (isApd || (!isSummary && !isMaterialTools && (selectedMenuKey || initial?.id || '').toLowerCase().includes('apd'))) &&
       existing.some((s) => {
         const l = s.label.toLowerCase()
         return l.includes('mvc') || l.includes('other') || l.includes('te')
@@ -1120,18 +1118,86 @@ function WorkflowBuilderDialog({
       return autoRows
     }
 
+    if (isSummaryMenu()) {
+      const savedApprovals = initial?.siteApprovals ?? []
+      const autoRows: SiteData[] = []
+      let rIndex = 0
+
+      // If existing matrix approvals exist, group/deduplicate by sectionId (Central Services only)
+      if (savedApprovals.length > 0) {
+        const seenSectionIds = new Set<string>()
+        for (const sa of savedApprovals) {
+          const secId = sa.sectionId != null ? String(sa.sectionId) : ((sa as any).values?.['step-0'] ?? '')
+          if (!secId || seenSectionIds.has(secId)) continue
+          const sec = csSectionsList.find((s) => s.id.toString() === secId)
+          if (!sec) continue // only include Central Services sections
+          seenSectionIds.add(secId)
+
+          const defaultSecHead = (sec.headEmployeeId ? String(sec.headEmployeeId) : '') || SECTION_HEAD_BY_SEC_ID[secId] || ''
+          const defaultDeptHead = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+
+          const step1Val =
+            sa.sectionHeadId != null
+              ? String(sa.sectionHeadId)
+              : (sa as any).values?.['step-1']
+                ? String((sa as any).values['step-1'])
+                : (sa as any).steps?.[0]?.employeeId
+                  ? String((sa as any).steps[0].employeeId)
+                  : defaultSecHead
+
+          const step2Val =
+            sa.departmentHeadId != null
+              ? String(sa.departmentHeadId)
+              : (sa as any).values?.['step-2']
+                ? String((sa as any).values['step-2'])
+                : (sa as any).steps?.[1]?.employeeId
+                  ? String((sa as any).steps[1].employeeId)
+                  : defaultDeptHead
+
+          autoRows.push({
+            key: `site-sum-${rIndex++}-${secId}`,
+            siteId: '0',
+            departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+            values: {
+              'step-0': secId,
+              'step-1': step1Val,
+              'step-2': step2Val,
+            },
+          })
+        }
+        if (autoRows.length > 0) return autoRows
+      }
+
+      // Default: generate 1 clean row per Central Services section
+      for (const sec of csSectionsList) {
+        const secHeadId = (sec.headEmployeeId ? String(sec.headEmployeeId) : '') || SECTION_HEAD_BY_SEC_ID[sec.id.toString()] || ''
+        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+        autoRows.push({
+          key: `site-sum-${rIndex++}-${sec.id}`,
+          siteId: '0',
+          departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+          values: {
+            'step-0': sec.id.toString(),
+            'step-1': secHeadId,
+            'step-2': deptHeadId,
+          },
+        })
+      }
+      return autoRows
+    }
+
     if (initial?.siteApprovals && initial.siteApprovals.length > 0) {
       return initial.siteApprovals.map((sa, i) => {
-        const values: Record<string, string> = {}
+        const values: Record<string, string> = { ...((sa as any).values || {}) }
         const secVal = sa.sectionId != null ? String(sa.sectionId) : (SITE_DEFAULT_SECTION[sa.siteId?.toString() ?? ''] ?? '29')
-        if (labelToStepId['section']) values[labelToStepId['section']] = secVal
-        if (sa.leaderId != null && labelToStepId['leader']) values[labelToStepId['leader']] = String(sa.leaderId)
-        if (sa.pjoId != null && labelToStepId['pjo']) values[labelToStepId['pjo']] = String(sa.pjoId)
-        if (sa.sectionHeadId != null && (labelToStepId['sectionHead'] || labelToStepId['section_head'])) {
+        if (labelToStepId['section'] && !values[labelToStepId['section']]) values[labelToStepId['section']] = secVal
+        if (sa.leaderId != null && labelToStepId['leader'] && !values[labelToStepId['leader']]) values[labelToStepId['leader']] = String(sa.leaderId)
+        if (sa.pjoId != null && labelToStepId['pjo'] && !values[labelToStepId['pjo']]) values[labelToStepId['pjo']] = String(sa.pjoId)
+        if (sa.sectionHeadId != null && (labelToStepId['sectionHead'] || labelToStepId['section_head']) && !values[labelToStepId['sectionHead'] || labelToStepId['section_head']]) {
           values[labelToStepId['sectionHead'] || labelToStepId['section_head']] = String(sa.sectionHeadId)
         }
-        if (sa.departmentHeadId != null && labelToStepId['department']) values[labelToStepId['department']] = String(sa.departmentHeadId)
-        
+        if (sa.departmentHeadId != null && labelToStepId['department'] && !values[labelToStepId['department']]) values[labelToStepId['department']] = String(sa.departmentHeadId)
+
         if ((sa as any).customRoles) {
           for (const [roleKey, empId] of Object.entries((sa as any).customRoles)) {
             const cleanKey = roleKey.replace(/[^a-z0-9]/g, '')
@@ -1153,7 +1219,17 @@ function WorkflowBuilderDialog({
           }
         }
 
-        // Direct matching for 2-step workflows (Step 1: Site, Step 2: Section Head)
+        // Direct matching from saved steps array
+        if (Array.isArray((sa as any).steps)) {
+          const employeeSteps = steps.filter((s) => s.type !== 'section')
+          ;(sa as any).steps.forEach((st: any, idx: number) => {
+            if (employeeSteps[idx] && st.employeeId && !values[employeeSteps[idx].id]) {
+              values[employeeSteps[idx].id] = String(st.employeeId)
+            }
+          })
+        }
+
+        // Fallback for 2-step workflows if values still empty
         const employeeSteps = steps.filter((s) => s.type !== 'section')
         if (employeeSteps.length === 2) {
           if (!values[employeeSteps[0].id]) {
@@ -1176,7 +1252,7 @@ function WorkflowBuilderDialog({
             SITE_APPROVER_MAP[sa.siteId?.toString() ?? '']
           if (siteVal) values[employeeSteps[0].id] = String(siteVal)
         }
-        
+
         return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '0', departmentId: (sa as any).departmentId?.toString() ?? '', values }
       })
     }
@@ -1327,6 +1403,52 @@ function WorkflowBuilderDialog({
               'step-2': '970',
               'step-3': dept.headEmployeeId ? dept.headEmployeeId.toString() : '966',
               'step-4': '1099',
+            },
+          },
+        ])
+      }
+      setPendingSiteId('')
+      return
+    }
+
+    // Summary APD: section-based assignment (Central Services only)
+    if (isSummaryMenu()) {
+      if (pendingSiteId === 'all') {
+        const autoRows: SiteData[] = []
+        let rIndex = 0
+        for (const sec of csSectionsList) {
+          const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
+          const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+          autoRows.push({
+            key: `site-sum-${rIndex++}-${sec.id}`,
+            siteId: '0',
+            departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+            values: {
+              'step-0': sec.id.toString(),
+              'step-1': secHeadId,
+              'step-2': deptHeadId,
+            },
+          })
+        }
+        setSiteData((prev) => [...prev, ...autoRows])
+        setPendingSiteId('')
+        return
+      }
+
+      const sec = csSectionsList.find((s) => s.id.toString() === pendingSiteId)
+      if (sec) {
+        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
+        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+        setSiteData((prev) => [
+          ...prev,
+          {
+            key: `section-${Date.now()}-${sec.id}`,
+            siteId: '0',
+            departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+            values: {
+              'step-0': sec.id.toString(),
+              'step-1': secHeadId,
+              'step-2': deptHeadId,
             },
           },
         ])
@@ -1610,6 +1732,24 @@ function WorkflowBuilderDialog({
                           })
                         }
                       }
+                    } else if (newKey.toLowerCase().includes('summary')) {
+                      setApprovalSteps(summaryApdDefaults)
+                      const autoRows: any[] = []
+                      let rIndex = 0
+                      for (const sec of csSectionsList) {
+                        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
+                        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+                        autoRows.push({
+                          key: `site-sum-${rIndex++}-${sec.id}`,
+                          siteId: '0',
+                          departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+                          values: {
+                            'step-0': sec.id.toString(),
+                            'step-1': secHeadId,
+                            'step-2': deptHeadId,
+                          },
+                        })
+                      }
                       setSiteData(autoRows)
                     } else if (newKey.toLowerCase().includes('apd')) {
                       setApprovalSteps(apdDefaults)
@@ -1732,7 +1872,7 @@ function WorkflowBuilderDialog({
             <div className="border-t pt-3">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-display text-base font-semibold">
-                  {isRfrMenu ? 'Pengaturan per Departemen' : isFiveRMenu ? 'Pengaturan per Master Area 5R' : 'Pengaturan per Site'}
+                  {isRfrMenu ? 'Pengaturan per Departemen' : isFiveRMenu ? 'Pengaturan per Master Area 5R' : isSummaryMenu() ? 'Pengaturan per Section' : 'Pengaturan per Site'}
                 </h3>
                 <div className="flex items-center gap-2">
                   <select
@@ -1741,12 +1881,23 @@ function WorkflowBuilderDialog({
                     className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm"
                   >
                     <option value="">
-                      {isRfrMenu ? 'Pilih departemen...' : isFiveRMenu ? 'Pilih master area 5R...' : 'Pilih site...'}
+                      {isRfrMenu ? 'Pilih departemen...' : isFiveRMenu ? 'Pilih master area 5R...' : isSummaryMenu() ? 'Pilih section...' : 'Pilih site...'}
                     </option>
                     {isRfrMenu ? (
                       allDepartments.filter((d) => !usedDeptIds.has(d.id.toString())).map((dept) => (
                         <option key={dept.id} value={dept.id.toString()}>{dept.name}</option>
                       ))
+                    ) : isSummaryMenu() ? (
+                      <>
+                        {csSectionsList.length > 0 && (
+                          <option value="all">-- Tambahkan Semua Section Central Services ({csSectionsList.length} Section) --</option>
+                        )}
+                        {csSectionsList.map((sec) => (
+                          <option key={sec.id} value={sec.id.toString()}>
+                            {sec.rawName || sec.name}
+                          </option>
+                        ))}
+                      </>
                     ) : isFiveRMenu ? (
                       <>
                         {fiveRAreas.length > 0 && (
@@ -1799,9 +1950,9 @@ function WorkflowBuilderDialog({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                        <th className="pb-2 pr-3">{isRfrMenu ? 'Departemen' : isFiveRMenu ? 'Master Area 5R' : 'Site'}</th>
+                        <th className="pb-2 pr-3">{isRfrMenu ? 'Departemen' : isFiveRMenu ? 'Master Area 5R' : isSummaryMenu() ? 'Section' : 'Site'}</th>
                         {approvalSteps
-                          .filter((step) => isFiveRMenu ? step.type !== 'section' : true)
+                          .filter((step) => (isFiveRMenu || isSummaryMenu()) ? step.type !== 'section' : true)
                           .map((step) => (
                             <th key={step.id} className="pb-2 pr-3">
                               <div className="flex items-center gap-1">
@@ -1827,6 +1978,9 @@ function WorkflowBuilderDialog({
                         const areaObj = isFiveRMenu
                           ? fiveRAreas.find((a) => a.id.toString() === siteRow.values['step-0'] || a.id.toString() === (siteRow as any).areaId)
                           : null
+                        const secObj = isSummaryMenu()
+                          ? allSectionsList.find((s) => s.id.toString() === siteRow.values['step-0'])
+                          : null
                         const catSite = MASTER_CATEGORIZED_SITES.find((s) => s.id === siteRow.siteId)
                         const siteObj = allSites.find((s) => s.id.toString() === (areaObj?.siteId?.toString() ?? siteRow.siteId))
 
@@ -1834,11 +1988,13 @@ function WorkflowBuilderDialog({
                           ? (allDepartments.find((d) => d.id.toString() === siteRow.departmentId)?.name ?? siteRow.departmentId)
                           : isFiveRMenu
                             ? (areaObj?.name ?? 'Master Area')
-                            : (siteRow.siteId === '0' || !siteRow.siteId
-                                ? 'Semua Site (Global)'
-                                : (catSite?.name ?? siteObj?.name ?? siteRow.siteId))
+                            : isSummaryMenu()
+                              ? (secObj?.name ?? 'Section')
+                              : (siteRow.siteId === '0' || !siteRow.siteId
+                                  ? 'Semua Site (Global)'
+                                  : (catSite?.name ?? siteObj?.name ?? siteRow.siteId))
 
-                        const renderedSteps = isFiveRMenu
+                        const renderedSteps = (isFiveRMenu || isSummaryMenu())
                           ? approvalSteps.filter((s) => s.type !== 'section')
                           : approvalSteps
 
@@ -1847,7 +2003,7 @@ function WorkflowBuilderDialog({
                             <td className="py-2 pr-3 font-medium">
                               <div className="flex flex-col">
                                 <span className="text-xs font-semibold text-slate-800">{siteDisplayName}</span>
-                                {catSite?.category && (
+                                {catSite?.category && !isSummaryMenu() && (
                                   <span className="text-[10px] text-muted-foreground font-normal">
                                     {catSite.category}
                                   </span>
@@ -1855,6 +2011,11 @@ function WorkflowBuilderDialog({
                                 {isFiveRMenu && siteObj && (
                                   <span className="text-[10px] text-muted-foreground font-normal">
                                     Lokasi: {siteObj.name} {areaObj?.picName ? `• PIC: ${areaObj.picName}` : ''}
+                                  </span>
+                                )}
+                                {isSummaryMenu() && secObj?.departmentName && (
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    Departemen: {secObj.departmentName}
                                   </span>
                                 )}
                               </div>

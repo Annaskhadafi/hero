@@ -1,7 +1,9 @@
 import { db } from '@/db';
-import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments } from '@/db/schema/hero';
+import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes } from '@/db/schema/hero';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
 import { eq, and, asc, desc, sql, inArray } from 'drizzle-orm';
+import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
+import { createNotificationEventForEmployee } from '@/lib/push-notifications';
 
 export const APD_ITEM_COLUMNS = [
   'Helmet', 'Safety Glasses', 'Masker Kain', 'Ear Plug', 'Safety Shoes',
@@ -198,7 +200,56 @@ export async function submitSummary(summaryId: number, signatureUrl: string) {
     .set({ status: 'pending', submitterSignatureUrl: signatureUrl, generatedAt: new Date() })
     .where(eq(apdSummaries.id, summaryId));
 
-  // Get employee info for approvers
+  // 1. Check for dynamic matrix configured in Workflow Studio
+  const [matrix] = await db
+    .select({ id: approvalMatrices.id })
+    .from(approvalMatrices)
+    .where(
+      and(
+        eq(approvalMatrices.transactionType, 'apd-summary'),
+        eq(approvalMatrices.sectionId, summary.sectionId),
+        eq(approvalMatrices.isActive, true)
+      )
+    )
+    .limit(1);
+
+  if (matrix) {
+    const steps = await db
+      .select({
+        stepOrder: approvalMatrixSteps.stepOrder,
+        label: approvalMatrixSteps.label,
+        employeeId: orgChartNodes.employeeId,
+        employeeName: employees.name,
+      })
+      .from(approvalMatrixSteps)
+      .innerJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+      .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
+      .where(eq(approvalMatrixSteps.matrixId, matrix.id))
+      .orderBy(asc(approvalMatrixSteps.stepOrder));
+
+    if (steps.length > 0) {
+      for (const step of steps) {
+        if (!step.employeeId) continue;
+        await db.insert(apdSummaryApprovals).values({
+          summaryId,
+          level: step.stepOrder,
+          approverEmployeeId: step.employeeId,
+          status: 'pending',
+        });
+        await db.insert(heroApprovals).values({
+          apdSummaryId: summaryId,
+          level: step.stepOrder,
+          approverName: step.employeeName || '',
+          approverEmployeeId: step.employeeId,
+          status: 'pending',
+          submittedAt: new Date(),
+        });
+      }
+      return { success: true };
+    }
+  }
+
+  // 2. Fallback to default 2-step (masterSections & masterDepartments) if matrix not found
   const headEmp = summary.headEmployeeId ? await db.select({ id: employees.id, name: employees.name }).from(employees).where(eq(employees.id, summary.headEmployeeId)).limit(1) : [];
   const deptHeadEmp = department?.headEmployeeId ? await db.select({ id: employees.id, name: employees.name }).from(employees).where(eq(employees.id, department.headEmployeeId)).limit(1) : [];
 
@@ -254,6 +305,85 @@ export async function approveSummaryStep(
     await db.update(apdSummaries)
       .set({ status: 'approved', approvedAt: new Date() })
       .where(eq(apdSummaries.id, summaryId));
+
+    try {
+      const [sumRow] = await db
+        .select({
+          summaryNumber: apdSummaries.summaryNumber,
+          sectionId: apdSummaries.sectionId,
+          generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
+        })
+        .from(apdSummaries)
+        .where(eq(apdSummaries.id, summaryId))
+        .limit(1);
+
+      if (sumRow) {
+        const [sec] = sumRow.sectionId
+          ? await db
+              .select({ name: masterSections.name, departmentId: masterSections.departmentId })
+              .from(masterSections)
+              .where(eq(masterSections.id, sumRow.sectionId))
+              .limit(1)
+          : [null];
+
+        const [dept] = sec?.departmentId
+          ? await db
+              .select({ name: masterDepartments.name })
+              .from(masterDepartments)
+              .where(eq(masterDepartments.id, sec.departmentId))
+              .limit(1)
+          : [null];
+
+        const [submitter] = sumRow.generatedByEmployeeId
+          ? await db
+              .select({ id: employees.id, name: employees.name, email: employees.email })
+              .from(employees)
+              .where(eq(employees.id, sumRow.generatedByEmployeeId))
+              .limit(1)
+          : [null];
+
+        const sectionName = sec?.name || 'Central Services';
+        const departmentName = dept?.name || 'Central Services';
+        const summaryNumber = sumRow.summaryNumber;
+        const printUrl = `${getAppUrl(`/print/summary/${summaryId}`)}`;
+        const viewUrl = `${getAppUrl(`/dashboard/summary?preview=${summaryId}`)}`;
+
+        // 1. In-app Bell Notification to Submitter
+        if (submitter?.id) {
+          await createNotificationEventForEmployee({
+            employeeId: submitter.id,
+            category: 'approval_requests',
+            eventType: 'apd_summary_approved',
+            title: `Summary APD ${summaryNumber} Disetujui`,
+            body: `Summary Permintaan APD untuk section ${sectionName} telah selesai disetujui oleh Department Head.`,
+            url: viewUrl,
+          });
+        }
+
+        // 2. Email Notification to Submitter + CC to hse.cp@chitraparatama.co.id
+        if (submitter?.email) {
+          await sendWorkflowEmail({
+            to: submitter.email,
+            cc: ['hse.cp@chitraparatama.co.id'],
+            templateCode: 'apd_summary_approved',
+            templateName: 'Summary Permintaan Barang Approved',
+            variables: {
+              summaryNumber,
+              sectionName,
+              departmentName,
+              generatedByName: submitter.name || 'Staff',
+              printUrl,
+            },
+            fallbackSubject: `[HERO] Summary Permintaan APD ${summaryNumber} - ${sectionName} Sudah Disetujui`,
+            fallbackHtml: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:24px;border-radius:12px;border:1px solid #e2e8f0;"><div style="background:#059669;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="color:#ffffff;margin:0;font-size:18px;font-weight:700;">HERO &bull; Summary APD Disetujui</h2><p style="color:#a7f3d0;margin:4px 0 0;font-size:12px;">Persetujuan Pengadaan APD</p></div><div style="background:#ffffff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;"><p style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 16px;">Summary Permintaan APD (<b>${summaryNumber}</b>) untuk section <b>${sectionName}</b> (${departmentName}) telah <b>SELESAI DISETUJUI</b> oleh Department Head.</p><table style="width:100%;border-collapse:collapse;font-size:13px;color:#334155;margin-bottom:20px;"><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;width:130px;color:#64748b;">No. Summary</td><td style="padding:8px 0;font-weight:700;color:#0f172a;">${summaryNumber}</td></tr><tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 0;font-weight:600;color:#64748b;">Section</td><td style="padding:8px 0;">${sectionName}</td></tr><tr><td style="padding:8px 0;font-weight:600;color:#64748b;">Departemen</td><td style="padding:8px 0;">${departmentName}</td></tr></table><div style="text-align:center;margin:28px 0 16px 0;"><a href="${printUrl}" style="background-color:#059669;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;box-shadow:0 2px 4px rgba(5,150,105,0.25);">Cetak / Lihat Dokumen Summary &rarr;</a></div></div></div>`,
+            fallbackText: `Summary Permintaan APD (${summaryNumber}) untuk section ${sectionName} (${departmentName}) sudah disetujui penuh oleh Department Head.\n\nSilakan login ke HERO untuk melihat detail dan proses pengadaan:\n${printUrl}`,
+          });
+        }
+      }
+    } catch (notifyErr) {
+      console.error('[summary-engine] Failed to send approval notification:', notifyErr);
+    }
+
     return { allApproved: true };
   }
   return { allApproved: false };

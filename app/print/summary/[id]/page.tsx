@@ -50,10 +50,7 @@ export default async function PrintSummaryPage({ params }: { params: Promise<{ i
       fontSize: '8pt', 
       padding: '8mm 10mm', 
       overflow: 'hidden',
-      backgroundImage: 'url(/chitra-letterhead-bg.png)',
-      backgroundSize: '297mm 210mm',
-      backgroundPosition: 'right bottom',
-      backgroundRepeat: 'no-repeat',
+      background: '#fff',
       minHeight: '210mm',
       boxSizing: 'border-box'
     }}>

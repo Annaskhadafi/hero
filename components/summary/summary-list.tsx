@@ -90,7 +90,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
     try {
       const empId = currentEmployeeId || 5;
       const result = await generateSummaryAction(section.id, empId, section.targetSite);
-      if (result.success && result.summaryId) {
+      if (result.success && 'summaryId' in result && result.summaryId) {
         toast.success(`Summary untuk section ${section.name} berhasil dibuat!`);
         router.push(`/dashboard/summary?preview=${result.summaryId}`);
       } else {
