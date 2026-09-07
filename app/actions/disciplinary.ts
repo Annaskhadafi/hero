@@ -1,97 +1,132 @@
-"use server";
+'use server'
 
-import { and, asc, count, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { and, asc, count, desc, eq, gte, ilike, inArray, or } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 
-import { db } from "@/db";
+import { db } from '@/db'
 import {
   hcDisciplinaryActions,
   hcViolationCategories,
   masterDepartments,
   employees,
   hrPositions,
-} from "@/db/schema/hero";
-import { getHrEmployeeContactById } from "@/lib/workflow-email";
-import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
-import { getServerSession } from "@/lib/auth-session";
+} from '@/db/schema/hero'
+import { getHrEmployeeContactById } from '@/lib/workflow-email'
+import { buildHumanCapitalEmail, sendHumanCapitalEmail } from '@/lib/human-capital-email'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 
-const DISCIPLINARY_PATH = "/dashboard/hc/disciplinary";
+const DISCIPLINARY_PATH = '/dashboard/hc/disciplinary'
 
-type IdInput = number | string;
+async function requireDisciplinaryPermission(action: 'view' | 'edit' | 'delete') {
+  const [employee, permission] = await Promise.all([
+    getCurrentEmployee(),
+    getCurrentMenuPermission('hc_disciplinary'),
+  ])
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'edit'
+        ? permission.canEdit
+        : permission.canDelete
+  if (!employee || !allowed) throw new Error('Akses disciplinary ditolak.')
+  return { employee, permission }
+}
+
+async function assertDisciplinaryEmployeeScope(
+  employeeId: number,
+  action: 'view' | 'edit' | 'delete'
+) {
+  const access = await requireDisciplinaryPermission(action)
+  if (hasGlobalDataAccess(access.permission)) return access
+  const [target] = await db
+    .select({ id: employees.id, siteId: employees.siteId })
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1)
+  const allowed =
+    access.permission.dataScope === 'own'
+      ? target?.id === access.employee.id
+      : target?.siteId === access.employee.siteId
+  if (!allowed) throw new Error('Data disciplinary berada di luar scope role Anda.')
+  return access
+}
+
+type IdInput = number | string
 
 export type DisciplinaryFilters = {
-  spLevel?: string;
-  status?: string;
-  severity?: string;
-  search?: string;
-};
+  spLevel?: string
+  status?: string
+  severity?: string
+  search?: string
+}
 
 export type ViolationCategoryInput = {
-  code: string;
-  name: string;
-  severity: string;
-  defaultSpLevel: string;
-  description?: string;
-  isActive?: boolean;
-};
+  code: string
+  name: string
+  severity: string
+  defaultSpLevel: string
+  description?: string
+  isActive?: boolean
+}
 
 export type DisciplinaryActionInput = {
-  employeeId: IdInput;
-  categoryId: IdInput;
-  spLevel: string;
-  letterNumber?: string;
-  violationDate: string | Date;
-  description?: string;
-  actionTaken?: string;
-  effectiveDate: string | Date;
-  expiryDate?: string | Date | null;
-  issuedBy?: string;
-  notes?: string;
-  status?: string;
-};
+  employeeId: IdInput
+  categoryId: IdInput
+  spLevel: string
+  letterNumber?: string
+  violationDate: string | Date
+  description?: string
+  actionTaken?: string
+  effectiveDate: string | Date
+  expiryDate?: string | Date | null
+  issuedBy?: string
+  notes?: string
+  status?: string
+}
 
 function toId(value: IdInput) {
-  const id = Number(value);
-  if (!Number.isInteger(id) || id <= 0) throw new Error("ID tidak valid.");
-  return id;
+  const id = Number(value)
+  if (!Number.isInteger(id) || id <= 0) throw new Error('ID tidak valid.')
+  return id
 }
 
 function toDate(value: string | Date) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error("Tanggal tidak valid.");
-  return date;
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) throw new Error('Tanggal tidak valid.')
+  return date
 }
 
 function toDateString(value: string | Date) {
-  return toDate(value).toISOString().slice(0, 10);
+  return toDate(value).toISOString().slice(0, 10)
 }
 
 function toOptionalDate(value?: string | Date | null) {
-  if (!value) return null;
-  return toDate(value);
+  if (!value) return null
+  return toDate(value)
 }
 
 function normalizeText(value?: string | null) {
-  return value?.trim() ?? "";
+  return value?.trim() ?? ''
 }
 
 function categoryValues(data: ViolationCategoryInput) {
   return {
     code: normalizeText(data.code).toUpperCase(),
     name: normalizeText(data.name),
-    severity: normalizeText(data.severity) || "Medium",
-    defaultSpLevel: Number(data.defaultSpLevel?.replace(/\D/g, "")) || 1,
+    severity: normalizeText(data.severity) || 'Medium',
+    defaultSpLevel: Number(data.defaultSpLevel?.replace(/\D/g, '')) || 1,
     description: normalizeText(data.description),
     isActive: data.isActive ?? true,
     updatedAt: new Date(),
-  };
+  }
 }
 
 function disciplinaryValues(data: DisciplinaryActionInput) {
   return {
     employeeId: toId(data.employeeId),
     violationCategoryId: toId(data.categoryId),
-    spLevel: Number(String(data.spLevel).replace(/\D/g, "")) || 1,
+    spLevel: Number(String(data.spLevel).replace(/\D/g, '')) || 1,
     letterNumber: normalizeText(data.letterNumber),
     violationDate: toDateString(data.violationDate),
     violationDescription: normalizeText(data.description),
@@ -100,62 +135,71 @@ function disciplinaryValues(data: DisciplinaryActionInput) {
     expiryDate: data.expiryDate ? toDateString(data.expiryDate) : null,
     issuedBy: normalizeText(data.issuedBy),
     notes: normalizeText(data.notes),
-    status: normalizeText(data.status) || "active",
+    status: normalizeText(data.status) || 'active',
     updatedAt: new Date(),
-  };
+  }
 }
 
 export async function getViolationCategories() {
-  return db.select().from(hcViolationCategories).orderBy(asc(hcViolationCategories.code));
+  await requireDisciplinaryPermission('view')
+  return db.select().from(hcViolationCategories).orderBy(asc(hcViolationCategories.code))
 }
 
 export async function createViolationCategory(data: ViolationCategoryInput) {
-  const session = await getServerSession();
-  if (!session?.user) throw new Error("Unauthorized: Session required");
-  const [created] = await db.insert(hcViolationCategories).values(categoryValues(data)).returning();
-  revalidatePath(DISCIPLINARY_PATH);
-  return normalizeCategory(created);
+  await requireDisciplinaryPermission('edit')
+  const [created] = await db.insert(hcViolationCategories).values(categoryValues(data)).returning()
+  revalidatePath(DISCIPLINARY_PATH)
+  return normalizeCategory(created)
 }
 
 export async function updateViolationCategory(id: IdInput, data: ViolationCategoryInput) {
-  const session = await getServerSession();
-  if (!session?.user) throw new Error("Unauthorized: Session required");
+  await requireDisciplinaryPermission('edit')
   const [updated] = await db
     .update(hcViolationCategories)
     .set(categoryValues(data))
     .where(eq(hcViolationCategories.id, toId(id)))
-    .returning();
-  revalidatePath(DISCIPLINARY_PATH);
-  return normalizeCategory(updated);
+    .returning()
+  revalidatePath(DISCIPLINARY_PATH)
+  return normalizeCategory(updated)
 }
 
 export async function deleteViolationCategory(id: IdInput) {
-  const session = await getServerSession();
-  if (!session?.user) throw new Error("Unauthorized: Session required");
-  await db.delete(hcViolationCategories).where(eq(hcViolationCategories.id, toId(id)));
-  revalidatePath(DISCIPLINARY_PATH);
-  return { success: true };
+  await requireDisciplinaryPermission('delete')
+  await db.delete(hcViolationCategories).where(eq(hcViolationCategories.id, toId(id)))
+  revalidatePath(DISCIPLINARY_PATH)
+  return { success: true }
 }
 
 function buildDisciplinaryWhere(filters?: DisciplinaryFilters) {
-  const clauses = [];
-  if (filters?.spLevel) clauses.push(eq(hcDisciplinaryActions.spLevel, Number(filters.spLevel.replace(/\D/g, "")) || 1));
-  if (filters?.status) clauses.push(eq(hcDisciplinaryActions.status, filters.status));
-  if (filters?.severity) clauses.push(eq(hcViolationCategories.severity, filters.severity));
-  if (filters?.search) clauses.push(buildSearchClause(filters.search));
-  return clauses.length ? and(...clauses) : undefined;
+  const clauses = []
+  if (filters?.spLevel)
+    clauses.push(eq(hcDisciplinaryActions.spLevel, Number(filters.spLevel.replace(/\D/g, '')) || 1))
+  if (filters?.status) clauses.push(eq(hcDisciplinaryActions.status, filters.status))
+  if (filters?.severity) clauses.push(eq(hcViolationCategories.severity, filters.severity))
+  if (filters?.search) clauses.push(buildSearchClause(filters.search))
+  return clauses.length ? and(...clauses) : undefined
 }
 
 function buildSearchClause(search: string) {
-  const term = `%${search.trim()}%`;
+  const term = `%${search.trim()}%`
   return or(
     ilike(employees.name, term),
     ilike(hcDisciplinaryActions.letterNumber, term),
-    ilike(hcViolationCategories.name, term),
-  );
+    ilike(hcViolationCategories.name, term)
+  )
 }
 
 export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
+  const access = await requireDisciplinaryPermission('view')
+  const scope = buildDisciplinaryWhere(filters)
+  const scopeClauses = scope ? [scope] : []
+  if (!hasGlobalDataAccess(access.permission)) {
+    scopeClauses.push(
+      access.permission.dataScope === 'own'
+        ? eq(hcDisciplinaryActions.employeeId, access.employee.id)
+        : eq(employees.siteId, access.employee.siteId)
+    )
+  }
   const rows = await db
     .select({
       id: hcDisciplinaryActions.id,
@@ -184,11 +228,14 @@ export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
     .leftJoin(employees, eq(hcDisciplinaryActions.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
-    .leftJoin(hcViolationCategories, eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id))
-    .where(buildDisciplinaryWhere(filters))
-    .orderBy(desc(hcDisciplinaryActions.violationDate));
+    .leftJoin(
+      hcViolationCategories,
+      eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id)
+    )
+    .where(scopeClauses.length ? and(...scopeClauses) : undefined)
+    .orderBy(desc(hcDisciplinaryActions.violationDate))
 
-  return rows.map((row) => ({ ...row, spLevel: `SP${row.spLevel}` }));
+  return rows.map((row) => ({ ...row, spLevel: `SP${row.spLevel}` }))
 }
 
 export async function getDisciplinaryById(id: IdInput) {
@@ -196,100 +243,118 @@ export async function getDisciplinaryById(id: IdInput) {
     .select()
     .from(hcDisciplinaryActions)
     .where(eq(hcDisciplinaryActions.id, toId(id)))
-    .limit(1);
-  return record;
+    .limit(1)
+  if (record) await assertDisciplinaryEmployeeScope(record.employeeId, 'view')
+  return record
 }
 
 export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
-  const session = await getServerSession();
-  if (!session?.user) throw new Error("Unauthorized: Session required");
-  const [created] = await db.insert(hcDisciplinaryActions).values(disciplinaryValues(data)).returning();
-  const employee = await getHrEmployeeContactById(created.employeeId);
+  await assertDisciplinaryEmployeeScope(toId(data.employeeId), 'edit')
+  const [created] = await db
+    .insert(hcDisciplinaryActions)
+    .values(disciplinaryValues(data))
+    .returning()
+  const employee = await getHrEmployeeContactById(created.employeeId)
   const [category] = created.violationCategoryId
     ? await db
         .select({ name: hcViolationCategories.name, severity: hcViolationCategories.severity })
         .from(hcViolationCategories)
         .where(eq(hcViolationCategories.id, created.violationCategoryId))
         .limit(1)
-    : [];
+    : []
 
   const emailContent = buildHumanCapitalEmail({
-    title: "Tindakan disipliner baru",
-    intro: "Tindakan disipliner baru telah dibuat di modul Human Capital.",
+    title: 'Tindakan disipliner baru',
+    intro: 'Tindakan disipliner baru telah dibuat di modul Human Capital.',
     details: [
       `Karyawan: ${employee.name}`,
-      `Kategori: ${category?.name || "-"}`,
-      `Severity: ${category?.severity || "-"}`,
+      `Kategori: ${category?.name || '-'}`,
+      `Severity: ${category?.severity || '-'}`,
       `SP Level: SP${created.spLevel}`,
       `Status: ${created.status}`,
       created.letterNumber ? `No surat: ${created.letterNumber}` : null,
     ],
-  });
+  })
 
   await sendHumanCapitalEmail({
-    templateCode: "hc_disciplinary_created",
-    templateName: "HC Disciplinary Created",
+    templateCode: 'hc_disciplinary_created',
+    templateName: 'HC Disciplinary Created',
     variables: {
       employeeName: employee.name,
-      categoryName: category?.name || "-",
-      severity: category?.severity || "-",
+      categoryName: category?.name || '-',
+      severity: category?.severity || '-',
       spLevel: `SP${created.spLevel}`,
       status: created.status,
-      letterNumber: created.letterNumber || "-",
+      letterNumber: created.letterNumber || '-',
     },
     extraTo: employee.email ? [employee.email] : [],
     fallbackSubject: `Tindakan disipliner baru: ${employee.name}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
-  });
+  })
 
-  revalidatePath(DISCIPLINARY_PATH);
-  return normalizeAction(created);
+  revalidatePath(DISCIPLINARY_PATH)
+  return normalizeAction(created)
 }
 
 export async function updateDisciplinaryAction(id: IdInput, data: DisciplinaryActionInput) {
+  const [existing] = await db
+    .select({ employeeId: hcDisciplinaryActions.employeeId })
+    .from(hcDisciplinaryActions)
+    .where(eq(hcDisciplinaryActions.id, toId(id)))
+    .limit(1)
+  if (!existing) throw new Error('Data disciplinary tidak ditemukan.')
+  await assertDisciplinaryEmployeeScope(existing.employeeId, 'edit')
+  await assertDisciplinaryEmployeeScope(toId(data.employeeId), 'edit')
   const [updated] = await db
     .update(hcDisciplinaryActions)
     .set(disciplinaryValues(data))
     .where(eq(hcDisciplinaryActions.id, toId(id)))
-    .returning();
-  revalidatePath(DISCIPLINARY_PATH);
-  return normalizeAction(updated);
+    .returning()
+  revalidatePath(DISCIPLINARY_PATH)
+  return normalizeAction(updated)
 }
 
 export async function updateDisciplinaryStatus(id: IdInput, status: string) {
+  const [existing] = await db
+    .select({ employeeId: hcDisciplinaryActions.employeeId })
+    .from(hcDisciplinaryActions)
+    .where(eq(hcDisciplinaryActions.id, toId(id)))
+    .limit(1)
+  if (!existing) throw new Error('Data disciplinary tidak ditemukan.')
+  await assertDisciplinaryEmployeeScope(existing.employeeId, 'edit')
   const [updated] = await db
     .update(hcDisciplinaryActions)
-    .set({ status: normalizeText(status) || "active", updatedAt: new Date() })
+    .set({ status: normalizeText(status) || 'active', updatedAt: new Date() })
     .where(eq(hcDisciplinaryActions.id, toId(id)))
-    .returning();
+    .returning()
 
-  const employee = await getHrEmployeeContactById(updated.employeeId);
+  const employee = await getHrEmployeeContactById(updated.employeeId)
   const [category] = updated.violationCategoryId
     ? await db
         .select({ name: hcViolationCategories.name })
         .from(hcViolationCategories)
         .where(eq(hcViolationCategories.id, updated.violationCategoryId))
         .limit(1)
-    : [];
+    : []
 
   const emailContent = buildHumanCapitalEmail({
-    title: "Update status tindakan disipliner",
-    intro: "Status tindakan disipliner karyawan telah berubah.",
+    title: 'Update status tindakan disipliner',
+    intro: 'Status tindakan disipliner karyawan telah berubah.',
     details: [
       `Karyawan: ${employee.name}`,
-      `Kategori: ${category?.name || "-"}`,
+      `Kategori: ${category?.name || '-'}`,
       `SP Level: SP${updated.spLevel}`,
       `Status baru: ${updated.status}`,
     ],
-  });
+  })
 
   await sendHumanCapitalEmail({
-    templateCode: "hc_disciplinary_status_update",
-    templateName: "HC Disciplinary Status Update",
+    templateCode: 'hc_disciplinary_status_update',
+    templateName: 'HC Disciplinary Status Update',
     variables: {
       employeeName: employee.name,
-      categoryName: category?.name || "-",
+      categoryName: category?.name || '-',
       spLevel: `SP${updated.spLevel}`,
       status: updated.status,
     },
@@ -297,44 +362,65 @@ export async function updateDisciplinaryStatus(id: IdInput, status: string) {
     fallbackSubject: `Update disipliner: ${employee.name}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
-  });
+  })
 
-  revalidatePath(DISCIPLINARY_PATH);
-  return normalizeAction(updated);
+  revalidatePath(DISCIPLINARY_PATH)
+  return normalizeAction(updated)
 }
 
 export async function deleteDisciplinaryAction(id: IdInput) {
-  await db.delete(hcDisciplinaryActions).where(eq(hcDisciplinaryActions.id, toId(id)));
-  revalidatePath(DISCIPLINARY_PATH);
-  return { success: true };
+  const [existing] = await db
+    .select({ employeeId: hcDisciplinaryActions.employeeId })
+    .from(hcDisciplinaryActions)
+    .where(eq(hcDisciplinaryActions.id, toId(id)))
+    .limit(1)
+  if (!existing) throw new Error('Data disciplinary tidak ditemukan.')
+  await assertDisciplinaryEmployeeScope(existing.employeeId, 'delete')
+  await db.delete(hcDisciplinaryActions).where(eq(hcDisciplinaryActions.id, toId(id)))
+  revalidatePath(DISCIPLINARY_PATH)
+  return { success: true }
 }
 
 export async function getDisciplinaryStats() {
-  const records = await getDisciplinaryActions();
-  const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const records = await getDisciplinaryActions()
+  const today = new Date()
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
   return {
     activeSp: records.filter((record) => isActiveRecord(record.status, record.expiryDate)).length,
     expired: records.filter((record) => isExpiredRecord(record.status, record.expiryDate)).length,
     thisMonth: records.filter((record) => new Date(record.violationDate) >= monthStart).length,
     byLevel: {
-      SP1: records.filter((record) => record.spLevel === "SP1").length,
-      SP2: records.filter((record) => record.spLevel === "SP2").length,
-      SP3: records.filter((record) => record.spLevel === "SP3").length,
-      Termination: records.filter((record) => record.spLevel === "Termination").length,
+      SP1: records.filter((record) => record.spLevel === 'SP1').length,
+      SP2: records.filter((record) => record.spLevel === 'SP2').length,
+      SP3: records.filter((record) => record.spLevel === 'SP3').length,
+      Termination: records.filter((record) => record.spLevel === 'Termination').length,
     },
-  };
+  }
 }
 
 function isActiveRecord(status: string, expiryDate: string | Date | null) {
-  return ["active", "Active"].includes(status) && (!expiryDate || new Date(expiryDate) >= new Date());
+  return (
+    ['active', 'Active'].includes(status) && (!expiryDate || new Date(expiryDate) >= new Date())
+  )
 }
 
 function isExpiredRecord(status: string, expiryDate: string | Date | null) {
-  return ["expired", "Expired"].includes(status) || Boolean(expiryDate && new Date(expiryDate) < new Date());
+  return (
+    ['expired', 'Expired'].includes(status) ||
+    Boolean(expiryDate && new Date(expiryDate) < new Date())
+  )
 }
 
 export async function getActiveEmployees() {
+  const access = await requireDisciplinaryPermission('view')
+  const conditions = [eq(employees.isActive, true)]
+  if (!hasGlobalDataAccess(access.permission)) {
+    conditions.push(
+      access.permission.dataScope === 'own'
+        ? eq(employees.id, access.employee.id)
+        : eq(employees.siteId, access.employee.siteId)
+    )
+  }
   return db
     .select({
       id: employees.id,
@@ -346,21 +432,37 @@ export async function getActiveEmployees() {
     .from(employees)
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
-    .where(eq(employees.isActive, true))
-    .orderBy(asc(employees.name));
+    .where(and(...conditions))
+    .orderBy(asc(employees.name))
 }
 
 export async function getDisciplinaryCount() {
-  const [result] = await db.select({ count: count() }).from(hcDisciplinaryActions);
-  return result.count;
+  await requireDisciplinaryPermission('view')
+  const [result] = await db.select({ count: count() }).from(hcDisciplinaryActions)
+  return result.count
 }
 
 export async function getRecentDisciplinaryActions(days = 30) {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const access = await requireDisciplinaryPermission('view')
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const conditions = [gte(hcDisciplinaryActions.createdAt, since)]
+  if (!hasGlobalDataAccess(access.permission)) {
+    conditions.push(
+      access.permission.dataScope === 'own'
+        ? eq(hcDisciplinaryActions.employeeId, access.employee.id)
+        : inArray(
+            hcDisciplinaryActions.employeeId,
+            db
+              .select({ id: employees.id })
+              .from(employees)
+              .where(eq(employees.siteId, access.employee.siteId))
+          )
+    )
+  }
   return db
     .select()
     .from(hcDisciplinaryActions)
-    .where(gte(hcDisciplinaryActions.createdAt, since));
+    .where(and(...conditions))
 }
 
 function normalizeAction(record: typeof hcDisciplinaryActions.$inferSelect) {
@@ -369,12 +471,12 @@ function normalizeAction(record: typeof hcDisciplinaryActions.$inferSelect) {
     categoryId: record.violationCategoryId,
     spLevel: `SP${record.spLevel}`,
     description: record.violationDescription,
-  };
+  }
 }
 
 function normalizeCategory(record: typeof hcViolationCategories.$inferSelect) {
   return {
     ...record,
     defaultSpLevel: `SP${record.defaultSpLevel}`,
-  };
+  }
 }

@@ -1,0 +1,2439 @@
+{
+  "date": "2026-09-07",
+  "root": "D:\\[01] PROJECT\\HERO",
+  "method": "Text-token inventory of every dashboard page.tsx; token presence/absence is not proof of a guard or a vulnerability. Selected paths separately traced in audit report.",
+  "summary": {
+    "pages": 178,
+    "withoutPermissionHelperToken": 145,
+    "withoutCanViewToken": 160,
+    "selectedPathsTraced": 8
+  },
+  "pages": [
+    {
+      "file": "app/dashboard/360-service/customers/page.tsx",
+      "route": "/dashboard/360-service/customers",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/items/page.tsx",
+      "route": "/dashboard/360-service/items",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/quotations/[id]/edit/page.tsx",
+      "route": "/dashboard/360-service/quotations/[id]/edit",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/quotations/[id]/page.tsx",
+      "route": "/dashboard/360-service/quotations/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/quotations/create/page.tsx",
+      "route": "/dashboard/360-service/quotations/create",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/quotations/page.tsx",
+      "route": "/dashboard/360-service/quotations",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/360-service/service-form/page.tsx",
+      "route": "/dashboard/360-service/service-form",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/approval/page.tsx",
+      "route": "/dashboard/activity-hub/approval",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/blueprint/page.tsx",
+      "route": "/dashboard/activity-hub/blueprint",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/configuration/page.tsx",
+      "route": "/dashboard/activity-hub/configuration",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "activity_configuration"
+      ],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/document/[sessionId]/approval/page.tsx",
+      "route": "/dashboard/activity-hub/document/[sessionId]/approval",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/document/[sessionId]/page.tsx",
+      "route": "/dashboard/activity-hub/document/[sessionId]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/library/page.tsx",
+      "route": "/dashboard/activity-hub/library",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "activity_library"
+      ],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/my-day/page.tsx",
+      "route": "/dashboard/activity-hub/my-day",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/page.tsx",
+      "route": "/dashboard/activity-hub",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/routes/page.tsx",
+      "route": "/dashboard/activity-hub/routes",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "activity_routes"
+      ],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/activity-hub/team-board/page.tsx",
+      "route": "/dashboard/activity-hub/team-board",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/activity-hub/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/analytics/page.tsx",
+      "route": "/dashboard/analytics",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/apd/[id]/page.tsx",
+      "route": "/dashboard/apd/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/apd/inventory/page.tsx",
+      "route": "/dashboard/apd/inventory",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_inventaris"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/apd/inventory/safety-shoes/page.tsx",
+      "route": "/dashboard/apd/inventory/safety-shoes",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/apd/new/page.tsx",
+      "route": "/dashboard/apd/new",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/apd/page.tsx",
+      "route": "/dashboard/apd",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_inventaris"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/approval/page.tsx",
+      "route": "/dashboard/approval",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/attendance/live-map/page.tsx",
+      "route": "/dashboard/attendance/live-map",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R14: source-confirmed own treated as site"
+    },
+    {
+      "file": "app/dashboard/attendance/page.tsx",
+      "route": "/dashboard/attendance",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/attendance/records/page.tsx",
+      "route": "/dashboard/attendance/records",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/cargo-manifest/page.tsx",
+      "route": "/dashboard/cargo-manifest",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/assets/page.tsx",
+      "route": "/dashboard/central-service/assets",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "central-service-assets"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/forecast/daily/page.tsx",
+      "route": "/dashboard/central-service/forecast/daily",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "cs-forecast"
+      ],
+      "parentLayouts": [
+        "app/dashboard/central-service/forecast/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/forecast/monthly/page.tsx",
+      "route": "/dashboard/central-service/forecast/monthly",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "cs-forecast"
+      ],
+      "parentLayouts": [
+        "app/dashboard/central-service/forecast/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/forecast/page.tsx",
+      "route": "/dashboard/central-service/forecast",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "cs-forecast"
+      ],
+      "parentLayouts": [
+        "app/dashboard/central-service/forecast/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/forecast/report/page.tsx",
+      "route": "/dashboard/central-service/forecast/report",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "cs-forecast"
+      ],
+      "parentLayouts": [
+        "app/dashboard/central-service/forecast/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/page.tsx",
+      "route": "/dashboard/central-service",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/central-service/site-condition/page.tsx",
+      "route": "/dashboard/central-service/site-condition",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/campaigns/page.tsx",
+      "route": "/dashboard/chitralearning-lms/campaigns",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/catalog/page.tsx",
+      "route": "/dashboard/chitralearning-lms/catalog",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/certificates/page.tsx",
+      "route": "/dashboard/chitralearning-lms/certificates",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/courses/[slug]/edit/page.tsx",
+      "route": "/dashboard/chitralearning-lms/courses/[slug]/edit",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/courses/[slug]/learn/page.tsx",
+      "route": "/dashboard/chitralearning-lms/courses/[slug]/learn",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/courses/[slug]/page.tsx",
+      "route": "/dashboard/chitralearning-lms/courses/[slug]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/courses/new/page.tsx",
+      "route": "/dashboard/chitralearning-lms/courses/new",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/leaderboard/page.tsx",
+      "route": "/dashboard/chitralearning-lms/leaderboard",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/lessons/[lessonId]/quiz-builder/page.tsx",
+      "route": "/dashboard/chitralearning-lms/lessons/[lessonId]/quiz-builder",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/management/page.tsx",
+      "route": "/dashboard/chitralearning-lms/management",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/my-learning/page.tsx",
+      "route": "/dashboard/chitralearning-lms/my-learning",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/online-assignments/[id]/edit/page.tsx",
+      "route": "/dashboard/chitralearning-lms/online-assignments/[id]/edit",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/online-assignments/[id]/quiz-builder/page.tsx",
+      "route": "/dashboard/chitralearning-lms/online-assignments/[id]/quiz-builder",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/online-assignments/[id]/take/page.tsx",
+      "route": "/dashboard/chitralearning-lms/online-assignments/[id]/take",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/online-assignments/new/page.tsx",
+      "route": "/dashboard/chitralearning-lms/online-assignments/new",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/online-assignments/page.tsx",
+      "route": "/dashboard/chitralearning-lms/online-assignments",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/page.tsx",
+      "route": "/dashboard/chitralearning-lms",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/chitralearning-lms/reports/page.tsx",
+      "route": "/dashboard/chitralearning-lms/reports",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/chitralearning-lms/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/command-center/page.tsx",
+      "route": "/dashboard/command-center",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/curhat/[sessionId]/page.tsx",
+      "route": "/dashboard/curhat/[sessionId]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/curhat/page.tsx",
+      "route": "/dashboard/curhat",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/customers/page.tsx",
+      "route": "/dashboard/customers",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/ewh/[employeeId]/page.tsx",
+      "route": "/dashboard/ewh/[employeeId]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/ewh/page.tsx",
+      "route": "/dashboard/ewh",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/feature-map/page.tsx",
+      "route": "/dashboard/feature-map",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/form-studio/page.tsx",
+      "route": "/dashboard/form-studio",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/contract-review/[id]/page.tsx",
+      "route": "/dashboard/hc/contract-review/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/contract-review/form/[id]/page.tsx",
+      "route": "/dashboard/hc/contract-review/form/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/contract-review/form/page.tsx",
+      "route": "/dashboard/hc/contract-review/form",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/contract-review/new/page.tsx",
+      "route": "/dashboard/hc/contract-review/new",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/contract-review/page.tsx",
+      "route": "/dashboard/hc/contract-review",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/disciplinary/page.tsx",
+      "route": "/dashboard/hc/disciplinary",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R09: source-confirmed unguarded disciplinary data"
+    },
+    {
+      "file": "app/dashboard/hc/employee/[id]/page.tsx",
+      "route": "/dashboard/hc/employee/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R08: source-confirmed arbitrary employee detail without scope"
+    },
+    {
+      "file": "app/dashboard/hc/employee/page.tsx",
+      "route": "/dashboard/hc/employee",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hc_employee"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/leader-performance/page.tsx",
+      "route": "/dashboard/hc/leader-performance",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/mcu-wellness/page.tsx",
+      "route": "/dashboard/hc/mcu-wellness",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/org-chart-v2/page.tsx",
+      "route": "/dashboard/hc/org-chart-v2",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/page.tsx",
+      "route": "/dashboard/hc",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/performance/page.tsx",
+      "route": "/dashboard/hc/performance",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/permission/page.tsx",
+      "route": "/dashboard/hc/permission",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/calendar/page.tsx",
+      "route": "/dashboard/hc/recruitment/calendar",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/candidates/[id]/page.tsx",
+      "route": "/dashboard/hc/recruitment/candidates/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/dashboard/page.tsx",
+      "route": "/dashboard/hc/recruitment/dashboard",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/mcu-results/page.tsx",
+      "route": "/dashboard/hc/recruitment/mcu-results",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/page.tsx",
+      "route": "/dashboard/hc/recruitment",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/test-groups/[slug]/page.tsx",
+      "route": "/dashboard/hc/recruitment/test-groups/[slug]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/test-groups/page.tsx",
+      "route": "/dashboard/hc/recruitment/test-groups",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/tests/[id]/page.tsx",
+      "route": "/dashboard/hc/recruitment/tests/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/recruitment/tests/page.tsx",
+      "route": "/dashboard/hc/recruitment/tests",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/rfr/form/page.tsx",
+      "route": "/dashboard/hc/rfr/form",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/rfr/page.tsx",
+      "route": "/dashboard/hc/rfr",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/settings/email-templates/page.tsx",
+      "route": "/dashboard/hc/settings/email-templates",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/settings/mcu-clinics/page.tsx",
+      "route": "/dashboard/hc/settings/mcu-clinics",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/surat-keterangan/page.tsx",
+      "route": "/dashboard/hc/surat-keterangan",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/surat-tugas/page.tsx",
+      "route": "/dashboard/hc/surat-tugas",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/surat/archive/page.tsx",
+      "route": "/dashboard/hc/surat/archive",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/surat/page.tsx",
+      "route": "/dashboard/hc/surat",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hc/training/page.tsx",
+      "route": "/dashboard/hc/training",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hero-genius/page.tsx",
+      "route": "/dashboard/hero-genius",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hr-counseling/[sessionId]/page.tsx",
+      "route": "/dashboard/hr-counseling/[sessionId]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hr-counseling/page.tsx",
+      "route": "/dashboard/hr-counseling",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/checklist-generator/page.tsx",
+      "route": "/dashboard/hse/checklist-generator",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/hiradc/page.tsx",
+      "route": "/dashboard/hse/hiradc",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/incident-report/page.tsx",
+      "route": "/dashboard/hse/incident-report",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_incident_report"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R16: forbidden page shell visible; loader denies data; site too narrow"
+    },
+    {
+      "file": "app/dashboard/hse/inventaris/page.tsx",
+      "route": "/dashboard/hse/inventaris",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_inventaris"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/izin-kerja-ptw/[permitId]/approval/page.tsx",
+      "route": "/dashboard/hse/izin-kerja-ptw/[permitId]/approval",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/izin-kerja-ptw/page.tsx",
+      "route": "/dashboard/hse/izin-kerja-ptw",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/jsa/page.tsx",
+      "route": "/dashboard/hse/jsa",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/page.tsx",
+      "route": "/dashboard/hse",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/sia-sio-tools-certification/page.tsx",
+      "route": "/dashboard/hse/sia-sio-tools-certification",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_sia_sio_tools_certification"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/tire-inspection/create/page.tsx",
+      "route": "/dashboard/hse/tire-inspection/create",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_tire_inspection"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/tire-inspection/detail/[id]/page.tsx",
+      "route": "/dashboard/hse/tire-inspection/detail/[id]",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_tire_inspection"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/tire-inspection/edit/[id]/page.tsx",
+      "route": "/dashboard/hse/tire-inspection/edit/[id]",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_tire_inspection"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/tire-inspection/editor/[id]/page.tsx",
+      "route": "/dashboard/hse/tire-inspection/editor/[id]",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_tire_inspection"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/hse/tire-inspection/page.tsx",
+      "route": "/dashboard/hse/tire-inspection",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "hse_tire_inspection"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/iframe/[id]/page.tsx",
+      "route": "/dashboard/iframe/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/leaderboard/page.tsx",
+      "route": "/dashboard/leaderboard",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/marketing/a2r-competition/page.tsx",
+      "route": "/dashboard/marketing/a2r-competition",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/marketing/slow-moving/page.tsx",
+      "route": "/dashboard/marketing/slow-moving",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/master-data/customers/page.tsx",
+      "route": "/dashboard/master-data/customers",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/master-data/page.tsx",
+      "route": "/dashboard/master-data",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "master_data"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/notifications/page.tsx",
+      "route": "/dashboard/notifications",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/overtime-requests/[documentId]/approval/page.tsx",
+      "route": "/dashboard/overtime-requests/[documentId]/approval",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/overtime-requests/page.tsx",
+      "route": "/dashboard/overtime-requests",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/page.tsx",
+      "route": "/dashboard",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/portal-chitra/page.tsx",
+      "route": "/dashboard/portal-chitra",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "portal_chitra"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/profile/page.tsx",
+      "route": "/dashboard/profile",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/quality/5r/create/page.tsx",
+      "route": "/dashboard/quality/5r/create",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/quality/5r/master-area/page.tsx",
+      "route": "/dashboard/quality/5r/master-area",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/quality/5r/page.tsx",
+      "route": "/dashboard/quality/5r",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/quality/5r/print/[id]/page.tsx",
+      "route": "/dashboard/quality/5r/print/[id]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/form-wo/page.tsx",
+      "route": "/dashboard/repair-retread/form-wo",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "repair_form_wo"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/master-barang-repair/page.tsx",
+      "route": "/dashboard/repair-retread/master-barang-repair",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "master_barang_repair"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/pattern-designer/library/page.tsx",
+      "route": "/dashboard/repair-retread/pattern-designer/library",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/pattern-designer/page.tsx",
+      "route": "/dashboard/repair-retread/pattern-designer",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/stock-material-sap/page.tsx",
+      "route": "/dashboard/repair-retread/stock-material-sap",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/wip-repair/dashboard-v2/page.tsx",
+      "route": "/dashboard/repair-retread/wip-repair/dashboard-v2",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/wip-repair/dashboard/page.tsx",
+      "route": "/dashboard/repair-retread/wip-repair/dashboard",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/repair-retread/wip-repair/page.tsx",
+      "route": "/dashboard/repair-retread/wip-repair",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/reports/page.tsx",
+      "route": "/dashboard/reports",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/reports/road-condition/page.tsx",
+      "route": "/dashboard/reports/road-condition",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/request-center/page.tsx",
+      "route": "/dashboard/request-center",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/safety-induction/page.tsx",
+      "route": "/dashboard/safety-induction",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/safety/data/page.tsx",
+      "route": "/dashboard/safety/data",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/safety/inspections/page.tsx",
+      "route": "/dashboard/safety/inspections",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/safety/page.tsx",
+      "route": "/dashboard/safety",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/attendance/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/attendance",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "scheduling_timesheet_attendance"
+      ],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R10-R13: loader/action scope and resource mismatch"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/field-break/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/field-break",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "scheduling_timesheet_field_break"
+      ],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/field_break/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/field_break",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/page.tsx",
+      "route": "/dashboard/scheduling-timesheet",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "scheduling_timesheet"
+      ],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/payroll/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/payroll",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "scheduling_timesheet_payroll"
+      ],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R10-R13: loader/action scope and resource mismatch"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/permission/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/permission",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/schedule-v2/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/schedule-v2",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/schedule/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/schedule",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/schedule_v2/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/schedule_v2",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/scheduling-timesheet/setup/page.tsx",
+      "route": "/dashboard/scheduling-timesheet/setup",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "scheduling_timesheet_setup"
+      ],
+      "parentLayouts": [
+        "app/dashboard/scheduling-timesheet/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/security/audit-logs/page.tsx",
+      "route": "/dashboard/security/audit-logs",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/security/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/security/page.tsx",
+      "route": "/dashboard/security",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/security/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/security/roles/page.tsx",
+      "route": "/dashboard/security/roles",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/security/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R06: source-confirmed missing view guard; unrestricted role and user payload"
+    },
+    {
+      "file": "app/dashboard/security/users/page.tsx",
+      "route": "/dashboard/security/users",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "security_users"
+      ],
+      "parentLayouts": [
+        "app/dashboard/security/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "R07: source-confirmed missing view/scope enforcement"
+    },
+    {
+      "file": "app/dashboard/settings/email/page.tsx",
+      "route": "/dashboard/settings/email",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/settings/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/settings/navbar/page.tsx",
+      "route": "/dashboard/settings/navbar",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/settings/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/settings/portal-chitra/page.tsx",
+      "route": "/dashboard/settings/portal-chitra",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "settings_portal_chitra"
+      ],
+      "parentLayouts": [
+        "app/dashboard/settings/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/settings/system-backup/page.tsx",
+      "route": "/dashboard/settings/system-backup",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": true,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/settings/layout.tsx",
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/sop-win/page.tsx",
+      "route": "/dashboard/sop-win",
+      "mentionsGetCurrentMenuPermission": true,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [
+        "sop-win"
+      ],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/sop-win/request/[token]/page.tsx",
+      "route": "/dashboard/sop-win/request/[token]",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/summary/page.tsx",
+      "route": "/dashboard/summary",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/system-blueprint/page.tsx",
+      "route": "/dashboard/system-blueprint",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/timesheet/page.tsx",
+      "route": "/dashboard/timesheet",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/timesheet/timesheet/page.tsx",
+      "route": "/dashboard/timesheet/timesheet",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/training-records/page.tsx",
+      "route": "/dashboard/training-records",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/unit-utility/master/page.tsx",
+      "route": "/dashboard/unit-utility/master",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/unit-utility/page.tsx",
+      "route": "/dashboard/unit-utility",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/barang-keluar/page.tsx",
+      "route": "/dashboard/warehouse-repair/barang-keluar",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/barang-masuk/page.tsx",
+      "route": "/dashboard/warehouse-repair/barang-masuk",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/barang/page.tsx",
+      "route": "/dashboard/warehouse-repair/barang",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/jenis/page.tsx",
+      "route": "/dashboard/warehouse-repair/jenis",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/laporan-barang-keluar/page.tsx",
+      "route": "/dashboard/warehouse-repair/laporan-barang-keluar",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/laporan-barang-masuk/page.tsx",
+      "route": "/dashboard/warehouse-repair/laporan-barang-masuk",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/laporan-stok/page.tsx",
+      "route": "/dashboard/warehouse-repair/laporan-stok",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/page.tsx",
+      "route": "/dashboard/warehouse-repair",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/warehouse-repair/satuan/page.tsx",
+      "route": "/dashboard/warehouse-repair/satuan",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    },
+    {
+      "file": "app/dashboard/workflow-studio/page.tsx",
+      "route": "/dashboard/workflow-studio",
+      "mentionsGetCurrentMenuPermission": false,
+      "mentionsCanView": false,
+      "mentionsDataScope": false,
+      "permissionResourceLiterals": [],
+      "parentLayouts": [
+        "app/dashboard/layout.tsx",
+        "app/layout.tsx"
+      ],
+      "review": "STATIC INVENTORY ONLY: trace loaders/actions before determining security status"
+    }
+  ]
+}

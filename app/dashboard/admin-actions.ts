@@ -19,7 +19,10 @@ import {
 } from '@/lib/workflow-email'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
-import { getCurrentEmployeeAccessRole, requireAdminOrHcManagerRole } from '@/lib/get-current-employee'
+import {
+  getCurrentEmployeeAccessRole,
+  requireAdminOrHcManagerRole,
+} from '@/lib/get-current-employee'
 import { normalizeIndonesiaTimezone } from '@/lib/indonesia-timezone'
 import { resyncSiteAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 
@@ -229,22 +232,29 @@ import {
   hasGlobalDataAccess,
 } from '@/lib/hero-access'
 
-async function requireSchedulingTimesheetAccess(permission: 'edit' | 'finalize' = 'edit') {
-  const access = await getCurrentMenuPermission('scheduling_timesheet')
-  const allowed =
-    permission === 'finalize'
-      ? access.canDelete || access.canSelectAll
-      : access.canEdit || access.canDelete || access.canSelectAll
-  if (!allowed) throw new Error('Unauthorized scheduling timesheet access')
+async function requireSchedulingTimesheetAccess(
+  permission: 'edit' | 'finalize' = 'edit',
+  resource = 'scheduling_timesheet'
+) {
+  const access = await getCurrentMenuPermission(resource)
+  const allowed = permission === 'finalize' ? access.canDelete : access.canEdit
+  if (!access.canView || !allowed) throw new Error('Unauthorized scheduling timesheet access')
   return access
 }
 
-async function assertSchedulingSiteScope(siteId: number, permission: 'edit' | 'finalize' = 'edit') {
+async function assertSchedulingSiteScope(
+  siteId: number,
+  permission: 'edit' | 'finalize' = 'edit',
+  resource = 'scheduling_timesheet'
+) {
   const [access, context] = await Promise.all([
-    requireSchedulingTimesheetAccess(permission),
+    requireSchedulingTimesheetAccess(permission, resource),
     getCurrentEmployeeAccessContext(),
   ])
   if (!hasGlobalDataAccess(access)) {
+    if (access.dataScope === 'own') {
+      throw new Error('Scope Own tidak dapat mengubah data scheduling seluruh site.')
+    }
     const allowedSiteIds = context?.employeeId
       ? await getUserAccessibleSiteIds(context.employeeId)
       : context?.siteId != null
@@ -252,7 +262,9 @@ async function assertSchedulingSiteScope(siteId: number, permission: 'edit' | 'f
         : []
 
     if (!allowedSiteIds.includes(siteId)) {
-      throw new Error('Anda hanya dapat mengelola scheduling untuk site yang ditugaskan kepada Anda.')
+      throw new Error(
+        'Anda hanya dapat mengelola scheduling untuk site yang ditugaskan kepada Anda.'
+      )
     }
   }
   return { access, context }
@@ -655,7 +667,12 @@ async function syncFieldBreakPlansFromV2Rows(
   }
 ) {
   const employeeIds = input.rows.map((row) => row.employeeId)
-  const employeeRows: Array<{ id: number; name: string; section: string | null; role: string | null }> = employeeIds.length
+  const employeeRows: Array<{
+    id: number
+    name: string
+    section: string | null
+    role: string | null
+  }> = employeeIds.length
     ? await tx
         .select({
           id: employees.id,
@@ -667,7 +684,12 @@ async function syncFieldBreakPlansFromV2Rows(
         .where(inArray(employees.id, employeeIds))
     : []
   const employeeById = new Map(
-    employeeRows.map((employee: { id: number; name: string; section: string | null; role: string | null }) => [employee.id, employee])
+    employeeRows.map(
+      (employee: { id: number; name: string; section: string | null; role: string | null }) => [
+        employee.id,
+        employee,
+      ]
+    )
   )
 
   for (const range of getFieldBreakScheduleRanges(input.rows, input.period)) {
@@ -1359,7 +1381,7 @@ export async function saveTimesheetPayrollSnapshotAction(
   input: z.infer<typeof saveTimesheetPayrollSnapshotSchema>
 ) {
   const payload = saveTimesheetPayrollSnapshotSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_payroll')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1494,7 +1516,7 @@ export async function saveAttendanceRealOverridesAction(
   input: z.infer<typeof saveAttendanceRealOverridesSchema>
 ) {
   const payload = saveAttendanceRealOverridesSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_attendance')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -2795,10 +2817,7 @@ export async function saveSchedulingConfigAction(
       })
 
     // Synchronize timezone with hero_sites
-    await tx
-      .update(sites)
-      .set({ timezone: resolvedTimezone })
-      .where(eq(sites.id, payload.siteId))
+    await tx.update(sites).set({ timezone: resolvedTimezone }).where(eq(sites.id, payload.siteId))
 
     let structureId: number | null = null
     const getStructureId = async () => {
@@ -3025,7 +3044,10 @@ export async function saveSchedulingConfigAction(
   try {
     await resyncSiteAttendanceToTimesheet(payload.siteId)
   } catch (error) {
-    console.error(`[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`, error)
+    console.error(
+      `[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`,
+      error
+    )
   }
 
   revalidatePath('/dashboard/scheduling-timesheet')
@@ -4402,7 +4424,8 @@ async function applyApprovalDecision(params: {
         templateName: approval.templateName ?? 'Workflow Request',
         requesterEmployeeId: approval.requesterEmployeeId ?? 0,
         requesterName: approval.requesterName ?? 'Requester',
-      },      actorEmployeeId: actor.employeeId,
+      },
+      actorEmployeeId: actor.employeeId,
       actorName,
       decision: params.decision,
       note: params.note,
@@ -4439,9 +4462,7 @@ async function applyApprovalDecision(params: {
         .limit(1)
         .then((r) => r[0])
 
-      const nextRouteStep = approvalRoute?.steps?.find(
-        (s: any) => s.stepOrder === currentLevel + 1
-      )
+      const nextRouteStep = approvalRoute?.steps?.find((s: any) => s.stepOrder === currentLevel + 1)
       const hasNextStep = Boolean(nextWaitingApproval || nextRouteStep)
 
       const requestStatus =
@@ -4551,9 +4572,8 @@ async function applyApprovalDecision(params: {
               .limit(1)
             if (nextEmp?.email) {
               nextEmpEmail = nextEmp.email
-              const { notifyWorkflowBellRecipients } = await import(
-                '@/lib/workflow-notification-center'
-              )
+              const { notifyWorkflowBellRecipients } =
+                await import('@/lib/workflow-notification-center')
               notifyWorkflowBellRecipients({
                 recipientEmails: [nextEmp.email],
                 eventType: 'form_wo_review',
@@ -4606,9 +4626,8 @@ async function applyApprovalDecision(params: {
               totalAmount: reqInfo.totalAmount || '-',
             }).catch(console.error)
 
-            const { notifyWorkflowBellRecipients } = await import(
-              '@/lib/workflow-notification-center'
-            )
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_billing_approved',
@@ -4627,17 +4646,22 @@ async function applyApprovalDecision(params: {
         if (reqInfo) {
           // Find Team Billing approver email (Dinamis untuk Service & Repair WO)
           const allFormApprovals = await tx
-            .select({ approverEmployeeId: approvals.approverEmployeeId, approverName: approvals.approverName, level: approvals.level })
+            .select({
+              approverEmployeeId: approvals.approverEmployeeId,
+              approverName: approvals.approverName,
+              level: approvals.level,
+            })
             .from(approvals)
             .where(eq(approvals.repairFormWoId, approval.repairFormWoId!))
 
           const billingApproval =
             allFormApprovals.find(
               (a) =>
-                (a.approverName && (a.approverName.toLowerCase().includes('billing') || a.approverName.toLowerCase().includes('andika'))) ||
+                (a.approverName &&
+                  (a.approverName.toLowerCase().includes('billing') ||
+                    a.approverName.toLowerCase().includes('andika'))) ||
                 a.approverEmployeeId === 1102
-            ) ??
-            allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
+            ) ?? allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
 
           let billingEmail: string | undefined
           const billingEmpId = billingApproval?.approverEmployeeId ?? 1102
@@ -4664,9 +4688,8 @@ async function applyApprovalDecision(params: {
               totalAmount: reqInfo.totalAmount || '-',
             }).catch(console.error)
 
-            const { notifyWorkflowBellRecipients } = await import(
-              '@/lib/workflow-notification-center'
-            )
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
             notifyWorkflowBellRecipients({
               recipientEmails: [billingEmail],
               eventType: 'form_wo_ready_for_wo_number',
@@ -4755,9 +4778,7 @@ async function applyApprovalDecision(params: {
               .select({ email: employees.email })
               .from(employees)
               .where(inArray(employees.id, prevApproverEmpIds))
-            previousApproverEmails = prevEmps
-              .map((e) => e.email)
-              .filter(Boolean) as string[]
+            previousApproverEmails = prevEmps.map((e) => e.email).filter(Boolean) as string[]
           }
 
           if (creatorEmail) {
@@ -4770,9 +4791,8 @@ async function applyApprovalDecision(params: {
               ccEmails: previousApproverEmails,
             }).catch(console.error)
 
-            const { notifyWorkflowBellRecipients } = await import(
-              '@/lib/workflow-notification-center'
-            )
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail, ...previousApproverEmails],
               eventType: 'form_wo_reverted',
@@ -4807,9 +4827,8 @@ async function applyApprovalDecision(params: {
               catatanPengajuan: trimmedNote || 'Pengajuan tidak disetujui oleh approver.',
             }).catch(console.error)
 
-            const { notifyWorkflowBellRecipients } = await import(
-              '@/lib/workflow-notification-center'
-            )
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_rejected',
@@ -4828,17 +4847,25 @@ async function applyApprovalDecision(params: {
     revalidatePath(`/dashboard/repair-retread/form-wo/${approval.repairFormWoId}`)
     return
   } else if (
-    approval.activityId == null && approval.submissionId == null &&
-    approval.apdRequestId == null && approval.apdSummaryId != null
+    approval.activityId == null &&
+    approval.submissionId == null &&
+    approval.apdRequestId == null &&
+    approval.apdSummaryId != null
   ) {
     const summaryId = approval.apdSummaryId as number
     const now = new Date()
 
     if (params.decision === 'approved') {
-      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine');
-      const { sendSummaryApprovedEmail } = await import('@/lib/summary-email');
+      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine')
+      const { sendSummaryApprovedEmail } = await import('@/lib/summary-email')
       const sigUrl = params.signatureUrl || ''
-      const result = await approveSummaryStep(summaryId, approval.level, actor.employeeId, sigUrl, trimmedNote)
+      const result = await approveSummaryStep(
+        summaryId,
+        approval.level,
+        actor.employeeId,
+        sigUrl,
+        trimmedNote
+      )
 
       // approveSummaryStep already updated hero_approvals with signatureUrl
       // No overwrite needed — it would erase the signature
@@ -4846,7 +4873,11 @@ async function applyApprovalDecision(params: {
       // Bell notification to summary generator
       const summaryDetails = await getSummaryDetails(summaryId)
       if (summaryDetails) {
-        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        const generatorEmail = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+          .limit(1)
         if (generatorEmail[0]?.email) {
           notifyWorkflowBellRecipients({
             recipientEmails: [generatorEmail[0].email],
@@ -4859,8 +4890,8 @@ async function applyApprovalDecision(params: {
           }).catch(console.error)
         }
       }
-    
-    if (result.allApproved) {
+
+      if (result.allApproved) {
         // Notify HSE
         if (summaryDetails) {
           await sendSummaryApprovedEmail(summaryDetails).catch(console.error)
@@ -4868,20 +4899,30 @@ async function applyApprovalDecision(params: {
       }
     } else {
       // Rejected or needs correction
-      await db.update(approvals).set({
-        status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
-        reviewedAt: now,
-        decisionNote: trimmedNote || '',
-      }).where(eq(approvals.id, approval.approvalId))
+      await db
+        .update(approvals)
+        .set({
+          status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
+          reviewedAt: now,
+          decisionNote: trimmedNote || '',
+        })
+        .where(eq(approvals.id, approval.approvalId))
 
-      await db.update(apdSummaries).set({
-        status: params.decision === 'rejected' ? 'rejected' : 'pending',
-      }).where(eq(apdSummaries.id, summaryId))
+      await db
+        .update(apdSummaries)
+        .set({
+          status: params.decision === 'rejected' ? 'rejected' : 'pending',
+        })
+        .where(eq(apdSummaries.id, summaryId))
 
       // Notify requester
       const summaryDetails = await getSummaryDetails(summaryId)
       if (summaryDetails) {
-        const generatorEmail = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, summaryDetails.generatedByEmployeeId)).limit(1)
+        const generatorEmail = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+          .limit(1)
         if (generatorEmail[0]?.email) {
           notifyWorkflowBellRecipients({
             recipientEmails: [generatorEmail[0].email],
@@ -4899,7 +4940,9 @@ async function applyApprovalDecision(params: {
   }
 
   if (
-    approval.activityId == null && approval.submissionId == null && approval.apdRequestId != null
+    approval.activityId == null &&
+    approval.submissionId == null &&
+    approval.apdRequestId != null
   ) {
     const now = new Date()
     const decisionStatus =
@@ -4942,8 +4985,7 @@ async function applyApprovalDecision(params: {
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
             actor: actorName,
-            message:
-              trimmedNote || (params.decision === 'approved' ? 'Disetujui.' : 'Ditolak.'),
+            message: trimmedNote || (params.decision === 'approved' ? 'Disetujui.' : 'Ditolak.'),
             at: now.toISOString(),
           }),
         })
@@ -4970,23 +5012,27 @@ async function applyApprovalDecision(params: {
         })
 
         // Notify requester (progress update) + next approver + bell notifications
-        const notifInfo = await tx.select({
-          requestNumber: apdRequests.requestNumber,
-          requesterName: employees.name,
-          requesterEmail: employees.email,
-          requestCategory: apdRequests.requestCategory,
-        }).from(apdRequests)
+        const notifInfo = await tx
+          .select({
+            requestNumber: apdRequests.requestNumber,
+            requesterName: employees.name,
+            requesterEmail: employees.email,
+            requestCategory: apdRequests.requestCategory,
+          })
+          .from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
           .limit(1)
-          .then(res => res[0]);
+          .then((res) => res[0])
 
         if (notifInfo) {
-          const currentStepLabel = approvalRoute?.steps?.find((s: any) => s.stepOrder === approval.level)?.label ?? `Tahap ${approval.level}`
+          const currentStepLabel =
+            approvalRoute?.steps?.find((s: any) => s.stepOrder === approval.level)?.label ??
+            `Tahap ${approval.level}`
 
           // 1. Email + bell ke requester (progress update)
           if (notifInfo.requesterEmail) {
-            const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email');
+            const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email')
             sendApdLevelApprovedEmail({
               requesterEmail: notifInfo.requesterEmail,
               requesterName: notifInfo.requesterName,
@@ -4995,7 +5041,7 @@ async function applyApprovalDecision(params: {
               requestType: notifInfo.requestCategory,
               currentLevelLabel: currentStepLabel,
               nextLevelLabel: nextStep.label,
-            }).catch(console.error);
+            }).catch(console.error)
 
             notifyWorkflowBellRecipients({
               recipientEmails: [notifInfo.requesterEmail],
@@ -5005,18 +5051,19 @@ async function applyApprovalDecision(params: {
               body: `Permintaan ${notifInfo.requestCategory} Anda (${notifInfo.requestNumber}) telah disetujui pada tahap ${currentStepLabel} dan menunggu tahap berikutnya.`,
               url: '/dashboard/approval',
               tagPrefix: 'apd',
-            }).catch(console.error);
+            }).catch(console.error)
           }
 
           // 2. Email + bell ke next approver
           if (nextStep.approverEmployeeId) {
-            const [nextApproverEmail] = await tx.select({ email: employees.email })
+            const [nextApproverEmail] = await tx
+              .select({ email: employees.email })
               .from(employees)
               .where(eq(employees.id, nextStep.approverEmployeeId))
-              .limit(1);
+              .limit(1)
 
             if (nextApproverEmail?.email) {
-              const { sendApdNextApproverEmail } = await import('@/lib/apd-email');
+              const { sendApdNextApproverEmail } = await import('@/lib/apd-email')
               sendApdNextApproverEmail({
                 nextApproverEmail: nextApproverEmail.email,
                 nextApproverName: nextStep.approverName,
@@ -5024,7 +5071,7 @@ async function applyApprovalDecision(params: {
                 requestNumber: notifInfo.requestNumber,
                 requestType: notifInfo.requestCategory,
                 currentLevelLabel: nextStep.label,
-              }).catch(console.error);
+              }).catch(console.error)
 
               notifyWorkflowBellRecipients({
                 recipientEmails: [nextApproverEmail.email],
@@ -5034,7 +5081,7 @@ async function applyApprovalDecision(params: {
                 body: `${notifInfo.requesterName} mengajukan permintaan ${notifInfo.requestCategory} (${notifInfo.requestNumber}) yang membutuhkan persetujuan Anda pada tahap ${nextStep.label}.`,
                 url: '/dashboard/approval',
                 tagPrefix: 'apd',
-              }).catch(console.error);
+              }).catch(console.error)
             }
           }
         }
@@ -5042,27 +5089,29 @@ async function applyApprovalDecision(params: {
 
       if (decisionStatus === 'proses_order' && approval.apdRequestId != null && !nextStep) {
         // Fully approved, notify requester and CC central admin
-        const reqInfo = await tx.select({
-          requestNumber: apdRequests.requestNumber,
-          requesterName: employees.name,
-          requesterEmail: employees.email,
-          requestCategory: apdRequests.requestCategory
-        }).from(apdRequests)
+        const reqInfo = await tx
+          .select({
+            requestNumber: apdRequests.requestNumber,
+            requesterName: employees.name,
+            requesterEmail: employees.email,
+            requestCategory: apdRequests.requestCategory,
+          })
+          .from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
           .limit(1)
-          .then(res => res[0]);
+          .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
           if (reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS') {
-            const { sendMaterialToolsApprovedEmail } = await import('@/lib/apd-email');
+            const { sendMaterialToolsApprovedEmail } = await import('@/lib/apd-email')
             sendMaterialToolsApprovedEmail({
               requesterEmail: reqInfo.requesterEmail,
               requesterName: reqInfo.requesterName,
               requestNumber: reqInfo.requestNumber,
               approverName: actorName,
               requestType: reqInfo.requestCategory,
-            }).catch(console.error);
+            }).catch(console.error)
 
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail, 'muhammad.akbar@chitraparatama.co.id'],
@@ -5072,18 +5121,25 @@ async function applyApprovalDecision(params: {
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
               tagPrefix: 'apd',
-            }).catch(console.error);
+            }).catch(console.error)
           } else {
-            const { getApdNotificationConfigData } = await import('@/lib/hero-admin');
-            const apdConfig = await getApdNotificationConfigData();
-            let ccEmails: string[] = [];
-            
+            const { getApdNotificationConfigData } = await import('@/lib/hero-admin')
+            const apdConfig = await getApdNotificationConfigData()
+            let ccEmails: string[] = []
+
             if (apdConfig.isActive) {
-               const parseEmails = (s: string) => s.split(',').map(e => e.trim()).filter(Boolean);
-               ccEmails = [...parseEmails(apdConfig.recipientEmails), ...parseEmails(apdConfig.ccEmails)];
+              const parseEmails = (s: string) =>
+                s
+                  .split(',')
+                  .map((e) => e.trim())
+                  .filter(Boolean)
+              ccEmails = [
+                ...parseEmails(apdConfig.recipientEmails),
+                ...parseEmails(apdConfig.ccEmails),
+              ]
             }
 
-            const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email');
+            const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email')
             sendApdRequestApprovedEmail({
               requesterEmail: reqInfo.requesterEmail,
               requesterName: reqInfo.requesterName,
@@ -5091,7 +5147,7 @@ async function applyApprovalDecision(params: {
               approverName: actorName,
               requestType: reqInfo.requestCategory,
               ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
-            }).catch(console.error);
+            }).catch(console.error)
 
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail],
@@ -5101,33 +5157,35 @@ async function applyApprovalDecision(params: {
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
               tagPrefix: 'apd',
-            }).catch(console.error);
+            }).catch(console.error)
           }
         }
       }
 
       if (params.decision === 'rejected' && approval.apdRequestId != null) {
-        const reqInfo = await tx.select({
-          requestNumber: apdRequests.requestNumber,
-          requesterName: employees.name,
-          requesterEmail: employees.email,
-          requestCategory: apdRequests.requestCategory
-        }).from(apdRequests)
+        const reqInfo = await tx
+          .select({
+            requestNumber: apdRequests.requestNumber,
+            requesterName: employees.name,
+            requesterEmail: employees.email,
+            requestCategory: apdRequests.requestCategory,
+          })
+          .from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
           .limit(1)
-          .then(res => res[0]);
+          .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
-          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email');
+          const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email')
           sendApdRequestRejectedEmail({
             requesterEmail: reqInfo.requesterEmail,
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,
             approverName: actorName,
             reason: trimmedNote || 'Tidak ada alasan yang diberikan',
-            requestType: reqInfo.requestCategory
-          }).catch(console.error);
+            requestType: reqInfo.requestCategory,
+          }).catch(console.error)
 
           notifyWorkflowBellRecipients({
             recipientEmails: [reqInfo.requesterEmail],
@@ -5137,32 +5195,34 @@ async function applyApprovalDecision(params: {
             body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) telah ditolak oleh ${actorName}.`,
             url: '/dashboard/apd',
             tagPrefix: 'apd',
-          }).catch(console.error);
+          }).catch(console.error)
         }
       }
 
       if (params.decision === 'needs_correction' && approval.apdRequestId != null) {
-        const reqInfo = await tx.select({
-          requestNumber: apdRequests.requestNumber,
-          requesterName: employees.name,
-          requesterEmail: employees.email,
-          requestCategory: apdRequests.requestCategory
-        }).from(apdRequests)
+        const reqInfo = await tx
+          .select({
+            requestNumber: apdRequests.requestNumber,
+            requesterName: employees.name,
+            requesterEmail: employees.email,
+            requestCategory: apdRequests.requestCategory,
+          })
+          .from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .where(eq(apdRequests.id, approval.apdRequestId))
           .limit(1)
-          .then(res => res[0]);
+          .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
-          const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email');
+          const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email')
           sendApdRequestRevertedEmail({
             requesterEmail: reqInfo.requesterEmail,
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,
             approverName: actorName,
             reason: trimmedNote || 'Dikembalikan untuk revisi',
-            requestType: reqInfo.requestCategory
-          }).catch(console.error);
+            requestType: reqInfo.requestCategory,
+          }).catch(console.error)
 
           notifyWorkflowBellRecipients({
             recipientEmails: [reqInfo.requesterEmail],
@@ -5172,7 +5232,7 @@ async function applyApprovalDecision(params: {
             body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) dikembalikan untuk revisi oleh ${actorName}.`,
             url: '/dashboard/apd',
             tagPrefix: 'apd',
-          }).catch(console.error);
+          }).catch(console.error)
         }
       }
     })
@@ -5789,12 +5849,7 @@ async function upsertCredentialAccount({
     const [existingCredential] = await db
       .select({ id: account.id })
       .from(account)
-      .where(
-        and(
-          eq(account.providerId, 'credential'),
-          eq(account.accountId, accountId)
-        )
-      )
+      .where(and(eq(account.providerId, 'credential'), eq(account.accountId, accountId)))
       .limit(1)
 
     const credentialValues = {
@@ -6909,8 +6964,11 @@ export async function importSecurityUsersAction(
 
 const importUpdateUsersSchema = z.object({
   rawCsv: z.string().trim().min(1, 'CSV file is required.'),
-  confirmLocationChanges: z.preprocess((value) => value === 'true' || value === 'on' || value === true, z.boolean().default(false)),
-  selectedColumnsJson: z.string().optional(),  // JSON array of header strings; empty = update all
+  confirmLocationChanges: z.preprocess(
+    (value) => value === 'true' || value === 'on' || value === true,
+    z.boolean().default(false)
+  ),
+  selectedColumnsJson: z.string().optional(), // JSON array of header strings; empty = update all
   importMode: z.enum(['new', 'update']).default('update'),
 })
 
@@ -6976,12 +7034,14 @@ export async function importUpdateUsersAction(
     if (payload.selectedColumnsJson) {
       try {
         const parsed = JSON.parse(payload.selectedColumnsJson)
-        if (Array.isArray(parsed)) selectedColumns = parsed.filter((s): s is string => typeof s === 'string')
-      } catch { /* ignore malformed JSON */ }
+        if (Array.isArray(parsed))
+          selectedColumns = parsed.filter((s): s is string => typeof s === 'string')
+      } catch {
+        /* ignore malformed JSON */
+      }
     }
     const isUpdateMode = payload.importMode === 'update'
     const isNewMode = payload.importMode === 'new'
-
 
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
 
@@ -7124,35 +7184,39 @@ export async function importUpdateUsersAction(
         }
 
         // Build a minimal employee record from available columns
-        const nameIdx   = col('name')
-        const deptIdx   = col('department')
+        const nameIdx = col('name')
+        const deptIdx = col('department')
         const sectionIdx = col('section')
         const jobTitleIdx = col('job title')
         const levelNameIdx = col('level staff')
-        const peranIdx  = col('peran')
+        const peranIdx = col('peran')
         const lokasiSiteIdx = col('lokasi site')
         const tipeStatusIdx = col('tipe status')
         const genderIdx = col('gender')
-        const agamaIdx  = col('agama')
+        const agamaIdx = col('agama')
         const pendidikanIdx = col('pendidikan')
         const maritalIdx = col('marital status')
-        const pohIdx    = col('poh')
+        const pohIdx = col('poh')
         const joinDateIdx = col('join date')
         const contractStartIdx = col('contract start')
-        const contractEndIdx   = col('contract end')
+        const contractEndIdx = col('contract end')
         const permanentDateIdx = col('permanent date')
-        const tglLahirIdx      = col('tgl lahir')
-        const emailIdx   = col('email')
-        const phoneIdx   = col('phone number')
+        const tglLahirIdx = col('tgl lahir')
+        const emailIdx = col('email')
+        const phoneIdx = col('phone number')
         const domicileIdx = col('domicile')
         const statusAkunIdx = col('status akun')
 
         const getValue = (idx: number | undefined): string =>
           idx !== undefined ? (recordValues[idx] ?? '').trim() : ''
-        const getDate = (idx: number | undefined): string | null => normalizeImportDate(getValue(idx))
+        const getDate = (idx: number | undefined): string | null =>
+          normalizeImportDate(getValue(idx))
 
         const newName = getValue(nameIdx)
-        if (!newName) { skippedCount++; continue }
+        if (!newName) {
+          skippedCount++
+          continue
+        }
 
         const lokasiVal = getValue(lokasiSiteIdx)
         const fallbackSite: ImportSiteLookup = siteRows[0] ?? { id: 1, name: '', location: '' }
@@ -7161,9 +7225,12 @@ export async function importUpdateUsersAction(
           : fallbackSite
 
         const statusVal = getValue(statusAkunIdx).toLowerCase()
-        const isActive = statusVal.includes('active') || statusVal === 'aktif' ? true
-          : statusVal.includes('non') || statusVal.includes('inactive') ? false
-          : true
+        const isActive =
+          statusVal.includes('active') || statusVal === 'aktif'
+            ? true
+            : statusVal.includes('non') || statusVal.includes('inactive')
+              ? false
+              : true
 
         const resolvedSiteId = resolvedSite.id
 
@@ -7394,7 +7461,7 @@ export async function manageSecurityUserAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    await requireAdminOrHcManagerRole()
+    await requireAdminOrHcManagerRole('security_users')
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityUserSchema.parse({
@@ -7979,7 +8046,10 @@ export async function manageSecurityUserAction(
       })
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: `Pengguna ${employee.name} berhasil diaktifkan kembali.` }
+      return {
+        status: 'success',
+        message: `Pengguna ${employee.name} berhasil diaktifkan kembali.`,
+      }
     }
 
     if (payload.intent === 'delete-user') {
@@ -7996,7 +8066,10 @@ export async function manageSecurityUserAction(
       try {
         await db.delete(employees).where(eq(employees.id, employee.id))
       } catch (deleteError) {
-        console.warn('Hard delete of employee restricted by foreign keys, soft deleting:', deleteError)
+        console.warn(
+          'Hard delete of employee restricted by foreign keys, soft deleting:',
+          deleteError
+        )
         await db
           .update(employees)
           .set({
@@ -8143,7 +8216,7 @@ export async function manageSecurityRoleAction(
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    await requireAdminOrHcManagerRole()
+    await requireAdminOrHcManagerRole('security_roles')
     await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityRoleSchema.parse({
@@ -10873,8 +10946,3 @@ function parseSioExcelDate(value: string): string | null {
   const d = new Date(value)
   return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null
 }
-
-
-
-
-

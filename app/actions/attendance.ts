@@ -339,22 +339,6 @@ function formatAttendancePermissionRange(startDate: string, endDate: string) {
   return `${new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })} s/d ${new Date(`${endDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })}`
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function notifyAttendancePermissionSubmitted(input: {
   employeeId?: number | null
   employeeName: string
@@ -1179,7 +1163,11 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   ]
 
   if (!hasGlobalDataAccess(access)) {
-    conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+    conditions.push(
+      access.dataScope === 'own'
+        ? eq(attendanceRecords.employeeId, employee.id)
+        : eq(attendanceRecords.siteId, employee.siteId)
+    )
   }
 
   const records = await db
@@ -1271,7 +1259,11 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
 
   return {
     success: true as const,
-    scope: hasGlobalDataAccess(access) ? ('global' as const) : ('site' as const),
+    scope: hasGlobalDataAccess(access)
+      ? ('global' as const)
+      : access.dataScope === 'own'
+        ? ('own' as const)
+        : ('site' as const),
     generatedAt: new Date().toISOString(),
     records: records.map((record) => ({
       ...record,

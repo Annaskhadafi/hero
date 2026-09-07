@@ -435,6 +435,84 @@ Rules:
 - **Data Scope Enforcement**: Jika `dataScope === 'own'` dan `canSelectAll` false, data query / tabel client WAJIB dibatasi hanya untuk data milik employee/user yang sedang login.
 - **Server Action Protection**: Setiap Server Action yang melakukan operasi mutasi (insert, update, delete) WAJIB memvalidasi permission menggunakan `getAuthenticatedSession(resource, 'create' | 'edit' | 'delete')` atau `checkPermission`.
 
+#### Canonical RBAC Enforcement Contract (Wajib untuk setiap perubahan)
+
+Aturan di bawah ini adalah sumber kebenaran implementasi RBAC HERO. Jika aturan lama di bagian lain file ini lebih longgar, aturan canonical ini yang berlaku.
+
+##### 1. Identity dan role resolution
+
+- Runtime employee hanya boleh dicari dari session tervalidasi dan `hero_employees`, memakai `authUserId` atau email yang cocok secara exact/normalized.
+- Jika session, employee, atau `accessRole` tidak ditemukan, hasilnya **unauthenticated/forbidden**. Jangan memilih akun hardcoded, employee aktif pertama, employee berdasarkan nama parsial, atau role default.
+- Jangan pernah fallback ke `Super Admin` ketika mapping gagal. Fallback hanya boleh menghasilkan deny.
+- `hero_hr_employees` tetap dilarang untuk runtime access; gunakan `hero_employees` dan join master department, section, dan site bila diperlukan.
+- Hanya role canonical **`Super Admin`** yang boleh bypass matriks permission. Nama seperti `System Administrator`, `Administrator`, `HC Manager`, `Site Admin`, `Manager`, nama orang, substring `admin`, atau role khusus lain **tidak** boleh menjadi bypass.
+- Resolver sidebar, page loader, server action, API, export, mobile, dan embedded page wajib memakai sumber role/permission yang sama. Jangan buat pemetaan nama/email khusus per caller.
+
+##### 2. Permission lookup dan default deny
+
+- Permission selalu dicari berdasarkan pasangan `(role, navbarMenuItems.resource)` yang dipakai route/action tersebut.
+- Permission record yang hilang, resource tidak dikenal, role tidak dikenal, atau `dataScope` invalid berarti semua flag false dan akses ditolak.
+- Jangan memberi akses bawaan berdasarkan nama role ketika `roleMenuPermissions` belum memiliki record.
+- `canView`, `canEdit`, `canDelete`, dan `canSelectAll` adalah flag terpisah. `canDelete` atau `canSelectAll` tidak boleh menggantikan `canEdit`; `canEdit` tidak boleh menggantikan `canDelete`.
+- Kontrak create yang belum memiliki flag terpisah memakai `canEdit`, dan harus diterapkan sama di UI serta server.
+- `canSelectAll` tidak pernah mengubah `own`/`site` menjadi `global`. Scope dan aksi adalah dua keputusan berbeda.
+- Permission seed harus idempotent: seed boleh membuat record yang belum ada, tetapi **dilarang meng-update record permission yang sudah ada** hanya untuk memaksa akses core menu atau mengembalikan checklist yang sudah dimatikan.
+
+##### 3. Page, layout, direct URL, API, export
+
+- Setiap `page.tsx` server component wajib memanggil `getCurrentMenuPermission(resource)` sebelum fetch data domain. Jika `canView` false, redirect/forbidden sebelum data dikirim ke client.
+- Parent layout yang hanya memeriksa login atau status aktif tidak dianggap sebagai RBAC guard.
+- Menyembunyikan menu/sidebar atau tombol client tidak cukup. Direct URL, nested route, detail ID, server action, route handler, API JSON, CSV/Excel export, PDF, refresh client, dan mobile endpoint wajib memeriksa permission sendiri.
+- Jangan fetch seluruh dataset lalu menyembunyikan baris di client. Predicate scope harus diterapkan di query/server sebelum serialization.
+- Detail berdasarkan ID harus memeriksa resource dan scope terhadap row yang dibaca; mengganti ID di URL tidak boleh membuka data orang lain.
+- Semua `stats`, `count`, search, dropdown/reference, nested array, export, dan PDF harus memakai predicate scope yang sama dengan tabel utama.
+
+##### 4. Definisi scope data
+
+- **Own:** hanya row yang dimiliki karyawan login. Owner adalah employee pemilik/requester/PIC yang tersimpan pada row sesuai domain, bukan user/admin yang membuat atau mengubah row atas nama orang lain.
+- **Site:** hanya row pada `hero_employees.siteId` utama karyawan login di User Management. `employeeSiteAssignments` aktif tidak memperluas scope Site kecuali ada aturan domain tertulis dan terpisah yang disetujui.
+- **Global:** boleh lintas site, tetapi hanya untuk resource yang `canView`-nya aktif dan tetap tunduk pada `canEdit`/`canDelete` masing-masing.
+- Jangan menerima `employeeId`, `siteId`, owner, atau scope dari FormData/query/body sebagai bukti otorisasi. Baca owner/site authoritative dari database lalu bandingkan dengan context session.
+- Jika employee target tidak ditemukan, site utama tidak ada, atau context tidak valid, tolak akses. Jangan memilih site/employee pengganti.
+- Untuk data historis, gunakan owner/site yang tersimpan pada transaksi bila tersedia. Jangan otomatis memakai site terkini karyawan tanpa aturan domain yang jelas.
+
+##### 5. Data agregat dan operasi batch
+
+- Data bersama/agregat per site yang tidak memiliki `employeeId`/owner tidak boleh diberikan ke Own. Own hanya boleh menerima potongan miliknya jika schema memang menyimpan owner; jika tidak, batasi ke Site/Global.
+- Operasi save/finalize/replace snapshot yang memengaruhi seluruh site wajib memerlukan scope Site/Global. Own tidak boleh mengirim subset lalu menimpa atau menghapus data karyawan lain.
+- Batch insert/update/delete wajib memvalidasi semua row/employee ID/site sebelum write. Jika satu item di luar scope, tolak seluruh batch dan jangan melakukan partial write.
+- Gunakan transaksi untuk perubahan multi-row yang harus atomik. Validasi aksi (`canEdit`/`canDelete`) dan scope dilakukan server-side sebelum transaksi.
+
+##### 6. Approval exception
+
+- Own tetap boleh membaca pengajuan orang lain hanya jika row tersebut secara eksplisit ditugaskan kepada employee login sebagai approver melalui Inbox Approval.
+- Exception ini terbatas pada row/step approval yang ditugaskan dan field minimum yang diperlukan untuk keputusan. Jangan membuka seluruh profil requester, dataset requester, atau data lintas site lain.
+- Semua aksi approve/reject/delegate tetap memeriksa resource approval, status step, approver assignment, dan scope transaksi.
+
+##### 7. Mutation, cache, dan invalidation
+
+- Setiap mutation harus memakai resource yang tepat untuk menu/action tersebut; jangan memakai permission Overview sebagai pengganti permission Attendance, Payroll, Detail, atau submenu lain.
+- UI boleh menyembunyikan action tanpa mengandalkan UI sebagai security boundary. Server action harus menolak request langsung dengan flag yang salah.
+- Setelah role/permission berubah, cache sidebar, permission, page, dan session yang relevan harus di-revalidate/invalidate. Request berikutnya wajib membaca konfigurasi terbaru.
+- Perubahan Role Management tidak boleh memberi caller jalur privilege escalation: izin mengelola user tidak otomatis memberi izin mengubah role/permission atau menetapkan Super Admin.
+
+##### 8. Regression check wajib
+
+Untuk setiap perubahan RBAC, tambahkan atau jalankan smoke/regression check minimum yang membuktikan:
+
+- permission hilang dan `canView=false` menolak direct URL, API, detail, export, dan action;
+- Own hanya melihat/mengubah owner sendiri;
+- Site hanya memakai `hero_employees.siteId` utama dan tidak membuka assignment tambahan;
+- Global tetap gagal jika `canView` false;
+- edit/delete mengikuti flag masing-masing;
+- payload employee/site palsu ditolak server-side;
+- seed/restart tidak menghidupkan kembali permission deny;
+- development dan production memiliki hasil authorization yang sama;
+- approval exception hanya membuka assignment yang ditujukan ke approver;
+- perubahan tidak mengakses `hero_hr_employees` pada runtime.
+
+Static token inventory (`page.tsx` memiliki atau tidak memiliki helper permission) hanya alat triage. Status aman harus dibuktikan dengan penelusuran route → loader/action → query → serialization dan, bila relevan, test runtime dengan fixture role/employee/site.
+
 ## Agent skills
 
 ### Issue tracker

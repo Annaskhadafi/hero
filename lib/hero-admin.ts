@@ -75,9 +75,7 @@ import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
 import {
   getCurrentEmployeeAccessContext,
   getCurrentMenuPermission,
-  getUserAccessibleSiteIds,
   hasGlobalDataAccess,
-  hasSiteDataAccess,
 } from '@/lib/hero-access'
 import {
   ensureMasterCategoryTables,
@@ -101,7 +99,7 @@ export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs 
       return await fn()
     } catch (err: any) {
       attempt++
-      const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase()
+      const errStr = String(err?.message || err?.cause?.message || err || '').toLowerCase()
       const isNetworkError =
         err?.code === 'ECONNRESET' ||
         err?.code === 'ETIMEDOUT' ||
@@ -396,7 +394,8 @@ const GOVERNANCE_ROLE_SEEDS = [
   },
   {
     name: 'Quality & CPI Manager',
-    description: 'Kontrol penuh modul Quality & CPI, audit 5R, Continuous Improvement, dan master area.',
+    description:
+      'Kontrol penuh modul Quality & CPI, audit 5R, Continuous Improvement, dan master area.',
     scope: 'all_sites',
   },
   {
@@ -2520,7 +2519,8 @@ Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
     deliveryChannel: 'email,bell',
     recipientScope: 'approver',
     ccEmail: '',
-    subject: '[Daily Activity] Menunggu Persetujuan Anda: {{sessionCode}} - {{employeeName}} ({{approvalStep}})',
+    subject:
+      '[Daily Activity] Menunggu Persetujuan Anda: {{sessionCode}} - {{employeeName}} ({{approvalStep}})',
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
 <div style="background:linear-gradient(135deg,#0f172a,#0d9488);padding:24px;border-radius:10px 10px 0 0">
   <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
@@ -4109,23 +4109,26 @@ const EMAIL_TEMPLATE_SEEDS = [
     textContent: p.textContent,
     isActive: true,
   })),
-].reduce((acc, current) => {
-  if (!acc.some((item) => item.templateCode === current.templateCode)) {
-    acc.push(current)
-  }
-  return acc
-}, [] as Array<{
-  name: string
-  templateCode: string
-  templateType: string
-  deliveryChannel: string
-  recipientScope: string
-  ccEmail: string
-  subject: string
-  htmlContent: string
-  textContent: string
-  isActive: boolean
-}>)
+].reduce(
+  (acc, current) => {
+    if (!acc.some((item) => item.templateCode === current.templateCode)) {
+      acc.push(current)
+    }
+    return acc
+  },
+  [] as Array<{
+    name: string
+    templateCode: string
+    templateType: string
+    deliveryChannel: string
+    recipientScope: string
+    ccEmail: string
+    subject: string
+    htmlContent: string
+    textContent: string
+    isActive: boolean
+  }>
+)
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
   {
@@ -4327,7 +4330,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
-  if (roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi') {
+  if (roleName === 'Super Admin') {
     return {
       canView: true,
       canEdit: true,
@@ -4338,7 +4341,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
   }
 
   if (resource === 'settings_system_backup') {
-    const isPermitted = roleName === 'Super Admin' || roleName === 'Khusus Mas Rendi'
+    const isPermitted = roleName === 'Super Admin'
     return {
       canView: isPermitted,
       canEdit: isPermitted,
@@ -4421,7 +4424,12 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 
   return {
     canView: true,
-    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra', 'settings_system_backup'].includes(resource),
+    canEdit: ![
+      'settings_email',
+      'portal_chitra',
+      'settings_portal_chitra',
+      'settings_system_backup',
+    ].includes(resource),
     canDelete: false,
     canSelectAll: false,
     dataScope: OWN_SCOPE_RESOURCES.has(resource) ? 'own' : 'global',
@@ -4440,7 +4448,7 @@ async function ensureHeroGovernanceTables() {
       );
     `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_security_permissions (
       id serial primary key,
       code text not null,
@@ -4451,7 +4459,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_security_role_permissions (
       id serial primary key,
       role_id integer not null references hero_security_roles(id) on delete cascade,
@@ -4460,7 +4468,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_email_delivery_logs (
       id serial primary key,
       employee_id integer references hero_employees(id) on delete set null,
@@ -4480,7 +4488,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_hc_notification_config (
       id serial primary key,
       recipient_emails text not null default '',
@@ -4490,7 +4498,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_hse_safety_notification_config (
       id serial primary key,
       recipient_emails text not null default '',
@@ -4500,7 +4508,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_cs_forecast_daily_report_config (
       id serial primary key,
       recipient_emails text not null default '',
@@ -4514,7 +4522,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_email_smtp_settings (
       id serial primary key,
       profile_name text not null default 'Default SMTP',
@@ -4536,7 +4544,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_email_templates (
       id serial primary key,
       name text not null,
@@ -4554,7 +4562,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_notification_channel_settings (
       id serial primary key,
       channel text not null unique,
@@ -4571,7 +4579,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_notification_channel_rules (
       id serial primary key,
       channel text not null default 'bell',
@@ -4588,7 +4596,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_notification_user_preferences (
       id serial primary key,
       employee_id integer not null unique references hero_employees(id) on delete cascade,
@@ -4604,7 +4612,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_notification_push_subscriptions (
       id serial primary key,
       employee_id integer not null references hero_employees(id) on delete cascade,
@@ -4620,7 +4628,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_audit_logs (
       id serial primary key,
       actor_employee_id integer references hero_employees(id) on delete set null,
@@ -4633,7 +4641,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_navbar_themes (
       id serial primary key,
       theme_name text not null,
@@ -4647,12 +4655,12 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_navbar_themes
     add column if not exists header_background_color text not null default '#FFFFFF';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_navbar_menu_items (
       id serial primary key,
       menu_area text not null default 'main',
@@ -4668,11 +4676,11 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_navbar_menu_items add column if not exists menu_area text not null default 'main';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_sites
       add column if not exists province_id text not null default '',
       add column if not exists province_name text not null default '',
@@ -4685,7 +4693,7 @@ async function ensureHeroGovernanceTables() {
       add column if not exists address_detail text not null default '';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_role_menu_permissions (
       id serial primary key,
       role_id integer not null references hero_security_roles(id) on delete cascade,
@@ -4698,14 +4706,14 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     DO $$ BEGIN
       ALTER TABLE hero_role_menu_permissions ADD COLUMN IF NOT EXISTS data_scope text NOT NULL DEFAULT 'own';
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_portal_chitra_apps (
       id serial primary key,
       slug text not null unique,
@@ -4723,7 +4731,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_portal_chitra_role_access (
       id serial primary key,
       portal_app_id integer not null references hero_portal_chitra_apps(id) on delete cascade,
@@ -4732,7 +4740,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_master_departments (
       id serial primary key,
       code text not null unique,
@@ -4744,7 +4752,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_master_sections (
       id serial primary key,
       code text not null unique,
@@ -4757,7 +4765,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     DO $$ BEGIN
       ALTER TABLE hero_master_sections ADD COLUMN IF NOT EXISTS head_employee_id integer;
       ALTER TABLE hero_master_sections ADD COLUMN IF NOT EXISTS parent_id integer references hero_master_sections(id) on delete set null;
@@ -4765,7 +4773,7 @@ async function ensureHeroGovernanceTables() {
     END $$;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_master_positions (
       id serial primary key,
       code text not null unique,
@@ -4781,7 +4789,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_master_attendance_shifts (
       id serial primary key,
       code text not null unique,
@@ -4797,32 +4805,32 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_master_positions
     add column if not exists site_location text not null default '';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_master_positions
     add column if not exists section_id integer references hero_master_sections(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_employees
     add column if not exists department_id integer;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_employees
     add column if not exists section_id integer;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_employees
     add column if not exists position_id integer;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_org_chart_structures (
       id serial primary key,
       name text not null,
@@ -4839,7 +4847,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_org_chart_nodes (
       id serial primary key,
       structure_id integer not null references hero_org_chart_structures(id) on delete cascade,
@@ -4862,72 +4870,72 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists version integer not null default 1;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists effective_from timestamp not null default now();
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists effective_to timestamp;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists is_default boolean not null default false;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists employee_id integer references hero_employees(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists node_code text not null default '';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists node_type text not null default 'position';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists approval_role text not null default '';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists can_approve boolean not null default false;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists can_delegate boolean not null default true;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists is_escalation_target boolean not null default false;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists sla_hours integer not null default 24;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists fallback_node_id integer;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_org_node_assignments (
       id serial primary key,
       node_id integer not null references hero_org_chart_nodes(id) on delete cascade,
@@ -4942,7 +4950,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_approval_matrices (
       id serial primary key,
       name text not null,
@@ -4965,7 +4973,7 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     create table if not exists hero_approval_matrix_steps (
       id serial primary key,
       matrix_id integer not null references hero_approval_matrices(id) on delete cascade,
@@ -4983,62 +4991,90 @@ async function ensureHeroGovernanceTables() {
     );
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_employees
     add column if not exists org_node_id integer;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists approver_employee_id integer references hero_employees(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists approver_node_id integer references hero_org_chart_nodes(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists approval_matrix_id integer references hero_approval_matrices(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists approval_step_id integer references hero_approval_matrix_steps(id) on delete set null;
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists resolution_source text not null default 'matrix';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists route_snapshot text not null default '';
   `)
 
-  await db.execute(sql`
+    await db.execute(sql`
     alter table hero_approvals
     add column if not exists decision_note text not null default '';
-  `);
+  `)
   } catch (error) {
-    console.warn('[ensureHeroGovernanceTables] Schema check skipped or timed out:', error);
+    console.warn('[ensureHeroGovernanceTables] Schema check skipped or timed out:', error)
   }
 }
 
 export async function ensureVirtualRelativeEmployees() {
   const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
   if (!firstSite) {
-    console.warn("Skipping virtual employees seeding: no sites found.")
+    console.warn('Skipping virtual employees seeding: no sites found.')
     return
   }
 
   const virtuals = [
-    { id: 990001, name: " [Atasan Langsung (Direct Manager)]", email: "direct_manager@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
-    { id: 990002, name: " [Kepala Departemen (Department Head)]", email: "department_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
-    { id: 990003, name: " [Kepala Seksi (Section Head)]", email: "section_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
-    { id: 990004, name: " [Kepala Site (Site Head)]", email: "site_head@relative.hero", siteId: firstSite.id, role: "Relative Approver", department: "Relative Approver" },
+    {
+      id: 990001,
+      name: ' [Atasan Langsung (Direct Manager)]',
+      email: 'direct_manager@relative.hero',
+      siteId: firstSite.id,
+      role: 'Relative Approver',
+      department: 'Relative Approver',
+    },
+    {
+      id: 990002,
+      name: ' [Kepala Departemen (Department Head)]',
+      email: 'department_head@relative.hero',
+      siteId: firstSite.id,
+      role: 'Relative Approver',
+      department: 'Relative Approver',
+    },
+    {
+      id: 990003,
+      name: ' [Kepala Seksi (Section Head)]',
+      email: 'section_head@relative.hero',
+      siteId: firstSite.id,
+      role: 'Relative Approver',
+      department: 'Relative Approver',
+    },
+    {
+      id: 990004,
+      name: ' [Kepala Site (Site Head)]',
+      email: 'site_head@relative.hero',
+      siteId: firstSite.id,
+      role: 'Relative Approver',
+      department: 'Relative Approver',
+    },
   ]
 
   for (const v of virtuals) {
@@ -5094,13 +5130,17 @@ export async function ensureHeroGovernanceSeedData() {
         (SELECT count(*)::int FROM hero_notification_push_subscriptions) as notification_subscription_count
     `)
 
-    const countsRow = ((countsResult as any)?.rows?.[0] ?? (countsResult as any)?.[0] ?? {}) as Record<string, number>
+    const countsRow = ((countsResult as any)?.rows?.[0] ??
+      (countsResult as any)?.[0] ??
+      {}) as Record<string, number>
     const permissionCount = Number(countsRow.permission_count ?? 0)
     const rolePermissionCount = Number(countsRow.role_permission_count ?? 0)
     const themeCount = Number(countsRow.theme_count ?? 0)
     const attendanceShiftCount = Number(countsRow.attendance_shift_count ?? 0)
     const emailSmtpSettingCount = Number(countsRow.email_smtp_setting_count ?? 0)
-    const notificationChannelSettingCount = Number(countsRow.notification_channel_setting_count ?? 0)
+    const notificationChannelSettingCount = Number(
+      countsRow.notification_channel_setting_count ?? 0
+    )
     const notificationPreferenceCount = Number(countsRow.notification_preference_count ?? 0)
     const notificationSubscriptionCount = Number(countsRow.notification_subscription_count ?? 0)
 
@@ -5511,28 +5551,6 @@ export async function ensureHeroGovernanceSeedData() {
 
     if (missingRoleMenuPermissions.length > 0) {
       await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
-    }
-
-    // Ensure all existing roles have access to the core resources
-    const coreResources = [
-      'attendance',
-      'attendance_live_map',
-      'attendance_records',
-      'attendance_exceptions',
-      'scheduling_timesheet_attendance',
-      'tire_service',
-      'overtime_requests',
-      'approval_inbox',
-    ]
-    const coreMenuItems = menuItemsForRole.filter(
-      (item) => item.resource && coreResources.includes(item.resource)
-    )
-    if (coreMenuItems.length > 0) {
-      const coreMenuItemIds = coreMenuItems.map((item) => item.id)
-      await db
-        .update(roleMenuPermissions)
-        .set({ canView: true, canEdit: true })
-        .where(inArray(roleMenuPermissions.menuItemId, coreMenuItemIds))
     }
 
     globalThis.heroGovernanceSeeded = true
@@ -6297,7 +6315,7 @@ function extractSiteNameFromLocation(loc: string | null | undefined): string {
   return parts.length > 1 ? parts[parts.length - 1].trim() : loc.trim()
 }
 
-export async function getSchedulingTimesheetOptions() {
+export async function getSchedulingTimesheetOptions(resource = 'scheduling_timesheet') {
   await ensureSchedulingTimesheetTables().catch((err) =>
     console.warn('[ensureSchedulingTimesheetTables] skipped:', err?.message || err)
   )
@@ -6614,19 +6632,20 @@ export async function getSchedulingTimesheetOptions() {
   // employeeRows only contains employees from queried sites and may not include
   // the logged-in user (especially for a user whose site is unrepresented in data).
   const currentEmployeeCtx = await getCurrentEmployeeAccessContext()
-  const schedulingAccess = await getCurrentMenuPermission('scheduling_timesheet')
+  const schedulingAccess = await getCurrentMenuPermission(resource)
   const hasGlobalSchedulingScope = hasGlobalDataAccess(schedulingAccess)
-  const hasSiteOnlyScope = hasSiteDataAccess(schedulingAccess)
-  const userAssignedSiteIds = currentEmployeeCtx?.employeeId
-    ? await getUserAccessibleSiteIds(currentEmployeeCtx.employeeId)
-    : currentEmployeeCtx?.siteId != null
-      ? [currentEmployeeCtx.siteId]
-      : []
-  const canSeeSchedulingSite = (siteId: number | null) => {
+  const canSeeSchedulingEmployee = (employeeId: number, siteId: number | null) => {
     if (hasGlobalSchedulingScope) return true
-    if (siteId == null) return false
-    // For 'site' and 'own' scopes, only show sites assigned to the current user
-    return userAssignedSiteIds.includes(siteId)
+    if (schedulingAccess.dataScope === 'own') {
+      return employeeId === currentEmployeeCtx?.employeeId
+    }
+    return siteId === currentEmployeeCtx?.siteId
+  }
+  const canSeeSiteAggregate = (siteId: number | null) => {
+    return (
+      hasGlobalSchedulingScope ||
+      (schedulingAccess.dataScope === 'site' && siteId === currentEmployeeCtx?.siteId)
+    )
   }
 
   const serializedV1Plans = savedPlans.map((plan) => ({
@@ -6750,12 +6769,14 @@ export async function getSchedulingTimesheetOptions() {
   return {
     currentEmployeeSiteId: currentEmployeeCtx?.siteId ?? null,
     currentEmployeeName: authSession?.user?.name ?? 'User Management',
-    approvalEmployees: employeeRows.map((employee) => ({
-      id: employee.id,
-      name: employee.name,
-    })),
+    approvalEmployees: employeeRows
+      .filter((employee) => canSeeSchedulingEmployee(employee.id, employee.siteId))
+      .map((employee) => ({
+        id: employee.id,
+        name: employee.name,
+      })),
     employees: employeeRows
-      .filter((employee) => canSeeSchedulingSite(employee.siteId))
+      .filter((employee) => canSeeSchedulingEmployee(employee.id, employee.siteId))
       .map((employee) => ({
         id: employee.id,
         name: employee.name,
@@ -6771,20 +6792,23 @@ export async function getSchedulingTimesheetOptions() {
         department: employee.department ?? null,
         section: employee.section ?? null,
         siteId: employee.siteId,
-        locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+        locationName:
+          extractSiteNameFromLocation(employee.workLocation) ||
+          extractSiteNameFromLocation(employee.siteName) ||
+          'Belum diisi',
         kimperLv: kimperMap.get(employee.id)?.isLV ?? false,
         kimperTh: kimperMap.get(employee.id)?.isTH ?? false,
         sio: kimperMap.get(employee.id)?.sioNames
           ? Array.from(new Set(kimperMap.get(employee.id)!.sioNames)).join(', ')
           : null,
       })),
-    sites: siteRows.filter((site) => canSeeSchedulingSite(site.id)),
-    approvalSections: approvalSections.filter((row) => canSeeSchedulingSite(row.siteId)),
-    savedPlans: serializedV1Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
-    activeSavedPlans: activeSavedPlans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
-    savedPlansV2: serializedV2Plans.filter((plan) => canSeeSchedulingSite(plan.siteId)),
+    sites: siteRows.filter((site) => canSeeSiteAggregate(site.id)),
+    approvalSections: approvalSections.filter((row) => canSeeSiteAggregate(row.siteId)),
+    savedPlans: serializedV1Plans.filter((plan) => canSeeSiteAggregate(plan.siteId)),
+    activeSavedPlans: activeSavedPlans.filter((plan) => canSeeSiteAggregate(plan.siteId)),
+    savedPlansV2: serializedV2Plans.filter((plan) => canSeeSiteAggregate(plan.siteId)),
     fieldBreakPlans: fieldBreakPlans
-      .filter((plan) => canSeeSchedulingSite(plan.siteId))
+      .filter((plan) => canSeeSiteAggregate(plan.siteId))
       .map((plan) => ({
         siteId: plan.siteId,
         period: plan.period,
@@ -6802,7 +6826,7 @@ export async function getSchedulingTimesheetOptions() {
         updatedAt: plan.updatedAt.toISOString(),
       })),
     attendanceRecords: attendanceRows
-      .filter((record) => canSeeSchedulingSite(record.siteId))
+      .filter((record) => canSeeSchedulingEmployee(record.employeeId, record.siteId))
       .map((record) => ({
         employeeId: record.employeeId,
         siteId: record.siteId,
@@ -6815,7 +6839,7 @@ export async function getSchedulingTimesheetOptions() {
         longitude: record.longitude,
       })),
     attendanceOverrides: attendanceOverrides
-      .filter((override) => canSeeSchedulingSite(override.siteId))
+      .filter((override) => canSeeSchedulingEmployee(override.employeeId, override.siteId))
       .map((override) => ({
         siteId: override.siteId,
         period: override.period,
@@ -6848,7 +6872,7 @@ export async function getSchedulingTimesheetOptions() {
           row.employeeId != null &&
           row.plannedStartAt != null &&
           row.plannedEndAt != null &&
-          canSeeSchedulingSite(row.siteId)
+          canSeeSchedulingEmployee(row.employeeId, row.siteId)
       )
       .map((row) => ({
         id: row.id,
@@ -6864,7 +6888,7 @@ export async function getSchedulingTimesheetOptions() {
         payrollPeriod: row.payrollPeriod,
       })),
     schedulingConfigs: schedulingConfigs
-      .filter((config) => canSeeSchedulingSite(config.siteId))
+      .filter((config) => canSeeSiteAggregate(config.siteId))
       .map((config) => ({
         siteId: config.siteId,
         scheduleType: config.scheduleType,
@@ -6880,7 +6904,7 @@ export async function getSchedulingTimesheetOptions() {
         updatedAt: config.updatedAt.toISOString(),
       })),
     schedulingStatuses: schedulingStatuses
-      .filter((status) => canSeeSchedulingSite(status.siteId))
+      .filter((status) => canSeeSiteAggregate(status.siteId))
       .map((status) => ({
         siteId: status.siteId,
         period: status.period,
@@ -6896,7 +6920,7 @@ export async function getSchedulingTimesheetOptions() {
         updatedAt: status.updatedAt.toISOString(),
       })),
     importPreviews: importPreviews
-      .filter((preview) => canSeeSchedulingSite(preview.siteId))
+      .filter((preview) => canSeeSiteAggregate(preview.siteId))
       .map((preview) => ({
         id: preview.id,
         siteId: preview.siteId,
@@ -6915,7 +6939,7 @@ export async function getSchedulingTimesheetOptions() {
     activities: activitiesRows
       .filter((activity) => {
         const employee = employeeRows.find((row) => row.id === activity.employeeId)
-        return canSeeSchedulingSite(employee?.siteId ?? null)
+        return employee ? canSeeSchedulingEmployee(employee.id, employee.siteId) : false
       })
       .map((activity) => ({
         id: activity.id,
@@ -6975,7 +6999,10 @@ async function getSchedulingTimesheetBaseOptions() {
       department: employee.department ?? null,
       section: employee.section ?? null,
       siteId: employee.siteId,
-      locationName: extractSiteNameFromLocation(employee.workLocation) || extractSiteNameFromLocation(employee.siteName) || 'Belum diisi',
+      locationName:
+        extractSiteNameFromLocation(employee.workLocation) ||
+        extractSiteNameFromLocation(employee.siteName) ||
+        'Belum diisi',
     })),
     sites: siteRows,
   }
@@ -7111,14 +7138,14 @@ export async function getSchedulingTimesheetScheduleOptions() {
 
 export async function getSchedulingTimesheetScheduleV2Options() {
   const [options, access] = await Promise.all([
-    getSchedulingTimesheetOptions(),
+    getSchedulingTimesheetOptions('scheduling_timesheet_schedule_v2'),
     getCurrentMenuPermission('scheduling_timesheet_schedule_v2'),
   ])
   return { ...options, access }
 }
 
 export async function getSchedulingTimesheetAttendanceOptions() {
-  const options = await getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet_attendance')
   return { ...options, savedPlans: options.activeSavedPlans }
 }
 
@@ -7150,7 +7177,7 @@ export async function getSchedulingTimesheetFieldBreakOptions() {
 }
 
 export async function getSchedulingTimesheetPayrollOptions() {
-  const options = await getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet_payroll')
   return { ...options, savedPlans: options.activeSavedPlans }
 }
 
@@ -7231,9 +7258,10 @@ export async function getSecurityUsersData() {
       jobTitle: sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as(
         'job_title'
       ),
-      workLocation: sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, ${employees.workLocation}, '')`.as(
-        'work_location'
-      ),
+      workLocation:
+        sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, ${employees.workLocation}, '')`.as(
+          'work_location'
+        ),
       phoneNumber: employees.phoneNumber,
       email: employees.email,
       employmentStatus: employees.employmentStatus,
@@ -7720,18 +7748,16 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
           or(
             sql`lower(${employees.email}) = ${normalizedEmail}`,
             sql`lower(${authUser.email}) = ${normalizedEmail}`,
-            sql`lower(${employees.name}) ILIKE ${'%' + normalizedEmail.split('@')[0] + '%'}`
+            sql`lower(${employees.email}) = ${normalizedEmail}`
           )
         )
         .limit(1)
 
-      const isRendi =
-        normalizedEmail.includes('rendi') ||
-        (employee?.name && employee.name.toLowerCase().includes('rendi'))
+      const roleName = employee?.accessRole ?? null
 
-      const roleName = isRendi
-        ? 'Khusus Mas Rendi'
-        : (employee?.accessRole ?? 'Super Admin')
+      if (!roleName) {
+        return { navMain: [], navSecondary: [], documents: [] }
+      }
 
       const [role] = await db
         .select()
@@ -7739,14 +7765,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
         .where(sql`lower(${securityRoles.name}) = lower(${roleName})`)
         .limit(1)
 
-      const activeRole =
-        role ??
-        (await db
-          .select()
-          .from(securityRoles)
-          .where(sql`lower(${securityRoles.name}) = 'super admin'`)
-          .limit(1)
-          .then((r) => r[0]))
+      const activeRole = role
 
       if (!activeRole) {
         return {
@@ -7802,7 +7821,9 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
   }
 })
 
-export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDisplayDataByEmail(email: string) {
+export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDisplayDataByEmail(
+  email: string
+) {
   try {
     return await withDbRetry(async () => {
       await ensureHeroGovernanceSeedData()
@@ -7868,5 +7889,3 @@ export async function getExecutiveHighlights() {
   }
 }
 // End of hero-admin helper module
-
-

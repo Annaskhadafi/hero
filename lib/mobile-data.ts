@@ -228,6 +228,14 @@ export async function getMobileReports(email?: string | null) {
     return null
   }
 
+  const permission = await getMenuPermissionForRole(
+    context.employee.accessRole,
+    'repair_productivity'
+  )
+  if (!permission.canView || permission.dataScope === 'own') {
+    return null
+  }
+
   const reports = await db
     .select()
     .from(dailyReports)

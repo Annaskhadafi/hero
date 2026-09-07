@@ -42,10 +42,15 @@ function getScopedIncidentEmployeeId(access: IncidentAccess) {
 
 function assertIncidentRecordScope(
   access: IncidentAccess,
-  record: { picEmployeeId: number | null } | undefined
+  record: { picEmployeeId: number | null; siteId: number | null } | undefined
 ) {
   if (!record) throw new Error('Incident report tidak ditemukan.')
-  if (!access.hasGlobalScope && record.picEmployeeId !== access.context?.employeeId) {
+  if (
+    !access.hasGlobalScope &&
+    (access.permission.dataScope === 'own'
+      ? record.picEmployeeId !== access.context?.employeeId
+      : record.siteId !== access.context?.siteId)
+  ) {
     throw new Error('Role Anda hanya bisa mengakses incident report sendiri.')
   }
 }
@@ -60,7 +65,11 @@ export async function getIncidentRecords(params?: {
     const access = await requireIncidentPermission('view')
     const conditions = []
     if (!access.hasGlobalScope) {
-      conditions.push(eq(hseIncidentRecords.picEmployeeId, access.context?.employeeId ?? -1))
+      conditions.push(
+        access.permission.dataScope === 'own'
+          ? eq(hseIncidentRecords.picEmployeeId, access.context?.employeeId ?? -1)
+          : eq(hseIncidentRecords.siteId, access.context?.siteId ?? -1)
+      )
     }
 
     if (params?.search) {

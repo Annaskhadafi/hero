@@ -3,8 +3,10 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import {
+  AlertTriangle,
   ChevronDown,
   Copy,
+  Eye,
   ListChecks,
   Plus,
   Save,
@@ -21,13 +23,7 @@ import { manageSecurityRoleAction, type AdminMutationState } from '@/app/dashboa
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
@@ -175,6 +171,7 @@ const sectionLabelMap: Record<string, string> = {
 }
 
 type ViewFilter = 'all' | 'desktop' | 'mobile'
+type PermissionStateFilter = 'all' | 'enabled' | 'changed'
 
 const QUICK_PRESETS = [
   {
@@ -252,6 +249,38 @@ function matchesViewFilter(menuItem: MenuRow, viewFilter: ViewFilter) {
   return true
 }
 
+function formatDataScopeLabel(value: string) {
+  return (
+    {
+      global: 'Global',
+      site: 'Site utama',
+      own: 'Own data',
+    }[value] ?? value
+  )
+}
+
+function hasEnabledPermission(permission: DraftPermission | undefined) {
+  return Boolean(
+    permission?.canView || permission?.canEdit || permission?.canDelete || permission?.canSelectAll
+  )
+}
+
+function isSamePermission(left: DraftPermission | undefined, right: DraftPermission | undefined) {
+  if (!left || !right) return left === right
+  return (
+    left.canView === right.canView &&
+    left.canEdit === right.canEdit &&
+    left.canDelete === right.canDelete &&
+    left.canSelectAll === right.canSelectAll &&
+    left.dataScope === right.dataScope
+  )
+}
+
+function isWidenedScope(previous: string | undefined, next: string | undefined) {
+  const rank: Record<string, number> = { own: 1, site: 2, global: 3 }
+  return (rank[next ?? 'own'] ?? 0) > (rank[previous ?? 'own'] ?? 0)
+}
+
 function hasMobileCounterpart(
   url: string | null | undefined,
   resource: string | null | undefined
@@ -271,7 +300,8 @@ function hasMobileCounterpart(
   if (cleanUrl === '/dashboard/safety' || cleanUrl.startsWith('/dashboard/safety/')) return true
   if (cleanUrl === '/dashboard/hse' || cleanUrl.startsWith('/dashboard/hse/')) return true
   if (cleanUrl === '/dashboard/safety-induction') return true
-  if (cleanUrl === '/dashboard/quality/5r' || cleanUrl.startsWith('/dashboard/quality/')) return true
+  if (cleanUrl === '/dashboard/quality/5r' || cleanUrl.startsWith('/dashboard/quality/'))
+    return true
   if (cleanUrl === '/dashboard/gamification') return true
   if (cleanUrl === '/dashboard/wellness' || cleanUrl === '/dashboard/hc/mcu-wellness') return true
   if (cleanUrl === '/dashboard/executive') return true
@@ -439,6 +469,9 @@ export function SecurityRoleManagement({
   const [userSearchQuery, setUserSearchQuery] = useState('')
   const [assignDialogOpen, setAssignDialogOpen] = useState(false)
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all')
+  const [permissionSearchQuery, setPermissionSearchQuery] = useState('')
+  const [permissionStateFilter, setPermissionStateFilter] = useState<PermissionStateFilter>('all')
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     setDraftPermissions(buildDraftPermissions(selectedRoleId, menuItems, menuPermissions))
@@ -449,15 +482,63 @@ export function SecurityRoleManagement({
       new Set(
         menuItems
           .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
+          .filter((menuItem) => {
+            const query = permissionSearchQuery.trim().toLowerCase()
+            if (!query) return true
+            return [menuItem.title, menuItem.resource, menuItem.url, menuItem.section].some(
+              (value) => value?.toLowerCase().includes(query)
+            )
+          })
           .map((menuItem) => getSidebarSection(menuItem))
       )
     )
-  }, [menuItems, viewFilter])
+  }, [menuItems, permissionSearchQuery, viewFilter])
 
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0]
+  const savedPermissions = useMemo(
+    () => buildDraftPermissions(selectedRoleId, menuItems, menuPermissions),
+    [menuItems, menuPermissions, selectedRoleId]
+  )
+  const savedPermissionByMenuId = useMemo(() => {
+    return new Map(savedPermissions.map((permission) => [permission.menuItemId, permission]))
+  }, [savedPermissions])
+  const permissionByMenuId = useMemo(() => {
+    return new Map(draftPermissions.map((permission) => [permission.menuItemId, permission]))
+  }, [draftPermissions])
+  const changedPermissions = useMemo(
+    () =>
+      draftPermissions.filter(
+        (permission) =>
+          !isSamePermission(permission, savedPermissionByMenuId.get(permission.menuItemId))
+      ),
+    [draftPermissions, savedPermissionByMenuId]
+  )
+  const widenedScopeCount = changedPermissions.filter((permission) =>
+    isWidenedScope(
+      savedPermissionByMenuId.get(permission.menuItemId)?.dataScope,
+      permission.dataScope
+    )
+  ).length
+  const deleteEnabledCount = changedPermissions.filter((permission) => {
+    const previous = savedPermissionByMenuId.get(permission.menuItemId)
+    return !previous?.canDelete && permission.canDelete
+  }).length
   const groupedMenus = useMemo(() => {
+    const query = permissionSearchQuery.trim().toLowerCase()
     const filteredItems = menuItems
       .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
+      .filter((menuItem) => {
+        if (!query) return true
+        return [menuItem.title, menuItem.resource, menuItem.url, menuItem.section].some((value) =>
+          value?.toLowerCase().includes(query)
+        )
+      })
+      .filter((menuItem) => {
+        if (permissionStateFilter === 'all') return true
+        const permission = permissionByMenuId.get(menuItem.id)
+        if (permissionStateFilter === 'enabled') return hasEnabledPermission(permission)
+        return !isSamePermission(permission, savedPermissionByMenuId.get(menuItem.id))
+      })
       .sort((left, right) => {
         const leftSection = getSidebarSection(left)
         const rightSection = getSidebarSection(right)
@@ -490,15 +571,28 @@ export function SecurityRoleManagement({
       },
       []
     )
-  }, [menuItems, viewFilter])
-  const permissionByMenuId = useMemo(() => {
-    return new Map(draftPermissions.map((permission) => [permission.menuItemId, permission]))
-  }, [draftPermissions])
+  }, [
+    menuItems,
+    permissionSearchQuery,
+    permissionStateFilter,
+    permissionByMenuId,
+    savedPermissionByMenuId,
+    viewFilter,
+  ])
 
   const selectedRoleEnabledCount = countEnabledPermissions(draftPermissions)
   const totalMenuCount = menuItems.length
   const activeProgress =
     totalMenuCount > 0 ? Math.round((selectedRoleEnabledCount / (totalMenuCount * 4)) * 100) : 0
+
+  const previewItems = useMemo(
+    () =>
+      menuItems
+        .map((menuItem) => ({ menuItem, permission: permissionByMenuId.get(menuItem.id) }))
+        .filter(({ permission }) => hasEnabledPermission(permission))
+        .sort((left, right) => left.menuItem.title.localeCompare(right.menuItem.title)),
+    [menuItems, permissionByMenuId]
+  )
 
   const roleUsers = useMemo(() => {
     return users.filter((user) => user.accessRole === selectedRole?.name)
@@ -743,7 +837,7 @@ export function SecurityRoleManagement({
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="destructive">
-                        <Trash2 className="size-4 mr-2" />
+                        <Trash2 className="mr-2 size-4" />
                         Hapus
                       </Button>
                     </AlertDialogTrigger>
@@ -751,8 +845,9 @@ export function SecurityRoleManagement({
                       <AlertDialogHeader>
                         <AlertDialogTitle>Hapus Peran?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Apakah Anda yakin ingin menghapus peran "{selectedRole?.name}"? Aksi ini tidak dapat dibatalkan.
-                          Pengguna yang masih menggunakan peran ini akan dipindahkan ke peran aktif lainnya secara otomatis.
+                          Apakah Anda yakin ingin menghapus peran "{selectedRole?.name}"? Aksi ini
+                          tidak dapat dibatalkan. Pengguna yang masih menggunakan peran ini akan
+                          dipindahkan ke peran aktif lainnya secara otomatis.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -764,9 +859,7 @@ export function SecurityRoleManagement({
                             name="roleId"
                             value={selectedRole ? `${selectedRole.id}` : ''}
                           />
-                          <SubmitButton variant="destructive">
-                            Ya, Hapus Peran
-                          </SubmitButton>
+                          <SubmitButton variant="destructive">Ya, Hapus Peran</SubmitButton>
                         </form>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -823,6 +916,126 @@ export function SecurityRoleManagement({
                       </Select>
                     </div>
                   </div>
+
+                  <div className="border-border/70 bg-surface-container-low flex flex-col gap-2 rounded-xl border p-3 lg:flex-row lg:items-center">
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                      <Input
+                        value={permissionSearchQuery}
+                        onChange={(event) => setPermissionSearchQuery(event.target.value)}
+                        placeholder="Cari menu, resource, atau URL..."
+                        className="h-9 bg-white pl-9 text-sm"
+                      />
+                    </div>
+                    <Select
+                      value={permissionStateFilter}
+                      onValueChange={(value) =>
+                        setPermissionStateFilter(value as PermissionStateFilter)
+                      }
+                    >
+                      <SelectTrigger className="h-9 w-full bg-white text-xs lg:w-[170px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua menu</SelectItem>
+                        <SelectItem value="enabled">Hanya aktif</SelectItem>
+                        <SelectItem value="changed">Hanya berubah</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 shrink-0 bg-white"
+                        >
+                          <Eye className="size-4" />
+                          Preview Akses
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden">
+                        <DialogHeader>
+                          <DialogTitle>Preview akses efektif</DialogTitle>
+                          <DialogDescription>
+                            Hak akses yang akan berlaku untuk role {selectedRole?.name ?? 'ini'}.
+                            Scope Site mengikuti site utama user.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <Badge variant="secondary">{previewItems.length} menu aktif</Badge>
+                          <Badge variant="outline">
+                            {
+                              previewItems.filter(
+                                ({ permission }) => permission?.dataScope === 'global'
+                              ).length
+                            }{' '}
+                            Global
+                          </Badge>
+                          <Badge variant="outline">
+                            {
+                              previewItems.filter(
+                                ({ permission }) => permission?.dataScope === 'site'
+                              ).length
+                            }{' '}
+                            Site utama
+                          </Badge>
+                        </div>
+                        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                          {previewItems.length === 0 ? (
+                            <div className="text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm">
+                              Role ini belum memiliki permission aktif.
+                            </div>
+                          ) : (
+                            previewItems.map(({ menuItem, permission }) => (
+                              <div
+                                key={menuItem.id}
+                                className="border-border/70 bg-surface-container-lowest flex flex-col gap-2 rounded-lg border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">{menuItem.title}</p>
+                                  <p className="text-muted-foreground truncate text-xs">
+                                    {menuItem.resource} · {menuItem.url}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 flex-wrap gap-1.5">
+                                  {permission?.canView && <Badge variant="secondary">Lihat</Badge>}
+                                  {permission?.canEdit && <Badge variant="secondary">Ubah</Badge>}
+                                  {permission?.canDelete && (
+                                    <Badge variant="destructive">Hapus</Badge>
+                                  )}
+                                  {permission?.canSelectAll && (
+                                    <Badge variant="outline">Pilih semua data</Badge>
+                                  )}
+                                  <Badge variant="outline">
+                                    {formatDataScopeLabel(permission?.dataScope ?? 'own')}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  {changedPermissions.length > 0 && (
+                    <Alert className="border-amber-200 bg-amber-50/70 text-amber-950">
+                      <AlertTriangle className="size-4" />
+                      <AlertDescription>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                          <span className="font-semibold">
+                            {changedPermissions.length} perubahan belum disimpan
+                          </span>
+                          {widenedScopeCount > 0 && <span>{widenedScopeCount} scope melebar</span>}
+                          {deleteEnabledCount > 0 && (
+                            <span>{deleteEnabledCount} izin hapus baru</span>
+                          )}
+                          <span className="text-amber-800">Periksa preview sebelum menyimpan.</span>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   {/* Permission Form */}
                   <form action={roleFormAction} className="space-y-3">
@@ -1087,10 +1300,18 @@ export function SecurityRoleManagement({
                       )
                     })}
 
+                    {groupedMenus.length === 0 && (
+                      <div className="text-muted-foreground rounded-xl border border-dashed py-12 text-center text-sm">
+                        Tidak ada menu yang cocok dengan filter saat ini.
+                      </div>
+                    )}
+
                     <div className="flex justify-end pt-2">
                       <SubmitButton>
                         <Save className="size-4" />
-                        Simpan Akses Menu
+                        {changedPermissions.length > 0
+                          ? `Simpan ${changedPermissions.length} Perubahan`
+                          : 'Simpan Akses Menu'}
                       </SubmitButton>
                     </div>
                   </form>
