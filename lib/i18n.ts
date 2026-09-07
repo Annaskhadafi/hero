@@ -510,15 +510,15 @@ const GROUP_LABEL_PAIRS: [string, string][] = [
   ['Jam Kerja', 'Work Hours'],
 ]
 
-export function translate(key: string, lang: Language = 'id', fallback?: string): string {
-  const dict = translations[lang] || translations.id
+export function translate(key: string, lang: Language = 'en', fallback?: string): string {
+  const dict = translations[lang] || translations.en || translations.id
   if (dict && key in dict) {
     return dict[key]
   }
   return fallback ?? key
 }
 
-export function translateMenuTitle(title: string, lang: Language = 'id'): string {
+export function translateMenuTitle(title: string, lang: Language = 'en'): string {
   if (!title) return title
   const trimmed = title.trim()
   for (const [idText, enText] of MENU_TITLE_PAIRS) {
@@ -529,7 +529,7 @@ export function translateMenuTitle(title: string, lang: Language = 'id'): string
   return title
 }
 
-export function translateSectionTitle(section: string, lang: Language = 'id'): string {
+export function translateSectionTitle(section: string, lang: Language = 'en'): string {
   if (!section) return section
   const trimmed = section.trim()
   for (const [idText, enText] of SECTION_TITLE_PAIRS) {
@@ -540,7 +540,7 @@ export function translateSectionTitle(section: string, lang: Language = 'id'): s
   return section
 }
 
-export function translateGroupLabel(label: string | null | undefined, lang: Language = 'id'): string | null | undefined {
+export function translateGroupLabel(label: string | null | undefined, lang: Language = 'en'): string | null | undefined {
   if (!label) return label
   const trimmed = label.trim()
   for (const [idText, enText] of GROUP_LABEL_PAIRS) {

@@ -18,7 +18,7 @@ const COOKIE_KEY = 'hero_lang'
 
 function getInitialLanguage(): Language {
   if (typeof window === 'undefined') {
-    return 'id'
+    return 'en'
   }
 
   try {
@@ -32,16 +32,16 @@ function getInitialLanguage(): Language {
       return match[3] as Language
     }
 
-    // Default to 'id' (Bahasa Indonesia)
-    return 'id'
+    // Default to 'en' (English)
+    return 'en'
   } catch {
-    return 'id'
+    return 'en'
   }
 }
 
 export function LanguageProvider({
   children,
-  defaultLanguage = 'id',
+  defaultLanguage = 'en',
 }: {
   children: React.ReactNode
   defaultLanguage?: Language
@@ -98,11 +98,11 @@ export function useLanguage() {
   if (!context) {
     // Fallback if rendered outside provider
     return {
-      language: 'id' as Language,
+      language: 'en' as Language,
       setLanguage: () => {},
-      t: (key: string, fallback?: string) => translate(key, 'id', fallback),
-      isIndonesian: true,
-      isEnglish: false,
+      t: (key: string, fallback?: string) => translate(key, 'en', fallback),
+      isIndonesian: false,
+      isEnglish: true,
     }
   }
   return context
