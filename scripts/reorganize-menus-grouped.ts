@@ -99,9 +99,8 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Cargo Manifest", url: "/dashboard/cargo-manifest", section: "Central Service", groupLabel: "Logistics", iconName: "folder", resource: "cargo_manifest", sortOrder: 14 },
   ],
   "Quality & CPI": [
-    { title: "Formulir 5R", url: "/dashboard/quality/5r/create", section: "Quality & CPI", iconName: "checklist", resource: "five_r_create", sortOrder: 1 },
-    { title: "Daftar Laporan 5R", url: "/dashboard/quality/5r", section: "Quality & CPI", iconName: "report", resource: "five_r_reports", sortOrder: 2 },
-    { title: "Master Area 5R", url: "/dashboard/quality/5r/master-area", section: "Quality & CPI", iconName: "database", resource: "five_r_master_area", sortOrder: 3 },
+    { title: "Audit 5R", url: "/dashboard/quality/5r", section: "Quality & CPI", groupLabel: "Quality & Continuous Improvement", iconName: "sparkles", resource: "five_r_report", sortOrder: 1 },
+    { title: "SOP/WIN", url: "/dashboard/sop-win", section: "Quality & CPI", groupLabel: "Quality & Continuous Improvement", iconName: "files", resource: "sop-win", sortOrder: 2 },
   ],
   "Laporan": [
     { title: "Analytics", url: "/dashboard/analytics", section: "Laporan", iconName: "chart-bar", resource: "dashboard_repair", sortOrder: 1 },
@@ -110,9 +109,6 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Points Overview", url: "/dashboard/leaderboard", section: "Laporan", iconName: "settings", resource: "point_setting", sortOrder: 4 },
     { title: "Security Overview", url: "/dashboard/security", section: "Laporan", iconName: "database", resource: "security_session", sortOrder: 5 },
     { title: "Audit Log", url: "/dashboard/security/audit-logs", section: "Laporan", iconName: "report", resource: "security_audit", sortOrder: 6 },
-  ],
-  "GOBPI": [
-    { title: "SOP/WIN", url: "/dashboard/sop-win", section: "GOBPI", iconName: "files", resource: "sop-win", sortOrder: 1 },
   ],
   "Pengaturan": [
     { title: "Role Management", url: "/dashboard/security/roles", section: "Pengaturan", iconName: "shield", resource: "security_roles", sortOrder: 1 },

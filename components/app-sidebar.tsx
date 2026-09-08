@@ -177,7 +177,6 @@ const DESKTOP_MENU_ORDER = [
   "HSE",
   "Quality & CPI",
   "Central Service",
-  "GOBPI",
   "Laporan",
   "Pengaturan",
 ] as const
@@ -194,7 +193,6 @@ const desktopMenuIconMap = {
   HSE: IconShieldHalfFilled,
   "Quality & CPI": IconSparkles,
   "Central Service": IconDatabase,
-  GOBPI: IconFiles,
   Laporan: IconReport,
   "Command Center": IconBell,
   Pengaturan: IconSettings,
@@ -209,6 +207,7 @@ const sectionLabelMap: Record<string, string> = {
   HSE: "HSE",
   Quality: "Quality & CPI",
   "Quality & CPI": "Quality & CPI",
+  GOBPI: "Quality & CPI",
   Report: "Laporan",
   Setting: "Pengaturan",
 }
