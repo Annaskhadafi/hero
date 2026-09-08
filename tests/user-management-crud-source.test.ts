@@ -52,6 +52,18 @@ describe('user management CRUD source of truth', () => {
     expect(bulkSection).toContain('.delete(employees)')
   })
 
+  it('resolves Indonesian export headers during selected-column import updates', () => {
+    const source = read('app/dashboard/admin-actions.ts')
+    const start = source.indexOf('export async function importUpdateUsersAction')
+    const end = source.indexOf('export async function manageSecurityUserAction', start)
+    const section = source.slice(start, end)
+
+    expect(section).toContain('const mappedHeaders = autoMapHeaders(headers)')
+    expect(section).toContain("name: 'fullName'")
+    expect(section).toContain("'lokasi site': 'workLocation'")
+    expect(section).toContain('isColumnSelected(headers[')
+  })
+
   it('row dialog uses tabs and no browser alert', () => {
     const source = read('components/security-user-row-actions.tsx')
 

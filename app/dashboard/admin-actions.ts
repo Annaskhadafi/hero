@@ -194,6 +194,7 @@ import {
   createNextLegacyApprovalStep,
 } from '@/lib/legacy-approval-engine'
 import {
+  autoMapHeaders,
   getMappedValue,
   parseCsvToRecords,
   type UserImportMapping,
@@ -7055,6 +7056,30 @@ export async function importUpdateUsersAction(
       headerIndex.set(h.trim().toLowerCase(), i)
     }
 
+    // Reuse the import aliases so exported Indonesian headers (e.g. "Nama")
+    // resolve to the same fields as English headers (e.g. "Name").
+    const mappedHeaders = autoMapHeaders(headers)
+    const fieldKeyByLookup: Record<string, keyof UserImportMapping> = {
+      name: 'fullName',
+      department: 'department',
+      section: 'section',
+      'job title': 'jobTitle',
+      'level staff': 'levelName',
+      peran: 'accessRole',
+      'lokasi site': 'workLocation',
+      'tipe status': 'employeeStatusType',
+      gender: 'gender',
+      agama: 'religion',
+      pendidikan: 'education',
+      'marital status': 'maritalStatus',
+      poh: 'pointOfHire',
+      'join date': 'joinDate',
+      'contract start': 'contractDurationStart',
+      'contract end': 'contractDurationEnd',
+      'permanent date': 'permanentDate',
+      'tgl lahir': 'birthDate',
+    }
+
     // Check mandatory SN column exists
     const snCol = headerIndex.get('sn')
     if (snCol === undefined) {
@@ -7109,6 +7134,9 @@ export async function importUpdateUsersAction(
     // Pre-resolve header indices for all known columns
     const col = (name: string) => {
       const lower = name.toLowerCase()
+      const mappedHeader = mappedHeaders[fieldKeyByLookup[lower]]
+      if (mappedHeader) return headerIndex.get(mappedHeader.trim().toLowerCase())
+
       for (const [h, i] of headerIndex) {
         if (h === lower) return i
       }

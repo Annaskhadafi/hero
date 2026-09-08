@@ -14,10 +14,10 @@ export const USER_IMPORT_FIELDS = [
   { key: "education", label: "Pendidikan", required: false, aliases: ["pendidikan", "education"] },
   { key: "maritalStatus", label: "Marital Status", required: false, aliases: ["marital status", "status pernikahan", "pernikahan"] },
   { key: "pointOfHire", label: "POH", required: false, aliases: ["poh", "point of hire"] },
-  { key: "joinDate", label: "Join Date", required: false, aliases: ["join date", "tanggal masuk", "join_date"] },
-  { key: "contractDurationStart", label: "Contract Start", required: false, aliases: ["contract start", "contract_duration_start"] },
-  { key: "contractDurationEnd", label: "Contract End", required: false, aliases: ["contract end", "contract_duration_end"] },
-  { key: "permanentDate", label: "Permanent Date", required: false, aliases: ["permanent date", "permanent_date", "tgl permanen"] },
+  { key: "joinDate", label: "Join Date", required: false, aliases: ["join date", "tanggal masuk", "tgl bergabung", "join_date"] },
+  { key: "contractDurationStart", label: "Contract Start", required: false, aliases: ["contract start", "mulai kontrak", "tanggal mulai kontrak", "contract_duration_start"] },
+  { key: "contractDurationEnd", label: "Contract End", required: false, aliases: ["contract end", "selesai kontrak", "tanggal selesai kontrak", "contract_duration_end"] },
+  { key: "permanentDate", label: "Permanent Date", required: false, aliases: ["permanent date", "permanent_date", "tgl permanen", "tgl tetap"] },
   { key: "birthDate", label: "Tgl Lahir", required: false, aliases: ["tgl lahir", "birth date", "birth_date", "tanggal lahir"] },
 ] as const;
 
