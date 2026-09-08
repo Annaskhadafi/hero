@@ -131,13 +131,18 @@ function getMatrixSpecificityScore(
 ) {
   let score = 0
 
-  if (
-    matrix.transactionType &&
-    (normalizeValue(matrix.transactionType) === normalizeValue(context.transactionType) ||
-      (normalizeValue(matrix.transactionType).startsWith('apd-request') &&
-        normalizeValue(context.transactionType).startsWith('apd-request')))
-  ) {
-    score += 128
+  if (matrix.transactionType) {
+    const matType = normalizeValue(matrix.transactionType)
+    const ctxType = normalizeValue(context.transactionType)
+    if (matType === ctxType) {
+      score += 256
+    } else if (matType.startsWith('apd-request') && ctxType.startsWith('apd-request')) {
+      if (matType === 'apd-request' || ctxType === 'apd-request') {
+        score += 128
+      } else {
+        return -1
+      }
+    }
   }
 
   if (matrix.siteId != null) {
@@ -682,219 +687,21 @@ async function resolveFormWoRepairRetreadApprovalRoute(
 async function resolveApdApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
   const steps: ResolvedApprovalStep[] = []
   let stepOrder = 1
+  const siteId = context.siteId ?? 0
 
-  // For Material & Tools: Direct 1-Stage Approval to Section Head
-  if (context.transactionType === 'apd-request-material' || context.transactionType === 'apd-request-tools') {
-    let sectionHeadEmpId: number | null = null
-    if (context.sectionId) {
-      const [sec] = await db
-        .select({ headEmployeeId: masterSections.headEmployeeId })
-        .from(masterSections)
-        .where(eq(masterSections.id, context.sectionId))
-        .limit(1)
-      sectionHeadEmpId = sec?.headEmployeeId ?? null
-    }
+  // 1. Kategori Admin CP (13 Site)
+  const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
+  // 2. Kategori HSE (5 Site)
+  const hseSiteIds = [133, 131, 129, 128, 140]
+  // 3. Kategori PJO (13 Site)
+  const pjoSiteIds = [138, 144, 210, 150, 145, 125, 151, 134, 136, 149, 127, 139, 130]
 
-    if (!sectionHeadEmpId) {
-      sectionHeadEmpId = context.directManagerId ?? context.requesterDirectManagerId ?? 955
-    }
+  const isMaterialOrTools =
+    context.transactionType === 'apd-request-material' ||
+    context.transactionType === 'apd-request-tools'
 
-    const [sectionHead] = await db
-      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
-      .from(employees)
-      .where(and(eq(employees.id, sectionHeadEmpId), eq(employees.isActive, true)))
-      .limit(1)
-
-    if (sectionHead) {
-      steps.push({
-        stepOrder: 1,
-        label: 'Section Head',
-        approverName: sectionHead.name,
-        approverEmployeeId: sectionHead.id,
-        approverNodeId: null,
-        approvalMatrixStepId: null,
-        approvalMode: 'single',
-        resolutionSource: 'section_head',
-        canDelegate: true,
-        slaHours: 24,
-        nodeLabel: sectionHead.jobTitle || 'Section Head',
-        fallbackLabel: null,
-        escalationLabel: null,
-      })
-    }
-
-    return {
-      matrixId: 0,
-      matrixName: context.transactionType === 'apd-request-material' ? 'Request Material - Section Head' : 'Request Tools - Section Head',
-      structureId: 0,
-      structureName: 'Section Head 1-Stage Approval',
-      transactionType: context.transactionType,
-      warnings: [],
-      steps,
-    }
-  }
-
-  // For APD requests: 1-step routing (Admin CP by Section / HSE / PJO)
-  if (context.transactionType.startsWith('apd-request')) {
-    // 1. Kategori Admin CP (13 Site)
-    const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
-    // 2. Kategori HSE (5 Site)
-    const hseSiteIds = [133, 131, 129, 128, 140]
-
-    const siteId = context.siteId ?? 0
-
-    if (adminCpSiteIds.includes(siteId)) {
-      // Admin CP logic:
-      // - Service MVC (33) & Others (34) -> Muhammad As'ar Fauzan (1099, Serviceman)
-      // - Repair / Retread (29) -> Arjun Zahiri Mursith (1039, Repairman)
-      // - Technical Operation / TE (37) -> Muhammad Abian Husain (1094, Technical Engineer)
-      let approverEmpId = 1099
-      if (context.sectionId === 29) {
-        approverEmpId = 1039
-      } else if (context.sectionId === 37) {
-        approverEmpId = 1094
-      }
-
-      const [approver] = await db
-        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
-        .from(employees)
-        .where(and(eq(employees.id, approverEmpId), eq(employees.isActive, true)))
-        .limit(1)
-
-      if (approver) {
-        steps.push({
-          stepOrder: stepOrder++,
-          label: approver.jobTitle || 'Serviceman',
-          approverName: approver.name,
-          approverEmployeeId: approver.id,
-          approverNodeId: null,
-          approvalMatrixStepId: null,
-          approvalMode: 'sequential',
-          resolutionSource: 'apd_admin_cp',
-          canDelegate: true,
-          slaHours: 24,
-          nodeLabel: approver.jobTitle,
-          fallbackLabel: null,
-          escalationLabel: null,
-        })
-      }
-    } else if (hseSiteIds.includes(siteId)) {
-      // 5 HSE Sites
-      const hseMap: Record<number, number> = {
-        133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
-        131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
-        129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
-        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
-        140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
-      }
-      const hseEmpId = hseMap[siteId]
-      const [hseApprover] = await db
-        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
-        .from(employees)
-        .where(and(eq(employees.id, hseEmpId), eq(employees.isActive, true)))
-        .limit(1)
-
-      if (hseApprover) {
-        steps.push({
-          stepOrder: stepOrder++,
-          label: hseApprover.jobTitle || 'HSE Officer',
-          approverName: hseApprover.name,
-          approverEmployeeId: hseApprover.id,
-          approverNodeId: null,
-          approvalMatrixStepId: null,
-          approvalMode: 'sequential',
-          resolutionSource: 'apd_hse_site',
-          canDelegate: true,
-          slaHours: 24,
-          nodeLabel: hseApprover.jobTitle,
-          fallbackLabel: null,
-          escalationLabel: null,
-        })
-      }
-    } else {
-      // 13 PJO Sites
-      const pjoMap: Record<number, number> = {
-        138: 454,  // AMM Mifa Holing -> Adit Prasetyo (Technical Engineer)
-        144: 1057, // AMM Tabang -> Singgih Wiyono (Technical Engineer)
-        210: 1212, // BUMA Tanjung -> Dowy Pratama Sita (Technical Engineer)
-        150: 1250, // CDE - Bengkulu -> Rakha Dwi Saputra (Repairman)
-        145: 1189, // CK MIFA -> Fachri Husein (Serviceman)
-        125: 1375, // Jakarta -> Ade Saharu (HSE Officer)
-        151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
-        134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
-        136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
-        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
-        127: 1164, // Sangatta -> Saipudin (HSE Leader)
-        139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
-        130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
-      }
-      let pjoEmpId: number | null = pjoMap[siteId] ?? context.siteHeadEmployeeId ?? null
-      if (!pjoEmpId && siteId) {
-        const [siteRow] = await db.select({ headEmployeeId: sites.headEmployeeId }).from(sites).where(eq(sites.id, siteId)).limit(1)
-        pjoEmpId = siteRow?.headEmployeeId ?? null
-      }
-      if (!pjoEmpId) pjoEmpId = context.requesterDirectManagerId ?? 955
-
-      const [pjoApprover] = await db
-        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
-        .from(employees)
-        .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
-        .limit(1)
-
-      if (pjoApprover) {
-        steps.push({
-          stepOrder: stepOrder++,
-          label: pjoApprover.jobTitle || 'PJO Leader',
-          approverName: pjoApprover.name,
-          approverEmployeeId: pjoApprover.id,
-          approverNodeId: null,
-          approvalMatrixStepId: null,
-          approvalMode: 'sequential',
-          resolutionSource: 'apd_site_pjo',
-          canDelegate: true,
-          slaHours: 24,
-          nodeLabel: pjoApprover.jobTitle,
-          fallbackLabel: null,
-          escalationLabel: null,
-        })
-      }
-    }
-  } else {
-    // For Material/Tools: PJO → Section Head
-    // Step 1: PJO Site
-    let pjoEmpId: number | null = context.siteHeadEmployeeId ?? null
-    if (!pjoEmpId && context.siteId) {
-      const [siteRow] = await db.select({ headEmployeeId: sites.headEmployeeId }).from(sites).where(eq(sites.id, context.siteId)).limit(1)
-      pjoEmpId = siteRow?.headEmployeeId ?? null
-    }
-    if (!pjoEmpId) pjoEmpId = context.requesterDirectManagerId ?? 955 // Apriyanto / Direct Manager fallback
-
-    const siteApprovers = await db
-      .select({ id: employees.id, name: employees.name })
-      .from(employees)
-      .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
-      .limit(1)
-    const pjo = siteApprovers[0]
-
-    if (pjo) {
-      steps.push({
-        stepOrder: stepOrder++,
-        label: 'Atasan Di Site (PJO)',
-        approverName: pjo.name,
-        approverEmployeeId: pjo.id,
-        approverNodeId: null,
-        approvalMatrixStepId: null,
-        approvalMode: 'sequential',
-        resolutionSource: 'apd_site_pjo',
-        canDelegate: true,
-        slaHours: 24,
-        nodeLabel: null,
-        fallbackLabel: null,
-        escalationLabel: null,
-      })
-    }
-
-    // Step 2: Head Section (Dinamis sesuai section pemohon)
+  // Helper to fetch Section Head (dynamic according to applicant's section)
+  const getSectionHead = async (): Promise<ResolvedApprovalStep | null> => {
     let resolvedSectionId = context.sectionId
     if (!resolvedSectionId && context.applicantEmployeeId) {
       const [applicant] = await db
@@ -918,41 +725,299 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
 
     let headEmployeeId: number | null = null
     if (resolvedSectionId) {
-      const sections = await db
+      const [sections] = await db
         .select({ headId: masterSections.headEmployeeId })
         .from(masterSections)
         .where(eq(masterSections.id, resolvedSectionId))
         .limit(1)
-      headEmployeeId = sections[0]?.headId ?? null
+      headEmployeeId = sections?.headId ?? null
     }
 
-    // Default fallback to Ary Maulana (SPV Repair Retread) or Apriyanto (Head of Service MVC)
     if (!headEmployeeId) {
-      headEmployeeId = 996 // Ary Maulana
+      if (resolvedSectionId === 29) headEmployeeId = 996 // Ary Maulana (Repair / Retread)
+      else if (resolvedSectionId === 37) headEmployeeId = 1094 // Muhammad Abian Husain (Technical Operation)
+      else if (resolvedSectionId === 33) headEmployeeId = 955 // Apriyanto (Service Operation MVC)
+      else if (resolvedSectionId === 34) headEmployeeId = 15 // Junaidi (Service Operation Others)
+      else headEmployeeId = context.directManagerId ?? context.requesterDirectManagerId ?? 955
     }
 
-    const headSection = await db
-      .select({ id: employees.id, name: employees.name })
+    const [headSection] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
       .from(employees)
       .where(and(eq(employees.id, headEmployeeId), eq(employees.isActive, true)))
       .limit(1)
 
-    if (headSection[0]) {
-      steps.push({
-        stepOrder: stepOrder++,
-        label: 'Section Head',
-        approverName: headSection[0].name,
-        approverEmployeeId: headSection[0].id,
+    if (headSection) {
+      return {
+        stepOrder: 0,
+        label: headSection.jobTitle || 'Section Head',
+        approverName: headSection.name,
+        approverEmployeeId: headSection.id,
         approverNodeId: null,
         approvalMatrixStepId: null,
-        approvalMode: 'sequential',
-        resolutionSource: 'apd_head_section',
+        approvalMode: 'single',
+        resolutionSource: 'section_head',
         canDelegate: true,
         slaHours: 24,
-        nodeLabel: null,
+        nodeLabel: headSection.jobTitle || 'Section Head',
         fallbackLabel: null,
         escalationLabel: null,
-      })
+      }
+    }
+    return null
+  }
+
+  if (isMaterialOrTools) {
+    // ==========================================
+    // MATERIAL & TOOLS FLOW:
+    // - HSE site -> HSE Site -> Section Head (2 tahap)
+    // - PJO site -> PJO Site -> Section Head (2 tahap)
+    // - Site tanpa PJO/HSE (Admin CP dll) -> Langsung Section Head (1 tahap)
+    // ==========================================
+    if (hseSiteIds.includes(siteId)) {
+      const hseMap: Record<number, number> = {
+        133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
+        131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
+        129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
+        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
+      }
+      const hseEmpId = hseMap[siteId]
+      if (hseEmpId) {
+        const [hseApprover] = await db
+          .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+          .from(employees)
+          .where(and(eq(employees.id, hseEmpId), eq(employees.isActive, true)))
+          .limit(1)
+
+        if (hseApprover) {
+          steps.push({
+            stepOrder: stepOrder++,
+            label: hseApprover.jobTitle || 'HSE Officer',
+            approverName: hseApprover.name,
+            approverEmployeeId: hseApprover.id,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: 'sequential',
+            resolutionSource: 'apd_hse_site',
+            canDelegate: true,
+            slaHours: 24,
+            nodeLabel: hseApprover.jobTitle,
+            fallbackLabel: null,
+            escalationLabel: null,
+          })
+        }
+      }
+
+      // Step 2: Section Head
+      const secHead = await getSectionHead()
+      if (secHead) {
+        steps.push({
+          ...secHead,
+          stepOrder: stepOrder++,
+        })
+      }
+    } else if (pjoSiteIds.includes(siteId)) {
+      const pjoMap: Record<number, number> = {
+        138: 454,  // AMM Mifa Holing -> Adit Prasetyo (Technical Engineer)
+        144: 1057, // AMM Tabang -> Singgih Wiyono (Technical Engineer)
+        210: 1212, // BUMA Tanjung -> Dowy Pratama Sita (Technical Engineer)
+        150: 1250, // CDE - Bengkulu -> Rakha Dwi Saputra (Repairman)
+        145: 1189, // CK MIFA -> Fachri Husein (Serviceman)
+        125: 1375, // Jakarta -> Ade Saharu (HSE Officer)
+        151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
+        134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
+        136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
+        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+        127: 1164, // Sangatta -> Saipudin (HSE Leader)
+        139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
+        130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
+      }
+      let pjoEmpId: number | null = pjoMap[siteId] ?? context.siteHeadEmployeeId ?? null
+      if (!pjoEmpId && siteId) {
+        const [siteRow] = await db
+          .select({ headEmployeeId: sites.headEmployeeId })
+          .from(sites)
+          .where(eq(sites.id, siteId))
+          .limit(1)
+        pjoEmpId = siteRow?.headEmployeeId ?? null
+      }
+      if (pjoEmpId) {
+        const [pjoApprover] = await db
+          .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+          .from(employees)
+          .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
+          .limit(1)
+
+        if (pjoApprover) {
+          steps.push({
+            stepOrder: stepOrder++,
+            label: pjoApprover.jobTitle || 'PJO Leader',
+            approverName: pjoApprover.name,
+            approverEmployeeId: pjoApprover.id,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: 'sequential',
+            resolutionSource: 'apd_pjo_site',
+            canDelegate: true,
+            slaHours: 24,
+            nodeLabel: pjoApprover.jobTitle,
+            fallbackLabel: null,
+            escalationLabel: null,
+          })
+        }
+      }
+
+      // Step 2: Section Head
+      const secHead = await getSectionHead()
+      if (secHead) {
+        steps.push({
+          ...secHead,
+          stepOrder: stepOrder++,
+        })
+      }
+    } else {
+      // Tidak ada HSE / PJO di site (Admin CP dll) -> Langsung ke Section Head (1 tahap)
+      const secHead = await getSectionHead()
+      if (secHead) {
+        steps.push({
+          ...secHead,
+          stepOrder: stepOrder++,
+        })
+      }
+    }
+
+    return {
+      matrixId: null,
+      matrixName: `Dynamic Material & Tools Approval (${steps.length} Stage)`,
+      structureId: null,
+      structureName: null,
+      transactionType: context.transactionType,
+      warnings: [],
+      steps,
+    }
+  } else {
+    // ==========================================
+    // APD REQUEST FLOW (1 Tahap):
+    // - Admin CP site -> Admin CP PIC per Section (1039 / 1094 / 1099)
+    // - HSE site -> HSE Officer (1 tahap)
+    // - PJO site -> PJO Leader (1 tahap)
+    // ==========================================
+    if (adminCpSiteIds.includes(siteId)) {
+      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan (Serviceman)
+      if (context.sectionId === 29) {
+        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+      } else if (context.sectionId === 37) {
+        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+      }
+
+      const [approver] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+        .from(employees)
+        .where(and(eq(employees.id, approverEmpId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (approver) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: approver.jobTitle || 'Serviceman',
+          approverName: approver.name,
+          approverEmployeeId: approver.id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'single',
+          resolutionSource: 'apd_admin_cp',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: approver.jobTitle,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
+    } else if (hseSiteIds.includes(siteId)) {
+      const hseMap: Record<number, number> = {
+        133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
+        131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
+        129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
+        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
+      }
+      const hseEmpId = hseMap[siteId]
+      if (hseEmpId) {
+        const [hseApprover] = await db
+          .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+          .from(employees)
+          .where(and(eq(employees.id, hseEmpId), eq(employees.isActive, true)))
+          .limit(1)
+
+        if (hseApprover) {
+          steps.push({
+            stepOrder: stepOrder++,
+            label: hseApprover.jobTitle || 'HSE Officer',
+            approverName: hseApprover.name,
+            approverEmployeeId: hseApprover.id,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: 'single',
+            resolutionSource: 'apd_hse_site',
+            canDelegate: true,
+            slaHours: 24,
+            nodeLabel: hseApprover.jobTitle,
+            fallbackLabel: null,
+            escalationLabel: null,
+          })
+        }
+      }
+    } else {
+      const pjoMap: Record<number, number> = {
+        138: 454,  // AMM Mifa Holing -> Adit Prasetyo (Technical Engineer)
+        144: 1057, // AMM Tabang -> Singgih Wiyono (Technical Engineer)
+        210: 1212, // BUMA Tanjung -> Dowy Pratama Sita (Technical Engineer)
+        150: 1250, // CDE - Bengkulu -> Rakha Dwi Saputra (Repairman)
+        145: 1189, // CK MIFA -> Fachri Husein (Serviceman)
+        125: 1375, // Jakarta -> Ade Saharu (HSE Officer)
+        151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
+        134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
+        136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
+        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+        127: 1164, // Sangatta -> Saipudin (HSE Leader)
+        139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
+        130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
+      }
+      let pjoEmpId: number | null = pjoMap[siteId] ?? context.siteHeadEmployeeId ?? null
+      if (!pjoEmpId && siteId) {
+        const [siteRow] = await db
+          .select({ headEmployeeId: sites.headEmployeeId })
+          .from(sites)
+          .where(eq(sites.id, siteId))
+          .limit(1)
+        pjoEmpId = siteRow?.headEmployeeId ?? null
+      }
+      if (!pjoEmpId) pjoEmpId = context.requesterDirectManagerId ?? 955
+
+      const [pjoApprover] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
+        .from(employees)
+        .where(and(eq(employees.id, pjoEmpId), eq(employees.isActive, true)))
+        .limit(1)
+
+      if (pjoApprover) {
+        steps.push({
+          stepOrder: stepOrder++,
+          label: pjoApprover.jobTitle || 'PJO Leader',
+          approverName: pjoApprover.name,
+          approverEmployeeId: pjoApprover.id,
+          approverNodeId: null,
+          approvalMatrixStepId: null,
+          approvalMode: 'single',
+          resolutionSource: 'apd_site_pjo',
+          canDelegate: true,
+          slaHours: 24,
+          nodeLabel: pjoApprover.jobTitle,
+          fallbackLabel: null,
+          escalationLabel: null,
+        })
+      }
     }
   }
 
@@ -975,8 +1040,8 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         approverEmployeeId: manager.id,
         approverNodeId: null,
         approvalMatrixStepId: null,
-        approvalMode: 'sequential',
-        resolutionSource: 'legacy_manager',
+        approvalMode: 'single',
+        resolutionSource: 'fallback_manager',
         canDelegate: true,
         slaHours: 24,
         nodeLabel: null,
@@ -986,16 +1051,23 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
     }
   }
 
+  const structureName = steps.length > 1
+    ? (adminCpSiteIds.includes(siteId) ? 'Section Head 1-Stage Approval' : 'HSE/PJO -> Section Head 2-Stage Approval')
+    : 'Section Head 1-Stage Approval'
+
   return {
-    matrixId: null,
-    matrixName: null,
-    structureId: null,
-    structureName: null,
+    matrixId: 0,
+    matrixName: isMaterialOrTools
+      ? (context.transactionType === 'apd-request-material' ? 'Request Material Approval' : 'Request Tools Approval')
+      : 'APD Request Approval',
+    structureId: 0,
+    structureName,
     transactionType: context.transactionType,
-    warnings: ['Menggunakan custom route untuk APD Request (PJO -> Head Section)'],
+    warnings: [],
     steps,
   }
 }
+
 type NodeRow = {
   id: number
   label: string
@@ -1216,13 +1288,6 @@ export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input)
-
-  if (
-    context.transactionType === 'apd-request-material' ||
-    context.transactionType === 'apd-request-tools'
-  ) {
-    return resolveApdApprovalRoute(context)
-  }
 
   const matrixCandidates = await db
     .select({
@@ -1507,7 +1572,7 @@ export async function resolveApprovalRouteForActivity(
 
 
   // For APD / Material / Tools: Admin CP sites route to 1 specific admin based on section
-  if (context.transactionType.startsWith('apd-request')) {
+  if (context.transactionType.startsWith('apd-request') && steps.length > 0 && !steps[0].approverEmployeeId) {
     const adminCpSiteIds = [126, 142, 135, 132, 213, 212, 141, 148, 143, 147, 211, 146, 137]
     const siteId = context.siteId ?? 0
 
@@ -1525,7 +1590,7 @@ export async function resolveApprovalRouteForActivity(
         .where(and(eq(employees.id, approverEmpId), eq(employees.isActive, true)))
         .limit(1)
 
-      if (adminApprover && steps.length > 0) {
+      if (adminApprover) {
         steps[0].approverEmployeeId = adminApprover.id
         steps[0].approverName = adminApprover.name
         steps[0].label = adminApprover.jobTitle || 'Admin CP Approver'

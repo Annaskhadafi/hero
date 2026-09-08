@@ -58,6 +58,26 @@ interface ApdRequestFormProps {
   itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
+  requestId?: number;
+  initialNotes?: string;
+  initialItems?: Array<{
+    itemType: string;
+    requestType: "baru" | "pergantian";
+    quantity: number;
+    notes: string;
+    photoUrl?: string;
+  }>;
+}
+
+function parsePhotoPreviews(photoUrl?: string | null): string[] {
+  if (!photoUrl) return [];
+  try {
+    const parsed = JSON.parse(photoUrl);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {
+    // not JSON
+  }
+  return [photoUrl].filter(Boolean);
 }
 
 export function ApdRequestForm({
@@ -68,14 +88,34 @@ export function ApdRequestForm({
   itemOptions,
   defaultMode = "apd",
   mobileWide = false,
+  requestId,
+  initialNotes = "",
+  initialItems,
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<ApdItemInput[]>([
-    { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
-  ]);
+  const [notes, setNotes] = useState(initialNotes);
+  const [items, setItems] = useState<ApdItemInput[]>(() => {
+    if (initialItems && initialItems.length > 0) {
+      return initialItems.map((item) => {
+        const previews = parsePhotoPreviews(item.photoUrl);
+        return {
+          id: crypto.randomUUID(),
+          itemType: item.itemType,
+          requestType: item.requestType,
+          quantity: item.quantity,
+          notes: item.notes || "",
+          photoFiles: [],
+          photoPreviews: previews,
+          photoUrl: item.photoUrl,
+        };
+      });
+    }
+    return [
+      { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
+    ];
+  });
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [profileSignature, setProfileSignature] = useState<string | null>(null);
   const [isDrawingCustomSig, setIsDrawingCustomSig] = useState(false);
@@ -190,8 +230,11 @@ export function ApdRequestForm({
         }
         if (item.requestType === "pergantian") {
           const validPhotos = (item.photoFiles || []).filter(Boolean);
-          if (validPhotos.length < 3) {
-            throw new Error(`Item "${item.itemType}" membutuhkan minimal 3 foto bukti barang rusak/lama. Saat ini baru ${validPhotos.length} foto terlampir.`);
+          const validPreviews = (item.photoPreviews || []).filter(Boolean);
+          if (validPhotos.length === 0 && validPreviews.length >= 3) {
+            // Reusing existing photos
+          } else if (validPhotos.length < 3 && validPreviews.length < 3) {
+            throw new Error(`Item "${item.itemType}" membutuhkan minimal 3 foto bukti barang rusak/lama. Saat ini baru ${Math.max(validPhotos.length, validPreviews.length)} foto terlampir.`);
           }
         }
       }
@@ -212,7 +255,7 @@ export function ApdRequestForm({
       // Upload photos for replacements (supporting min 3 photos per item)
       const processedItems = await Promise.all(
         items.map(async (item) => {
-          let photoUrl = "";
+          let photoUrl = item.photoUrl || "";
           if (item.requestType === "pergantian" && item.photoFiles && item.photoFiles.length > 0) {
             const uploadedUrls = await Promise.all(
               item.photoFiles.map(async (file) => {
@@ -238,6 +281,9 @@ export function ApdRequestForm({
       );
 
       const submitData = new FormData();
+      if (requestId) {
+        submitData.append("requestId", String(requestId));
+      }
       submitData.append("notes", notes);
       submitData.append("signatureUrl", signatureUrl);
       submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
@@ -245,7 +291,11 @@ export function ApdRequestForm({
 
       const res = await submitApdRequest(submitData);
       if (res.success) {
-        toast.success(`${requestMode === "apd" ? "Permintaan APD" : `Request ${requestMode === "tools" ? "Tools" : "Material"}`} berhasil diajukan!`);
+        toast.success(
+          requestId
+            ? `Revisi ${requestMode === "apd" ? "Permintaan APD" : `Request ${requestMode === "tools" ? "Tools" : "Material"}`} berhasil dikirim ulang!`
+            : `${requestMode === "apd" ? "Permintaan APD" : `Request ${requestMode === "tools" ? "Tools" : "Material"}`} berhasil diajukan!`
+        );
         router.push("/dashboard/apd");
       }
     } catch (error: any) {

@@ -7,8 +7,16 @@ import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { parseApprovalNoteEntries } from '@/lib/approval-notes';
 import { ApdLiveSignatureListener } from '@/components/admin/apd-approval-dialog';
 
-export default async function PrintApdPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PrintApdPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ embed?: string }>;
+}) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
   const data = await fetchApdRequestById(parseInt(id, 10));
   if (!data) return notFound();
 
@@ -61,8 +69,67 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
   const isMaterial = data.requestCategory === 'MATERIAL';
   const isTools = data.requestCategory === 'TOOLS';
 
-  // APD, Material, and Tools strictly use only 1 approver
-  const effectiveApprovalHistory = approvalHistory.filter((step) => step.level === 1);
+  // Parse step labels and full route from routeSnapshot
+  const routeSnapshot = approvalHistory?.[0]?.routeSnapshot ? (() => {
+    try { 
+      return JSON.parse(approvalHistory[0].routeSnapshot) as { 
+        steps?: Array<{ 
+          stepOrder: number; 
+          label: string; 
+          approverName?: string; 
+          approverEmployeeId?: number; 
+          nodeLabel?: string;
+        }> 
+      } 
+    } catch { return null }
+  })() : null;
+
+  const stepLabelByOrder = new Map<number, string>();
+  if (routeSnapshot?.steps) {
+    for (const s of routeSnapshot.steps) stepLabelByOrder.set(s.stepOrder, s.label || s.nodeLabel || '');
+  }
+
+  function getStepLabel(level: number) {
+    if (isApd) return 'Admin / PJO / HSE Site';
+    return stepLabelByOrder.get(level) || (level === 1 ? 'HSE / PJO Site' : 'Section Head');
+  }
+
+  // Merge executed approvalHistory with routeSnapshot steps so all configured steps are rendered
+  let effectiveApprovalHistory = [...approvalHistory];
+  if (routeSnapshot?.steps && routeSnapshot.steps.length > 0) {
+    const existingLevels = new Set(approvalHistory.map((s) => s.level));
+    const extraSteps = routeSnapshot.steps
+      .filter((rs) => !existingLevels.has(rs.stepOrder))
+      .map((rs) => ({
+        id: -rs.stepOrder,
+        apdRequestId: data.id,
+        level: rs.stepOrder,
+        status: 'pending' as const,
+        approverName: rs.approverName || '_______________________',
+        approverEmployeeId: rs.approverEmployeeId,
+        approverJobTitle: rs.label || rs.nodeLabel || (rs.stepOrder === 1 ? 'HSE / PJO Site' : 'Section Head'),
+        approverSignatureDataUrl: null,
+        decisionNote: '',
+        signatureUrl: null,
+        reviewedAt: null,
+        createdAt: new Date(),
+        routeSnapshot: approvalHistory[0]?.routeSnapshot || null,
+      }));
+    effectiveApprovalHistory = [...approvalHistory, ...extraSteps].sort((a, b) => a.level - b.level);
+  }
+
+  function getStepHeaderTitle(index: number, totalApprovers: number) {
+    if (totalApprovers === 1) {
+      return 'Disetujui Oleh';
+    }
+    if (index === 0) {
+      return 'Diperiksa Oleh';
+    }
+    if (index === totalApprovers - 1) {
+      return 'Disetujui Oleh';
+    }
+    return 'Diperiksa Oleh';
+  }
 
   // Dynamic title based on category
   const formTitle = isApd
@@ -107,23 +174,9 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
           'Tools yang sudah dikeluarkan menjadi tanggung jawab pemegang tools yang bersangkutan.',
         ];
 
-  // Parse step labels
-  const routeSnapshot = effectiveApprovalHistory?.[0]?.routeSnapshot ? (() => {
-    try { return JSON.parse(effectiveApprovalHistory[0].routeSnapshot) as { steps?: Array<{ stepOrder: number; label: string }> } } catch { return null }
-  })() : null;
-  const stepLabelByOrder = new Map<number, string>();
-  if (routeSnapshot?.steps) {
-    for (const s of routeSnapshot.steps) stepLabelByOrder.set(s.stepOrder, s.label);
-  }
-
-  function getStepLabel(level: number) {
-    if (isApd) return 'Disetujui Oleh (PJO / HSE Site / Atasan Site)';
-    return stepLabelByOrder.get(level) ?? 'Disetujui Oleh (Section Head)';
-  }
-
   return (
-    <div className="bg-gray-100 min-h-screen py-4 print:py-0 print:bg-white flex justify-center overflow-x-auto">
-      <PrintAction />
+    <div className={isEmbed ? "bg-white w-[210mm] h-[297mm] p-0 m-0 overflow-hidden flex justify-center" : "bg-gray-100 min-h-screen py-4 print:py-0 print:bg-white flex justify-center overflow-x-auto"}>
+      {!isEmbed && <PrintAction />}
       <style dangerouslySetInnerHTML={{__html: `
         @media print {
           @page {
@@ -338,9 +391,9 @@ export default async function PrintApdPage({ params }: { params: Promise<{ id: s
                       <th className="border border-black py-1 px-2 text-[7.5pt] font-bold" style={{ width: colWidth }}>
                         Diajukan Oleh
                       </th>
-                      {effectiveApprovalHistory.map((step) => (
+                      {effectiveApprovalHistory.map((step, idx) => (
                         <th key={step.id} className="border border-black py-1 px-2 text-[7.5pt] font-bold" style={{ width: colWidth }}>
-                          Disetujui Oleh
+                          {getStepHeaderTitle(idx, effectiveApprovalHistory.length)}
                         </th>
                       ))}
                     </tr>

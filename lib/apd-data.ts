@@ -98,6 +98,7 @@ export async function fetchApdRequestById(id: number) {
       signatureUrl: approvals.signatureUrl,
       reviewedAt: approvals.reviewedAt,
       createdAt: approvals.createdAt,
+      routeSnapshot: approvals.routeSnapshot,
     })
     .from(approvals)
     .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))

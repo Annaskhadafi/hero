@@ -8,8 +8,16 @@ const QTY_ONLY_COLUMNS = [
 ];
 const SAFETY_SHOES_COL = 'Safety Shoes';
 
-export default async function PrintSummaryPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PrintSummaryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ embed?: string }>;
+}) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
   const summaryId = Number(id);
   const data = await getSummaryDetails(summaryId);
 

@@ -56,9 +56,155 @@ export async function submitApdRequest(formData: FormData) {
 
   const notes = (formData.get('notes') as string) || ''
   const signatureUrl = formData.get('signatureUrl') as string
+  const rawRequestId = formData.get('requestId') || formData.get('id')
+  const existingId = rawRequestId ? Number(rawRequestId) : null
 
   // Use a transaction
   return await db.transaction(async (tx) => {
+    if (existingId) {
+      // ===== RESUBMIT EXISTING REQUEST (REVISION FLOW) =====
+      const [existingRequest] = await tx
+        .select()
+        .from(apdRequests)
+        .where(eq(apdRequests.id, existingId))
+        .limit(1)
+
+      if (!existingRequest) {
+        throw new Error('Permintaan APD tidak ditemukan')
+      }
+
+      const requestNumber = existingRequest.requestNumber
+
+      // 1. Update apdRequests
+      await tx
+        .update(apdRequests)
+        .set({
+          status: 'pending_approval',
+          notes,
+          ...(signatureUrl ? { signatureUrl } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(apdRequests.id, existingId))
+
+      // 2. Replace items
+      await tx.delete(apdRequestItems).where(eq(apdRequestItems.requestId, existingId))
+      if (normalizedItems.length > 0) {
+        await tx.insert(apdRequestItems).values(
+          normalizedItems.map((item) => ({
+            requestId: existingId,
+            itemType: item.itemType,
+            requestType: item.requestType,
+            photoUrl: item.photoUrl,
+            quantity: item.quantity,
+            notes: item.notes,
+          }))
+        )
+      }
+
+      // 3. Find existing approvals for this request
+      const existingApprovals = await tx
+        .select()
+        .from(approvals)
+        .where(eq(approvals.apdRequestId, existingId))
+        .orderBy(approvals.level)
+
+      // Find the specific step that was reverted (needs_correction)
+      const revertedStep = existingApprovals.find((a) => a.status === 'needs_correction')
+      const step1Approval = existingApprovals.find((a) => a.level === 1)
+      const step1Approved = step1Approval?.status === 'approved'
+
+      // Target step is Step 2 if Step 1 is already approved, or the reverted step
+      let targetStep = revertedStep
+      if (!targetStep) {
+        targetStep = existingApprovals.find((a) => a.status !== 'approved') || step1Approval
+      }
+      const targetLevel = targetStep?.level ?? 1
+
+      // Set ONLY the target step to 'pending' (Step 1 approved signature remains intact!)
+      if (targetStep) {
+        await tx
+          .update(approvals)
+          .set({
+            status: 'pending',
+            submittedAt: new Date(),
+            reviewedAt: null,
+          })
+          .where(eq(approvals.id, targetStep.id))
+      }
+
+      // Step 1 approver email (to receive CC email notification)
+      let step1ApproverEmail: string | null = null
+      if (step1Approved && step1Approval?.approverEmployeeId) {
+        const [emp] = await tx
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, step1Approval.approverEmployeeId))
+          .limit(1)
+        step1ApproverEmail = emp?.email || null
+      }
+
+      // Send notifications to target approver (e.g. Step 2 Section Head) with CC to Step 1 approver
+      if (targetStep?.approverEmployeeId) {
+        const [approverEmailRec] = await tx
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, targetStep.approverEmployeeId))
+          .limit(1)
+
+        if (approverEmailRec?.email) {
+          const ccEmails: string[] = []
+          if (step1ApproverEmail && targetLevel > 1) {
+            ccEmails.push(step1ApproverEmail)
+          }
+
+          if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
+            sendMaterialToolsRequestSubmittedEmail({
+              employeeName: currentEmployee.name,
+              requestNumber,
+              approverEmail: approverEmailRec.email,
+              approverName: targetStep.approverName || 'Section Head',
+              requestType: requestCategory,
+              ccEmails,
+            }).catch(console.error)
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id', ...ccEmails],
+              eventType: 'material_tools_request_review',
+              category: 'approval_requests',
+              title: `Revisi Permintaan ${requestCategory}`,
+              body: `${currentEmployee.name} telah mengirim revisi permohonan ${requestCategory} (${requestNumber}) langsung ke ${targetStep.approverName || 'Tahap ' + targetLevel}. (CC: Muhammad Taufik Akbar)`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'apd',
+            }).catch(console.error)
+          } else {
+            sendApdRequestSubmittedEmail({
+              employeeName: currentEmployee.name,
+              requestNumber,
+              approverEmail: approverEmailRec.email,
+              approverName: targetStep.approverName || 'Approver',
+              requestType: requestCategory,
+              ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+            }).catch(console.error)
+
+            notifyWorkflowBellRecipients({
+              recipientEmails: [approverEmailRec.email, ...ccEmails],
+              eventType: 'apd_request_review',
+              category: 'approval_requests',
+              title: `Revisi Permintaan ${requestCategory}`,
+              body: `${currentEmployee.name} telah mengirim revisi permohonan ${requestCategory} (${requestNumber}) langsung ke ${targetStep.approverName || 'Tahap ' + targetLevel}.`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'apd',
+            }).catch(console.error)
+          }
+        }
+      }
+
+      revalidatePath('/dashboard/apd')
+      revalidatePath('/dashboard/approval')
+      return { success: true, requestId: existingId }
+    }
+
+    // ===== NEW REQUEST FLOW =====
     // Generate request number
     const countRes = await tx.$count(apdRequests)
     const requestNumber = `APD-${new Date().getFullYear()}-${String(countRes + 1).padStart(4, '0')}`
@@ -179,9 +325,6 @@ export async function submitApdRequest(formData: FormData) {
           }
         }
       }
-    } else {
-      // Auto approve if no route? Or leave it pending?
-      // Leaving pending for now.
     }
 
     revalidatePath('/dashboard/apd')

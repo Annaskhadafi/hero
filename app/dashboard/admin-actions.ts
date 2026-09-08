@@ -4945,22 +4945,29 @@ async function applyApprovalDecision(params: {
     approval.apdRequestId != null
   ) {
     const now = new Date()
-    const decisionStatus =
-      params.decision === 'approved'
-        ? 'proses_order'
-        : params.decision === 'rejected'
-          ? 'cancel'
-          : 'needs_correction'
+    const isApproved = params.decision === 'approved'
+    const isRejected = params.decision === 'rejected'
+    const isReverted =
+      params.decision === 'needs_correction' ||
+      params.decision === 'revision_requested' ||
+      params.decision === 'reverted'
+
+    const decisionStatus = isApproved
+      ? 'proses_order'
+      : isRejected
+        ? 'cancel'
+        : 'needs_correction'
     const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
 
     await db.transaction(async (tx) => {
       const nextStep = approvalRoute?.steps?.find(
         (s: any) => s.stepOrder === (approval.level ?? 0) + 1
       )
-      const requestStatus =
-        decisionStatus === 'cancel'
-          ? 'cancel'
-          : decisionStatus === 'needs_correction' || nextStep
+      const requestStatus = isRejected
+        ? 'cancel'
+        : isReverted
+          ? 'needs_correction'
+          : nextStep
             ? 'pending_approval'
             : 'proses_order'
 
@@ -5030,6 +5037,10 @@ async function applyApprovalDecision(params: {
             approvalRoute?.steps?.find((s: any) => s.stepOrder === approval.level)?.label ??
             `Tahap ${approval.level}`
 
+          const isMaterialOrTools =
+            notifInfo.requestCategory === 'MATERIAL' || notifInfo.requestCategory === 'TOOLS'
+          const materialToolsCc = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+
           // 1. Email + bell ke requester (progress update)
           if (notifInfo.requesterEmail) {
             const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email')
@@ -5041,10 +5052,11 @@ async function applyApprovalDecision(params: {
               requestType: notifInfo.requestCategory,
               currentLevelLabel: currentStepLabel,
               nextLevelLabel: nextStep.label,
+              ccEmails: materialToolsCc,
             }).catch(console.error)
 
             notifyWorkflowBellRecipients({
-              recipientEmails: [notifInfo.requesterEmail],
+              recipientEmails: [notifInfo.requesterEmail, ...(materialToolsCc ?? [])],
               eventType: 'apd_request_progress',
               category: 'approval_requests',
               title: `${notifInfo.requestCategory} Tahap Disetujui`,
@@ -5071,10 +5083,11 @@ async function applyApprovalDecision(params: {
                 requestNumber: notifInfo.requestNumber,
                 requestType: notifInfo.requestCategory,
                 currentLevelLabel: nextStep.label,
+                ccEmails: materialToolsCc,
               }).catch(console.error)
 
               notifyWorkflowBellRecipients({
-                recipientEmails: [nextApproverEmail.email],
+                recipientEmails: [nextApproverEmail.email, ...(materialToolsCc ?? [])],
                 eventType: 'apd_request_review',
                 category: 'approval_requests',
                 title: `Review ${notifInfo.requestCategory}`,
@@ -5162,7 +5175,7 @@ async function applyApprovalDecision(params: {
         }
       }
 
-      if (params.decision === 'rejected' && approval.apdRequestId != null) {
+      if (isRejected && approval.apdRequestId != null) {
         const reqInfo = await tx
           .select({
             requestNumber: apdRequests.requestNumber,
@@ -5177,6 +5190,9 @@ async function applyApprovalDecision(params: {
           .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
+          const isMaterialOrTools = reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
+          const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+
           const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email')
           sendApdRequestRejectedEmail({
             requesterEmail: reqInfo.requesterEmail,
@@ -5185,10 +5201,11 @@ async function applyApprovalDecision(params: {
             approverName: actorName,
             reason: trimmedNote || 'Tidak ada alasan yang diberikan',
             requestType: reqInfo.requestCategory,
+            ccEmails,
           }).catch(console.error)
 
           notifyWorkflowBellRecipients({
-            recipientEmails: [reqInfo.requesterEmail],
+            recipientEmails: [reqInfo.requesterEmail, ...(ccEmails ?? [])],
             eventType: 'apd_request_rejected',
             category: 'approval_requests',
             title: `${reqInfo.requestCategory} Ditolak`,
@@ -5199,7 +5216,7 @@ async function applyApprovalDecision(params: {
         }
       }
 
-      if (params.decision === 'needs_correction' && approval.apdRequestId != null) {
+      if (isReverted && approval.apdRequestId != null) {
         const reqInfo = await tx
           .select({
             requestNumber: apdRequests.requestNumber,
@@ -5214,23 +5231,28 @@ async function applyApprovalDecision(params: {
           .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
+          const isMaterialOrTools = reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
+          const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+
           const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email')
           sendApdRequestRevertedEmail({
+            requestId: approval.apdRequestId,
             requesterEmail: reqInfo.requesterEmail,
             requesterName: reqInfo.requesterName,
             requestNumber: reqInfo.requestNumber,
             approverName: actorName,
             reason: trimmedNote || 'Dikembalikan untuk revisi',
             requestType: reqInfo.requestCategory,
+            ccEmails,
           }).catch(console.error)
 
           notifyWorkflowBellRecipients({
-            recipientEmails: [reqInfo.requesterEmail],
+            recipientEmails: [reqInfo.requesterEmail, ...(ccEmails ?? [])],
             eventType: 'apd_request_revision',
             category: 'approval_requests',
             title: `${reqInfo.requestCategory} Perlu Revisi`,
             body: `Permintaan ${reqInfo.requestCategory} Anda (${reqInfo.requestNumber}) dikembalikan untuk revisi oleh ${actorName}.`,
-            url: '/dashboard/apd',
+            url: `/dashboard/apd/new?edit=${approval.apdRequestId}&category=${reqInfo.requestCategory.toLowerCase()}`,
             tagPrefix: 'apd',
           }).catch(console.error)
         }

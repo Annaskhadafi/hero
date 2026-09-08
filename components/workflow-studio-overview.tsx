@@ -442,9 +442,9 @@ function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
 
   const NON_PJO_SECTION_APPROVER: Record<string, string> = {
     '33': '955',  // Service Operation MVC -> Apriyanto
-    '34': '1040', // Service Operation Others
+    '34': '15',   // Service Operation Others -> Junaidi
     '29': '996',  // Repair / Retread -> Ary Maulana
-    '37': '96',   // Technical -> Febrial Hariri
+    '37': '1094', // Technical Operation -> Muhammad Abian Husain
     '14': '970',  // HR-GA -> Muhammad Iqbal
     '15': '1164', // Saipudin / HSE
     '39': '979',  // Ali Rahman
@@ -572,6 +572,7 @@ function WorkflowBuilderDialog({
       if (lower.includes('as') && lower.includes('fauz')) map.set('asar', e.id.toString())
       if (lower.includes('arjun')) map.set('arjun', e.id.toString())
       if (lower.includes('abian')) map.set('abian', e.id.toString())
+      if (lower.includes('junaidi')) map.set('junaidi', e.id.toString())
       if (lower.includes('iqbal')) map.set('iqbal', e.id.toString())
       if (lower.includes('ali') && lower.includes('rahman')) map.set('alirahman', e.id.toString())
     }
@@ -610,6 +611,9 @@ function WorkflowBuilderDialog({
     if (sectionId) {
       const sec = allSectionsList.find((s) => s.id.toString() === sectionId)
       const secName = (sec?.name || '').toLowerCase()
+      if (secName.includes('other')) {
+        return employeeLookupByName.get('junaidi') ?? '15'
+      }
       if (secName.includes('service')) {
         return employeeLookupByName.get('asar') ?? '955'
       }
@@ -617,7 +621,7 @@ function WorkflowBuilderDialog({
         return employeeLookupByName.get('arjun') ?? '996'
       }
       if (secName.includes('technical') || secName.includes('te')) {
-        return employeeLookupByName.get('abian') ?? '96'
+        return employeeLookupByName.get('abian') ?? '1094'
       }
       if (secName.includes('warehouse') || secName.includes('inventory')) {
         return employeeLookupByName.get('alirahman') ?? '979'
@@ -662,6 +666,14 @@ function WorkflowBuilderDialog({
 
   const WORKFLOW_PRESETS = [
     {
+      key: "apd-request-1-step",
+      name: "Request APD (31 Site x 4 Section)",
+      steps: [
+        { id: "step-0", label: "Section", type: "section" as const },
+        { id: "step-1", label: "Admin / PJO / HSE", type: "employee" as const },
+      ]
+    },
+    {
       key: "summary-apd-2-step",
       name: "Summary APD (Section Head & Department Head)",
       steps: [
@@ -671,11 +683,12 @@ function WorkflowBuilderDialog({
       ]
     },
     {
-      key: "material-tools-section-head",
-      name: "Material & Tools (3 Section ke Section Head)",
+      key: "material-tools-hse-pjo-section-head",
+      name: "Material & Tools (HSE/PJO Site -> Section Head)",
       steps: [
         { id: "step-0", label: "Section", type: "section" as const },
-        { id: "step-1", label: "Section Head", type: "employee" as const },
+        { id: "step-1", label: "HSE / PJO Site", type: "employee" as const },
+        { id: "step-2", label: "Section Head", type: "employee" as const },
       ]
     },
     {
@@ -749,26 +762,53 @@ function WorkflowBuilderDialog({
       return
     }
 
-    if (presetKey === 'material-tools-section-head') {
+    if (presetKey === 'material-tools-hse-pjo-section-head' || presetKey === 'material-tools-section-head') {
       const autoRows: any[] = []
       let rIndex = 0
       const CS_SECTIONS = [
         { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
-        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '37', name: 'Technical Operation', headId: '1094' },       // Muhammad Abian Husain
         { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+        { id: '34', name: 'Service Operation Others', headId: '15' },   // Junaidi
       ]
 
-      const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
-
-      for (const site of sitesList) {
+      for (const site of MASTER_CATEGORIZED_SITES) {
         for (const sec of CS_SECTIONS) {
+          const approverId = resolveApdApproverForStudio(site.id, sec.id)
           autoRows.push({
             key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
             siteId: site.id.toString(),
             departmentId: '',
             values: {
               'step-0': sec.id,
-              'step-1': sec.headId,
+              'step-1': approverId,
+              'step-2': sec.headId,
+            },
+          })
+        }
+      }
+      setSiteData(autoRows)
+      return
+    }
+
+    if (presetKey === 'apd-request-1-step') {
+      const autoRows: any[] = []
+      let rIndex = 0
+      const CS_SECTIONS = [
+        { id: '33', name: 'Service Operation MVC', headId: '955' },
+        { id: '34', name: 'Service Operation Others', headId: '15' },
+        { id: '29', name: 'Repair / Retread Operation', headId: '996' },
+        { id: '37', name: 'Technical Operation', headId: '1094' },
+      ]
+      for (const site of MASTER_CATEGORIZED_SITES) {
+        for (const sec of CS_SECTIONS) {
+          autoRows.push({
+            key: `site-apd-${rIndex++}-${site.id}-${sec.id}`,
+            siteId: site.id.toString(),
+            departmentId: '',
+            values: {
+              'step-0': sec.id,
+              'step-1': resolveApdApproverForStudio(site.id, sec.id),
             },
           })
         }
@@ -846,7 +886,8 @@ function WorkflowBuilderDialog({
 
   const materialToolsDefaults: ApprovalStep[] = [
     { id: 'step-0', label: 'Section', type: 'section' },
-    { id: 'step-1', label: 'Section Head', type: 'employee' },
+    { id: 'step-1', label: 'HSE / PJO Site', type: 'employee' },
+    { id: 'step-2', label: 'Section Head', type: 'employee' },
   ]
 
   const summaryApdDefaults: ApprovalStep[] = [
@@ -856,9 +897,8 @@ function WorkflowBuilderDialog({
   ]
 
   const apdDefaults: ApprovalStep[] = [
-    { id: 'step-1', label: 'Service MVC', type: 'employee' },
-    { id: 'step-2', label: 'Service Others', type: 'employee' },
-    { id: 'step-3', label: 'TE', type: 'employee' },
+    { id: 'step-0', label: 'Section', type: 'section' },
+    { id: 'step-1', label: 'Admin / PJO / HSE', type: 'employee' },
   ]
 
   const generalDefaults: ApprovalStep[] = [
@@ -907,6 +947,36 @@ function WorkflowBuilderDialog({
               : isApd
                 ? apdDefaults
                 : generalDefaults
+
+    if (isMaterialTools) {
+      const isLegacyApd =
+        initial?.globalSteps?.some((s) => {
+          const l = (s.label || '').toLowerCase()
+          return l.includes('mvc') || l.includes('other') || l.includes('te')
+        }) ?? false
+      const filteredExisting = (initial?.globalSteps || []).filter((gs) => {
+        const l = (gs.label ?? '').toLowerCase().trim()
+        return (
+          !isSectionStep(l) &&
+          l !== 'pemohon' &&
+          l !== 'yang memohon' &&
+          l !== 'requestor' &&
+          l !== 'submitted' &&
+          l !== 'submitter' &&
+          l !== 'admin cp site' &&
+          l !== 'admin site'
+        )
+      })
+      if (filteredExisting.length >= 2 && !isLegacyApd) {
+        const existing = filteredExisting.map((gs, i) => ({
+          id: `step-${i + 1}`,
+          label: gs.label ?? '',
+          type: 'employee' as const,
+        }))
+        return [{ id: 'step-0', label: 'Section', type: 'section' as const }, ...existing]
+      }
+      return materialToolsDefaults
+    }
 
     if (!initial?.globalSteps || initial.globalSteps.length === 0) {
       return defaults
@@ -1094,23 +1164,58 @@ function WorkflowBuilderDialog({
     }
 
     if (isMaterialOrToolsMenu()) {
+      const savedApprovals = initial?.siteApprovals ?? []
+      const isLegacyApd =
+        savedApprovals.some((sa) => (sa as any).values?.['step-3'] !== undefined && !sa.sectionId) ||
+        Boolean(initial?.globalSteps && initial.globalSteps.some((s) => (s.label || '').toLowerCase().includes('mvc')))
+      const has2Steps = savedApprovals.some((sa) => Array.isArray((sa as any).steps) && (sa as any).steps.length >= 2)
+      if (savedApprovals.length > 0 && !isLegacyApd && has2Steps) {
+        const autoRows: SiteData[] = []
+        let rIndex = 0
+        for (const sa of savedApprovals) {
+          const values: Record<string, string> = { ...((sa as any).values || {}) }
+          const secVal = sa.sectionId != null ? String(sa.sectionId) : values['step-0'] ?? ''
+          if (labelToStepId['section'] && !values[labelToStepId['section']]) {
+            values[labelToStepId['section']] = secVal
+          }
+          if (Array.isArray((sa as any).steps)) {
+            const employeeSteps = steps.filter((s) => s.type !== 'section')
+            ;(sa as any).steps.forEach((st: any, idx: number) => {
+              if (employeeSteps[idx] && st.employeeId && !values[employeeSteps[idx].id]) {
+                values[employeeSteps[idx].id] = String(st.employeeId)
+              }
+            })
+          }
+          autoRows.push({
+            key: `site-mat-${rIndex++}-${sa.siteId ?? '0'}-${secVal}`,
+            siteId: sa.siteId != null ? String(sa.siteId) : '0',
+            departmentId: sa.departmentId != null ? String(sa.departmentId) : '',
+            values,
+          })
+        }
+        if (autoRows.length > 0) return autoRows
+      }
+
       const autoRows: SiteData[] = []
       let rIndex = 0
       const CS_SECTIONS = [
         { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
-        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '37', name: 'Technical Operation', headId: '1094' },       // Muhammad Abian Husain
         { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+        { id: '34', name: 'Service Operation Others', headId: '15' },   // Junaidi
       ]
 
       for (const site of MASTER_CATEGORIZED_SITES) {
         for (const sec of CS_SECTIONS) {
+          const approverId = resolveApdApproverForStudio(site.id, sec.id)
           autoRows.push({
             key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
             siteId: site.id.toString(),
             departmentId: '',
             values: {
               'step-0': sec.id,
-              'step-1': sec.headId,
+              'step-1': approverId,
+              'step-2': sec.headId,
             },
           })
         }
@@ -1182,6 +1287,56 @@ function WorkflowBuilderDialog({
             'step-2': deptHeadId,
           },
         })
+      }
+      return autoRows
+    }
+
+    const isApdRequestMenu =
+      (menuKeyLower.includes('apd') || menuKeyLower === 'apd-request-apd' || menuKeyLower === 'apd-request') &&
+      !isSummaryMenu() &&
+      !isMaterialOrToolsMenu()
+
+    if (isApdRequestMenu) {
+      const savedApprovals = initial?.siteApprovals ?? []
+      const autoRows: SiteData[] = []
+      let rIndex = 0
+
+      const CS_SECTIONS = [
+        { id: '33', name: 'Service Operation MVC', headId: '955' },
+        { id: '34', name: 'Service Operation Others', headId: '15' },
+        { id: '29', name: 'Repair / Retread Operation', headId: '996' },
+        { id: '37', name: 'Technical Operation', headId: '1094' },
+      ]
+
+      for (const site of MASTER_CATEGORIZED_SITES) {
+        for (const sec of CS_SECTIONS) {
+          const existing = savedApprovals.find(
+            (sa) =>
+              sa.siteId?.toString() === site.id &&
+              (sa.sectionId?.toString() === sec.id || (sa as any).values?.['step-0'] === sec.id)
+          )
+
+          let approverId = resolveApdApproverForStudio(site.id, sec.id)
+          if (existing) {
+            const val =
+              existing.leaderId ??
+              existing.pjoId ??
+              existing.sectionHeadId ??
+              (existing as any).values?.['step-1'] ??
+              (existing as any).steps?.[0]?.employeeId
+            if (val) approverId = String(val)
+          }
+
+          autoRows.push({
+            key: `site-apd-${rIndex++}-${site.id}-${sec.id}`,
+            siteId: site.id.toString(),
+            departmentId: '',
+            values: {
+              'step-0': sec.id,
+              'step-1': approverId,
+            },
+          })
+        }
       }
       return autoRows
     }
@@ -1263,8 +1418,9 @@ function WorkflowBuilderDialog({
       let rIndex = 0
       const CS_SECTIONS = [
         { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
-        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
+        { id: '37', name: 'Technical Operation', headId: '1094' },       // Muhammad Abian Husain
         { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+        { id: '34', name: 'Service Operation Others', headId: '15' },   // Junaidi
       ]
 
       const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
@@ -1349,11 +1505,9 @@ function WorkflowBuilderDialog({
   }
 
   function removeStep(id: string) {
-    // Langkah Section & Head Section (untuk Material/Tools) adalah default yang tidak bisa dihapus.
     setApprovalSteps((prev) => {
       const target = prev.find((s) => s.id === id)
       if (target?.type === 'section') return prev
-      if (isMaterialOrToolsMenu() && target?.label === 'Head Section') return prev
       return prev.filter((s) => s.id !== id)
     })
     setSiteData((prev) =>
@@ -1673,103 +1827,111 @@ function WorkflowBuilderDialog({
                 onChange={(event) => {
                   const newKey = event.target.value
                   setSelectedMenuKey(newKey)
-                  if (!initial) {
-                    if (newKey.toLowerCase().includes('wo')) {
-                      if (newKey.toLowerCase().includes('service')) {
-                        setApprovalSteps(formWoServiceDefaults)
-                      } else {
-                        setApprovalSteps(formWoRepairDefaults)
-                      }
-                    } else if (newKey.toLowerCase().includes('rfr')) {
-                      setApprovalSteps(rfrDefaults)
-                    } else if (newKey.toLowerCase().includes('5r') || newKey.toLowerCase().includes('five-r')) {
-                      setApprovalSteps(fiveRDefaults)
-                      const autoRows: any[] = []
-                      let rIndex = 0
-                      const areasToUse = fiveRAreas.length > 0 ? fiveRAreas : []
-                      if (areasToUse.length > 0) {
-                        for (const area of areasToUse) {
-                          const areaSiteId = area.siteId ? area.siteId.toString() : '126'
-                          const siteHeadId = allSites.find((s) => s.id.toString() === areaSiteId)?.headEmployeeId?.toString()
-                          const approverStep2 = siteHeadId ?? SITE_APPROVER_MAP[areaSiteId] ?? '955'
+                  if (newKey.toLowerCase().includes('wo')) {
+                    if (newKey.toLowerCase().includes('service')) {
+                      setApprovalSteps(formWoServiceDefaults)
+                    } else {
+                      setApprovalSteps(formWoRepairDefaults)
+                    }
+                  } else if (newKey.toLowerCase().includes('rfr')) {
+                    setApprovalSteps(rfrDefaults)
+                  } else if (newKey.toLowerCase().includes('5r') || newKey.toLowerCase().includes('five-r')) {
+                    setApprovalSteps(fiveRDefaults)
+                    const autoRows: any[] = []
+                    let rIndex = 0
+                    const areasToUse = fiveRAreas.length > 0 ? fiveRAreas : []
+                    if (areasToUse.length > 0) {
+                      for (const area of areasToUse) {
+                        const areaSiteId = area.siteId ? area.siteId.toString() : '126'
+                        const siteHeadId = allSites.find((s) => s.id.toString() === areaSiteId)?.headEmployeeId?.toString()
+                        const approverStep2 = siteHeadId ?? SITE_APPROVER_MAP[areaSiteId] ?? '955'
 
-                          autoRows.push({
-                            key: `site-5r-${rIndex++}-${areaSiteId}-${area.id}`,
-                            siteId: areaSiteId,
-                            departmentId: '',
-                            values: {
-                              'step-0': area.id.toString(),
-                              'step-1': '1181', // Ria Annisa Putri (Quality Verifier)
-                              'step-2': approverStep2, // PJO Site / Atasan Langsung
-                              'step-3': '944', // Bardinia Susi Ekawaty (Head of CPI)
-                            },
-                          })
-                        }
-                      }
-                      setSiteData(autoRows)
-                    } else if (newKey.toLowerCase().includes('material') || newKey.toLowerCase().includes('tools')) {
-                      setApprovalSteps(materialToolsDefaults)
-                      const autoRows: any[] = []
-                      let rIndex = 0
-                      const CS_SECTIONS = [
-                        { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
-                        { id: '37', name: 'Technical Operation', headId: '96' },        // Febrial Hariri
-                        { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
-                      ]
-
-                      const sitesList = allSites.length > 0 ? allSites : MASTER_CATEGORIZED_SITES
-
-                      for (const site of sitesList) {
-                        for (const sec of CS_SECTIONS) {
-                          autoRows.push({
-                            key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
-                            siteId: site.id.toString(),
-                            departmentId: '',
-                            values: {
-                              'step-0': sec.id,
-                              'step-1': sec.headId,
-                            },
-                          })
-                        }
-                      }
-                    } else if (newKey.toLowerCase().includes('summary')) {
-                      setApprovalSteps(summaryApdDefaults)
-                      const autoRows: any[] = []
-                      let rIndex = 0
-                      for (const sec of csSectionsList) {
-                        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
-                        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
                         autoRows.push({
-                          key: `site-sum-${rIndex++}-${sec.id}`,
-                          siteId: '0',
-                          departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+                          key: `site-5r-${rIndex++}-${areaSiteId}-${area.id}`,
+                          siteId: areaSiteId,
+                          departmentId: '',
                           values: {
-                            'step-0': sec.id.toString(),
-                            'step-1': secHeadId,
-                            'step-2': deptHeadId,
+                            'step-0': area.id.toString(),
+                            'step-1': '1181', // Ria Annisa Putri (Quality Verifier)
+                            'step-2': approverStep2, // PJO Site / Atasan Langsung
+                            'step-3': '944', // Bardinia Susi Ekawaty (Head of CPI)
                           },
                         })
                       }
-                      setSiteData(autoRows)
-                    } else if (newKey.toLowerCase().includes('apd')) {
-                      setApprovalSteps(apdDefaults)
-                      const autoRows = MASTER_CATEGORIZED_SITES.map((site, index) => {
-                        const isAdminCp = site.category === 'Admin CP'
-                        return {
-                          key: `site-row-${index}-${site.id}`,
-                          siteId: site.id,
+                    }
+                    setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('material') || newKey.toLowerCase().includes('tools')) {
+                    setApprovalSteps(materialToolsDefaults)
+                    const autoRows: any[] = []
+                    let rIndex = 0
+                    const CS_SECTIONS = [
+                      { id: '29', name: 'Repair / Retread Operation', headId: '996' }, // Ary Maulana
+                      { id: '37', name: 'Technical Operation', headId: '1094' },       // Muhammad Abian Husain
+                      { id: '33', name: 'Service Operation MVC', headId: '955' },     // Apriyanto
+                      { id: '34', name: 'Service Operation Others', headId: '15' },   // Junaidi
+                    ]
+
+                    for (const site of MASTER_CATEGORIZED_SITES) {
+                      for (const sec of CS_SECTIONS) {
+                        const approverId = resolveApdApproverForStudio(site.id, sec.id)
+                        autoRows.push({
+                          key: `site-mat-${rIndex++}-${site.id}-${sec.id}`,
+                          siteId: site.id.toString(),
                           departmentId: '',
                           values: {
-                            'step-1': isAdminCp ? '1099' : (site.approverId ?? '955'), // Service MVC -> As'ar Fauzan / HSE / PJO
-                            'step-2': isAdminCp ? '1039' : (site.approverId ?? '955'), // Service Others -> Arjun Zahiri Mursith / HSE / PJO
-                            'step-3': isAdminCp ? '1094' : (site.approverId ?? '955'), // TE -> Abian Husain / HSE / PJO
+                            'step-0': sec.id,
+                            'step-1': approverId,
+                            'step-2': sec.headId,
                           },
-                        }
-                      })
-                      setSiteData(autoRows)
-                    } else {
-                      setApprovalSteps(generalDefaults)
+                        })
+                      }
                     }
+                    setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('summary')) {
+                    setApprovalSteps(summaryApdDefaults)
+                    const autoRows: any[] = []
+                    let rIndex = 0
+                    for (const sec of csSectionsList) {
+                      const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
+                      const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
+                      autoRows.push({
+                        key: `site-sum-${rIndex++}-${sec.id}`,
+                        siteId: '0',
+                        departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+                        values: {
+                          'step-0': sec.id.toString(),
+                          'step-1': secHeadId,
+                          'step-2': deptHeadId,
+                        },
+                      })
+                    }
+                    setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('apd')) {
+                    setApprovalSteps(apdDefaults)
+                    const autoRows: any[] = []
+                    let rIndex = 0
+                    const CS_SECTIONS = [
+                      { id: '33', name: 'Service Operation MVC', headId: '955' },
+                      { id: '34', name: 'Service Operation Others', headId: '15' },
+                      { id: '29', name: 'Repair / Retread Operation', headId: '996' },
+                      { id: '37', name: 'Technical Operation', headId: '1094' },
+                    ]
+                    for (const site of MASTER_CATEGORIZED_SITES) {
+                      for (const sec of CS_SECTIONS) {
+                        autoRows.push({
+                          key: `site-apd-${rIndex++}-${site.id}-${sec.id}`,
+                          siteId: site.id.toString(),
+                          departmentId: '',
+                          values: {
+                            'step-0': sec.id,
+                            'step-1': resolveApdApproverForStudio(site.id, sec.id),
+                          },
+                        })
+                      }
+                    }
+                    setSiteData(autoRows)
+                  } else {
+                    setApprovalSteps(generalDefaults)
                   }
                 }}
                 className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm"
@@ -1849,15 +2011,14 @@ function WorkflowBuilderDialog({
                             value={step.label}
                             onChange={(e) => updateStepLabel(step.id, e.target.value)}
                             className="h-8 flex-1 text-xs"
-                            readOnly={isMaterialOrToolsMenu() && step.label === 'Head Section'}
                           />
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
                             <ArrowUp className="size-3" />
                           </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1 || (isMaterialOrToolsMenu() && step.label === 'Head Section')} className="h-7 w-7 p-0">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
                             <ArrowDown className="size-3" />
                           </Button>
-                          <button type="button" onClick={() => removeStep(step.id)} disabled={isMaterialOrToolsMenu() && step.label === 'Head Section'} className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed">
+                          <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed">
                             <X className="size-3.5" />
                           </button>
                         </div>
@@ -2576,7 +2737,7 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                     <TableCell>
                       <div className="font-medium">{item.name}</div>
                       <div className="text-muted-foreground text-xs">
-                        {item.sourceType} {item.duplicateActiveCount > 1 ? `- duplicate ${item.duplicateActiveCount}` : ''}
+                        {item.sourceType}
                       </div>
                     </TableCell>
                     <TableCell>{formatDate(item.updatedAt)}</TableCell>
@@ -2680,7 +2841,7 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioData }) {
                               label += ` (${mapping[step.virtualEmployeeId] || step.virtualEmployeeId})`;
                             }
                             return (
-                              <span key={step.id} className="flex items-center">
+                              <span key={`preset-step-${preset.id}-${step.id || idx}-${idx}`} className="flex items-center">
                                 {idx > 0 && <span className="mx-1 text-muted-foreground">➔</span>}
                                 <span className="bg-slate-50 border px-2 py-0.5 rounded text-[11px]">
                                   {label}

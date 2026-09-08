@@ -3505,7 +3505,7 @@ export async function getWorkflowStudioConsoleData() {
     const relatedMatrices = (() => {
       const direct = activeMatrixByTransaction.get(normalizeStatus(item.transactionType)) ?? []
       if (direct.length > 0) return direct
-      if (item.transactionType.startsWith('apd-request')) {
+      if (item.transactionType === 'apd-request-apd' || item.transactionType === 'apd-request') {
         return (
           activeMatrixByTransaction.get('apd-request-apd') ??
           activeMatrixByTransaction.get('apd-request') ??
@@ -3542,10 +3542,10 @@ export async function getWorkflowStudioConsoleData() {
     )
     const isActive = Boolean(workflow?.isActive || relatedMatrices.length > 0)
     const sourceType =
-      workflow?.isActive && relatedMatrices.length > 0
-        ? 'Workflow'
-        : relatedMatrices.length > 0
-          ? 'Matrix'
+      item.sourceType === 'Matrix' || relatedMatrices.length > 0
+        ? 'Matrix'
+        : workflow?.isActive
+          ? 'Workflow'
           : item.sourceType
 
     const siteSecKeySet = new Set<string>()

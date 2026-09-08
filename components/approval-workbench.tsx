@@ -334,7 +334,7 @@ export function InboxTab({
   // Batch Review Modal State
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
-  const [viewerZoom, setViewerZoom] = useState(2.2)
+  const [viewerZoom, setViewerZoom] = useState(1.0)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
@@ -650,15 +650,41 @@ export function InboxTab({
 
         const isApd = Boolean(apdItem)
         const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
-        const resolvedCategory = isSummary ? 'SUMMARY' : isApd ? 'APD' : 'GENERAL'
-        const resolvedCategoryLabel = isSummary
-          ? 'Summary APD'
+        const isMaterial = apdItem?.activityType?.toLowerCase().includes('material') || apdItem?.title?.toLowerCase().includes('material')
+        const isTools = apdItem?.activityType?.toLowerCase().includes('tools') || apdItem?.title?.toLowerCase().includes('tools')
+
+        const resolvedCategory = isSummary
+          ? 'SUMMARY'
+          : isMaterial
+          ? 'MATERIAL'
+          : isTools
+          ? 'TOOLS'
           : isApd
-          ? (apdItem?.activityType || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[0] : 'Request APD'))
+          ? 'APD'
+          : 'GENERAL'
+
+        const resolvedCategoryLabel = isSummary
+          ? 'Summary Permintaan Barang'
+          : isMaterial
+          ? 'Permintaan Material'
+          : isTools
+          ? 'Permintaan Tools'
+          : isApd
+          ? 'Permintaan APD'
           : 'Form Activity'
 
         const resolvedDocNumber = isApd
-          ? (apdItem?.requestNumber || (apdItem?.title?.includes(' - ') ? apdItem.title.split(' - ')[1] : isSummary ? `SUM-${apdItem?.activityId}` : `APD-${apdItem?.activityId}`) || `GRP-${g.id}`)
+          ? (apdItem?.requestNumber ||
+              (apdItem?.title?.includes(' - ')
+                ? apdItem.title.split(' - ')[1]
+                : isSummary
+                ? `SUM-${apdItem?.activityId}`
+                : isMaterial
+                ? `MAT-${apdItem?.activityId}`
+                : isTools
+                ? `TLS-${apdItem?.activityId}`
+                : `APD-${apdItem?.activityId}`) ||
+              `GRP-${g.id}`)
           : `GRP-${g.id}`
 
         const resolvedTitle = isApd
@@ -678,8 +704,8 @@ export function InboxTab({
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: g.items[0]?.dueAt || new Date(),
           submittedAt: g.items[0]?.submittedAt || new Date(),
-          url: '#',
-          activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? 'Request APD' : 'Form Activity')),
+          url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
+          activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
           activityId: apdItem?.activityId || g.id,
           approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
           rawGeneralGroup: g,
@@ -944,7 +970,14 @@ export function InboxTab({
 
         if (!res.success) throw new Error(res.message || 'Gagal memproses approval 5R')
         toast.success(`Laporan 5R #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
-      } else if ((currentBatchDoc.category === 'GENERAL' || currentBatchDoc.category === 'APD') && currentBatchDoc.rawGeneralGroup) {
+      } else if (
+        (currentBatchDoc.category === 'GENERAL' ||
+          currentBatchDoc.category === 'APD' ||
+          currentBatchDoc.category === 'MATERIAL' ||
+          currentBatchDoc.category === 'TOOLS' ||
+          currentBatchDoc.category === 'SUMMARY') &&
+        currentBatchDoc.rawGeneralGroup
+      ) {
         const grp = currentBatchDoc.rawGeneralGroup
         const formData = new FormData()
         for (const it of grp.items) {
@@ -1004,7 +1037,15 @@ export function InboxTab({
       const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
       const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
       const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
-      const generalItems = itemsToProcess.filter(it => (it.category === 'GENERAL' || it.category === 'APD') && it.rawGeneralGroup)
+      const generalItems = itemsToProcess.filter(
+        (it) =>
+          (it.category === 'GENERAL' ||
+            it.category === 'APD' ||
+            it.category === 'MATERIAL' ||
+            it.category === 'TOOLS' ||
+            it.category === 'SUMMARY') &&
+          it.rawGeneralGroup
+      )
 
       // Daily Activity Batch
       if (dailyItems.length > 0) {
@@ -1494,9 +1535,13 @@ export function InboxTab({
                         className={cn(
                           'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider shrink-0 border',
                           item.category === 'SUMMARY' || item.activityType === 'Summary APD'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                            ? 'bg-purple-50 text-purple-800 border-purple-200/80'
                             : item.category === 'APD'
-                            ? 'bg-teal-50 text-teal-800 border-teal-200/80'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200/80'
+                            : item.category === 'MATERIAL'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                            : item.category === 'TOOLS'
+                            ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80'
                             : item.category === 'OVERTIME'
                             ? 'bg-amber-50 text-amber-800 border-amber-200/80'
                             : item.category === 'PTW'
@@ -1505,7 +1550,7 @@ export function InboxTab({
                             ? 'bg-purple-50 text-purple-800 border-purple-200/80'
                             : item.category === 'CONTRACT_REVIEW'
                             ? 'bg-indigo-50 text-indigo-800 border-indigo-200/80'
-                            : item.category === 'SOP_WIN'
+                            : item.category === 'SOP_WIN' || item.category === 'SOP_WIN_REQUEST'
                             ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80'
                             : 'bg-blue-50 text-blue-700 border-blue-200/60'
                         )}
@@ -1551,8 +1596,6 @@ export function InboxTab({
                 {/* Action Button */}
                 {item.category === 'RFR' && item.rawRfr ? (
                   <RfrApprovalDialog item={item.rawRfr} />
-                ) : item.category === 'SUMMARY' || item.category === 'APD' || item.activityType === 'Summary APD' || ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) ? (
-                  <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                 ) : isReverted ? (
                   <Button
                     size="sm"
@@ -1765,11 +1808,14 @@ export function InboxTab({
                             'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-black uppercase border',
                             item.category === 'DAILY_ACTIVITY' && 'bg-indigo-50 text-indigo-700 border-indigo-200',
                             item.category === 'OVERTIME' && 'bg-amber-50 text-amber-700 border-amber-200',
-                            item.category === 'PTW' && 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            item.category === 'PTW' && 'bg-rose-50 text-rose-700 border-rose-200',
                             item.category === 'CONTRACT_REVIEW' && 'bg-blue-50 text-blue-700 border-blue-200',
                             item.category === 'RFR' && 'bg-purple-50 text-purple-700 border-purple-200',
                             item.category === 'FORM_WO' && 'bg-teal-50 text-teal-700 border-teal-200',
                             item.category === 'APD' && 'bg-amber-50 text-amber-800 border-amber-200',
+                            item.category === 'MATERIAL' && 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                            item.category === 'TOOLS' && 'bg-cyan-50 text-cyan-800 border-cyan-200',
+                            item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -1811,8 +1857,6 @@ export function InboxTab({
                     <TableCell className="align-top text-right">
                       {item.category === 'RFR' && item.rawRfr ? (
                         <RfrApprovalDialog item={item.rawRfr} />
-                      ) : item.category === 'SUMMARY' || item.category === 'APD' || item.activityType === 'Summary APD' || ((item as any).activityType?.startsWith('Request ') && ((item as any).activityType?.toUpperCase().includes('APD') || (item as any).activityType?.toUpperCase().includes('MATERIAL') || (item as any).activityType?.toUpperCase().includes('TOOLS'))) ? (
-                        <ApdApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).activityType === 'Work Order' ||
                         (item as any).repairFormWo ||
                         (item as any).title?.toLowerCase().includes('wo') ? (
@@ -1888,6 +1932,9 @@ export function InboxTab({
 
             const isApdDoc =
               (currentBatchDoc?.category as any) === 'APD' ||
+              (currentBatchDoc?.category as any) === 'MATERIAL' ||
+              (currentBatchDoc?.category as any) === 'TOOLS' ||
+              (currentBatchDoc?.category as any) === 'SUMMARY' ||
               Boolean(
                 currentBatchDoc?.rawGeneralGroup?.items?.some(
                   (i: any) =>
@@ -1958,44 +2005,7 @@ export function InboxTab({
                       </div>
                     )}
 
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-1 bg-slate-50 rounded-xl px-1.5 py-1 border border-slate-200">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
-                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
-                        title="Zoom Out"
-                      >
-                        -
-                      </Button>
-                      <span className="text-[10px] font-mono font-bold text-slate-600 px-1 min-w-7 text-center">
-                        {Math.round(viewerZoom * 100)}%
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
-                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
-                        title="Zoom In"
-                      >
-                        +
-                      </Button>
-                      {viewerZoom !== 2.2 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setViewerZoom(2.2)}
-                          className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
-                        >
-                          Reset
-                        </Button>
-                      )}
-                    </div>
-
+                    {/* Unduh PDF Button */}
                     <Button
                       size="sm"
                       variant="outline"
@@ -2046,7 +2056,7 @@ export function InboxTab({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setViewerZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                          onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
                           className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
                           title="Zoom Out"
                         >
@@ -2065,12 +2075,12 @@ export function InboxTab({
                         >
                           +
                         </Button>
-                        {viewerZoom !== 2.2 && (
+                        {viewerZoom !== 1.0 && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => setViewerZoom(2.2)}
+                            onClick={() => setViewerZoom(1.0)}
                             className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
                           >
                             Reset
@@ -2098,10 +2108,10 @@ export function InboxTab({
                           <div
                             className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
                             style={{
-                              paddingTop: isLandscapeDoc ? '4mm' : '38mm',
-                              paddingBottom: isLandscapeDoc ? '4mm' : '35mm',
-                              paddingLeft: isLandscapeDoc ? '4mm' : '20mm',
-                              paddingRight: isLandscapeDoc ? '4mm' : '20mm',
+                              paddingTop: isLandscapeDoc || isCleanCustomDoc ? '0mm' : '38mm',
+                              paddingBottom: isLandscapeDoc || isCleanCustomDoc ? '0mm' : '35mm',
+                              paddingLeft: isLandscapeDoc || isCleanCustomDoc ? '0mm' : '20mm',
+                              paddingRight: isLandscapeDoc || isCleanCustomDoc ? '0mm' : '20mm',
                               minHeight: isLandscapeDoc ? '210mm' : '297mm',
                             }}
                           >
@@ -3328,15 +3338,15 @@ export function InboxTab({
                         ) || currentBatchDoc.rawGeneralGroup?.items?.[0]
                         if (!apdItem) return null
                         const printUrl = apdItem.activityType === 'Summary APD'
-                          ? `/print/summary/${apdItem.activityId}`
-                          : `/print/apd/${apdItem.activityId}`
+                          ? `/print/summary/${apdItem.activityId}?embed=1`
+                          : `/print/apd/${apdItem.activityId}?embed=1`
 
                         return (
-                          <div className="w-full flex justify-center">
+                          <div className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] overflow-hidden flex justify-center p-0 m-0">
                             <iframe
                               src={printUrl}
-                              className="w-[210mm] min-h-[297mm] h-[297mm] border-0 bg-white shadow-xs"
-                              title="Preview Dokumen Permintaan APD"
+                              className="w-[210mm] min-h-[297mm] h-[297mm] border-0 bg-white shadow-none p-0 m-0 block"
+                              title="Preview Dokumen Permintaan Barang"
                               onLoad={(e) => {
                                 const iframe = e.target as HTMLIFrameElement
                                 const sendSig = () => {

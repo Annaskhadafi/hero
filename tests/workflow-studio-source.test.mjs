@@ -45,3 +45,22 @@ test('workflow studio UI includes monitoring, email, reminder, and audit actions
     assert.match(source, new RegExp(label))
   }
 })
+
+test('workflow studio builder supports manual customization for APD, Material, and Tools', () => {
+  const studioSource = read('components/workflow-studio-overview.tsx')
+  const engineSource = read('lib/approval-engine.ts')
+
+  assert.ok(
+    studioSource.includes('isMaterialOrToolsMenu'),
+    'Workflow Studio must identify Material and Tools menus'
+  )
+  assert.ok(
+    !studioSource.includes("readOnly={isMaterialOrToolsMenu() && step.label === 'Head Section'}"),
+    'Workflow Studio must allow manual editing of step labels for Material and Tools'
+  )
+  assert.ok(
+    !engineSource.includes("context.transactionType === 'apd-request-material' ||\n    context.transactionType === 'apd-request-tools'\n  ) {\n    return resolveApdApprovalRoute(context)"),
+    'Approval engine must not short-circuit Material and Tools before database matrix lookup'
+  )
+})
+
