@@ -547,6 +547,15 @@ export function PtwPublicApproval({
                       backgroundColor="rgba(255,255,255,0)"
                     />
                   </div>
+                  {!previewSignatureDataUrl ? (
+                    <p className="text-[10.5px] text-amber-600 mt-1.5 font-semibold flex items-center gap-1">
+                      ⚠️ Tanda tangan manual wajib digoreskan pada kotak di atas sebelum dapat disetujui.
+                    </p>
+                  ) : (
+                    <p className="text-[10.5px] text-emerald-600 mt-1.5 font-semibold flex items-center gap-1">
+                      ✓ Tanda tangan tergores & preview terpasang pada lembar dokumen.
+                    </p>
+                  )}
                 </div>
 
                 {/* Remarks Field */}
@@ -591,9 +600,10 @@ export function PtwPublicApproval({
 
                   <Button
                     type="button"
-                    className="rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-bold text-xs h-9 px-5 shadow-xs"
+                    className="rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-bold text-xs h-9 px-5 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
                     onClick={handleSubmit}
-                    disabled={isPending}
+                    disabled={isPending || !previewSignatureDataUrl}
+                    title={!previewSignatureDataUrl ? 'Goreskan tanda tangan terlebih dahulu untuk menyetujui' : 'Setujui & Tanda Tangani PTW'}
                   >
                     <CheckCircle2 className="mr-1.5 size-4" />
                     {isPending ? 'Menyimpan...' : 'Setujui & Tanda Tangani'}

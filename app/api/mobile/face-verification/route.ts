@@ -369,6 +369,7 @@ export async function POST(request: NextRequest) {
       eventType,
       eventTime,
       shiftCode: typeof shiftCode === 'string' ? shiftCode : null,
+      employeeId: matchedEmployee.id,
     })
     const locationNote = [
       `${gpsFlag}face-recognition${accuracyNote}`,

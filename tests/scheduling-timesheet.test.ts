@@ -515,7 +515,7 @@ describe('scheduling timesheet workflow', () => {
     expect(optionsSource).toContain('sectionHeadEmployeeId: masterSections.headEmployeeId')
     expect(optionsSource).toContain('departmentHeadEmployeeId: masterDepartments.headEmployeeId')
     expect(optionsSource).toContain('const siteHeads = new Map')
-    expect(optionsSource).toContain('approvalEmployees: employeeRows.map')
+    expect(optionsSource).toContain('approvalEmployees: employeeRows')
     expect(optionsSource).toContain("eq(approvalMatrices.transactionType, 'overtime_request')")
     expect(optionsSource).toContain('isNotNull(approvalMatrices.sectionId)')
     expect(optionsSource).toContain("matrix?.id ?? 'none'")

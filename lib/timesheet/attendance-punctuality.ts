@@ -57,6 +57,30 @@ export function isStaffRole(role?: string | null): boolean {
   return false
 }
 
+export function isOffScheduleCode(code?: string | null): boolean {
+  const c = String(code ?? '').trim().toUpperCase()
+  return [
+    'OFF',
+    'FB',
+    'LIBUR',
+    'L',
+    'O',
+    'CUTI',
+    'CT',
+    'STANDBY',
+    'ST',
+    'SD',
+    'SAKIT',
+    'SK',
+    'IZIN',
+    'IZ',
+    'ALPHA',
+    'AL',
+    'A',
+    'FREE',
+  ].includes(c)
+}
+
 export function resolveConfiguredShiftClockIn(
   shiftCode: string | null | undefined,
   config: SiteAttendanceClockConfig
@@ -73,6 +97,7 @@ export function resolveConfiguredShiftClockIn(
   if (
     [
       'NS',
+      'NG',
       'NIGHT',
       'MALAM',
       'SHIFT MALAM',
@@ -80,6 +105,7 @@ export function resolveConfiguredShiftClockIn(
       'SHIFT-2',
       'N',
       '2',
+      'M',
       'NIGHT SHIFT',
       'S2',
     ].includes(code)
@@ -93,6 +119,7 @@ export function resolveConfiguredShiftClockIn(
       'IN',
       'DAY',
       'PAGI',
+      'SIANG',
       'SHIFT PAGI',
       'SHIFT 1',
       'SHIFT-1',
@@ -114,10 +141,10 @@ export function resolveConfiguredShiftClockIn(
 export function inferShiftFromClockInTime(
   clockInTime: string,
   config: SiteAttendanceClockConfig
-): { shiftCode: 'night' | 'day'; scheduledClockIn: string } {
+): { shiftCode: 'NS' | 'DS'; scheduledClockIn: string } {
   const inM = minutesFromTime(clockInTime)
   if (inM === null) {
-    return { shiftCode: 'day', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
+    return { shiftCode: 'DS', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
   }
   const dayStart = minutesFromTime(config.dayShiftClockIn) ?? 480
   const nightStart = minutesFromTime(config.nightShiftClockIn) ?? 1080
@@ -125,9 +152,9 @@ export function inferShiftFromClockInTime(
   const distNight = Math.min(Math.abs(inM - nightStart), 24 * 60 - Math.abs(inM - nightStart))
 
   if (distNight < distDay) {
-    return { shiftCode: 'night', scheduledClockIn: normalizeTo24HourTime(config.nightShiftClockIn) }
+    return { shiftCode: 'NS', scheduledClockIn: normalizeTo24HourTime(config.nightShiftClockIn) }
   }
-  return { shiftCode: 'day', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
+  return { shiftCode: 'DS', scheduledClockIn: normalizeTo24HourTime(config.dayShiftClockIn) }
 }
 
 export function calculateLateMinutesFromTimes(

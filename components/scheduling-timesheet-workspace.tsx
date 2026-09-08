@@ -167,6 +167,7 @@ import {
   calculateLateMinutesFromTimes,
   getPunctualityDetail,
   inferShiftFromClockInTime,
+  isOffScheduleCode,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
 import {
@@ -1510,17 +1511,29 @@ export function SchedulingTimesheetWorkspace({
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
 
+  const [draftCellStatus, setDraftCellStatus] = useState<AttendanceCellStatus>('present')
+  const [draftClockIn, setDraftClockIn] = useState<string>('')
+  const [draftClockOut, setDraftClockOut] = useState<string>('')
+  const [draftNote, setDraftNote] = useState<string>('')
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
 
   useEffect(() => {
     if (selectedAttendanceCell) {
       const cell = getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
+      setDraftCellStatus(cell.status)
+      setDraftClockIn(cell.clockIn || '')
+      setDraftClockOut(cell.clockOut || '')
+      setDraftNote(cell.note || '')
       setDraftOvertimeHours(
         cell.overtimeHours !== undefined && cell.overtimeHours !== null
           ? String(cell.overtimeHours)
           : ''
       )
     } else {
+      setDraftCellStatus('present')
+      setDraftClockIn('')
+      setDraftClockOut('')
+      setDraftNote('')
       setDraftOvertimeHours('')
     }
   }, [selectedAttendanceCell])
@@ -2072,7 +2085,7 @@ export function SchedulingTimesheetWorkspace({
       ? normalizeIndonesiaTimezone(
           currentSiteObj.timezone ||
             inferTimezoneFromLocation(
-              [currentSiteObj.location, currentSiteObj.provinceName, currentSiteObj.name]
+              [currentSiteObj.location, (currentSiteObj as any).provinceName, currentSiteObj.name]
                 .filter(Boolean)
                 .join(' ')
             )
@@ -4372,35 +4385,60 @@ export function SchedulingTimesheetWorkspace({
     if (manual) {
       const note = manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''
       const punctualityDetail = getPunctualityDetail(note)
-      const clockIn = manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz)
-      const clockOut = manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz)
+
+      const isNonWorkManual = [
+        'off',
+        'standby',
+        'field_break',
+        'sick',
+        'leave',
+        'absent',
+        'empty',
+      ].includes(manual.status)
+
+      // If manual status is non-work, do not fall back to real clock-in/out unless manual explicitly has them
+      const clockIn =
+        manual.clockIn !== undefined && manual.clockIn !== null && manual.clockIn !== ''
+          ? manual.clockIn
+          : isNonWorkManual
+            ? ''
+            : timeFromIso(real?.clockIn?.eventTime, effectiveTz)
+      const clockOut =
+        manual.clockOut !== undefined && manual.clockOut !== null && manual.clockOut !== ''
+          ? manual.clockOut
+          : isNonWorkManual
+            ? ''
+            : timeFromIso(real?.clockOut?.eventTime, effectiveTz)
 
       const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
       const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
       const scheduledClockIn =
         configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
 
-      let lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
-      if (lateMinutes === null) {
+      const isOffSchedule = isOffScheduleCode(rowCode)
+
+      const effectiveStatus = manual.status
+
+      let lateMinutes =
+        isNonWorkManual || isOffSchedule || effectiveStatus !== 'present'
+          ? null
+          : calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+
+      if (
+        lateMinutes === null &&
+        !isNonWorkManual &&
+        !isOffSchedule &&
+        effectiveStatus === 'present'
+      ) {
         const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
         if (punctMatch) {
           lateMinutes = Number(punctMatch[1])
         }
       }
 
-      let effectiveStatus = manual.status
-      // If employee has attendance clock-in on an off day, replace 'off'/'empty' with 'present'
-      if ((effectiveStatus === 'off' || effectiveStatus === 'empty') && (clockIn || real?.clockIn)) {
-        effectiveStatus = 'present'
-      } else if (!effectiveStatus || effectiveStatus === 'empty') {
-        const rosterStatus = normalizeAttendanceStatus(rowCode)
-        if (rosterStatus === 'off') {
-          effectiveStatus = clockIn ? 'present' : 'off'
-        }
-      }
-
       const isLatePending =
         effectiveStatus === 'present' &&
+        !isOffSchedule &&
         (lateMinutes !== null
           ? lateMinutes > 0
           : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
@@ -4411,10 +4449,10 @@ export function SchedulingTimesheetWorkspace({
         clockIn,
         clockOut,
         note,
-        lateMinutes,
+        lateMinutes: isLatePending ? lateMinutes : null,
         isLatePending: Boolean(isLatePending),
         scheduledClockIn,
-        shiftCode: rowCode || inferred?.shiftCode || null,
+        shiftCode: rowCode || inferred?.shiftCode || 'DS',
       }
     }
 
@@ -4434,7 +4472,7 @@ export function SchedulingTimesheetWorkspace({
           clockOut: '',
           note: '',
           scheduledClockIn: configuredClockIn,
-          shiftCode: rowCode || null,
+          shiftCode: rowCode || 'DS',
         }
       }
       return {
@@ -4444,7 +4482,7 @@ export function SchedulingTimesheetWorkspace({
         note: '',
         source: 'attendance',
         scheduledClockIn: configuredClockIn,
-        shiftCode: rowCode || null,
+        shiftCode: rowCode || 'DS',
       }
     }
 
@@ -4453,7 +4491,7 @@ export function SchedulingTimesheetWorkspace({
     const clockIn = timeFromIso(real.clockIn?.eventTime, effectiveTz)
     const clockOut = timeFromIso(real.clockOut?.eventTime, effectiveTz)
     
-    // When real attendance records exist with clock in, status is 'present' (replaces OFF)
+    // When real attendance records exist with clock in, status is 'present' (replaces OFF for actual work)
     if (clockIn || real.records.length > 0) {
       if (status === 'empty' || status === 'off') {
         status = 'present'
@@ -4472,8 +4510,14 @@ export function SchedulingTimesheetWorkspace({
     const scheduledClockIn =
       configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
 
-    let lateMinutes = calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
-    if (lateMinutes === null) {
+    const isOffSchedule = isOffScheduleCode(rowCode)
+
+    let lateMinutes =
+      isOffSchedule || status !== 'present'
+        ? null
+        : calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
+
+    if (lateMinutes === null && !isOffSchedule && status === 'present') {
       const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
       if (punctMatch) {
         lateMinutes = Number(punctMatch[1])
@@ -4482,6 +4526,7 @@ export function SchedulingTimesheetWorkspace({
 
     const isLatePending =
       status === 'present' &&
+      !isOffSchedule &&
       (lateMinutes !== null
         ? lateMinutes > 0
         : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
@@ -4492,10 +4537,10 @@ export function SchedulingTimesheetWorkspace({
       clockOut,
       note,
       source: 'attendance',
-      lateMinutes,
+      lateMinutes: isLatePending ? lateMinutes : null,
       isLatePending: Boolean(isLatePending),
       scheduledClockIn,
-      shiftCode: rowCode || inferred?.shiftCode || null,
+      shiftCode: rowCode || inferred?.shiftCode || 'DS',
     }
   }
 
@@ -4506,7 +4551,14 @@ export function SchedulingTimesheetWorkspace({
   ) {
     if (!guardOpenPeriod('Edit attendance')) return
     const key = attendanceKey(employeeId, day)
-    const statusClearsTime = patch.status === 'standby' || patch.status === 'field_break'
+    const statusClearsTime =
+      patch.status === 'off' ||
+      patch.status === 'standby' ||
+      patch.status === 'field_break' ||
+      patch.status === 'sick' ||
+      patch.status === 'leave' ||
+      patch.status === 'absent' ||
+      patch.status === 'empty'
     setManualAttendance((current) => ({
       ...current,
       [key]: {
@@ -4551,11 +4603,24 @@ export function SchedulingTimesheetWorkspace({
 
   function applyBulkAttendance(patch: Partial<ManualAttendanceCell>) {
     if (!guardOpenPeriod('Bulk edit attendance')) return
+    const statusClearsTime =
+      patch.status === 'off' ||
+      patch.status === 'standby' ||
+      patch.status === 'field_break' ||
+      patch.status === 'sick' ||
+      patch.status === 'leave' ||
+      patch.status === 'absent' ||
+      patch.status === 'empty'
     setManualAttendance((current) => {
       const next = { ...current }
       for (const key of selectedAttendanceKeys) {
         const [employeeId, day] = key.split('-').map(Number)
-        next[key] = { ...getAttendanceCell(employeeId, day), source: 'manual', ...patch }
+        next[key] = {
+          ...getAttendanceCell(employeeId, day),
+          source: 'manual',
+          ...patch,
+          ...(statusClearsTime ? { clockIn: '', clockOut: '' } : {}),
+        }
       }
       return next
     })
@@ -4885,8 +4950,8 @@ export function SchedulingTimesheetWorkspace({
 
   function saveAttendanceRealWithData(nextManual: Record<string, ManualAttendanceCell>) {
     if (!guardOpenPeriod('Save attendance')) return
-    const numericSiteId = Number(siteId)
-    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+    if (isFinalized) return
+
     const overrides = Object.entries(nextManual || {}).map(([key, cell]) => {
       const [employeeId, day] = key.split('-').map(Number)
       return {
@@ -4903,24 +4968,42 @@ export function SchedulingTimesheetWorkspace({
             : null,
       }
     })
-    console.log(
-      '[CLIENT] overrides payload being sent:',
-      overrides.filter((o) => o.overtimeHours !== null)
-    )
+
+    const numericSiteId = Number(siteId) > 0 ? Number(siteId) : Number(site?.id) || 0
+    const siteOverridesMap = new Map<number, typeof overrides>()
+    if (numericSiteId > 0) {
+      siteOverridesMap.set(numericSiteId, overrides)
+    } else {
+      for (const item of overrides) {
+        const emp = employees.find((e) => e.id === item.employeeId)
+        const empSite = emp?.siteId ? Number(emp.siteId) : 0
+        if (empSite > 0) {
+          if (!siteOverridesMap.has(empSite)) {
+            siteOverridesMap.set(empSite, [])
+          }
+          siteOverridesMap.get(empSite)!.push(item)
+        }
+      }
+    }
+
+    if (siteOverridesMap.size === 0 && numericSiteId <= 0) {
+      toast.error('Pilih site terlebih dahulu sebelum menyimpan.')
+      return
+    }
 
     startSavingAttendance(async () => {
       try {
-        const result = await saveAttendanceRealOverridesAction({
-          siteId: numericSiteId,
-          period,
-          overrides,
-        })
-        if (result.ok) {
-          setAttendanceSavedAt(new Date().toISOString())
-          setIsAttendanceDirty(false)
-          router.refresh()
-          toast.success('Attendance saved')
+        for (const [targetSiteId, siteOverrides] of siteOverridesMap.entries()) {
+          await saveAttendanceRealOverridesAction({
+            siteId: targetSiteId,
+            period,
+            overrides: siteOverrides,
+          })
         }
+        setAttendanceSavedAt(new Date().toISOString())
+        setIsAttendanceDirty(false)
+        router.refresh()
+        toast.success('Attendance saved')
       } catch (error) {
         toast.error('Save attendance failed', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -9819,6 +9902,9 @@ export function SchedulingTimesheetWorkspace({
                       clockOut: '17:00',
                     })
                   }
+                  onSetOff={() =>
+                    applyBulkAttendance({ status: 'off', clockIn: '', clockOut: '' })
+                  }
                   onSetSick={() =>
                     applyBulkAttendance({ status: 'sick', clockIn: '', clockOut: '' })
                   }
@@ -11272,8 +11358,8 @@ export function SchedulingTimesheetWorkspace({
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,
-                  selectedAttendanceValue.clockIn,
-                  selectedAttendanceValue.clockOut,
+                  draftClockIn,
+                  draftClockOut,
                   isStaffForDialog,
                   selectedAttendanceCell.employeeId,
                   true
@@ -11283,50 +11369,83 @@ export function SchedulingTimesheetWorkspace({
                   : calculateLegacyOvertime(
                       employeeScheduleForDialog,
                       selectedAttendanceCell.day,
-                      selectedAttendanceValue.clockIn,
-                      selectedAttendanceValue.clockOut
+                      draftClockIn,
+                      draftClockOut
                     )
-                const isNonWorkingDialogStatus =
-                  selectedAttendanceValue.status === 'empty' ||
-                  selectedAttendanceValue.status === 'sick' ||
-                  selectedAttendanceValue.status === 'leave' ||
-                  selectedAttendanceValue.status === 'absent' ||
-                  selectedAttendanceValue.status === 'field_break'
+                const isNonWorkingDialogStatus = [
+                  'empty',
+                  'sick',
+                  'leave',
+                  'absent',
+                  'field_break',
+                  'off',
+                  'standby',
+                ].includes(draftCellStatus)
                 const defaultOtHours =
-                  isNonWorkingDialogStatus && !selectedAttendanceValue.clockIn && !selectedAttendanceValue.clockOut
+                  isNonWorkingDialogStatus && !draftClockIn && !draftClockOut
                     ? 0
                     : defaultOtCalculation.totalHours > 0
                       ? defaultOtCalculation.totalHours
                       : legacyOt
+
+                const isOffDayShift = isOffScheduleCode(selectedAttendanceValue.shiftCode || '')
+                const draftLateMinutes =
+                  isNonWorkingDialogStatus || draftCellStatus !== 'present' || isOffDayShift
+                    ? null
+                    : calculateLateMinutesFromTimes(draftClockIn, selectedAttendanceValue.scheduledClockIn)
+                const draftIsLate = draftCellStatus === 'present' && !isOffDayShift && draftLateMinutes !== null && draftLateMinutes > 0
 
                 const onSaveAndClose = async () => {
                   const key = attendanceKey(
                     selectedAttendanceCell.employeeId,
                     selectedAttendanceCell.day
                   )
-                  // When user hasn't changed anything, treat the shown default value as the intended override
                   const finalOt =
                     draftOvertimeHours === '' ? defaultOtHours : Number(draftOvertimeHours)
                   logClientActionAction(
                     `[CLIENT LOG] onSaveAndClose key=${key} draftOvertimeHours='${draftOvertimeHours}' finalOt=${finalOt}`
                   )
-                  // Update local state immediately so UI reflects change
+                  const currentCell = getAttendanceCell(
+                    selectedAttendanceCell.employeeId,
+                    selectedAttendanceCell.day
+                  )
+                  const isNonWork = [
+                    'off',
+                    'standby',
+                    'field_break',
+                    'sick',
+                    'leave',
+                    'absent',
+                    'empty',
+                  ].includes(draftCellStatus)
+
                   const updatedCell: ManualAttendanceCell = {
-                    ...getAttendanceCell(
-                      selectedAttendanceCell.employeeId,
-                      selectedAttendanceCell.day
-                    ),
-                    ...selectedAttendanceValue,
+                    ...currentCell,
+                    status: draftCellStatus,
+                    clockIn: isNonWork && !draftClockIn ? '' : draftClockIn,
+                    clockOut: isNonWork && !draftClockOut ? '' : draftClockOut,
+                    note: draftNote,
                     overtimeHours: finalOt,
                     source: 'manual' as const,
                   }
+                  // Apply to table state only upon explicit save
                   setManualAttendance((prev) => ({ ...prev, [key]: updatedCell }))
+                  setIsAttendanceDirty(true)
                   setSelectedAttendanceCell(null)
 
                   // Save ONLY this single cell directly to the server
                   if (!guardOpenPeriod('Save attendance')) return
-                  const numericSiteId = Number(siteId)
-                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+                  const empSiteId = selectedAttendanceEmployee?.siteId
+                  const numericSiteId =
+                    Number(siteId) > 0
+                      ? Number(siteId)
+                      : empSiteId && Number(empSiteId) > 0
+                        ? Number(empSiteId)
+                        : Number(site?.id) || 0
+                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) {
+                    toast.error('Gagal menyimpan: Site ID tidak valid.')
+                    return
+                  }
                   startSavingAttendance(async () => {
                     try {
                       const result = await saveAttendanceRealOverridesAction({
@@ -11337,9 +11456,9 @@ export function SchedulingTimesheetWorkspace({
                             employeeId: selectedAttendanceCell.employeeId,
                             day: selectedAttendanceCell.day,
                             status: updatedCell.status,
-                            clockIn: updatedCell.clockIn,
-                            clockOut: updatedCell.clockOut,
-                            note: updatedCell.note,
+                            clockIn: updatedCell.clockIn ?? '',
+                            clockOut: updatedCell.clockOut ?? '',
+                            note: updatedCell.note ?? '',
                             source: 'manual',
                             overtimeHours: finalOt,
                           },
@@ -11363,18 +11482,18 @@ export function SchedulingTimesheetWorkspace({
                       <div>
                         Tanggal {selectedAttendanceCell.day} • Shift:{' '}
                         <span className="font-semibold text-slate-900 dark:text-slate-100">
-                          {selectedAttendanceValue.shiftCode || 'Day'} (Jadwal Masuk:{' '}
+                          {selectedAttendanceValue.shiftCode || 'DS'} (Jadwal Masuk:{' '}
                           {selectedAttendanceValue.scheduledClockIn
                             ? `${selectedAttendanceValue.scheduledClockIn} • ${formatTo12HourTime(selectedAttendanceValue.scheduledClockIn)}`
                             : siteConfig.dayShiftClockIn}
                           )
                         </span>
                       </div>
-                      {selectedAttendanceValue.isLatePending ? (
+                      {draftIsLate ? (
                         <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                          Terlambat {selectedAttendanceValue.lateMinutes ? `+${selectedAttendanceValue.lateMinutes}m` : ''}
+                          Terlambat +{draftLateMinutes}m
                         </span>
-                      ) : selectedAttendanceValue.clockIn ? (
+                      ) : draftClockIn && draftCellStatus === 'present' ? (
                         <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
                           Tepat Waktu
                         </span>
@@ -11384,14 +11503,24 @@ export function SchedulingTimesheetWorkspace({
                       <div className="space-y-2">
                         <Label>Status</Label>
                         <NativeSelect
-                          value={selectedAttendanceValue.status}
-                          onValueChange={(value) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              { status: value as AttendanceCellStatus }
-                            )
-                          }
+                          value={draftCellStatus}
+                          onValueChange={(value) => {
+                            const nextStatus = value as AttendanceCellStatus
+                            setDraftCellStatus(nextStatus)
+                            const statusClearsTime = [
+                              'off',
+                              'standby',
+                              'field_break',
+                              'sick',
+                              'leave',
+                              'absent',
+                              'empty',
+                            ].includes(nextStatus)
+                            if (statusClearsTime) {
+                              setDraftClockIn('')
+                              setDraftClockOut('')
+                            }
+                          }}
                           options={[
                             { value: 'present', label: 'Masuk' },
                             { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
@@ -11407,67 +11536,51 @@ export function SchedulingTimesheetWorkspace({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Label>Jam Masuk</Label>
-                          {selectedAttendanceValue.clockIn ? (
+                          {draftClockIn ? (
                             <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                              {formatTo12HourTime(selectedAttendanceValue.clockIn)}
+                              {formatTo12HourTime(draftClockIn)}
                             </span>
                           ) : null}
                         </div>
                         <Input
                           type="time"
-                          value={normalizeTo24HourTime(selectedAttendanceValue.clockIn)}
-                          onChange={(event) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              {
-                                clockIn: event.target.value,
-                                status: event.target.value
-                                  ? 'present'
-                                  : selectedAttendanceValue.status,
-                              }
-                            )
-                          }
+                          value={normalizeTo24HourTime(draftClockIn)}
+                          onChange={(event) => {
+                            const val = event.target.value
+                            setDraftClockIn(val)
+                            if (val) {
+                              setDraftCellStatus('present')
+                            }
+                          }}
                         />
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <Label>Jam Pulang</Label>
-                          {selectedAttendanceValue.clockOut ? (
+                          {draftClockOut ? (
                             <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                              {formatTo12HourTime(selectedAttendanceValue.clockOut)}
+                              {formatTo12HourTime(draftClockOut)}
                             </span>
                           ) : null}
                         </div>
                         <Input
                           type="time"
-                          value={normalizeTo24HourTime(selectedAttendanceValue.clockOut)}
-                          onChange={(event) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              {
-                                clockOut: event.target.value,
-                                status: event.target.value
-                                  ? 'present'
-                                  : selectedAttendanceValue.status,
-                              }
-                            )
-                          }
+                          value={normalizeTo24HourTime(draftClockOut)}
+                          onChange={(event) => {
+                            const val = event.target.value
+                            setDraftClockOut(val)
+                            if (val) {
+                              setDraftCellStatus('present')
+                            }
+                          }}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Catatan</Label>
                       <Input
-                        value={selectedAttendanceValue.note}
-                        onChange={(event) =>
-                          updateAttendanceCell(
-                            selectedAttendanceCell.employeeId,
-                            selectedAttendanceCell.day,
-                            { note: event.target.value }
-                          )
-                        }
+                        value={draftNote}
+                        onChange={(event) => setDraftNote(event.target.value)}
                         placeholder="Face loc / izin / sakit / manual"
                       />
                     </div>
@@ -11498,7 +11611,15 @@ export function SchedulingTimesheetWorkspace({
                             </span>
                           )}
                       </div>
-                      <Button onClick={onSaveAndClose}>Simpan</Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedAttendanceCell(null)}
+                        >
+                          Batal
+                        </Button>
+                        <Button onClick={onSaveAndClose}>Simpan</Button>
+                      </div>
                     </div>
                   </div>
                 )

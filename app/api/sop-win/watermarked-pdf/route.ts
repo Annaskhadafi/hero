@@ -54,12 +54,15 @@ export async function GET(request: Request) {
       );
     }
 
-    // Check expiration
-    if (reqData.expiryDays) {
-      const createdTime = new Date(reqData.createdAt || Date.now()).getTime();
-      const expiresTime = createdTime + reqData.expiryDays * 24 * 60 * 60 * 1000;
-      if (Date.now() > expiresTime) {
-        return NextResponse.json({ message: "Access expired" }, { status: 403 });
+    // Check expiration - only applies to approved requests where accessExpiresAt has elapsed
+    const isApproved = (reqData.status || "").toLowerCase() === "approved";
+    if (isApproved && reqData.accessExpiresAt) {
+      const expiresTime = new Date(reqData.accessExpiresAt).getTime();
+      if (!isNaN(expiresTime) && Date.now() > expiresTime) {
+        return NextResponse.json(
+          { message: "Masa berlaku akses dokumen ini telah berakhir (Access expired)." },
+          { status: 403 }
+        );
       }
     }
 

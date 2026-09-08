@@ -7116,6 +7116,7 @@ function serializeAttendanceOverride(
     source: ['manual', 'excel', 'attendance'].includes(override.source)
       ? override.source
       : 'manual',
+    overtimeHours: override.overtimeHours ?? null,
     updatedAt: override.updatedAt.toISOString(),
   }
 }

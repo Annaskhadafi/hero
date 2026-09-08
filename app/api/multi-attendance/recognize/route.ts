@@ -280,6 +280,7 @@ export async function POST(req: NextRequest) {
       eventType,
       eventTime,
       shiftCode: shiftCode || null,
+      employeeId: resolvedEmployee.id,
     })
 
     // ── 7. Insert attendance record ───────────────────────────────────────────
